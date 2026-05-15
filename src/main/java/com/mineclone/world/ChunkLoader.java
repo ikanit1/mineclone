@@ -25,6 +25,7 @@ public class ChunkLoader {
         public final long key;
         public final MeshData data;
         Ready(long key, MeshData data) { this.key = key; this.data = data; }
+        Ready(long key, MeshData[] meshes) { this.key = key; this.data = meshes[0]; }
     }
 
     private final World world;
@@ -84,7 +85,7 @@ public class ChunkLoader {
             try {
                 Chunk c = world.getChunkIfExists(cx, cz);
                 if (c == null) return;
-                MeshData data = mesher.buildData(c);
+                MeshData[] data = mesher.buildData(c);
                 ready.offer(new Ready(key, data));
                 meshed.add(key);
             } finally {
