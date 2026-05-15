@@ -89,17 +89,28 @@ public final class Shaders {
         uniform vec3 uRight;
         uniform vec3 uUp;
         uniform float uSize;
+        uniform vec2 uUv0;
+        uniform vec2 uUv1;
+        out vec2 vUv;
         void main() {
             vec3 world = uCenter + (uRight * aCorner.x + uUp * aCorner.y) * uSize;
             gl_Position = uProjection * uView * vec4(world, 1.0);
+            vec2 frac = aCorner + vec2(0.5);
+            vUv = uUv0 + (uUv1 - uUv0) * frac;
         }
         """;
 
     public static final String PARTICLE_FRAGMENT = """
         #version 330 core
+        in vec2 vUv;
+        uniform sampler2D uAtlas;
         uniform vec4 uColor;
         out vec4 FragColor;
-        void main() { FragColor = uColor; }
+        void main() {
+            vec4 tex = texture(uAtlas, vUv);
+            if (tex.a < 0.1) discard;
+            FragColor = vec4(tex.rgb, uColor.a);
+        }
         """;
 
     public static final String TEXT_VERTEX = """

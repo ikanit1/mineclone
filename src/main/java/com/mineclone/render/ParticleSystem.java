@@ -24,6 +24,7 @@ public class ParticleSystem {
         float x, y, z, vx, vy, vz;
         float life, size;
         float[] color;
+        float u0, v0, u1, v1;
     }
 
     private final List<P> particles = new ArrayList<>();
@@ -51,7 +52,7 @@ public class ParticleSystem {
         glBindVertexArray(0);
     }
 
-    public void emitBlockBreak(int bx, int by, int bz, float[] color) {
+    public void emitBlockBreak(int bx, int by, int bz, float[] color, int sideTile) {
         int count = 5 + rnd.nextInt(6); // 5-10
         for (int i = 0; i < count && particles.size() < MAX; i++) {
             P p = new P();
@@ -64,6 +65,14 @@ public class ParticleSystem {
             p.life = 0.5f + rnd.nextFloat() * 0.4f;
             p.size = 0.08f + rnd.nextFloat() * 0.06f;
             p.color = color;
+            float[] uv = TextureAtlas.uv(sideTile);
+            float span = 4f / TextureAtlas.ATLAS_SIZE; // 4px sub-region
+            float maxU = uv[2] - uv[0] - span;
+            float maxV = uv[3] - uv[1] - span;
+            p.u0 = uv[0] + rnd.nextFloat() * Math.max(0f, maxU);
+            p.v0 = uv[1] + rnd.nextFloat() * Math.max(0f, maxV);
+            p.u1 = p.u0 + span;
+            p.v1 = p.v0 + span;
             particles.add(p);
         }
     }
@@ -84,9 +93,11 @@ public class ParticleSystem {
         }
     }
 
-    public void render(Matrix4f proj, Matrix4f view, Vector3f camRight, Vector3f camUp) {
+    public void render(Matrix4f proj, Matrix4f view, Vector3f camRight, Vector3f camUp, TextureAtlas atlas) {
         if (particles.isEmpty()) return;
         shader.bind();
+        atlas.bind(0);
+        shader.setInt("uAtlas", 0);
         shader.setMat4("uProjection", proj);
         shader.setMat4("uView", view);
         shader.setVec3("uRight", camRight);
@@ -97,6 +108,8 @@ public class ParticleSystem {
             shader.setVec3("uCenter", center.set(p.x, p.y, p.z));
             shader.setFloat("uSize", p.size);
             shader.setVec4("uColor", p.color[0], p.color[1], p.color[2], 1f);
+            shader.setVec2("uUv0", p.u0, p.v0);
+            shader.setVec2("uUv1", p.u1, p.v1);
             glDrawArrays(GL_TRIANGLES, 0, 6);
         }
         glBindVertexArray(0);

@@ -219,7 +219,7 @@ public class Game {
                 BlockType target = world.getBlock(lastHit.x, lastHit.y, lastHit.z);
                 if (target != BlockType.BEDROCK) {
                     sound.playOneOf(sounds.dig(target), 0.8f, 0.9f + 0.2f * (float) Math.random());
-                    particles.emitBlockBreak(lastHit.x, lastHit.y, lastHit.z, target.particleColor);
+                    particles.emitBlockBreak(lastHit.x, lastHit.y, lastHit.z, target.particleColor, target.sideTile);
                     world.setBlock(lastHit.x, lastHit.y, lastHit.z, BlockType.AIR);
                 }
             }
@@ -324,7 +324,7 @@ public class Game {
 
         Vector3f camRight = player.camera.right();
         Vector3f camUp = new Vector3f(camRight).cross(player.camera.forward()).normalize();
-        particles.render(proj, view, camRight, camUp);
+        particles.render(proj, view, camRight, camUp, atlas);
 
         drawUi();
     }
