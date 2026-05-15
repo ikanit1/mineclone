@@ -601,7 +601,8 @@ public class Game {
                 continue;
             Matrix4f model = new Matrix4f().translate(cx * Chunk.SIZE_X, 0, cz * Chunk.SIZE_Z);
             chunkShader.setMat4("uModel", model);
-            waterMeshes.get(k).render();
+            Mesh wm = waterMeshes.get(k);
+            if (wm != null) wm.render();
         }
         chunkShader.unbind();
         glDepthMask(true);
