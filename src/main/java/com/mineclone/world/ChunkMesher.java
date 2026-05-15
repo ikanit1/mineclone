@@ -177,7 +177,9 @@ public class ChunkMesher {
     }
 
     private int blockLightAt(Chunk chunk, int lx, int ly, int lz, int baseX, int baseZ) {
-        return 0; // replaced in Task 8
+        if (ly < 0 || ly >= Chunk.SIZE_Y) return 0;
+        if (chunk.inBounds(lx, ly, lz)) return chunk.getBlockLight(lx, ly, lz);
+        return world.getBlockLightWorld(baseX + lx, ly, baseZ + lz);
     }
 
     private int skyAt(Chunk chunk, int lx, int ly, int lz, int baseX, int baseZ) {
