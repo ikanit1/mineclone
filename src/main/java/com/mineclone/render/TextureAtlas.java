@@ -291,80 +291,218 @@ public class TextureAtlas {
         return Math.max(0, Math.min(255, v));
     }
 
+    /** Top of grass block — green base with brighter blade tips and shaded patches. */
     private static void drawGrassTop(BufferedImage t) {
         Random r = new Random(11);
-        for (int y = 0; y < TILE; y++)
-            for (int x = 0; x < TILE; x++)
-                px(t, x, y, rgb(jitter(r, 70, 15), jitter(r, 130, 30), jitter(r, 50, 15)));
-    }
-
-    private static void drawGrassSide(BufferedImage t) {
-        Random rd = new Random(33), rg = new Random(11);
+        // base green field with slight per-pixel noise
         for (int y = 0; y < TILE; y++)
             for (int x = 0; x < TILE; x++) {
-                if (y < 3 || (y < 5 && rd.nextInt(3) == 0))
-                    px(t, x, y, rgb(60 + rg.nextInt(20), 130 + rg.nextInt(30), 45 + rg.nextInt(15)));
-                else
-                    px(t, x, y, rgb(110 + rd.nextInt(30), 80 + rd.nextInt(20), 50 + rd.nextInt(15)));
+                px(t, x, y, rgb(jitter(r, 72, 8), jitter(r, 138, 14), jitter(r, 48, 8)));
             }
+        // ~22 bright blade tips
+        Random tip = new Random(101);
+        for (int i = 0; i < 22; i++) {
+            int x = tip.nextInt(TILE), y = tip.nextInt(TILE);
+            px(t, x, y, rgb(105 + tip.nextInt(20), 175 + tip.nextInt(25), 65 + tip.nextInt(15)));
+        }
+        // ~14 darker shadow patches
+        Random dk = new Random(202);
+        for (int i = 0; i < 14; i++) {
+            int x = dk.nextInt(TILE), y = dk.nextInt(TILE);
+            px(t, x, y, rgb(48 + dk.nextInt(12), 100 + dk.nextInt(15), 32 + dk.nextInt(10)));
+        }
     }
 
+    /** Side of grass block — dirt body with a jagged grass overhang on top. */
+    private static void drawGrassSide(BufferedImage t) {
+        Random rd = new Random(33);
+        // dirt body — fills entire tile first
+        for (int y = 0; y < TILE; y++)
+            for (int x = 0; x < TILE; x++) {
+                px(t, x, y, rgb(jitter(rd, 118, 18), jitter(rd, 82, 13), jitter(rd, 52, 10)));
+            }
+        // pebble specks in dirt
+        Random pb = new Random(34);
+        for (int i = 0; i < 10; i++) {
+            int x = pb.nextInt(TILE), y = 4 + pb.nextInt(TILE - 4);
+            px(t, x, y, rgb(70 + pb.nextInt(15), 50 + pb.nextInt(10), 32 + pb.nextInt(8)));
+        }
+        // grass overhang — jagged top edge, height varies per column
+        Random gr = new Random(35);
+        int[] grassHeight = new int[TILE];
+        for (int x = 0; x < TILE; x++) grassHeight[x] = 3 + gr.nextInt(3); // 3..5 rows
+        for (int x = 0; x < TILE; x++) {
+            int h = grassHeight[x];
+            for (int y = 0; y < h; y++) {
+                int br = (y == h - 1) ? 25 : 0; // brighter tips on the bottom edge of grass
+                px(t, x, y, rgb(60 + br + gr.nextInt(15), 130 + br + gr.nextInt(20), 45 + gr.nextInt(12)));
+            }
+        }
+        // a few hanging blade tips one row below the overhang
+        Random hb = new Random(36);
+        for (int x = 0; x < TILE; x++) {
+            if (hb.nextInt(3) == 0) {
+                int y = grassHeight[x];
+                if (y < TILE) px(t, x, y, rgb(55 + hb.nextInt(15), 125 + hb.nextInt(20), 40 + hb.nextInt(10)));
+            }
+        }
+    }
+
+    /** Plain dirt — warm brown with pebble specks and rare organic darks. */
     private static void drawDirt(BufferedImage t) {
         Random r = new Random(22);
         for (int y = 0; y < TILE; y++)
-            for (int x = 0; x < TILE; x++)
-                px(t, x, y, rgb(jitter(r, 120, 25), jitter(r, 85, 20), jitter(r, 55, 15)));
+            for (int x = 0; x < TILE; x++) {
+                px(t, x, y, rgb(jitter(r, 118, 16), jitter(r, 82, 12), jitter(r, 52, 10)));
+            }
+        Random pb = new Random(24);
+        for (int i = 0; i < 14; i++) {
+            int x = pb.nextInt(TILE), y = pb.nextInt(TILE);
+            px(t, x, y, rgb(78 + pb.nextInt(14), 56 + pb.nextInt(10), 36 + pb.nextInt(8)));
+        }
+        // 3 organic darks
+        Random og = new Random(26);
+        for (int i = 0; i < 3; i++) {
+            int x = og.nextInt(TILE), y = og.nextInt(TILE);
+            px(t, x, y, rgb(55, 38, 24));
+        }
     }
 
+    /** Stone — gray with occasional darker pebble specks and faint diagonal cracks. */
     private static void drawStone(BufferedImage t) {
         Random r = new Random(44);
         for (int y = 0; y < TILE; y++)
             for (int x = 0; x < TILE; x++) {
-                int v = jitter(r, 120, 25);
-                px(t, x, y, rgb(v, v, v));
+                int v = jitter(r, 128, 14);
+                px(t, x, y, rgb(v, v, v + 2));
             }
+        // dark pebbles (round-ish clusters of 1-2 px)
+        Random pb = new Random(46);
+        for (int i = 0; i < 12; i++) {
+            int x = pb.nextInt(TILE), y = pb.nextInt(TILE);
+            int v = 85 + pb.nextInt(10);
+            px(t, x, y, rgb(v, v, v));
+            if (pb.nextBoolean() && x + 1 < TILE) px(t, x + 1, y, rgb(v + 5, v + 5, v + 5));
+        }
+        // 2 subtle hairline cracks
+        Random cr = new Random(48);
+        for (int n = 0; n < 2; n++) {
+            int x = cr.nextInt(TILE);
+            int y = cr.nextInt(TILE);
+            int dx = cr.nextBoolean() ? 1 : -1;
+            for (int s = 0; s < 5; s++) {
+                if (x >= 0 && x < TILE && y >= 0 && y < TILE) {
+                    px(t, x, y, rgb(95, 95, 100));
+                }
+                if (cr.nextInt(2) == 0) y++;
+                x += dx;
+            }
+        }
     }
 
+    /** Sand — warm tan with subtle horizontal wave ripples and a few darker grains. */
     private static void drawSand(BufferedImage t) {
         Random r = new Random(55);
-        for (int y = 0; y < TILE; y++)
-            for (int x = 0; x < TILE; x++)
-                px(t, x, y, rgb(jitter(r, 220, 20), jitter(r, 200, 20), jitter(r, 140, 15)));
+        for (int y = 0; y < TILE; y++) {
+            // subtle horizontal ripple: every few rows brighter, others slightly darker
+            int rowOffset = (int) (Math.sin(y * 0.85) * 4);
+            for (int x = 0; x < TILE; x++) {
+                int rd = jitter(r, 218 + rowOffset, 10);
+                int g  = jitter(r, 198 + rowOffset, 10);
+                int b  = jitter(r, 140, 8);
+                px(t, x, y, rgb(rd, g, b));
+            }
+        }
+        // a few darker grains for visual texture
+        Random gr = new Random(57);
+        for (int i = 0; i < 8; i++) {
+            int x = gr.nextInt(TILE), y = gr.nextInt(TILE);
+            px(t, x, y, rgb(185 + gr.nextInt(15), 165 + gr.nextInt(15), 115 + gr.nextInt(12)));
+        }
     }
 
+    /** Wood log side — vertical bark grain with a knot and darker grain lines. */
     private static void drawWoodSide(BufferedImage t) {
         Random r = new Random(66);
+        // base brown
         for (int y = 0; y < TILE; y++)
             for (int x = 0; x < TILE; x++) {
-                int base = ((x + 1) % 4 == 0) ? 70 : 110;
-                int v = jitter(r, base, 15);
-                px(t, x, y, rgb(v, (int) (v * 0.7), (int) (v * 0.4)));
+                int v = jitter(r, 118, 10);
+                px(t, x, y, rgb(v, (int) (v * 0.66), (int) (v * 0.38)));
+            }
+        // dark vertical grain lines at fixed x columns (irregular spacing)
+        int[] grainCols = { 1, 4, 7, 11, 13 };
+        Random gn = new Random(67);
+        for (int gx : grainCols) {
+            for (int y = 0; y < TILE; y++) {
+                int v = 65 + gn.nextInt(15);
+                px(t, gx, y, rgb(v, (int) (v * 0.62), (int) (v * 0.34)));
+            }
+        }
+        // one knot (oval, 3x4) at random position
+        Random kn = new Random(68);
+        int kx = 5 + kn.nextInt(5), ky = 4 + kn.nextInt(7);
+        for (int dy = -1; dy <= 1; dy++)
+            for (int dx = -1; dx <= 1; dx++) {
+                int x = kx + dx, y = ky + dy;
+                if (x < 0 || x >= TILE || y < 0 || y >= TILE) continue;
+                int v = (dx == 0 && dy == 0) ? 45 : 70;
+                px(t, x, y, rgb(v, (int) (v * 0.55), (int) (v * 0.3)));
             }
     }
 
+    /** Wood log top — concentric tree rings with a darker core. */
     private static void drawWoodTop(BufferedImage t) {
         Random r = new Random(77);
-        int cx = TILE / 2, cy = TILE / 2;
+        double cx = TILE / 2.0 - 0.5, cy = TILE / 2.0 - 0.5;
         for (int y = 0; y < TILE; y++)
             for (int x = 0; x < TILE; x++) {
                 double d = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
-                int ring = ((int) d) % 3 == 0 ? 80 : 140;
-                int v = jitter(r, ring, 12);
-                px(t, x, y, rgb(v, (int) (v * 0.7), (int) (v * 0.4)));
+                // 3 rings: dark every 2.5 units of distance
+                double rd = d * 0.85;
+                int ringIdx = (int) rd;
+                boolean ring = (ringIdx % 3) == 0;
+                int base = ring ? 80 : 138;
+                int v = jitter(r, base, 8);
+                px(t, x, y, rgb(v, (int) (v * 0.68), (int) (v * 0.4)));
             }
+        // central pith — single dark pixel cluster
+        px(t, (int) cx, (int) cy, rgb(48, 32, 18));
+        px(t, (int) cx + 1, (int) cy, rgb(55, 38, 22));
+        px(t, (int) cx, (int) cy + 1, rgb(55, 38, 22));
     }
 
+    /** Leaves — varied greens with cutout holes and brighter highlights. */
     private static void drawLeaves(BufferedImage t) {
         Random r = new Random(88);
         for (int y = 0; y < TILE; y++)
             for (int x = 0; x < TILE; x++) {
-                int alpha = r.nextInt(8) == 0 ? 0 : 255;
-                int argb = (alpha << 24)
-                        | (jitter(r, 45, 20) << 16)
-                        | (jitter(r, 120, 35) << 8)
-                        | jitter(r, 40, 15);
-                px(t, x, y, argb);
+                // ~14% holes (alpha 0)
+                int alpha = r.nextInt(7) == 0 ? 0 : 255;
+                int rd = jitter(r, 50, 12);
+                int g  = jitter(r, 118, 22);
+                int b  = jitter(r, 42, 10);
+                px(t, x, y, (alpha << 24) | (rd << 16) | (g << 8) | b);
             }
+        // brighter leaf highlights (clusters of 1-2 px)
+        Random hl = new Random(89);
+        for (int i = 0; i < 16; i++) {
+            int x = hl.nextInt(TILE), y = hl.nextInt(TILE);
+            int rd = 75 + hl.nextInt(20);
+            int g  = 155 + hl.nextInt(30);
+            int b  = 60 + hl.nextInt(15);
+            int prevArgb = t.getRGB(x, y);
+            if ((prevArgb >>> 24) == 0) continue; // don't paint holes
+            px(t, x, y, rgb(rd, g, b));
+        }
+        // a few darker shadow leaves
+        Random sh = new Random(90);
+        for (int i = 0; i < 10; i++) {
+            int x = sh.nextInt(TILE), y = sh.nextInt(TILE);
+            int prevArgb = t.getRGB(x, y);
+            if ((prevArgb >>> 24) == 0) continue;
+            px(t, x, y, rgb(30 + sh.nextInt(12), 75 + sh.nextInt(20), 28 + sh.nextInt(8)));
+        }
     }
 
     private static void drawWater(BufferedImage t) {
@@ -427,33 +565,111 @@ public class TextureAtlas {
 
     private static int clamp255(int v) { return Math.max(0, Math.min(255, v)); }
 
+    /** Bedrock — dark gray with high-contrast jagged rock fragments. */
     private static void drawBedrock(BufferedImage t) {
         Random r = new Random(111);
         for (int y = 0; y < TILE; y++)
             for (int x = 0; x < TILE; x++) {
-                int v = jitter(r, 50, 25);
-                px(t, x, y, rgb(v, v, v));
+                int v = jitter(r, 55, 18);
+                px(t, x, y, rgb(v, v, v + 1));
             }
+        // ~6 chunky lighter fragments (3-4 px clusters)
+        Random fg = new Random(113);
+        for (int i = 0; i < 6; i++) {
+            int x = fg.nextInt(TILE - 2), y = fg.nextInt(TILE - 2);
+            int v = 90 + fg.nextInt(20);
+            int w = 1 + fg.nextInt(2);
+            for (int dy = 0; dy <= w; dy++)
+                for (int dx = 0; dx <= w; dx++) {
+                    if (x + dx < TILE && y + dy < TILE && fg.nextInt(4) != 0)
+                        px(t, x + dx, y + dy, rgb(v + fg.nextInt(15), v + fg.nextInt(15), v + fg.nextInt(15)));
+                }
+        }
+        // ~4 very dark void specks
+        Random vd = new Random(115);
+        for (int i = 0; i < 5; i++) {
+            int x = vd.nextInt(TILE), y = vd.nextInt(TILE);
+            px(t, x, y, rgb(20, 20, 22));
+        }
     }
 
+    /** Cobblestone — Voronoi-style rounded rocks separated by darker mortar joints. */
     private static void drawCobble(BufferedImage t) {
         Random r = new Random(122);
+        // place 7 seed points for Voronoi cells
+        int[][] seeds = new int[7][2];
+        for (int i = 0; i < seeds.length; i++) {
+            seeds[i][0] = r.nextInt(TILE);
+            seeds[i][1] = r.nextInt(TILE);
+        }
+        // per-rock base brightness (so rocks vary)
+        int[] rockShade = new int[seeds.length];
+        for (int i = 0; i < seeds.length; i++) rockShade[i] = 105 + r.nextInt(40);
+
         for (int y = 0; y < TILE; y++)
             for (int x = 0; x < TILE; x++) {
-                boolean edge = (x % 4 == 0) || (y % 4 == 0);
-                int v = edge ? 80 : jitter(r, 130, 20);
-                px(t, x, y, rgb(v, v, v));
+                // find nearest and 2nd-nearest seed (joint = d2 - d1)
+                int n1 = 0;
+                double d1 = 1e9, d2 = 1e9;
+                for (int i = 0; i < seeds.length; i++) {
+                    int dx = x - seeds[i][0], dy = y - seeds[i][1];
+                    double d = Math.sqrt(dx * dx + dy * dy);
+                    if (d < d1) { d2 = d1; d1 = d; n1 = i; }
+                    else if (d < d2) { d2 = d; }
+                }
+                double joint = d2 - d1; // pixels near cell boundary have small value
+                int v;
+                if (joint < 0.85) {
+                    // mortar joint — dark
+                    v = 65 + r.nextInt(8);
+                } else {
+                    // inside rock
+                    int base = rockShade[n1];
+                    // edge-darken slightly for rounded look
+                    double edgeFade = Math.min(1.0, joint / 4.0);
+                    base = (int) (base - 15 + 15 * edgeFade);
+                    v = base + r.nextInt(10) - 5;
+                }
+                v = Math.max(50, Math.min(190, v));
+                px(t, x, y, rgb(v, v, v + 1));
             }
     }
 
+    /** Wood planks — 4 horizontal planks with grooves, vertical grain, and 2 knots. */
     private static void drawPlanks(BufferedImage t) {
         Random r = new Random(133);
-        for (int y = 0; y < TILE; y++)
+        // 4 planks, each 4 rows tall. groove rows at y=3, 7, 11
+        int plankH = 4;
+        for (int y = 0; y < TILE; y++) {
+            int rowInPlank = y % plankH;
+            boolean groove = rowInPlank == (plankH - 1);
+            // alternate plank tones row by row for variety
+            int plankIdx = y / plankH;
+            int tone = (plankIdx % 2 == 0) ? 158 : 148;
             for (int x = 0; x < TILE; x++) {
-                int base = (y % 4 == 0) ? 80 : 160;
-                int v = jitter(r, base, 10);
-                px(t, x, y, rgb(v, (int) (v * 0.75), (int) (v * 0.45)));
+                int v;
+                if (groove) {
+                    v = jitter(r, 72, 6);
+                } else {
+                    // vertical grain: subtle darker columns
+                    int colMod = x % 3;
+                    int colShift = (colMod == 0) ? -10 : (colMod == 2 ? +4 : 0);
+                    v = jitter(r, tone + colShift, 7);
+                }
+                px(t, x, y, rgb(v, (int) (v * 0.74), (int) (v * 0.44)));
             }
+        }
+        // 2 knots (small darker oval clusters)
+        Random kn = new Random(134);
+        for (int n = 0; n < 2; n++) {
+            int kx = 2 + kn.nextInt(TILE - 4);
+            // place knot inside a plank body (not on groove rows)
+            int plankIdx = kn.nextInt(4);
+            int ky = plankIdx * plankH + 1 + kn.nextInt(2);
+            px(t, kx, ky, rgb(80, 55, 30));
+            if (kx + 1 < TILE) px(t, kx + 1, ky, rgb(95, 65, 35));
+            if (ky + 1 < TILE) px(t, kx, ky + 1, rgb(95, 65, 35));
+        }
     }
 
     private static void drawParticle(BufferedImage t) {
