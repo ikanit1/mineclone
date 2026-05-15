@@ -283,6 +283,8 @@ public class Game {
 
     private void render() {
         glViewport(0, 0, window.getWidth(), window.getHeight());
+        Vector3f sky = skyColor(daylight);
+        glClearColor(sky.x, sky.y, sky.z, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         Matrix4f proj = player.camera.getProjection(window.getAspect(), 75f, 0.1f, 400f);
@@ -292,8 +294,6 @@ public class Game {
         chunkShader.setMat4("uProjection", proj);
         chunkShader.setMat4("uView", view);
         chunkShader.setInt("uAtlas", 0);
-        Vector3f sky = skyColor(daylight);
-        glClearColor(sky.x, sky.y, sky.z, 1.0f);
         chunkShader.setVec3("uFogColor", sky);
         chunkShader.setFloat("uFogStart", RENDER_RADIUS * Chunk.SIZE_X * 0.5f);
         chunkShader.setFloat("uFogEnd",   RENDER_RADIUS * Chunk.SIZE_X * 1.0f);
