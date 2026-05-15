@@ -11,6 +11,7 @@ public class Chunk {
     public final int cx, cz;
     private final byte[] blocks = new byte[SIZE_X * SIZE_Y * SIZE_Z];
     private final byte[] skyLight = new byte[SIZE_X * SIZE_Y * SIZE_Z];
+    private final byte[] blockLight = new byte[SIZE_X * SIZE_Y * SIZE_Z];
     public boolean dirty = true;
 
     public Chunk(int cx, int cz) {
@@ -44,6 +45,16 @@ public class Chunk {
     public int getSkyLight(int x, int y, int z) {
         if (!inBounds(x, y, z)) return MAX_LIGHT;
         return skyLight[idx(x, y, z)] & 0xFF;
+    }
+
+    public int getBlockLight(int x, int y, int z) {
+        if (!inBounds(x, y, z)) return 0;
+        return blockLight[idx(x, y, z)] & 0xFF;
+    }
+
+    public void setBlockLight(int x, int y, int z, int val) {
+        if (!inBounds(x, y, z)) return;
+        blockLight[idx(x, y, z)] = (byte) Math.max(0, Math.min(15, val));
     }
 
     /** Chunk-local sky light flood. Cheap and gives the closed-box-is-dark behavior. */
