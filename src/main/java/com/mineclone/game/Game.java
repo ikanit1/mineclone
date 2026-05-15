@@ -41,6 +41,10 @@ public class Game {
     private State state = State.MENU;
     private boolean showDebug = false;
 
+    private static final float TIME_SCALE = 0.005f; // ~3 min real = full day
+    private float gameTime = (float) (Math.PI * 0.5); // start at noon
+    private float daylight = 1.0f;
+
     private int fpsFrames;
     private int fpsCurrent;
     private double fpsLastSample = 0;
@@ -130,7 +134,26 @@ public class Game {
         updateDirtyMeshes();
     }
 
+    private float computeDaylight() {
+        return Math.max(0f, (float) Math.sin(gameTime));
+    }
+
+    private static Vector3f skyColor(float d) {
+        float[] night   = {0.02f, 0.03f, 0.08f};
+        float[] horizon = {0.85f, 0.45f, 0.20f};
+        float[] day     = {0.55f, 0.75f, 0.95f};
+        float[] a, b;
+        float t;
+        if (d < 0.3f) { a = night;   b = horizon; t = d / 0.3f; }
+        else          { a = horizon; b = day;     t = (d - 0.3f) / 0.7f; }
+        return new Vector3f(a[0] + (b[0] - a[0]) * t,
+                            a[1] + (b[1] - a[1]) * t,
+                            a[2] + (b[2] - a[2]) * t);
+    }
+
     private void updatePlaying(float dt) {
+        gameTime += dt * TIME_SCALE;
+        daylight = computeDaylight();
         if (input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
             state = State.PAUSED;
             input.grabCursor(false);
@@ -269,11 +292,13 @@ public class Game {
         chunkShader.setMat4("uProjection", proj);
         chunkShader.setMat4("uView", view);
         chunkShader.setInt("uAtlas", 0);
-        chunkShader.setVec3("uFogColor", new Vector3f(0.55f, 0.75f, 0.95f));
+        Vector3f sky = skyColor(daylight);
+        glClearColor(sky.x, sky.y, sky.z, 1.0f);
+        chunkShader.setVec3("uFogColor", sky);
         chunkShader.setFloat("uFogStart", RENDER_RADIUS * Chunk.SIZE_X * 0.5f);
         chunkShader.setFloat("uFogEnd",   RENDER_RADIUS * Chunk.SIZE_X * 1.0f);
-        chunkShader.setFloat("uAmbient", 0.22f);
-        chunkShader.setFloat("uDaylight", 1.0f);
+        chunkShader.setFloat("uAmbient", 0.04f + 0.18f * daylight);
+        chunkShader.setFloat("uDaylight", daylight);
         atlas.bind(0);
 
         int pcx = (int) Math.floor(player.position.x / Chunk.SIZE_X);
