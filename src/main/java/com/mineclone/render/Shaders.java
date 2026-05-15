@@ -12,6 +12,7 @@ public final class Shaders {
         uniform mat4 uProjection;
         uniform mat4 uView;
         uniform mat4 uModel;
+        uniform float uTime;
         centroid out vec2 vUv;
         out float vLight;
         out float vFogDist;
@@ -20,10 +21,29 @@ public final class Shaders {
             vec4 worldPos = uModel * vec4(aPos, 1.0);
             vec4 viewPos = uView * worldPos;
             gl_Position = uProjection * viewPos;
-            vUv = aUv;
+            // aBlockLight encodes water type:
+            //   < 5  : opaque block, no remap
+            //   10..11 : static water (source)
+            //   20..21 : animated water (flow) — cycle frames 17..32 in atlas
+            bool isWater = aBlockLight > 5.0;
+            bool isFlow  = aBlockLight > 15.0;
+            if (isFlow) {
+                // Pick current frame (4 fps over 16 frames = 4s loop)
+                int frame = int(mod(floor(uTime * 4.0), 16.0));
+                int targetTile = 17 + frame;
+                int col = targetTile - (targetTile / 16) * 16;
+                int row = targetTile / 16;
+                float ts = 1.0 / 16.0;
+                vec2 tileBase = floor(aUv / ts) * ts;          // base of source tile (tile 8)
+                vec2 localUv  = aUv - tileBase;                // offset within tile (preserves inset)
+                vec2 newBase  = vec2(float(col), float(row)) * ts;
+                vUv = newBase + localUv;
+            } else {
+                vUv = aUv;
+            }
             vLight = aLight;
             vFogDist = length(viewPos.xyz);
-            vBlockLight = aBlockLight;
+            vBlockLight = isFlow ? aBlockLight - 20.0 : (isWater ? aBlockLight - 10.0 : aBlockLight);
         }
         """;
 
@@ -39,13 +59,14 @@ public final class Shaders {
         uniform float uFogEnd;
         uniform float uAmbient;
         uniform float uDaylight;
+        uniform float uBrightness;
         out vec4 FragColor;
         void main() {
             vec4 tex = texture(uAtlas, vUv);
             if (tex.a < 0.1) discard;
             float combined = max(vLight * uDaylight, vBlockLight);
-            float shaped = pow(max(uAmbient, combined), 0.75);
-            vec3 lit = tex.rgb * shaped;
+            float shaped = pow(max(uAmbient, combined), 0.75) * uBrightness;
+            vec3 lit = tex.rgb * min(shaped, 1.0);
             float f = clamp((vFogDist - uFogStart) / (uFogEnd - uFogStart), 0.0, 1.0);
             FragColor = vec4(mix(lit, uFogColor, f), tex.a);
         }
@@ -108,8 +129,8 @@ public final class Shaders {
         out vec4 FragColor;
         void main() {
             vec4 tex = texture(uAtlas, vUv);
-            if (tex.a < 0.1) discard;
-            FragColor = vec4(tex.rgb, uColor.a);
+            if (tex.a < 0.05) discard;
+            FragColor = vec4(tex.rgb * uColor.rgb, tex.a * uColor.a);
         }
         """;
 
@@ -170,6 +191,32 @@ public final class Shaders {
                 c = t * uColor;
             }
             FragColor = c;
+        }
+        """;
+
+    public static final String SKY_VERTEX = """
+        #version 330 core
+        layout (location = 0) in vec3 aPos;
+        layout (location = 1) in vec2 aUv;
+        uniform mat4 uProjection;
+        uniform mat4 uView;
+        out vec2 vUv;
+        void main() {
+            gl_Position = uProjection * uView * vec4(aPos, 1.0);
+            vUv = aUv;
+        }
+        """;
+
+    public static final String SKY_FRAGMENT = """
+        #version 330 core
+        in vec2 vUv;
+        uniform sampler2D uTex;
+        uniform vec4 uColor;
+        out vec4 FragColor;
+        void main() {
+            vec4 t = texture(uTex, vUv);
+            if (t.a < 0.01) discard;
+            FragColor = vec4(t.rgb * uColor.rgb, t.a * uColor.a);
         }
         """;
 }

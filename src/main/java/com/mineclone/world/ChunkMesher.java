@@ -178,7 +178,8 @@ public class ChunkMesher {
 
         float skyRaw = skyAt(chunk, x, y + 1, z, baseX, baseZ) / (float) Chunk.MAX_LIGHT;
         float blRaw = blockLightAt(chunk, x, y, z, baseX, baseZ) / (float) Chunk.MAX_LIGHT;
-        float waterBl = blRaw + 10.0f; // water flag for shader animation
+        // +10 = static water (source), +20 = animated flow. Shader decodes this.
+        float waterBl = (b == BlockType.WATER_FLOW) ? blRaw + 20.0f : blRaw + 10.0f;
         float lv = Math.max(0.6f * skyRaw, blRaw);
 
         // Pre-compute all four corner heights once; shared by top face AND side faces
