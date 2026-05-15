@@ -92,21 +92,36 @@ public final class WaterSimulator {
     }
 
     /**
-     * One step of spread: down preserves level (waterfall), sideways adds +1.
-     * Multiple sources may target the same empty cell; the lowest proposed level wins.
+     * One step of spread.
+     *
+     * Down: any cell can fall straight down regardless of horizontal level cap.
+     * Sideways: every cell at level &lt; 7 spreads to AIR neighbours… EXCEPT
+     * when the cell is part of a falling column (water above AND still able to
+     * fall below). Falling-column cells ONLY continue the fall — they do not
+     * sprout horizontal arms at every height. Once the fall hits a solid floor
+     * (below is no longer AIR), the bottom cell pools sideways normally. This
+     * matches Minecraft, where a waterfall is a clean vertical column.
+     *
+     * Multiple sources may target the same empty cell; the lowest proposed
+     * level wins.
      */
     private static void trySpread(World world, int wx, int wy, int wz, int myLevel,
                                   Map<Long, Integer> toAdd, int[][] sides) {
-        // Down: any cell can fall straight down regardless of horizontal level cap.
         BlockType below = world.getBlock(wx, wy - 1, wz);
-        if (below == BlockType.AIR) {
+        boolean canFall = (below == BlockType.AIR);
+        if (canFall) {
             long pk = pack(wx, wy - 1, wz);
             int newLevel = (myLevel == 0) ? 1 : myLevel;
             Integer prev = toAdd.get(pk);
             if (prev == null || newLevel < prev) toAdd.put(pk, newLevel);
         }
 
-        // Sideways: only if not at the level cap.
+        // A cell with water above AND open air below is mid-fall — skip sideways.
+        if (canFall) {
+            BlockType above = world.getBlock(wx, wy + 1, wz);
+            if (above == BlockType.WATER || above == BlockType.WATER_FLOW) return;
+        }
+
         if (myLevel >= 7) return;
         int sideLevel = myLevel + 1;
         for (int[] d : sides) {
