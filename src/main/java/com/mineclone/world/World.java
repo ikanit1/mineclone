@@ -1,6 +1,10 @@
 package com.mineclone.world;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class World {
@@ -107,6 +111,64 @@ public class World {
         return c.getSkyLight(lx, wy, lz);
     }
 
+    public int getBlockLightWorld(int wx, int wy, int wz) {
+        if (wy < 0 || wy >= Chunk.SIZE_Y) return 0;
+        int cx = Math.floorDiv(wx, Chunk.SIZE_X);
+        int cz = Math.floorDiv(wz, Chunk.SIZE_Z);
+        Chunk c = getChunkIfExists(cx, cz);
+        if (c == null) return 0;
+        return c.getBlockLight(Math.floorMod(wx, Chunk.SIZE_X), wy, Math.floorMod(wz, Chunk.SIZE_Z));
+    }
+
+    private void setBlockLightWorld(int wx, int wy, int wz, int val) {
+        if (wy < 0 || wy >= Chunk.SIZE_Y) return;
+        int cx = Math.floorDiv(wx, Chunk.SIZE_X);
+        int cz = Math.floorDiv(wz, Chunk.SIZE_Z);
+        Chunk c = getChunkIfExists(cx, cz);
+        if (c == null) return;
+        c.setBlockLight(Math.floorMod(wx, Chunk.SIZE_X), wy, Math.floorMod(wz, Chunk.SIZE_Z), val);
+        c.dirty = true;
+    }
+
+    public void floodFillAdd(int wx, int wy, int wz) {
+        int emitted = getBlock(wx, wy, wz).emittedLight;
+        if (emitted <= 0) return;
+        setBlockLightWorld(wx, wy, wz, emitted);
+
+        int[][] dirs = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
+        Queue<int[]> queue = new ArrayDeque<>();
+        if (emitted > 1)
+            for (int[] d : dirs) queue.add(new int[]{wx+d[0], wy+d[1], wz+d[2], emitted-1});
+
+        while (!queue.isEmpty()) {
+            int[] cur = queue.poll();
+            int x = cur[0], y = cur[1], z = cur[2], val = cur[3];
+            if (y < 0 || y >= Chunk.SIZE_Y) continue;
+            BlockType bt = getBlock(x, y, z);
+            if (bt.solid && !bt.transparent && !bt.cutout) continue;
+            if (getBlockLightWorld(x, y, z) >= val) continue;
+            setBlockLightWorld(x, y, z, val);
+            if (val > 1)
+                for (int[] d : dirs) queue.add(new int[]{x+d[0], y+d[1], z+d[2], val-1});
+        }
+    }
+
+    public void floodFillRemove(int wx, int wy, int wz) {
+        int R = 15;
+        List<int[]> sources = new ArrayList<>();
+        for (int x = wx - R; x <= wx + R; x++) {
+            for (int y = Math.max(0, wy - R); y <= Math.min(Chunk.SIZE_Y - 1, wy + R); y++) {
+                for (int z = wz - R; z <= wz + R; z++) {
+                    if (getBlockLightWorld(x, y, z) > 0) setBlockLightWorld(x, y, z, 0);
+                    BlockType bt = getBlock(x, y, z);
+                    if (bt.emittedLight > 0 && !(x == wx && y == wy && z == wz))
+                        sources.add(new int[]{x, y, z});
+                }
+            }
+        }
+        for (int[] src : sources) floodFillAdd(src[0], src[1], src[2]);
+    }
+
     private static long mix(int a, int b, long seed) {
         long h = seed ^ (a * 0x9E3779B97F4A7C15L) ^ (b * 0xBF58476D1CE4E5B9L);
         h ^= h >>> 30; h *= 0xBF58476D1CE4E5B9L;
@@ -134,6 +196,7 @@ public class World {
         Chunk c = getChunk(cx, cz);
         int lx = Math.floorMod(wx, Chunk.SIZE_X);
         int lz = Math.floorMod(wz, Chunk.SIZE_Z);
+        BlockType old = c.get(lx, wy, lz);
         c.set(lx, wy, lz, t);
         c.computeSkyLight();
         // mark neighbors dirty if on edge so their borders update
@@ -141,6 +204,8 @@ public class World {
         if (lx == Chunk.SIZE_X - 1) remeshNeighbour(cx + 1, cz);
         if (lz == 0)  remeshNeighbour(cx, cz - 1);
         if (lz == Chunk.SIZE_Z - 1) remeshNeighbour(cx, cz + 1);
+        if (old.emittedLight > 0) floodFillRemove(wx, wy, wz);
+        if (t.emittedLight > 0)   floodFillAdd(wx, wy, wz);
     }
 
     private void remeshNeighbour(int cx, int cz) {
