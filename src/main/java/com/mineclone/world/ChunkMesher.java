@@ -239,6 +239,8 @@ public class ChunkMesher {
                 float nbTopY = waterLevelTopY(nb, nbm);
                 if (nbTopY >= topY) continue; // neighbor is as tall or taller, skip
                 faceBot = nbTopY;
+            } else if (nb.solid) {
+                // solid neighbour: emit face inset by 0.001 to avoid z-fighting
             } else {
                 continue;
             }
@@ -247,15 +249,18 @@ public class ChunkMesher {
             float hB = Math.max(faceCornerH[f][1], faceBot);
             if (hA <= faceBot && hB <= faceBot) continue; // degenerate face
 
+            // inset solid-neighbour faces slightly inward to prevent z-fighting
+            float ins = nb.solid ? 0.001f : 0f;
+
             float[][] sideCorners;
-            if (f == 0) // +Z
-                sideCorners = new float[][] { { x, y + faceBot, z + 1 }, { x + 1, y + faceBot, z + 1 }, { x + 1, y + hA, z + 1 }, { x, y + hB, z + 1 } };
-            else if (f == 1) // -Z
-                sideCorners = new float[][] { { x + 1, y + faceBot, z }, { x, y + faceBot, z }, { x, y + hA, z }, { x + 1, y + hB, z } };
-            else if (f == 2) // +X
-                sideCorners = new float[][] { { x + 1, y + faceBot, z + 1 }, { x + 1, y + faceBot, z }, { x + 1, y + hA, z }, { x + 1, y + hB, z + 1 } };
-            else // -X
-                sideCorners = new float[][] { { x, y + faceBot, z }, { x, y + faceBot, z + 1 }, { x, y + hA, z + 1 }, { x, y + hB, z } };
+            if (f == 0) // +Z  — inset moves face in -Z direction
+                sideCorners = new float[][] { { x, y + faceBot, z + 1 - ins }, { x + 1, y + faceBot, z + 1 - ins }, { x + 1, y + hA, z + 1 - ins }, { x, y + hB, z + 1 - ins } };
+            else if (f == 1) // -Z — inset moves face in +Z direction
+                sideCorners = new float[][] { { x + 1, y + faceBot, z + ins }, { x, y + faceBot, z + ins }, { x, y + hA, z + ins }, { x + 1, y + hB, z + ins } };
+            else if (f == 2) // +X — inset moves face in -X direction
+                sideCorners = new float[][] { { x + 1 - ins, y + faceBot, z + 1 }, { x + 1 - ins, y + faceBot, z }, { x + 1 - ins, y + hA, z }, { x + 1 - ins, y + hB, z + 1 } };
+            else // -X — inset moves face in +X direction
+                sideCorners = new float[][] { { x + ins, y + faceBot, z }, { x + ins, y + faceBot, z + 1 }, { x + ins, y + hA, z + 1 }, { x + ins, y + hB, z } };
 
             float vB  = v0 + (v1 - v0) * faceBot;
             float vTA = v0 + (v1 - v0) * hA;
