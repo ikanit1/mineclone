@@ -23,9 +23,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ChunkLoader {
     public static final class Ready {
         public final long key;
-        public final MeshData data;
-        Ready(long key, MeshData data) { this.key = key; this.data = data; }
-        Ready(long key, MeshData[] meshes) { this.key = key; this.data = meshes[0]; }
+        public final MeshData[] data;  // [0]=opaque, [1]=water
+        Ready(long key, MeshData[] data) { this.key = key; this.data = data; }
     }
 
     private final World world;
