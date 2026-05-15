@@ -380,29 +380,45 @@ public class TextureAtlas {
     }
 
     /**
-     * One frame of the water-flow animation. Three sine layers in (x,y,phase)
-     * with phase = frameIdx/WATER_FLOW_FRAMES * 2π give a seamlessly looping
-     * ripple. Per-pixel noise is reseeded each frame to keep the base texture
-     * stable across the loop so it reads as moving water, not static.
+     * One frame of the water-flow animation. The pattern is a set of bands
+     * along a diagonal axis that SHIFT across the tile each frame, so the
+     * loop reads as actual current/flow rather than a static ripple.
+     *
+     * Math: phase = frameIdx / WATER_FLOW_FRAMES * 2π. The main wave is
+     * sin(flow_coord * 2 bands per tile - phase) — subtracting phase means
+     * the wave peaks travel in the +flow direction. Two bands per tile
+     * means peaks shift by 8 pixels (one band-width) over the 16-frame loop,
+     * giving a continuous-looking flow.
      */
     private static void drawWaterFlowFrame(BufferedImage t, int frameIdx) {
         Random noise = new Random(99);
-        float phase = (frameIdx / (float) WATER_FLOW_FRAMES) * (float) (Math.PI * 2);
+        double phase = (frameIdx / (double) WATER_FLOW_FRAMES) * Math.PI * 2.0;
+        double bandFreq = (2.0 * Math.PI) / TILE * 2.0; // 2 bands per tile
         for (int y = 0; y < TILE; y++) {
             for (int x = 0; x < TILE; x++) {
-                double a = Math.sin(x * 0.55 + phase * 1.0);
-                double b = Math.sin(y * 0.40 + phase * 1.3 + 1.0);
-                double c = Math.sin((x + y * 0.5) * 0.35 + phase * 0.7);
-                double intensity = (a + b + c) / 3.0; // -1..1
-                double bright = 0.5 + intensity * 0.30; // ~0.2..0.8
+                // Diagonal flow axis — mostly +Y with a slight +X tilt for visual interest
+                double flow = y * 0.92 + x * 0.18;
+                // Main travelling band — high amplitude
+                double main = Math.sin(flow * bandFreq - phase * 2.0);
+                // Higher-frequency secondary wave at a slightly different angle
+                double cross = (x * 0.18 - y * 0.92);
+                double detail = Math.sin(cross * bandFreq * 1.4 - phase * 1.0) * 0.45;
+                // Slow drift that breaks the regularity
+                double drift = Math.sin((x + y * 0.5) * 0.4 - phase * 0.6) * 0.25;
 
-                int rNoise = noise.nextInt(13) - 6;
-                int gNoise = noise.nextInt(13) - 6;
-                int bNoise = noise.nextInt(13) - 6;
+                double sum = main + detail + drift;
+                // tanh sharpens the bands → more visible flow lines, less mushy
+                double shaped = Math.tanh(sum * 1.3);
+                double bright = 0.5 + 0.50 * shaped; // ~0..1
 
-                int red = clamp255((int) (35 + bright * 25) + rNoise);
-                int grn = clamp255((int) (80 + bright * 35) + gNoise);
-                int blu = clamp255((int) (175 + bright * 45) + bNoise);
+                int rNoise = noise.nextInt(11) - 5;
+                int gNoise = noise.nextInt(11) - 5;
+                int bNoise = noise.nextInt(11) - 5;
+
+                // Wider range so dark bands sit much darker than bright crests
+                int red = clamp255((int) (25 + bright * 55) + rNoise);
+                int grn = clamp255((int) (60 + bright * 80) + gNoise);
+                int blu = clamp255((int) (150 + bright * 80) + bNoise);
                 int argb = (200 << 24) | (red << 16) | (grn << 8) | blu;
                 px(t, x, y, argb);
             }

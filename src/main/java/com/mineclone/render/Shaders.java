@@ -28,8 +28,8 @@ public final class Shaders {
             bool isWater = aBlockLight > 5.0;
             bool isFlow  = aBlockLight > 15.0;
             if (isFlow) {
-                // Pick current frame (4 fps over 16 frames = 4s loop)
-                int frame = int(mod(floor(uTime * 4.0), 16.0));
+                // Pick current frame (6 fps over 16 frames ≈ 2.7 s loop)
+                int frame = int(mod(floor(uTime * 6.0), 16.0));
                 int targetTile = 17 + frame;
                 int col = targetTile - (targetTile / 16) * 16;
                 int row = targetTile / 16;
