@@ -63,7 +63,8 @@ public class Game {
     private float stepDistance = 0f;
     private final Vector3f lastPos = new Vector3f();
     private float torchParticleTimer = 0f;
-    private float waterTickTimer = 0.5f;
+    private static final float WATER_TICK_INTERVAL = 0.18f; // ~5.5 Hz — one cell of spread per tick
+    private float waterTickTimer = WATER_TICK_INTERVAL;
     private float totalTime = 0f;
     private boolean wasInWater = false;
     private boolean wireframe = false;
@@ -250,7 +251,7 @@ public class Game {
         totalTime += dt;
         waterTickTimer -= dt;
         if (waterTickTimer <= 0f) {
-            waterTickTimer = 0.5f;
+            waterTickTimer = WATER_TICK_INTERVAL;
             WaterSimulator.tick(world);
         }
         updateDirtyMeshes();
