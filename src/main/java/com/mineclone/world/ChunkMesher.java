@@ -40,6 +40,7 @@ public class ChunkMesher {
         List<Float> positions = new ArrayList<>(4096);
         List<Float> uvs = new ArrayList<>(2048);
         List<Float> light = new ArrayList<>(1024);
+        List<Float> blockLightList = new ArrayList<>(1024);
         List<Integer> indices = new ArrayList<>(4096);
 
         int baseX = chunk.cx * Chunk.SIZE_X;
@@ -68,7 +69,7 @@ public class ChunkMesher {
                             if (f == 4) tile = b.topTile;
                             else if (f == 5) tile = b.bottomTile;
                             else tile = b.sideTile;
-                            emitFace(chunk, positions, uvs, light, indices,
+                            emitFace(chunk, positions, uvs, light, blockLightList, indices,
                                     x, y, z, baseX, baseZ, f, tile, FACE_LIGHT[f]);
                         }
                     }
@@ -79,8 +80,9 @@ public class ChunkMesher {
         float[] pa = toFloatArray(positions);
         float[] ua = toFloatArray(uvs);
         float[] la = toFloatArray(light);
+        float[] bla = toFloatArray(blockLightList);
         int[]   ia = toIntArray(indices);
-        return new MeshData(pa, ua, la, ia);
+        return new MeshData(pa, ua, la, bla, ia);
     }
 
     private static boolean shouldDrawFace(BlockType self, BlockType neighbor) {
@@ -92,7 +94,7 @@ public class ChunkMesher {
     }
 
     private void emitFace(Chunk chunk,
-                          List<Float> pos, List<Float> uvs, List<Float> light, List<Integer> idx,
+                          List<Float> pos, List<Float> uvs, List<Float> light, List<Float> blockLightList, List<Integer> idx,
                           int x, int y, int z, int baseX, int baseZ,
                           int face, int tileIndex, float lightVal) {
         float[] uv = TextureAtlas.uv(tileIndex);
@@ -168,6 +170,14 @@ public class ChunkMesher {
             idx.add(base); idx.add(base + 1); idx.add(base + 2);
             idx.add(base); idx.add(base + 2); idx.add(base + 3);
         }
+
+        int blRaw = blockLightAt(chunk, x + dN[0], y + dN[1], z + dN[2], baseX, baseZ);
+        float blVal = blRaw / (float) Chunk.MAX_LIGHT;
+        for (int i = 0; i < 4; i++) blockLightList.add(blVal);
+    }
+
+    private int blockLightAt(Chunk chunk, int lx, int ly, int lz, int baseX, int baseZ) {
+        return 0; // replaced in Task 8
     }
 
     private int skyAt(Chunk chunk, int lx, int ly, int lz, int baseX, int baseZ) {
