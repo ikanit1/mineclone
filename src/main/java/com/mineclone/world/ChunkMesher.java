@@ -123,7 +123,7 @@ public class ChunkMesher {
         if (neighbor == BlockType.AIR)
             return true;
         if (neighbor == BlockType.WATER || neighbor == BlockType.WATER_FLOW)
-            return false;
+            return true; // water is transparent — render solid faces beneath it
         if (neighbor.transparent || neighbor.cutout)
             return neighbor != self;
         return false;
