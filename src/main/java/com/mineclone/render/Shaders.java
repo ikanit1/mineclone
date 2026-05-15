@@ -21,29 +21,51 @@ public final class Shaders {
             vec4 worldPos = uModel * vec4(aPos, 1.0);
             vec4 viewPos = uView * worldPos;
             gl_Position = uProjection * viewPos;
-            // aBlockLight encodes water type:
-            //   < 5  : opaque block, no remap
-            //   10..11 : static water (source)
-            //   20..21 : animated water (flow) — cycle frames 17..32 in atlas
+            // aBlockLight encoding:
+            //   0..1   : regular block light
+            //   10..11 : static water (source, no animation)
+            //   20..51 : animated flow, packed as (20 + flowDir*10 + blRaw)
+            //            flowDir ∈ {0=+Z south, 1=+X east, 2=-Z north, 3=-X west}
             bool isWater = aBlockLight > 5.0;
             bool isFlow  = aBlockLight > 15.0;
+            float blRaw  = aBlockLight;
             if (isFlow) {
-                // Pick current frame (6 fps over 16 frames ≈ 2.7 s loop)
+                float v = aBlockLight - 20.0;            // 0..31
+                float flowDirF = floor(v / 10.0);        // 0..3
+                blRaw = v - flowDirF * 10.0;             // 0..1
+                int flowDir = int(flowDirF);
+
+                // Cycle frames at 6 fps over 16 frames ≈ 2.7 s loop
                 int frame = int(mod(floor(uTime * 6.0), 16.0));
                 int targetTile = 17 + frame;
                 int col = targetTile - (targetTile / 16) * 16;
                 int row = targetTile / 16;
                 float ts = 1.0 / 16.0;
-                vec2 tileBase = floor(aUv / ts) * ts;          // base of source tile (tile 8)
-                vec2 localUv  = aUv - tileBase;                // offset within tile (preserves inset)
-                vec2 newBase  = vec2(float(col), float(row)) * ts;
+                vec2 tileBase = floor(aUv / ts) * ts;     // base of source tile (tile 8)
+                vec2 localUv  = aUv - tileBase;           // offset within tile (preserves inset)
+
+                // Rotate localUv around tile centre by flowDir * 90°.
+                // Default (dir 0 = +Z south) keeps the texture as-drawn:
+                // the bands in the atlas flow along +V (= world -Z = north),
+                // which means peaks travel south → matches flowDir 0.
+                // 90° rotations stay perfectly within tile bounds.
+                vec2 c = localUv - vec2(ts * 0.5);
+                if (flowDir == 1)      c = vec2( c.y, -c.x); //  90° CW  → +X east
+                else if (flowDir == 2) c = vec2(-c.x, -c.y); // 180°    → -Z north
+                else if (flowDir == 3) c = vec2(-c.y,  c.x); //  90° CCW → -X west
+                localUv = c + vec2(ts * 0.5);
+
+                vec2 newBase = vec2(float(col), float(row)) * ts;
                 vUv = newBase + localUv;
+            } else if (isWater) {
+                blRaw = aBlockLight - 10.0;
+                vUv = aUv;
             } else {
                 vUv = aUv;
             }
             vLight = aLight;
             vFogDist = length(viewPos.xyz);
-            vBlockLight = isFlow ? aBlockLight - 20.0 : (isWater ? aBlockLight - 10.0 : aBlockLight);
+            vBlockLight = blRaw;
         }
         """;
 

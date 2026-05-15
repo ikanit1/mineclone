@@ -160,6 +160,50 @@ public class ChunkMesher {
         return n > 0 ? sum / n : 1.0f;
     }
 
+    /**
+     * Flow direction for a WATER_FLOW block, encoded as 0..3
+     * (0=+Z south, 1=+X east, 2=-Z north, 3=-X west).
+     *
+     * Picks the horizontal neighbour that is most "downstream" — air (water
+     * spreading toward open space) wins over flow with a higher level (further
+     * from source). Source blocks and solid neighbours are ignored. If nothing
+     * qualifies (e.g. an isolated falling cell), returns 0 as a default.
+     */
+    private int computeFlowDir(Chunk chunk, int x, int y, int z, int baseX, int baseZ, int myLevel) {
+        int[][] dirs = {
+                { 0, 1 },   // 0 = +Z south
+                { 1, 0 },   // 1 = +X east
+                { 0, -1 },  // 2 = -Z north
+                { -1, 0 },  // 3 = -X west
+        };
+        int bestDir = 0;
+        int bestScore = -1;
+        for (int d = 0; d < 4; d++) {
+            int nx = x + dirs[d][0];
+            int nz = z + dirs[d][1];
+            BlockType nb = chunk.inBounds(nx, y, nz)
+                    ? chunk.get(nx, y, nz)
+                    : world.getBlock(baseX + nx, y, baseZ + nz);
+            int score;
+            if (nb == BlockType.AIR) {
+                score = 100; // water is spreading toward this open neighbour
+            } else if (nb == BlockType.WATER_FLOW) {
+                byte nbm = chunk.inBounds(nx, y, nz)
+                        ? chunk.getMeta(nx, y, nz)
+                        : world.getBlockMeta(baseX + nx, y, baseZ + nz);
+                int level = nbm & 0xF;
+                score = level - myLevel; // positive = downstream
+            } else {
+                score = -1; // solid or source, not a flow target
+            }
+            if (score > bestScore) {
+                bestScore = score;
+                bestDir = d;
+            }
+        }
+        return bestDir;
+    }
+
     private void emitWaterBlock(Chunk chunk,
             List<Float> pos, List<Float> uvs,
             List<Float> light, List<Float> blockLightList,
@@ -178,8 +222,18 @@ public class ChunkMesher {
 
         float skyRaw = skyAt(chunk, x, y + 1, z, baseX, baseZ) / (float) Chunk.MAX_LIGHT;
         float blRaw = blockLightAt(chunk, x, y, z, baseX, baseZ) / (float) Chunk.MAX_LIGHT;
-        // +10 = static water (source), +20 = animated flow. Shader decodes this.
-        float waterBl = (b == BlockType.WATER_FLOW) ? blRaw + 20.0f : blRaw + 10.0f;
+        // aBlockLight encoding:
+        //   0..1   = regular block light
+        //   10..11 = static water (source, no animation)
+        //   20..51 = animated flow, packed as (20 + flowDir*10 + blRaw)
+        //            where flowDir ∈ {0=+Z south, 1=+X east, 2=-Z north, 3=-X west}
+        float waterBl;
+        if (b == BlockType.WATER_FLOW) {
+            int flowDir = computeFlowDir(chunk, x, y, z, baseX, baseZ, meta & 0xF);
+            waterBl = 20.0f + flowDir * 10.0f + blRaw;
+        } else {
+            waterBl = 10.0f + blRaw;
+        }
         float lv = Math.max(0.6f * skyRaw, blRaw);
 
         // Pre-compute all four corner heights once; shared by top face AND side faces
