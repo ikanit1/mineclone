@@ -1,9 +1,17 @@
 package com.mineclone.game;
 
+import com.mineclone.world.BlockType;
 import com.mineclone.world.World;
 import org.joml.Vector3f;
 
-/** Voxel DDA raycaster (Amanatides & Woo). */
+/**
+ * Voxel DDA raycaster (Amanatides & Woo).
+ *
+ * Water (source + flow) is treated as empty for interaction: the ray passes
+ * through it. This matches Minecraft — you can't "stand on" water with the
+ * cursor, and right-clicking the surface places the block AT the water cell
+ * (replacing it) rather than perched on top.
+ */
 public final class Raycaster {
 
     public static final class Hit {
@@ -40,7 +48,10 @@ public final class Raycaster {
         int nx = 0, ny = 0, nz = 0;
         float t = 0;
         while (t <= maxDist) {
-            if (world.getBlock(x, y, z).solid) {
+            BlockType bt = world.getBlock(x, y, z);
+            if (bt != BlockType.AIR
+                    && bt != BlockType.WATER
+                    && bt != BlockType.WATER_FLOW) {
                 return new Hit(x, y, z, nx, ny, nz);
             }
             if (tMaxX < tMaxY && tMaxX < tMaxZ) {
