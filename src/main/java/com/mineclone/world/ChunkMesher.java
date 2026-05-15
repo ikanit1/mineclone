@@ -1,6 +1,5 @@
 package com.mineclone.world;
 
-import com.mineclone.render.Mesh;
 import com.mineclone.render.MeshData;
 import com.mineclone.render.TextureAtlas;
 
@@ -32,11 +31,6 @@ public class ChunkMesher {
 
     public ChunkMesher(World world) {
         this.world = world;
-    }
-
-    /** Temporary shim — callers updated in Task 4. */
-    public Mesh build(Chunk chunk) {
-        return buildData(chunk)[0].upload();
     }
 
     /** CPU-only mesh build; safe to call from background threads. */
