@@ -57,7 +57,7 @@ public class Game {
     private int selectedSlot = 2; // STONE
     private final BlockType[] hotbar = {
             BlockType.DIRT, BlockType.GRASS, BlockType.STONE, BlockType.COBBLE,
-            BlockType.SAND, BlockType.WOOD, BlockType.PLANKS, BlockType.LEAVES, BlockType.WATER
+            BlockType.SAND, BlockType.WOOD, BlockType.PLANKS, BlockType.LEAVES, BlockType.TORCH
     };
 
     public Game(Window window, boolean regenAtlas) {
