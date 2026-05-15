@@ -288,10 +288,23 @@ public class ChunkMesher {
             if (nb == BlockType.AIR || (nb.transparent && nb != BlockType.WATER && nb != BlockType.WATER_FLOW)) {
                 // render full face from 0 to corner heights
             } else if (nb == BlockType.WATER || nb == BlockType.WATER_FLOW) {
-                byte nbm = nb == BlockType.WATER_FLOW
-                        ? (chunk.inBounds(nx, y, nz) ? chunk.getMeta(nx, y, nz) : world.getBlockMeta(baseX + nx, y, baseZ + nz))
-                        : 0;
-                float nbTopY = waterLevelTopY(nb, nbm);
+                // Match the rule used for our own topY: if water is above the
+                // neighbour too, the neighbour's effective top is 1.0 (it's part
+                // of a vertical column, rendered as a full block). Without this
+                // the equality check below treats e.g. (us 1.0, nb 7/8) as a
+                // visible 1/8 strip — the "grid lines" you see between adjacent
+                // water cells in a flooded area.
+                BlockType nbAbove = world.getBlock(baseX + nx, y + 1, baseZ + nz);
+                boolean nbWaterAbove = nbAbove == BlockType.WATER || nbAbove == BlockType.WATER_FLOW;
+                float nbTopY;
+                if (nbWaterAbove) {
+                    nbTopY = 1.0f;
+                } else {
+                    byte nbm = nb == BlockType.WATER_FLOW
+                            ? (chunk.inBounds(nx, y, nz) ? chunk.getMeta(nx, y, nz) : world.getBlockMeta(baseX + nx, y, baseZ + nz))
+                            : 0;
+                    nbTopY = waterLevelTopY(nb, nbm);
+                }
                 if (nbTopY >= topY) continue; // neighbor is as tall or taller, skip
                 faceBot = nbTopY;
             } else if (nb.solid) {
