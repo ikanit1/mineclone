@@ -273,6 +273,7 @@ public class Game {
         chunkShader.setFloat("uFogStart", RENDER_RADIUS * Chunk.SIZE_X * 0.5f);
         chunkShader.setFloat("uFogEnd",   RENDER_RADIUS * Chunk.SIZE_X * 1.0f);
         chunkShader.setFloat("uAmbient", 0.22f);
+        chunkShader.setFloat("uDaylight", 1.0f);
         atlas.bind(0);
 
         int pcx = (int) Math.floor(player.position.x / Chunk.SIZE_X);

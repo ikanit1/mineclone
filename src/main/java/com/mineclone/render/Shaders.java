@@ -8,12 +8,14 @@ public final class Shaders {
         layout (location = 0) in vec3 aPos;
         layout (location = 1) in vec2 aUv;
         layout (location = 2) in float aLight;
+        layout (location = 3) in float aBlockLight;
         uniform mat4 uProjection;
         uniform mat4 uView;
         uniform mat4 uModel;
         centroid out vec2 vUv;
         out float vLight;
         out float vFogDist;
+        out float vBlockLight;
         void main() {
             vec4 worldPos = uModel * vec4(aPos, 1.0);
             vec4 viewPos = uView * worldPos;
@@ -21,6 +23,7 @@ public final class Shaders {
             vUv = aUv;
             vLight = aLight;
             vFogDist = length(viewPos.xyz);
+            vBlockLight = aBlockLight;
         }
         """;
 
@@ -29,16 +32,19 @@ public final class Shaders {
         centroid in vec2 vUv;
         in float vLight;
         in float vFogDist;
+        in float vBlockLight;
         uniform sampler2D uAtlas;
         uniform vec3 uFogColor;
         uniform float uFogStart;
         uniform float uFogEnd;
         uniform float uAmbient;
+        uniform float uDaylight;
         out vec4 FragColor;
         void main() {
             vec4 tex = texture(uAtlas, vUv);
             if (tex.a < 0.1) discard;
-            float shaped = pow(max(uAmbient, vLight), 0.75);
+            float combined = max(vLight * uDaylight, vBlockLight);
+            float shaped = pow(max(uAmbient, combined), 0.75);
             vec3 lit = tex.rgb * shaped;
             float f = clamp((vFogDist - uFogStart) / (uFogEnd - uFogStart), 0.0, 1.0);
             FragColor = vec4(mix(lit, uFogColor, f), tex.a);
