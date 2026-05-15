@@ -75,6 +75,7 @@ public class TextureAtlas {
         drawBedrock(img, 9, 0);
         drawCobble(img, 10, 0);
         drawPlanks(img, 11, 0);
+        drawTorch(img, 12, 0);
         return img;
     }
 
@@ -313,5 +314,25 @@ public class TextureAtlas {
                 int v = jitter(r, base, 10);
                 put(img, tx, ty, x, y, rgb(v, (int) (v * 0.75), (int) (v * 0.45)));
             }
+    }
+
+    private static void drawTorch(BufferedImage img, int tx, int ty) {
+        // Dark background
+        for (int y = 0; y < TILE; y++)
+            for (int x = 0; x < TILE; x++)
+                put(img, tx, ty, x, y, rgb(30, 20, 10));
+        // Wooden stick: 2px wide column
+        int sx = TILE / 2 - 1;
+        for (int y = 4; y < TILE; y++) {
+            put(img, tx, ty, sx,     y, rgb(90, 58, 28));
+            put(img, tx, ty, sx + 1, y, rgb(72, 46, 22));
+        }
+        // Flame: 4px wide, gradient top to base
+        int[] flame = {rgb(255, 230, 80), rgb(255, 180, 30), rgb(220, 100, 10), rgb(160, 50, 5)};
+        for (int y = 0; y < 4; y++) {
+            int c = flame[y];
+            for (int x = sx - 1; x <= sx + 2; x++)
+                if (x >= 0 && x < TILE) put(img, tx, ty, x, y, c);
+        }
     }
 }
