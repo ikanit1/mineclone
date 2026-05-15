@@ -204,6 +204,8 @@ public class World {
         if (lx == Chunk.SIZE_X - 1) remeshNeighbour(cx + 1, cz);
         if (lz == 0)  remeshNeighbour(cx, cz - 1);
         if (lz == Chunk.SIZE_Z - 1) remeshNeighbour(cx, cz + 1);
+        // Block must be committed (c.set called above) before flood fill —
+        // floodFillAdd reads the new block's emittedLight via getBlock().
         if (old.emittedLight > 0) floodFillRemove(wx, wy, wz);
         if (t.emittedLight > 0)   floodFillAdd(wx, wy, wz);
     }

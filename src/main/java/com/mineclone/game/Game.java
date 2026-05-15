@@ -41,7 +41,7 @@ public class Game {
     private State state = State.MENU;
     private boolean showDebug = false;
 
-    private static final float TIME_SCALE = 0.005f; // ~3 min real = full day
+    private static final float TIME_SCALE = 0.005f; // ~21 min real = full day/night cycle (~10.5 min day, ~10.5 min night)
     private float gameTime = (float) (Math.PI * 0.5); // start at noon
     private float daylight = 1.0f;
 

@@ -11,6 +11,9 @@ public class Chunk {
     public final int cx, cz;
     private final byte[] blocks = new byte[SIZE_X * SIZE_Y * SIZE_Z];
     private final byte[] skyLight = new byte[SIZE_X * SIZE_Y * SIZE_Z];
+    // blockLight is written on the main thread (flood fill) and read on mesh threads.
+    // No explicit synchronization: worst-case is one mesh frame with stale values,
+    // which self-corrects when the dirty flag triggers a rebuild — same trade-off as skyLight.
     private final byte[] blockLight = new byte[SIZE_X * SIZE_Y * SIZE_Z];
     public boolean dirty = true;
 
