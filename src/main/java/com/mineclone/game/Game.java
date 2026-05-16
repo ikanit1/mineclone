@@ -137,7 +137,7 @@ public class Game {
         // the player has ground on Start. Everything else streams via ChunkLoader.
         for (int dx = -1; dx <= 1; dx++)
             for (int dz = -1; dz <= 1; dz++)
-                world.getChunk(dx, dz);
+                loader.applySnapshot(world.getChunk(dx, dz));
 
         int sx = 8, sz = 8;
         for (int y = Chunk.SIZE_Y - 1; y > 0; y--) {

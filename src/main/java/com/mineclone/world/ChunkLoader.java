@@ -58,7 +58,7 @@ public class ChunkLoader {
                 long k = World.key(cx, cz);
                 if (world.getChunkIfExists(cx, cz) == null) {
                     submitGen(cx, cz, k);
-                } else if (!meshed.contains(k) && !pendingMesh.contains(k)) {
+                } else if (!pendingGen.contains(k) && !meshed.contains(k) && !pendingMesh.contains(k)) {
                     if (neighboursReady(cx, cz)) submitMesh(cx, cz, k);
                 }
             }
@@ -72,18 +72,28 @@ public class ChunkLoader {
             && world.getChunkIfExists(cx, cz - 1) != null;
     }
 
+    /**
+     * Apply any saved snapshot over an already-generated chunk: restore
+     * blocks+meta, recompute chunk-local sky light, flag for remesh, and
+     * clear {@code modified} (a freshly-restored chunk matches disk). No-op
+     * if the chunk has no saved snapshot. Safe on the gen pool or the main
+     * thread; the only state it touches is the passed chunk and disk reads.
+     */
+    public void applySnapshot(Chunk c) {
+        com.mineclone.save.ChunkSnapshot snap = save.loadChunk(worldId, c.cx, c.cz);
+        if (snap != null) {
+            c.restore(snap.blocks, snap.meta);
+            c.computeSkyLight();
+            c.dirty = true;
+            c.modified = false;
+        }
+    }
+
     private void submitGen(int cx, int cz, long key) {
         if (!pendingGen.add(key)) return;
         genPool.submit(() -> {
             try {
-                Chunk c = world.getChunk(cx, cz);
-                com.mineclone.save.ChunkSnapshot snap = save.loadChunk(worldId, cx, cz);
-                if (snap != null) {
-                    c.restore(snap.blocks, snap.meta);
-                    c.computeSkyLight();
-                    c.dirty = true;
-                    c.modified = false;
-                }
+                applySnapshot(world.getChunk(cx, cz));
             } finally {
                 pendingGen.remove(key);
             }
