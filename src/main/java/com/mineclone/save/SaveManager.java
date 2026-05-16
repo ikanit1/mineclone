@@ -42,6 +42,8 @@ public final class SaveManager {
     private File chunkFile(String id, int cx, int cz) {
         return new File(chunksDir(id), SaveFormat.chunkFileName(cx, cz));
     }
+    private File optionsFile() { return new File(savesRoot.getParentFile() != null
+            ? savesRoot.getParentFile() : new File("."), SaveFormat.OPTIONS_FILE); }
 
     public boolean hasSave(String id) {
         return levelFile(id).isFile();
@@ -128,6 +130,43 @@ public final class SaveManager {
 
     public void deleteWorld(String id) {
         deleteRecursive(worldDir(id));
+    }
+
+    // ---- options.dat (global, not per-world) ----
+
+    /** @return loaded options, or {@link Options#defaults()} if absent/unreadable/incompatible. */
+    public Options loadOptions() {
+        File f = optionsFile();
+        if (!f.isFile()) return Options.defaults();
+        try (DataInputStream in = new DataInputStream(new GZIPInputStream(
+                new BufferedInputStream(new FileInputStream(f))))) {
+            if (in.readInt() != SaveFormat.MAGIC) return Options.defaults();
+            if (in.readInt() != SaveFormat.OPTIONS_VERSION) return Options.defaults();
+            int rr = in.readInt();
+            int fov = in.readInt();
+            float br = in.readFloat();
+            float vol = in.readFloat();
+            return new Options(rr, fov, br, vol);
+        } catch (IOException e) {
+            System.err.println("loadOptions failed: " + e.getMessage());
+            return Options.defaults();
+        }
+    }
+
+    public void saveOptions(Options o) {
+        File f = optionsFile();
+        if (f.getParentFile() != null) f.getParentFile().mkdirs();
+        try (DataOutputStream out = new DataOutputStream(new GZIPOutputStream(
+                new BufferedOutputStream(new FileOutputStream(f))))) {
+            out.writeInt(SaveFormat.MAGIC);
+            out.writeInt(SaveFormat.OPTIONS_VERSION);
+            out.writeInt(o.renderRadius);
+            out.writeInt(o.fovDegrees);
+            out.writeFloat(o.brightness);
+            out.writeFloat(o.volume);
+        } catch (IOException e) {
+            System.err.println("saveOptions failed: " + e.getMessage());
+        }
     }
 
     private static void deleteRecursive(File f) {
