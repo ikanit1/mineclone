@@ -482,7 +482,9 @@ git commit -m "feat(world): Chunk.modified flag + snapshot/restore accessors"
 **Files:**
 - Modify: `src/main/java/com/mineclone/world/World.java:224-256`
 
-`setBlock(int,int,int,BlockType)` is the player/command/water-sim edit path (generation uses `Chunk.set` directly and never calls this). The `(…,byte meta)` overload delegates to it, so one hook covers both.
+`setBlock(int,int,int,BlockType)` is the **player/command** edit path (generation uses `Chunk.set` directly and never calls this). The `(…,byte meta)` overload delegates to it, so one hook covers both player paths.
+
+> **Plan correction (discovered during execution):** the original plan also claimed this is the *water-sim* edit path — it is **not**. `WaterSimulator.setBlockSafe()` writes via `c.set()`/`c.setMeta()` directly on the `Chunk`, bypassing `World.setBlock`. Water-spread chunks therefore need their own `modified` hook — see **Task 6.5**.
 
 - [ ] **Step 1: Set `modified` on the edited chunk**
 
@@ -510,6 +512,47 @@ Expected: `javac exit=0`.
 ```bash
 git add src/main/java/com/mineclone/world/World.java
 git commit -m "feat(world): flag chunk modified on post-generation edits"
+```
+
+---
+
+## Task 6.5: WaterSimulator — mark chunk modified on water-flow edits
+
+**Files:**
+- Modify: `src/main/java/com/mineclone/world/WaterSimulator.java`
+
+**Why this task exists (correction):** The original plan assumed water-sim edits flowed through `World.setBlock` (Task 6's hook). They do not — `WaterSimulator.setBlockSafe()` mutates the chunk via `c.set()`/`c.setMeta()` directly. Without this hook, chunks that received only *spread* water (no player edit) are never `modified`, so they are not saved; on reload they regenerate dry and the scan-based `WaterSimulator.tick()` (which is **stateless** — it rescans all loaded chunks every tick, it is not queue-fed) re-floods them from the persisted source across chunk borders — exactly the Task 9 Step 5 failure. Persisting *all* water-touched chunks makes the restored state a fixed point of the simulator's scan (every flow cell still has support, no AIR neighbour to fill), so the next tick produces no changes → no visible re-flood.
+
+- [ ] **Step 1: Flag the chunk modified in `setBlockSafe`**
+
+In `WaterSimulator.java`, find the existing body of `setBlockSafe` (the lines that mutate the chunk):
+
+```java
+        c.set(lx, wy, lz, type);
+        c.setMeta(lx, wy, lz, meta);
+        c.dirty = true;
+```
+
+Change it to (add the single `c.modified = true;` line; match existing indentation):
+
+```java
+        c.set(lx, wy, lz, type);
+        c.setMeta(lx, wy, lz, meta);
+        c.dirty = true;
+        c.modified = true;
+```
+
+This is the entire change. Do not touch the edge-neighbour-dirty block below it, the early `if (c == null) return;`, or anything else.
+
+- [ ] **Step 2: Compile (Task 1 Step 2 command)**
+
+Expected: `javac exit=0`.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/main/java/com/mineclone/world/WaterSimulator.java
+git commit -m "feat(world): flag chunk modified on water-sim edits so resting water persists"
 ```
 
 ---
@@ -776,7 +819,7 @@ Expected: the break is persisted.
 
 - [ ] **Step 5: Record result**
 
-If all of Steps 2–4 hold, the persistence subsystem is verified. If water re-floods on load, or blocks/position are lost, stop and debug before declaring done (see spec §6: restored water must not be re-enqueued into the simulator — confirm `World.setBlock` is the only `modified` setter and `restore()` bypasses it).
+If all of Steps 2–4 hold, the persistence subsystem is verified. If water re-floods on load, or blocks/position are lost, stop and debug before declaring done. **No-re-flood mechanism (corrected):** `WaterSimulator.tick()` is stateless and scan-based — it has no cross-run queue, so nothing "re-enqueues" restored water. Re-flood is prevented instead by *persisting the whole resting water body*: Task 6 flags player edits and **Task 6.5** flags water-sim edits, so every water-touched chunk is saved and restored. The restored equilibrium is a fixed point of the scan (settled flow cells still have support; no AIR neighbour to fill) → the first post-load tick produces zero changes. If re-flood is observed, confirm Task 6.5's hook is present and that `restore()` sets `modified=false` (a restored chunk matches disk and must not immediately re-save).
 
 ---
 
@@ -786,7 +829,7 @@ If all of Steps 2–4 hold, the persistence subsystem is verified. If water re-f
 - §3 whole-chunk snapshot, GZIP, per-world dir, default id `world` → Tasks 1,3.
 - §4 file layout + magic/version → Tasks 1,3.
 - §5 `com.mineclone.save` API (`SaveManager`,`LevelData`,`ChunkSnapshot`; `Options` deferred to Plan 2 per stated deviation) → Tasks 1–3.
-- §6 `populated`/dirty tracking → realized as single `modified` flag (Task 5/6) set only via `World.setBlock` post-gen; generation uses `Chunk.set` so no `populated` flag is needed (simpler, equivalent). Snapshot apply + sky-light recompute → Task 7. Light recomputed not persisted → Task 7 (`computeSkyLight`); block-light via existing dirty/flood path. Water resting (not re-flowed) → guaranteed because `restore()` writes arrays directly and never calls `World.setBlock`, so the simulator is never fed restored cells (Task 7 + verified Task 9 Step 3).
+- §6 `populated`/dirty tracking → realized as single `modified` flag set on post-generation edits by **both** edit paths: `World.setBlock` (player/command, Task 5/6) and `WaterSimulator.setBlockSafe` (water flow, **Task 6.5**); generation uses `Chunk.set` directly so generated chunks stay `modified=false` and no `populated` flag is needed (simpler, equivalent). Snapshot apply + sky-light recompute → Task 7. Light recomputed not persisted → Task 7 (`computeSkyLight`); block-light via existing dirty/flood path. Water resting (not re-flowed) → guaranteed because the whole resting water body is persisted (Tasks 6+6.5) and `WaterSimulator.tick()` is a stateless rescan whose fixed point is the restored equilibrium, while `restore()` sets `modified=false` so a restored chunk is not spuriously re-saved (Tasks 6.5+7, verified Task 9 Step 3).
 - §7 saveAll on pause/periodic/quit → Task 8 Steps 5–8. Unload-flush → documented deviation (no unload path exists); saveAll covers all loaded modified chunks.
 - §11 isolation: all I/O in `com.mineclone.save`; engine touches only the API → file structure honored.
 - §13 verification → Task 4 (headless) + Task 9 (manual checklist).
