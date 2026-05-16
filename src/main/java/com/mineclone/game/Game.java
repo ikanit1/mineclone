@@ -18,10 +18,10 @@ import java.util.Map;
 import static org.lwjgl.opengl.GL11.*;
 
 public class Game {
-    private int renderRadius = 6;
-    private int fovDegrees = 75;
-    private float brightness = 1.0f;
-    private float volume = 1.0f;
+    private int renderRadius;
+    private int fovDegrees;
+    private float brightness;
+    private float volume;
 
     private enum State {
         MENU, PLAYING, PAUSED, CREATIVE_MENU
@@ -87,6 +87,11 @@ public class Game {
     public Game(Window window, boolean regenAtlas) {
         this.window = window;
         this.input = new Input(window.getHandle());
+        com.mineclone.save.Options opts = save.loadOptions();
+        this.renderRadius = opts.renderRadius;
+        this.fovDegrees = opts.fovDegrees;
+        this.brightness = opts.brightness;
+        this.volume = opts.volume;
         com.mineclone.save.LevelData saved = save.loadLevel(worldId);
         this.world = new World(saved != null ? saved.seed : new java.util.Random().nextLong());
         this.mesher = new ChunkMesher(world);
@@ -123,6 +128,7 @@ public class Game {
 
     public void run() {
         sound.init();
+        sound.setMasterVolume(volume);
         try {
             font = new Font("assets/minecraft.ttf", 22f);
         } catch (java.io.IOException e) {
@@ -750,6 +756,8 @@ public class Game {
                     }
                     if (a == Hud.MenuAction.SETTINGS_BACK) {
                         inSettings = false;
+                        save.saveOptions(new com.mineclone.save.Options(
+                                renderRadius, fovDegrees, brightness, volume));
                         sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
                     }
                 } else {
