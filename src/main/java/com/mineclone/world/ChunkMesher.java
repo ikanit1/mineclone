@@ -430,11 +430,13 @@ public class ChunkMesher {
         float blRaw = blockLightAt(chunk, x, y, z, baseX, baseZ) / (float) Chunk.MAX_LIGHT;
         float lv = Math.max(0.6f * skyRaw, blRaw);
 
+        // Vertex order matches emitFace exactly so the shared uvQ produces
+        // upright, non-rotated textures on every face (doors, stairs).
         float[][][] faces = {
-                { { x1, y0, z1 }, { x1, y1, z1 }, { x0, y1, z1 }, { x0, y0, z1 } }, // +Z
-                { { x0, y0, z0 }, { x0, y1, z0 }, { x1, y1, z0 }, { x1, y0, z0 } }, // -Z
-                { { x1, y0, z0 }, { x1, y1, z0 }, { x1, y1, z1 }, { x1, y0, z1 } }, // +X
-                { { x0, y0, z1 }, { x0, y1, z1 }, { x0, y1, z0 }, { x0, y0, z0 } }, // -X
+                { { x0, y0, z1 }, { x1, y0, z1 }, { x1, y1, z1 }, { x0, y1, z1 } }, // +Z
+                { { x1, y0, z0 }, { x0, y0, z0 }, { x0, y1, z0 }, { x1, y1, z0 } }, // -Z
+                { { x1, y0, z1 }, { x1, y0, z0 }, { x1, y1, z0 }, { x1, y1, z1 } }, // +X
+                { { x0, y0, z0 }, { x0, y0, z1 }, { x0, y1, z1 }, { x0, y1, z0 } }, // -X
                 { { x0, y1, z1 }, { x1, y1, z1 }, { x1, y1, z0 }, { x0, y1, z0 } }, // +Y
                 { { x0, y0, z0 }, { x1, y0, z0 }, { x1, y0, z1 }, { x0, y0, z1 } } // -Y
         };
