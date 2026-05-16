@@ -74,6 +74,11 @@ public class Game {
     private final Map<Long, Mesh> chunkMeshes = new HashMap<>();
     private final Map<Long, Mesh> waterMeshes = new HashMap<>();
     private int selectedSlot = 0;
+    private final com.mineclone.save.SaveManager save = new com.mineclone.save.SaveManager();
+    private final String worldId = com.mineclone.save.SaveFormat.DEFAULT_WORLD_ID;
+    private static final float AUTOSAVE_INTERVAL = 120f; // seconds
+    private float autosaveTimer = AUTOSAVE_INTERVAL;
+    private com.mineclone.save.LevelData pendingLevel;
     private final BlockType[] hotbar = {
             BlockType.STONE, BlockType.DIRT, BlockType.GRASS, BlockType.PLANKS,
             BlockType.GLASS, BlockType.DOOR_CLOSED, BlockType.STAIRS, BlockType.TORCH, BlockType.WATER
@@ -82,9 +87,11 @@ public class Game {
     public Game(Window window, boolean regenAtlas) {
         this.window = window;
         this.input = new Input(window.getHandle());
-        this.world = new World(1337L);
+        com.mineclone.save.LevelData saved = save.loadLevel(worldId);
+        this.world = new World(saved != null ? saved.seed : new java.util.Random().nextLong());
         this.mesher = new ChunkMesher(world);
-        this.loader = new ChunkLoader(world, mesher);
+        this.loader = new ChunkLoader(world, mesher, save, worldId);
+        this.pendingLevel = saved;
         this.atlas = new TextureAtlas(TextureAtlas.DEFAULT_PATH, regenAtlas);
         this.chunkShader = new Shader(Shaders.CHUNK_VERTEX, Shaders.CHUNK_FRAGMENT);
         this.crosshair = new Crosshair();
@@ -94,6 +101,24 @@ public class Game {
 
     private BlockType currentBlock() {
         return hotbar[selectedSlot];
+    }
+
+    /** Flush level.dat + every loaded chunk whose blocks changed since gen. */
+    private void saveAll() {
+        com.mineclone.save.LevelData d = new com.mineclone.save.LevelData(
+                world.seed,
+                player.position.x, player.position.y, player.position.z,
+                player.camera.yaw, player.camera.pitch,
+                gameTime, selectedSlot);
+        save.saveLevel(worldId, d);
+        for (com.mineclone.world.Chunk c : world.getLoadedChunks()) {
+            if (c.modified) {
+                save.saveChunkAsync(worldId,
+                        new com.mineclone.save.ChunkSnapshot(c.cx, c.cz,
+                                c.copyBlocks(), c.copyMeta()));
+                c.modified = false;
+            }
+        }
     }
 
     public void run() {
@@ -112,7 +137,8 @@ public class Game {
         // the player has ground on Start. Everything else streams via ChunkLoader.
         for (int dx = -1; dx <= 1; dx++)
             for (int dz = -1; dz <= 1; dz++)
-                world.getChunk(dx, dz);
+                loader.applySnapshot(world.getChunk(dx, dz));
+        loader.drainLightFlood(9);
 
         int sx = 8, sz = 8;
         for (int y = Chunk.SIZE_Y - 1; y > 0; y--) {
@@ -120,6 +146,16 @@ public class Game {
                 player.position.set(sx + 0.5f, y + 1.1f, sz + 0.5f);
                 break;
             }
+        }
+
+        if (pendingLevel != null) {
+            player.position.set((float) pendingLevel.px,
+                                (float) pendingLevel.py,
+                                (float) pendingLevel.pz);
+            player.camera.yaw = pendingLevel.yaw;
+            player.camera.pitch = pendingLevel.pitch;
+            gameTime = pendingLevel.timeOfDay;
+            selectedSlot = Math.floorMod(pendingLevel.selectedSlot, hotbar.length);
         }
 
         // Start in menu with the cursor free.
@@ -146,6 +182,8 @@ public class Game {
             sound.tick();
             window.update();
         }
+        saveAll();
+        save.flushAndAwait();
         cleanup();
     }
 
@@ -186,6 +224,11 @@ public class Game {
 
     private void updatePlaying(float dt) {
         gameTime += dt * TIME_SCALE;
+        autosaveTimer -= dt;
+        if (autosaveTimer <= 0f) {
+            autosaveTimer = AUTOSAVE_INTERVAL;
+            saveAll();
+        }
         daylight = computeDaylight();
         if (input.keyPressed(GLFW.GLFW_KEY_E)) {
             state = State.CREATIVE_MENU;
@@ -194,6 +237,7 @@ public class Game {
         }
         if (input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
             state = State.PAUSED;
+            saveAll();
             input.grabCursor(false);
             return;
         }
@@ -302,6 +346,7 @@ public class Game {
         int pcx = (int) Math.floor(player.position.x / Chunk.SIZE_X);
         int pcz = (int) Math.floor(player.position.z / Chunk.SIZE_Z);
         loader.ensureRadius(pcx, pcz, renderRadius + 1);
+        loader.drainLightFlood(2);
         for (ChunkLoader.Ready r : loader.drainReady(3)) {
             Mesh old = chunkMeshes.remove(r.key);
             if (old != null) old.destroy();

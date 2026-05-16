@@ -333,13 +333,12 @@ git commit -m "feat(save): SaveManager disk I/O (level, chunks, delete, async wr
 
 This is the project's verification substitute (no JUnit). It exercises the entire save package without OpenGL: write level + a chunk, read them back, assert equality, then delete.
 
+> **Plan correction (applied during execution, commit 0f9330c):** The harness must be declared `package com.mineclone.save;` (white-box), not the default package, because `SaveManager.saveChunkBlocking` is package-private and Java forbids cross-package access to it. Consequently the run command uses the fully-qualified class name. Also: this harness body contains exactly **14** `check(...)` calls, so the correct passing output is `SaveRoundTrip OK (14 checks)` — the earlier "15" was a miscount.
+
 - [ ] **Step 1: Create the harness**
 
 ```java
-import com.mineclone.save.ChunkSnapshot;
-import com.mineclone.save.LevelData;
-import com.mineclone.save.SaveFormat;
-import com.mineclone.save.SaveManager;
+package com.mineclone.save;
 
 import java.io.File;
 import java.util.Random;
@@ -407,9 +406,9 @@ Expected: `javac exit=0` (Task 3 must be compiled into `out` first).
 
 Run (PowerShell):
 ```powershell
-java -cp out SaveRoundTrip
+java -cp out com.mineclone.save.SaveRoundTrip
 ```
-Expected stdout: `SaveRoundTrip OK (15 checks)` and process exit 0. Any `FAIL: ...` line means stop and fix the offending Task 1–3 code before continuing.
+Expected stdout: `SaveRoundTrip OK (14 checks)` and process exit 0. Any `FAIL: ...` line means stop and fix the offending Task 1–3 code before continuing.
 
 - [ ] **Step 4: Commit**
 
@@ -483,7 +482,9 @@ git commit -m "feat(world): Chunk.modified flag + snapshot/restore accessors"
 **Files:**
 - Modify: `src/main/java/com/mineclone/world/World.java:224-256`
 
-`setBlock(int,int,int,BlockType)` is the player/command/water-sim edit path (generation uses `Chunk.set` directly and never calls this). The `(…,byte meta)` overload delegates to it, so one hook covers both.
+`setBlock(int,int,int,BlockType)` is the **player/command** edit path (generation uses `Chunk.set` directly and never calls this). The `(…,byte meta)` overload delegates to it, so one hook covers both player paths.
+
+> **Plan correction (discovered during execution):** the original plan also claimed this is the *water-sim* edit path — it is **not**. `WaterSimulator.setBlockSafe()` writes via `c.set()`/`c.setMeta()` directly on the `Chunk`, bypassing `World.setBlock`. Water-spread chunks therefore need their own `modified` hook — see **Task 6.5**.
 
 - [ ] **Step 1: Set `modified` on the edited chunk**
 
@@ -515,12 +516,57 @@ git commit -m "feat(world): flag chunk modified on post-generation edits"
 
 ---
 
+## Task 6.5: WaterSimulator — mark chunk modified on water-flow edits
+
+**Files:**
+- Modify: `src/main/java/com/mineclone/world/WaterSimulator.java`
+
+**Why this task exists (correction):** The original plan assumed water-sim edits flowed through `World.setBlock` (Task 6's hook). They do not — `WaterSimulator.setBlockSafe()` mutates the chunk via `c.set()`/`c.setMeta()` directly. Without this hook, chunks that received only *spread* water (no player edit) are never `modified`, so they are not saved; on reload they regenerate dry and the scan-based `WaterSimulator.tick()` (which is **stateless** — it rescans all loaded chunks every tick, it is not queue-fed) re-floods them from the persisted source across chunk borders — exactly the Task 9 Step 5 failure. Persisting *all* water-touched chunks makes the restored state a fixed point of the simulator's scan (every flow cell still has support, no AIR neighbour to fill), so the next tick produces no changes → no visible re-flood.
+
+- [ ] **Step 1: Flag the chunk modified in `setBlockSafe`**
+
+In `WaterSimulator.java`, find the existing body of `setBlockSafe` (the lines that mutate the chunk):
+
+```java
+        c.set(lx, wy, lz, type);
+        c.setMeta(lx, wy, lz, meta);
+        c.dirty = true;
+```
+
+Change it to (add the single `c.modified = true;` line; match existing indentation):
+
+```java
+        c.set(lx, wy, lz, type);
+        c.setMeta(lx, wy, lz, meta);
+        c.dirty = true;
+        c.modified = true;
+```
+
+This is the entire change. Do not touch the edge-neighbour-dirty block below it, the early `if (c == null) return;`, or anything else.
+
+- [ ] **Step 2: Compile (Task 1 Step 2 command)**
+
+Expected: `javac exit=0`.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/main/java/com/mineclone/world/WaterSimulator.java
+git commit -m "feat(world): flag chunk modified on water-sim edits so resting water persists"
+```
+
+---
+
 ## Task 7: ChunkLoader — apply saved snapshot after generation
 
 **Files:**
 - Modify: `src/main/java/com/mineclone/world/ChunkLoader.java`
 
-Delta-patching: after a chunk is generated on the gen thread, if a snapshot exists on disk, restore it over the generated terrain and recompute chunk-local sky light (same bg-safe call `generate()` already makes). Block light from restored emitters is handled on the main thread in Task 8 via the `dirty` remesh + existing flood paths; restoring blocks+meta+sky light is correct and matches the engine's existing "light self-corrects on dirty" trade-off.
+Delta-patching: after a chunk is generated on the gen thread, if a snapshot exists on disk, restore it over the generated terrain and recompute chunk-local sky light (same bg-safe call `generate()` already makes). Block light from restored emitters is handled by a deferred main-thread flood (see correction below — the plan's original claim that the dirty/flood path would handle it was wrong); restoring blocks+meta+sky light is correct and matches the engine's existing "light self-corrects on dirty" trade-off.
+
+> **Plan correction (discovered by manual Task 9 verification, fixed in commit 9e25cc6):** block-light from restored emitters does **not** auto-recompute. `dirty=true` triggers a remesh which only CONSUMES the current `blockLight[]` array — it does not RECOMPUTE light. The flood lives in `World.floodFillAdd(wx,wy,wz)` (a cross-chunk BFS) and is normally invoked from `World.setBlock` when an emitter is placed. After restore, restored torch blocks stand without glow until something else triggers a flood. Per `Chunk`'s concurrency contract (`blockLight` written only on the main thread), `applySnapshot` (which may run on the gen pool) cannot flood directly. Fix: `ChunkLoader` gains a `ConcurrentLinkedQueue<Long> pendingLightFlood`; `applySnapshot` enqueues each restored chunk's key; `Game` drains the queue per frame on the main thread (`loader.drainLightFlood(2)` after `ensureRadius`) and one-shot after the spawn preload (`loader.drainLightFlood(9)` so spawn torches are lit at frame 0). For each drained chunk, scan all cells and call `world.floodFillAdd` for every block with `emittedLight > 0`. `floodFillAdd` marks touched chunks `dirty`, so the next remesh pass shows the new light.
+
+> **Plan correction (discovered by code review of the Task 7+8 commit, fixed in commit 8e41550):** `submitGen` is *not* the only path that creates chunks. `Game.run()` preloads the spawn 3×3 via direct `world.getChunk(dx,dz)`, and `ChunkLoader.ensureRadius` only calls `submitGen` for chunks that don't yet exist — so preloaded spawn chunks would *never* get their snapshot applied, silently discarding player edits in the spawn area on reload (Task 9's "walk away from spawn" masks it). Fix: the restore logic is extracted into `public ChunkLoader.applySnapshot(Chunk)` (called by `submitGen` for the async path **and** by `Game.run()` for each synchronously-preloaded spawn chunk). Additionally, `ensureRadius`'s mesh-submission guard gained `!pendingGen.contains(k)` so a mesh is never built against a chunk whose gen+restore (now disk I/O) is still in flight. The code blocks in Task 7 Step 3 / Task 8 Step (preload) below describe the *original* inline form; the shipped form is the extracted `applySnapshot` — behaviourally identical for the async path.
 
 - [ ] **Step 1: Add SaveManager + worldId fields and constructor params**
 
@@ -777,7 +823,7 @@ Expected: the break is persisted.
 
 - [ ] **Step 5: Record result**
 
-If all of Steps 2–4 hold, the persistence subsystem is verified. If water re-floods on load, or blocks/position are lost, stop and debug before declaring done (see spec §6: restored water must not be re-enqueued into the simulator — confirm `World.setBlock` is the only `modified` setter and `restore()` bypasses it).
+If all of Steps 2–4 hold, the persistence subsystem is verified. If water re-floods on load, or blocks/position are lost, stop and debug before declaring done. **No-re-flood mechanism (corrected):** `WaterSimulator.tick()` is stateless and scan-based — it has no cross-run queue, so nothing "re-enqueues" restored water. Re-flood is prevented instead by *persisting the whole resting water body*: Task 6 flags player edits and **Task 6.5** flags water-sim edits, so every water-touched chunk is saved and restored. The restored equilibrium is a fixed point of the scan (settled flow cells still have support; no AIR neighbour to fill) → the first post-load tick produces zero changes. If re-flood is observed, confirm Task 6.5's hook is present and that `restore()` sets `modified=false` (a restored chunk matches disk and must not immediately re-save).
 
 ---
 
@@ -787,7 +833,7 @@ If all of Steps 2–4 hold, the persistence subsystem is verified. If water re-f
 - §3 whole-chunk snapshot, GZIP, per-world dir, default id `world` → Tasks 1,3.
 - §4 file layout + magic/version → Tasks 1,3.
 - §5 `com.mineclone.save` API (`SaveManager`,`LevelData`,`ChunkSnapshot`; `Options` deferred to Plan 2 per stated deviation) → Tasks 1–3.
-- §6 `populated`/dirty tracking → realized as single `modified` flag (Task 5/6) set only via `World.setBlock` post-gen; generation uses `Chunk.set` so no `populated` flag is needed (simpler, equivalent). Snapshot apply + sky-light recompute → Task 7. Light recomputed not persisted → Task 7 (`computeSkyLight`); block-light via existing dirty/flood path. Water resting (not re-flowed) → guaranteed because `restore()` writes arrays directly and never calls `World.setBlock`, so the simulator is never fed restored cells (Task 7 + verified Task 9 Step 3).
+- §6 `populated`/dirty tracking → realized as single `modified` flag set on post-generation edits by **both** edit paths: `World.setBlock` (player/command, Task 5/6) and `WaterSimulator.setBlockSafe` (water flow, **Task 6.5**); generation uses `Chunk.set` directly so generated chunks stay `modified=false` and no `populated` flag is needed (simpler, equivalent). Snapshot apply + sky-light recompute → Task 7. Light recomputed not persisted → Task 7 `computeSkyLight` for sky; **block-light from emitters re-flooded on main thread via deferred queue** (corrected after manual verification — see the Plan correction in Task 7; the original "via existing dirty/flood path" claim was wrong because dirty triggers remesh which consumes blockLight rather than recomputing it). Water resting (not re-flowed) → guaranteed because the whole resting water body is persisted (Tasks 6+6.5) and `WaterSimulator.tick()` is a stateless rescan whose fixed point is the restored equilibrium, while `restore()` sets `modified=false` so a restored chunk is not spuriously re-saved (Tasks 6.5+7, verified Task 9 Step 3).
 - §7 saveAll on pause/periodic/quit → Task 8 Steps 5–8. Unload-flush → documented deviation (no unload path exists); saveAll covers all loaded modified chunks.
 - §11 isolation: all I/O in `com.mineclone.save`; engine touches only the API → file structure honored.
 - §13 verification → Task 4 (headless) + Task 9 (manual checklist).
