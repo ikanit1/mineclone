@@ -564,6 +564,8 @@ git commit -m "feat(world): flag chunk modified on water-sim edits so resting wa
 
 Delta-patching: after a chunk is generated on the gen thread, if a snapshot exists on disk, restore it over the generated terrain and recompute chunk-local sky light (same bg-safe call `generate()` already makes). Block light from restored emitters is handled on the main thread in Task 8 via the `dirty` remesh + existing flood paths; restoring blocks+meta+sky light is correct and matches the engine's existing "light self-corrects on dirty" trade-off.
 
+> **Plan correction (discovered by code review of the Task 7+8 commit, fixed in commit 8e41550):** `submitGen` is *not* the only path that creates chunks. `Game.run()` preloads the spawn 3×3 via direct `world.getChunk(dx,dz)`, and `ChunkLoader.ensureRadius` only calls `submitGen` for chunks that don't yet exist — so preloaded spawn chunks would *never* get their snapshot applied, silently discarding player edits in the spawn area on reload (Task 9's "walk away from spawn" masks it). Fix: the restore logic is extracted into `public ChunkLoader.applySnapshot(Chunk)` (called by `submitGen` for the async path **and** by `Game.run()` for each synchronously-preloaded spawn chunk). Additionally, `ensureRadius`'s mesh-submission guard gained `!pendingGen.contains(k)` so a mesh is never built against a chunk whose gen+restore (now disk I/O) is still in flight. The code blocks in Task 7 Step 3 / Task 8 Step (preload) below describe the *original* inline form; the shipped form is the extracted `applySnapshot` — behaviourally identical for the async path.
+
 - [ ] **Step 1: Add SaveManager + worldId fields and constructor params**
 
 In `ChunkLoader.java`, change the fields block (lines 30–33) from:
