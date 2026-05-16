@@ -144,6 +144,7 @@ public final class WaterSimulator {
         c.set(lx, wy, lz, type);
         c.setMeta(lx, wy, lz, meta);
         c.dirty = true;
+        c.modified = true;
         // Edge cells: neighbouring chunk needs a rebuild too so its mesh sees the change.
         if (lx == 0)                       markNeighbourDirty(world, cx - 1, cz);
         if (lx == Chunk.SIZE_X - 1)        markNeighbourDirty(world, cx + 1, cz);
