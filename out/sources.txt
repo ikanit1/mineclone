@@ -5,6 +5,7 @@ E:\mineclone\src\main\java\com\mineclone\core\Input.java
 E:\mineclone\src\main\java\com\mineclone\core\Window.java
 E:\mineclone\src\main\java\com\mineclone\game\Game.java
 E:\mineclone\src\main\java\com\mineclone\game\Hud.java
+E:\mineclone\src\main\java\com\mineclone\game\MenuBackground.java
 E:\mineclone\src\main\java\com\mineclone\game\Player.java
 E:\mineclone\src\main\java\com\mineclone\game\Raycaster.java
 E:\mineclone\src\main\java\com\mineclone\render\BlockOutline.java
@@ -22,6 +23,7 @@ E:\mineclone\src\main\java\com\mineclone\render\TextureAtlas.java
 E:\mineclone\src\main\java\com\mineclone\render\UiRenderer.java
 E:\mineclone\src\main\java\com\mineclone\save\ChunkSnapshot.java
 E:\mineclone\src\main\java\com\mineclone\save\LevelData.java
+E:\mineclone\src\main\java\com\mineclone\save\Options.java
 E:\mineclone\src\main\java\com\mineclone\save\SaveFormat.java
 E:\mineclone\src\main\java\com\mineclone\save\SaveManager.java
 E:\mineclone\src\main\java\com\mineclone\world\BlockType.java
