@@ -31,6 +31,8 @@ public class ChunkLoader {
     private final ChunkMesher mesher;
     private final ExecutorService genPool;
     private final ExecutorService meshPool;
+    private final com.mineclone.save.SaveManager save;
+    private final String worldId;
 
     private final Set<Long> pendingGen  = ConcurrentHashMap.newKeySet();
     private final Set<Long> pendingMesh = ConcurrentHashMap.newKeySet();
@@ -38,9 +40,12 @@ public class ChunkLoader {
     private final Set<Long> meshed      = ConcurrentHashMap.newKeySet();
     private final ConcurrentLinkedQueue<Ready> ready = new ConcurrentLinkedQueue<>();
 
-    public ChunkLoader(World world, ChunkMesher mesher) {
+    public ChunkLoader(World world, ChunkMesher mesher,
+                       com.mineclone.save.SaveManager save, String worldId) {
         this.world = world;
         this.mesher = mesher;
+        this.save = save;
+        this.worldId = worldId;
         this.genPool  = Executors.newFixedThreadPool(2, daemon("mineclone-gen"));
         this.meshPool = Executors.newFixedThreadPool(2, daemon("mineclone-mesh"));
     }
@@ -71,7 +76,14 @@ public class ChunkLoader {
         if (!pendingGen.add(key)) return;
         genPool.submit(() -> {
             try {
-                world.getChunk(cx, cz);
+                Chunk c = world.getChunk(cx, cz);
+                com.mineclone.save.ChunkSnapshot snap = save.loadChunk(worldId, cx, cz);
+                if (snap != null) {
+                    c.restore(snap.blocks, snap.meta);
+                    c.computeSkyLight();
+                    c.dirty = true;
+                    c.modified = false;
+                }
             } finally {
                 pendingGen.remove(key);
             }
