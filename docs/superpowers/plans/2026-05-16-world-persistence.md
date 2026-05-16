@@ -333,13 +333,12 @@ git commit -m "feat(save): SaveManager disk I/O (level, chunks, delete, async wr
 
 This is the project's verification substitute (no JUnit). It exercises the entire save package without OpenGL: write level + a chunk, read them back, assert equality, then delete.
 
+> **Plan correction (applied during execution, commit 0f9330c):** The harness must be declared `package com.mineclone.save;` (white-box), not the default package, because `SaveManager.saveChunkBlocking` is package-private and Java forbids cross-package access to it. Consequently the run command uses the fully-qualified class name. Also: this harness body contains exactly **14** `check(...)` calls, so the correct passing output is `SaveRoundTrip OK (14 checks)` — the earlier "15" was a miscount.
+
 - [ ] **Step 1: Create the harness**
 
 ```java
-import com.mineclone.save.ChunkSnapshot;
-import com.mineclone.save.LevelData;
-import com.mineclone.save.SaveFormat;
-import com.mineclone.save.SaveManager;
+package com.mineclone.save;
 
 import java.io.File;
 import java.util.Random;
@@ -407,9 +406,9 @@ Expected: `javac exit=0` (Task 3 must be compiled into `out` first).
 
 Run (PowerShell):
 ```powershell
-java -cp out SaveRoundTrip
+java -cp out com.mineclone.save.SaveRoundTrip
 ```
-Expected stdout: `SaveRoundTrip OK (15 checks)` and process exit 0. Any `FAIL: ...` line means stop and fix the offending Task 1–3 code before continuing.
+Expected stdout: `SaveRoundTrip OK (14 checks)` and process exit 0. Any `FAIL: ...` line means stop and fix the offending Task 1–3 code before continuing.
 
 - [ ] **Step 4: Commit**
 
