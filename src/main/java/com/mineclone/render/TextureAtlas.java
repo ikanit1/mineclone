@@ -1,7 +1,6 @@
 package com.mineclone.render;
 
 import org.lwjgl.BufferUtils;
-import org.lwjgl.stb.STBImage;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
@@ -9,28 +8,34 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.IntBuffer;
-import java.util.Random;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL12.*;
 import static org.lwjgl.opengl.GL13.*;
 
 /**
- * Texture atlas assembled from individual PNG sprites.
+ * Texture atlas assembled purely from PNG sprites on disk.
  *
- * Block sprites live in {@value #BLOCKS_DIR} as 16×16 PNG files named by
- * {@link #TILE_NAMES}[index]. On first run (or when a sprite is missing) the
- * procedural fallback generates and saves the PNG so artists can override it.
+ * Block sprites live in {@value #BLOCKS_DIR} as PNG files named by
+ * {@link #TILE_NAMES}[index]. The engine does NOT draw pixels: it reads each
+ * sprite, rescales it to TILE×TILE if needed, packs them into one atlas and
+ * hands it to OpenGL.
+ *
+ * If a sprite file is missing or unreadable, a magenta/black checkerboard
+ * placeholder is used instead — the game keeps running and the missing asset
+ * is obvious on screen and logged to stderr (Source / Minecraft convention).
+ *
+ * The source of truth for textures is therefore the asset folder, not code.
+ * {@code assets/atlas.png} is only a write-only debug dump of the packed
+ * result; it is never read back.
  *
  * Entity / mob textures use a separate atlas — see EntityTextureAtlas (future).
  */
 public class TextureAtlas {
     /**
-     * Pixel size of one tile. Bump this (e.g. 32 → 64) and the entire atlas
-     * scales up: procedural drawings stay valid (they're written in terms of
-     * TILE), and any PNG you drop into {@link #BLOCKS_DIR} is rescaled to
-     * fill TILE×TILE — so higher-resolution source art is preserved.
+     * Pixel size of one tile in the atlas. Source PNGs of any size are
+     * rescaled to fill TILE×TILE, so higher-resolution art is preserved when
+     * this is bumped (e.g. 32 → 64).
      */
     public static final int TILE = 32;
     public static final int TILES_PER_ROW = 16;
@@ -76,17 +81,20 @@ public class TextureAtlas {
     private final int textureId;
 
     /**
-     * Loads or assembles the atlas.
-     * 
-     * @param pngPath path to the cached full atlas PNG
-     * @param regen   if true, regenerate all procedural tile PNGs and the atlas
-     *                cache
+     * Loads every sprite from {@link #BLOCKS_DIR}, packs the atlas and uploads
+     * it to OpenGL.
+     *
+     * @param pngPath    where to write the debug atlas dump
+     * @param dumpAtlas  if true, also write the packed atlas to {@code pngPath}
+     *                   for inspection. No effect on what the game renders —
+     *                   textures always come from the sprite files. (This is
+     *                   the old {@code --regen-atlas} flag; there is no longer
+     *                   any procedural generation to "regenerate".)
      */
-    public TextureAtlas(String pngPath, boolean regen) {
-        // Always assemble from individual tile PNGs so newly added tiles are always included.
-        // Each tile PNG is cached in BLOCKS_DIR; only missing ones are regenerated via generateTile().
-        BufferedImage img = assemble(regen);
-        savePng(img, new File(pngPath));
+    public TextureAtlas(String pngPath, boolean dumpAtlas) {
+        BufferedImage img = assemble();
+        if (dumpAtlas)
+            savePng(img, new File(pngPath));
 
         ByteBuffer buffer = imageToRgbaBuffer(img);
         textureId = glGenTextures();
@@ -101,35 +109,35 @@ public class TextureAtlas {
     }
 
     // -------------------------------------------------------------------------
-    // Atlas assembly
+    // Atlas assembly — pure asset loading, no procedural drawing
     // -------------------------------------------------------------------------
 
-    private static BufferedImage assemble(boolean regen) {
-        new File(BLOCKS_DIR).mkdirs();
-
+    private static BufferedImage assemble() {
         BufferedImage atlas = new BufferedImage(ATLAS_SIZE, ATLAS_SIZE, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = atlas.createGraphics();
         g.setColor(new Color(0, 0, 0, 0));
         g.fillRect(0, 0, ATLAS_SIZE, ATLAS_SIZE);
         g.dispose();
 
+        int missing = 0;
         for (int i = 0; i < TILE_NAMES.length; i++) {
             File tileFile = new File(BLOCKS_DIR, TILE_NAMES[i] + ".png");
-            BufferedImage tile = null;
-            if (!regen && tileFile.exists()) {
-                tile = loadTile(tileFile);
-            }
+            BufferedImage tile = loadTile(tileFile);
             if (tile == null) {
-                tile = generateTile(i);
-                savePng(tile, tileFile);
-                System.out.println("Generated sprite: " + tileFile.getPath());
+                System.err.println("Missing sprite: " + tileFile.getPath()
+                        + " — using placeholder");
+                tile = placeholder();
+                missing++;
             }
             blitTile(atlas, tile, i);
         }
+        if (missing > 0)
+            System.err.println(missing + " sprite(s) missing — see "
+                    + BLOCKS_DIR + " (placeholders shown in-game)");
         return atlas;
     }
 
-    /** Copy a 16×16 tile into the correct cell of the atlas image. */
+    /** Copy a TILE×TILE tile into the correct cell of the atlas image. */
     private static void blitTile(BufferedImage atlas, BufferedImage tile, int idx) {
         int col = idx % TILES_PER_ROW;
         int row = idx / TILES_PER_ROW;
@@ -138,9 +146,11 @@ public class TextureAtlas {
                 atlas.setRGB(col * TILE + x, row * TILE + y, tile.getRGB(x, y));
     }
 
-    /** Load an individual tile PNG and ensure it is TILE×TILE ARGB. */
+    /** Load a sprite PNG and ensure it is TILE×TILE ARGB. Null if absent/bad. */
     private static BufferedImage loadTile(File f) {
         try {
+            if (!f.exists())
+                return null;
             BufferedImage raw = ImageIO.read(f);
             if (raw == null)
                 return null;
@@ -148,9 +158,12 @@ public class TextureAtlas {
                     && raw.getType() == BufferedImage.TYPE_INT_ARGB) {
                 return raw;
             }
-            // Scale / convert to canonical format
+            // Scale / convert to canonical format (nearest-neighbour keeps
+            // pixel art crisp; matches the GL_NEAREST atlas filter).
             BufferedImage tile = new BufferedImage(TILE, TILE, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g = tile.createGraphics();
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                    RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
             g.drawImage(raw, 0, 0, TILE, TILE, null);
             g.dispose();
             return tile;
@@ -160,37 +173,19 @@ public class TextureAtlas {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Procedural tile generator
-    // -------------------------------------------------------------------------
-
-    private static BufferedImage generateTile(int index) {
+    /**
+     * Magenta/black checkerboard shown when a sprite file is missing — the
+     * classic "no texture" marker so the gap is impossible to miss.
+     */
+    private static BufferedImage placeholder() {
         BufferedImage t = new BufferedImage(TILE, TILE, BufferedImage.TYPE_INT_ARGB);
-        switch (index) {
-            case 0 -> drawGrassTop(t);
-            case 1 -> drawGrassSide(t);
-            case 2 -> drawDirt(t);
-            case 3 -> drawStone(t);
-            case 4 -> drawSand(t);
-            case 5 -> drawWoodSide(t);
-            case 6 -> drawWoodTop(t);
-            case 7 -> drawLeaves(t);
-            case 8 -> drawWater(t);
-            case 9 -> drawBedrock(t);
-            case 10 -> drawCobble(t);
-            case 11 -> drawPlanks(t);
-            case 12 -> drawTorch(t);
-            case 13 -> drawParticle(t);
-            case 14 -> drawGlass(t);
-            case 15 -> drawDoorBottom(t);
-            case 16 -> drawDoorTop(t);
-            default -> {
-                if (index >= WATER_FLOW_FRAME0 && index < WATER_FLOW_FRAME0 + WATER_FLOW_FRAMES) {
-                    drawWaterFlowFrame(t, index - WATER_FLOW_FRAME0);
-                }
-                /* else leave transparent */
+        int cell = Math.max(1, TILE / 4);
+        int magenta = 0xFFFF00FF, black = 0xFF000000;
+        for (int y = 0; y < TILE; y++)
+            for (int x = 0; x < TILE; x++) {
+                boolean odd = ((x / cell) + (y / cell)) % 2 == 0;
+                t.setRGB(x, y, odd ? magenta : black);
             }
-        }
         return t;
     }
 
@@ -198,6 +193,7 @@ public class TextureAtlas {
     // IO helpers
     // -------------------------------------------------------------------------
 
+    /** Write-only debug dump of the packed atlas. Never read back. */
     private static void savePng(BufferedImage img, File file) {
         try {
             File parent = file.getParentFile();
@@ -206,33 +202,6 @@ public class TextureAtlas {
             ImageIO.write(img, "png", file);
         } catch (IOException e) {
             System.err.println("Failed to save " + file + ": " + e.getMessage());
-        }
-    }
-
-    /** Load the big cached atlas PNG via STBImage (same path as before). */
-    private static BufferedImage loadAtlasPng(File file) {
-        try (org.lwjgl.system.MemoryStack stack = org.lwjgl.system.MemoryStack.stackPush()) {
-            IntBuffer w = stack.mallocInt(1), h = stack.mallocInt(1), ch = stack.mallocInt(1);
-            STBImage.stbi_set_flip_vertically_on_load(false);
-            ByteBuffer pixels = STBImage.stbi_load(file.getAbsolutePath(), w, h, ch, 4);
-            if (pixels == null)
-                return null;
-            int width = w.get(0), height = h.get(0);
-            if (width != ATLAS_SIZE || height != ATLAS_SIZE) {
-                System.err.println("Atlas PNG size mismatch; regenerating");
-                STBImage.stbi_image_free(pixels);
-                return null;
-            }
-            BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-            for (int y = 0; y < height; y++)
-                for (int x = 0; x < width; x++) {
-                    int i = (y * width + x) * 4;
-                    int r = pixels.get(i) & 0xFF, g = pixels.get(i + 1) & 0xFF,
-                            b = pixels.get(i + 2) & 0xFF, a = pixels.get(i + 3) & 0xFF;
-                    img.setRGB(x, y, (a << 24) | (r << 16) | (g << 8) | b);
-                }
-            STBImage.stbi_image_free(pixels);
-            return img;
         }
     }
 
@@ -277,640 +246,5 @@ public class TextureAtlas {
         float v1 = ((row + 1) * TILE) / (float) ATLAS_SIZE;
         float inset = 0.5f / ATLAS_SIZE;
         return new float[] { u0 + inset, v0 + inset, u1 - inset, v1 - inset };
-    }
-
-    // -------------------------------------------------------------------------
-    // Procedural sprite drawers
-    // Each method fills a 16×16 BufferedImage (TYPE_INT_ARGB).
-    // -------------------------------------------------------------------------
-
-    private static void px(BufferedImage t, int x, int y, int argb) {
-        t.setRGB(x, y, argb);
-    }
-
-    private static int rgb(int r, int g, int b) {
-        return 0xFF000000 | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
-    }
-
-    private static int jitter(Random r, int base, int spread) {
-        int v = base + r.nextInt(spread * 2 + 1) - spread;
-        return Math.max(0, Math.min(255, v));
-    }
-
-    /** Top of grass block — green base with brighter blade tips and shaded patches. */
-    private static void drawGrassTop(BufferedImage t) {
-        Random r = new Random(11);
-        // base green field with slight per-pixel noise
-        for (int y = 0; y < TILE; y++)
-            for (int x = 0; x < TILE; x++) {
-                px(t, x, y, rgb(jitter(r, 72, 8), jitter(r, 138, 14), jitter(r, 48, 8)));
-            }
-        // ~22 bright blade tips
-        Random tip = new Random(101);
-        for (int i = 0; i < 22; i++) {
-            int x = tip.nextInt(TILE), y = tip.nextInt(TILE);
-            px(t, x, y, rgb(105 + tip.nextInt(20), 175 + tip.nextInt(25), 65 + tip.nextInt(15)));
-        }
-        // ~14 darker shadow patches
-        Random dk = new Random(202);
-        for (int i = 0; i < 14; i++) {
-            int x = dk.nextInt(TILE), y = dk.nextInt(TILE);
-            px(t, x, y, rgb(48 + dk.nextInt(12), 100 + dk.nextInt(15), 32 + dk.nextInt(10)));
-        }
-    }
-
-    /** Side of grass block — dirt body with a jagged grass overhang on top. */
-    private static void drawGrassSide(BufferedImage t) {
-        Random rd = new Random(33);
-        // dirt body — fills entire tile first
-        for (int y = 0; y < TILE; y++)
-            for (int x = 0; x < TILE; x++) {
-                px(t, x, y, rgb(jitter(rd, 118, 18), jitter(rd, 82, 13), jitter(rd, 52, 10)));
-            }
-        // pebble specks in dirt
-        Random pb = new Random(34);
-        for (int i = 0; i < 10; i++) {
-            int x = pb.nextInt(TILE), y = 4 + pb.nextInt(TILE - 4);
-            px(t, x, y, rgb(70 + pb.nextInt(15), 50 + pb.nextInt(10), 32 + pb.nextInt(8)));
-        }
-        // grass overhang — jagged top edge, height varies per column
-        Random gr = new Random(35);
-        int[] grassHeight = new int[TILE];
-        for (int x = 0; x < TILE; x++) grassHeight[x] = 3 + gr.nextInt(3); // 3..5 rows
-        for (int x = 0; x < TILE; x++) {
-            int h = grassHeight[x];
-            for (int y = 0; y < h; y++) {
-                int br = (y == h - 1) ? 25 : 0; // brighter tips on the bottom edge of grass
-                px(t, x, y, rgb(60 + br + gr.nextInt(15), 130 + br + gr.nextInt(20), 45 + gr.nextInt(12)));
-            }
-        }
-        // a few hanging blade tips one row below the overhang
-        Random hb = new Random(36);
-        for (int x = 0; x < TILE; x++) {
-            if (hb.nextInt(3) == 0) {
-                int y = grassHeight[x];
-                if (y < TILE) px(t, x, y, rgb(55 + hb.nextInt(15), 125 + hb.nextInt(20), 40 + hb.nextInt(10)));
-            }
-        }
-    }
-
-    /** Plain dirt — warm brown with pebble specks and rare organic darks. */
-    private static void drawDirt(BufferedImage t) {
-        Random r = new Random(22);
-        for (int y = 0; y < TILE; y++)
-            for (int x = 0; x < TILE; x++) {
-                px(t, x, y, rgb(jitter(r, 118, 16), jitter(r, 82, 12), jitter(r, 52, 10)));
-            }
-        Random pb = new Random(24);
-        for (int i = 0; i < 14; i++) {
-            int x = pb.nextInt(TILE), y = pb.nextInt(TILE);
-            px(t, x, y, rgb(78 + pb.nextInt(14), 56 + pb.nextInt(10), 36 + pb.nextInt(8)));
-        }
-        // 3 organic darks
-        Random og = new Random(26);
-        for (int i = 0; i < 3; i++) {
-            int x = og.nextInt(TILE), y = og.nextInt(TILE);
-            px(t, x, y, rgb(55, 38, 24));
-        }
-    }
-
-    /** Stone — gray with occasional darker pebble specks and faint diagonal cracks. */
-    private static void drawStone(BufferedImage t) {
-        Random r = new Random(44);
-        for (int y = 0; y < TILE; y++)
-            for (int x = 0; x < TILE; x++) {
-                int v = jitter(r, 128, 14);
-                px(t, x, y, rgb(v, v, v + 2));
-            }
-        // dark pebbles (round-ish clusters of 1-2 px)
-        Random pb = new Random(46);
-        for (int i = 0; i < 12; i++) {
-            int x = pb.nextInt(TILE), y = pb.nextInt(TILE);
-            int v = 85 + pb.nextInt(10);
-            px(t, x, y, rgb(v, v, v));
-            if (pb.nextBoolean() && x + 1 < TILE) px(t, x + 1, y, rgb(v + 5, v + 5, v + 5));
-        }
-        // 2 subtle hairline cracks
-        Random cr = new Random(48);
-        for (int n = 0; n < 2; n++) {
-            int x = cr.nextInt(TILE);
-            int y = cr.nextInt(TILE);
-            int dx = cr.nextBoolean() ? 1 : -1;
-            for (int s = 0; s < 5; s++) {
-                if (x >= 0 && x < TILE && y >= 0 && y < TILE) {
-                    px(t, x, y, rgb(95, 95, 100));
-                }
-                if (cr.nextInt(2) == 0) y++;
-                x += dx;
-            }
-        }
-    }
-
-    /** Sand — warm tan with subtle horizontal wave ripples and a few darker grains. */
-    private static void drawSand(BufferedImage t) {
-        Random r = new Random(55);
-        for (int y = 0; y < TILE; y++) {
-            // subtle horizontal ripple: every few rows brighter, others slightly darker
-            int rowOffset = (int) (Math.sin(y * 0.85) * 4);
-            for (int x = 0; x < TILE; x++) {
-                int rd = jitter(r, 218 + rowOffset, 10);
-                int g  = jitter(r, 198 + rowOffset, 10);
-                int b  = jitter(r, 140, 8);
-                px(t, x, y, rgb(rd, g, b));
-            }
-        }
-        // a few darker grains for visual texture
-        Random gr = new Random(57);
-        for (int i = 0; i < 8; i++) {
-            int x = gr.nextInt(TILE), y = gr.nextInt(TILE);
-            px(t, x, y, rgb(185 + gr.nextInt(15), 165 + gr.nextInt(15), 115 + gr.nextInt(12)));
-        }
-    }
-
-    /** Wood log side — vertical bark grain with a knot and darker grain lines. */
-    private static void drawWoodSide(BufferedImage t) {
-        Random r = new Random(66);
-        // base brown
-        for (int y = 0; y < TILE; y++)
-            for (int x = 0; x < TILE; x++) {
-                int v = jitter(r, 118, 10);
-                px(t, x, y, rgb(v, (int) (v * 0.66), (int) (v * 0.38)));
-            }
-        // dark vertical grain lines at proportional positions across the tile
-        Random gn = new Random(67);
-        float[] grainFracs = { 0.06f, 0.25f, 0.44f, 0.69f, 0.81f };
-        for (float frac : grainFracs) {
-            int gx = (int) (frac * TILE);
-            for (int y = 0; y < TILE; y++) {
-                int v = 65 + gn.nextInt(15);
-                px(t, gx, y, rgb(v, (int) (v * 0.62), (int) (v * 0.34)));
-            }
-        }
-        // one knot (radius scales with tile size) at random position
-        Random kn = new Random(68);
-        int kr = Math.max(1, TILE / 10);
-        int kx = TILE / 3 + kn.nextInt(TILE / 3);
-        int ky = TILE / 4 + kn.nextInt(TILE / 2);
-        for (int dy = -kr; dy <= kr; dy++)
-            for (int dx = -kr; dx <= kr; dx++) {
-                if (dx * dx + dy * dy > kr * kr) continue;
-                int x = kx + dx, y = ky + dy;
-                if (x < 0 || x >= TILE || y < 0 || y >= TILE) continue;
-                int v = (dx == 0 && dy == 0) ? 45 : 70;
-                px(t, x, y, rgb(v, (int) (v * 0.55), (int) (v * 0.3)));
-            }
-    }
-
-    /** Wood log top — concentric tree rings with a darker core. */
-    private static void drawWoodTop(BufferedImage t) {
-        Random r = new Random(77);
-        double cx = TILE / 2.0 - 0.5, cy = TILE / 2.0 - 0.5;
-        for (int y = 0; y < TILE; y++)
-            for (int x = 0; x < TILE; x++) {
-                double d = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
-                // 3 rings: dark every 2.5 units of distance
-                double rd = d * 0.85;
-                int ringIdx = (int) rd;
-                boolean ring = (ringIdx % 3) == 0;
-                int base = ring ? 80 : 138;
-                int v = jitter(r, base, 8);
-                px(t, x, y, rgb(v, (int) (v * 0.68), (int) (v * 0.4)));
-            }
-        // central pith — single dark pixel cluster
-        px(t, (int) cx, (int) cy, rgb(48, 32, 18));
-        px(t, (int) cx + 1, (int) cy, rgb(55, 38, 22));
-        px(t, (int) cx, (int) cy + 1, rgb(55, 38, 22));
-    }
-
-    /** Leaves — varied greens with cutout holes and brighter highlights. */
-    private static void drawLeaves(BufferedImage t) {
-        Random r = new Random(88);
-        for (int y = 0; y < TILE; y++)
-            for (int x = 0; x < TILE; x++) {
-                // ~14% holes (alpha 0)
-                int alpha = r.nextInt(7) == 0 ? 0 : 255;
-                int rd = jitter(r, 50, 12);
-                int g  = jitter(r, 118, 22);
-                int b  = jitter(r, 42, 10);
-                px(t, x, y, (alpha << 24) | (rd << 16) | (g << 8) | b);
-            }
-        // brighter leaf highlights (clusters of 1-2 px)
-        Random hl = new Random(89);
-        for (int i = 0; i < 16; i++) {
-            int x = hl.nextInt(TILE), y = hl.nextInt(TILE);
-            int rd = 75 + hl.nextInt(20);
-            int g  = 155 + hl.nextInt(30);
-            int b  = 60 + hl.nextInt(15);
-            int prevArgb = t.getRGB(x, y);
-            if ((prevArgb >>> 24) == 0) continue; // don't paint holes
-            px(t, x, y, rgb(rd, g, b));
-        }
-        // a few darker shadow leaves
-        Random sh = new Random(90);
-        for (int i = 0; i < 10; i++) {
-            int x = sh.nextInt(TILE), y = sh.nextInt(TILE);
-            int prevArgb = t.getRGB(x, y);
-            if ((prevArgb >>> 24) == 0) continue;
-            px(t, x, y, rgb(30 + sh.nextInt(12), 75 + sh.nextInt(20), 28 + sh.nextInt(8)));
-        }
-    }
-
-    private static void drawWater(BufferedImage t) {
-        Random r = new Random(99);
-        for (int y = 0; y < TILE; y++)
-            for (int x = 0; x < TILE; x++) {
-                int argb = (200 << 24)
-                        | (jitter(r, 40, 10) << 16)
-                        | (jitter(r, 90, 15) << 8)
-                        | jitter(r, 200, 20);
-                px(t, x, y, argb);
-            }
-    }
-
-    /**
-     * One frame of the water-flow animation. The pattern is a set of bands
-     * along a diagonal axis that SHIFT across the tile each frame, so the
-     * loop reads as actual current/flow rather than a static ripple.
-     *
-     * Math: phase = frameIdx / WATER_FLOW_FRAMES * 2π. The main wave is
-     * sin(flow_coord * 2 bands per tile - phase) — subtracting phase means
-     * the wave peaks travel in the +flow direction. Two bands per tile
-     * means peaks shift by 8 pixels (one band-width) over the 16-frame loop,
-     * giving a continuous-looking flow.
-     */
-    private static void drawWaterFlowFrame(BufferedImage t, int frameIdx) {
-        Random noise = new Random(99);
-        double phase = (frameIdx / (double) WATER_FLOW_FRAMES) * Math.PI * 2.0;
-        double bandFreq = (2.0 * Math.PI) / TILE * 2.0; // 2 bands per tile
-        for (int y = 0; y < TILE; y++) {
-            for (int x = 0; x < TILE; x++) {
-                // Diagonal flow axis — mostly +Y with a slight +X tilt for visual interest
-                double flow = y * 0.92 + x * 0.18;
-                // Main travelling band — high amplitude
-                double main = Math.sin(flow * bandFreq - phase * 2.0);
-                // Higher-frequency secondary wave at a slightly different angle
-                double cross = (x * 0.18 - y * 0.92);
-                double detail = Math.sin(cross * bandFreq * 1.4 - phase * 1.0) * 0.45;
-                // Slow drift that breaks the regularity
-                double drift = Math.sin((x + y * 0.5) * 0.4 - phase * 0.6) * 0.25;
-
-                double sum = main + detail + drift;
-                // tanh sharpens the bands → more visible flow lines, less mushy
-                double shaped = Math.tanh(sum * 1.3);
-                double bright = 0.5 + 0.50 * shaped; // ~0..1
-
-                int rNoise = noise.nextInt(11) - 5;
-                int gNoise = noise.nextInt(11) - 5;
-                int bNoise = noise.nextInt(11) - 5;
-
-                // Wider range so dark bands sit much darker than bright crests
-                int red = clamp255((int) (25 + bright * 55) + rNoise);
-                int grn = clamp255((int) (60 + bright * 80) + gNoise);
-                int blu = clamp255((int) (150 + bright * 80) + bNoise);
-                int argb = (200 << 24) | (red << 16) | (grn << 8) | blu;
-                px(t, x, y, argb);
-            }
-        }
-    }
-
-    private static int clamp255(int v) { return Math.max(0, Math.min(255, v)); }
-
-    /** Bedrock — dark gray with high-contrast jagged rock fragments. */
-    private static void drawBedrock(BufferedImage t) {
-        Random r = new Random(111);
-        for (int y = 0; y < TILE; y++)
-            for (int x = 0; x < TILE; x++) {
-                int v = jitter(r, 55, 18);
-                px(t, x, y, rgb(v, v, v + 1));
-            }
-        // ~6 chunky lighter fragments (3-4 px clusters)
-        Random fg = new Random(113);
-        for (int i = 0; i < 6; i++) {
-            int x = fg.nextInt(TILE - 2), y = fg.nextInt(TILE - 2);
-            int v = 90 + fg.nextInt(20);
-            int w = 1 + fg.nextInt(2);
-            for (int dy = 0; dy <= w; dy++)
-                for (int dx = 0; dx <= w; dx++) {
-                    if (x + dx < TILE && y + dy < TILE && fg.nextInt(4) != 0)
-                        px(t, x + dx, y + dy, rgb(v + fg.nextInt(15), v + fg.nextInt(15), v + fg.nextInt(15)));
-                }
-        }
-        // ~4 very dark void specks
-        Random vd = new Random(115);
-        for (int i = 0; i < 5; i++) {
-            int x = vd.nextInt(TILE), y = vd.nextInt(TILE);
-            px(t, x, y, rgb(20, 20, 22));
-        }
-    }
-
-    /** Cobblestone — Voronoi-style rounded rocks separated by darker mortar joints. */
-    private static void drawCobble(BufferedImage t) {
-        Random r = new Random(122);
-        // place 7 seed points for Voronoi cells
-        int[][] seeds = new int[7][2];
-        for (int i = 0; i < seeds.length; i++) {
-            seeds[i][0] = r.nextInt(TILE);
-            seeds[i][1] = r.nextInt(TILE);
-        }
-        // per-rock base brightness (so rocks vary)
-        int[] rockShade = new int[seeds.length];
-        for (int i = 0; i < seeds.length; i++) rockShade[i] = 105 + r.nextInt(40);
-
-        for (int y = 0; y < TILE; y++)
-            for (int x = 0; x < TILE; x++) {
-                // find nearest and 2nd-nearest seed (joint = d2 - d1)
-                int n1 = 0;
-                double d1 = 1e9, d2 = 1e9;
-                for (int i = 0; i < seeds.length; i++) {
-                    int dx = x - seeds[i][0], dy = y - seeds[i][1];
-                    double d = Math.sqrt(dx * dx + dy * dy);
-                    if (d < d1) { d2 = d1; d1 = d; n1 = i; }
-                    else if (d < d2) { d2 = d; }
-                }
-                double joint = d2 - d1; // pixels near cell boundary have small value
-                int v;
-                if (joint < 0.85) {
-                    // mortar joint — dark
-                    v = 65 + r.nextInt(8);
-                } else {
-                    // inside rock
-                    int base = rockShade[n1];
-                    // edge-darken slightly for rounded look
-                    double edgeFade = Math.min(1.0, joint / 4.0);
-                    base = (int) (base - 15 + 15 * edgeFade);
-                    v = base + r.nextInt(10) - 5;
-                }
-                v = Math.max(50, Math.min(190, v));
-                px(t, x, y, rgb(v, v, v + 1));
-            }
-    }
-
-    /** Wood planks — 4 horizontal planks with grooves, vertical grain, and 2 knots. */
-    private static void drawPlanks(BufferedImage t) {
-        Random r = new Random(133);
-        // 4 planks regardless of TILE — groove on the last row of each plank.
-        int plankH = TILE / 4;
-        int grooveThickness = Math.max(1, TILE / 16);
-        for (int y = 0; y < TILE; y++) {
-            int rowInPlank = y % plankH;
-            boolean groove = rowInPlank >= (plankH - grooveThickness);
-            int plankIdx = y / plankH;
-            int tone = (plankIdx % 2 == 0) ? 158 : 148;
-            for (int x = 0; x < TILE; x++) {
-                int v;
-                if (groove) {
-                    v = jitter(r, 72, 6);
-                } else {
-                    int colMod = x % 3;
-                    int colShift = (colMod == 0) ? -10 : (colMod == 2 ? +4 : 0);
-                    v = jitter(r, tone + colShift, 7);
-                }
-                px(t, x, y, rgb(v, (int) (v * 0.74), (int) (v * 0.44)));
-            }
-        }
-        // 2 knots — scaled blob, not on groove rows
-        Random kn = new Random(134);
-        int kr = Math.max(1, TILE / 16);
-        for (int n = 0; n < 2; n++) {
-            int kx = TILE / 8 + kn.nextInt(TILE * 3 / 4);
-            int plankIdx = kn.nextInt(4);
-            int ky = plankIdx * plankH + plankH / 4 + kn.nextInt(plankH / 3 + 1);
-            for (int dy = -kr; dy <= kr; dy++)
-                for (int dx = -kr; dx <= kr; dx++) {
-                    if (dx * dx + dy * dy > kr * kr) continue;
-                    int x = kx + dx, y = ky + dy;
-                    if (x < 0 || x >= TILE || y < 0 || y >= TILE) continue;
-                    int v = (dx == 0 && dy == 0) ? 80 : 95;
-                    px(t, x, y, rgb(v, (int) (v * 0.7), (int) (v * 0.4)));
-                }
-        }
-    }
-
-    private static void drawParticle(BufferedImage t) {
-        // Soft white circle — tinted at runtime via uColor.rgb in the particle shader
-        float cx = TILE / 2f - 0.5f, cy = TILE / 2f - 0.5f, r = TILE / 2f - 0.5f;
-        for (int y = 0; y < TILE; y++)
-            for (int x = 0; x < TILE; x++) {
-                float d = (float) Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
-                int a = d >= r ? 0 : (int) (255 * Math.max(0f, 1f - d / r));
-                px(t, x, y, (a << 24) | 0xFFFFFF);
-            }
-    }
-
-    private static void drawTorch(BufferedImage t) {
-        // Transparent background — only stick and flame are opaque
-        for (int y = 0; y < TILE; y++)
-            for (int x = 0; x < TILE; x++)
-                px(t, x, y, 0x00000000);
-        // Stick: 2px wide centered column
-        int sx = TILE / 2 - 1;
-        for (int y = 4; y < TILE; y++) {
-            px(t, sx, y, 0xFF5A3A1C);
-            px(t, sx + 1, y, 0xFF482E16);
-        }
-        // Flame: 4-row gradient
-        int[] flame = { 0xFFFFE650, 0xFFFFB41E, 0xFFDC640A, 0xFFA03205 };
-        for (int row = 0; row < 4; row++)
-            for (int col = sx - 1; col <= sx + 2; col++)
-                if (col >= 0 && col < TILE)
-                    px(t, col, row, flame[row]);
-    }
-
-    private static void drawGlass(BufferedImage t) {
-        // Alpha=0 interior so the cutout shader (discard if alpha<0.1) makes glass see-through.
-        // Frame thickness scales with TILE so the look stays consistent at any resolution.
-        int border = 0xFF_B8D4E8;
-        int highlight = 0xFF_E0EEF5;
-        int frame = Math.max(1, TILE / 16);
-        for (int y = 0; y < TILE; y++)
-            for (int x = 0; x < TILE; x++) {
-                boolean edge = x < frame || x >= TILE - frame || y < frame || y >= TILE - frame;
-                px(t, x, y, edge ? border : 0x00000000);
-            }
-        // diagonal highlight streak across the upper-left corner
-        int streakLen = TILE / 3;
-        for (int i = 0; i < streakLen; i++) {
-            int xi = frame + i, yi = frame + i / 2;
-            if (xi < TILE && yi < TILE) px(t, xi, yi, highlight);
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Door — drawn as two stacked TILE×TILE halves that align seamlessly into
-    // one continuous 32×64 (or 64×128, etc.) image when the door is built in
-    // the world. All sizes are expressed in fractions of TILE so the art
-    // upscales cleanly when TILE is bumped.
-    //
-    // Texture V grows downward in the BufferedImage, which corresponds to
-    // DOWNWARD in world space (the mesher maps lower world-Y to higher V).
-    // So inside this function, y=0 is the TOP of the rendered tile in-world.
-    //  - Bottom half: y=0 = mid-rail seam, y=TILE-1 = floor edge.
-    //  - Top half:    y=0 = sky edge,      y=TILE-1 = mid-rail seam.
-    // -------------------------------------------------------------------------
-    private static void drawDoorPanel(BufferedImage t, boolean isBottomHalf) {
-        // Palette
-        int frame      = rgb(72, 48, 22);
-        int frameDark  = rgb(45, 28, 12);
-        int shadow     = rgb(85, 58, 28);
-        int light      = rgb(195, 148, 88);
-        int grooveDark = rgb(80, 52, 26);
-        int iron       = rgb(85, 85, 92);
-        int ironDark   = rgb(50, 50, 56);
-        int ironLight  = rgb(125, 125, 135);
-        int gold       = rgb(220, 175, 50);
-        int goldDark   = rgb(170, 130, 30);
-        int goldLight  = rgb(245, 210, 85);
-
-        Random rd = new Random(isBottomHalf ? 201 : 202);
-
-        // ---- 1. wood plank grain background ----
-        // Vertical "planks" — 4 planks across the tile, with subtle tone variation per plank.
-        int plankW = Math.max(2, TILE / 4);
-        for (int y = 0; y < TILE; y++)
-            for (int x = 0; x < TILE; x++) {
-                int plankIdx = x / plankW;
-                int tone = (plankIdx % 2 == 0) ? 152 : 142;
-                // vertical grain — every 3rd pixel slightly darker
-                int colShift = (x % 3 == 0) ? -8 : (x % 3 == 1 ? 0 : 4);
-                int v = jitter(rd, tone + colShift, 6);
-                px(t, x, y, rgb(v, (int) (v * 0.72), (int) (v * 0.42)));
-            }
-        // Grooves between vertical planks
-        for (int gx = plankW; gx < TILE; gx += plankW) {
-            for (int y = 0; y < TILE; y++) px(t, gx, y, grooveDark);
-        }
-
-        // ---- 2. frame ----
-        int frameT = Math.max(2, TILE / 16);     // outer frame thickness
-        int railT  = Math.max(2, TILE / 10);     // mid-rail thickness (slightly thicker)
-
-        // Left + right sides (full height)
-        for (int y = 0; y < TILE; y++)
-            for (int dx = 0; dx < frameT; dx++) {
-                px(t, dx, y, frame);
-                px(t, TILE - 1 - dx, y, frame);
-                // dark accent on the very outside pixel
-                if (dx == 0) {
-                    px(t, dx, y, frameDark);
-                    px(t, TILE - 1 - dx, y, frameDark);
-                }
-            }
-
-        // Outer top/bottom edge + inner mid-rail edge
-        if (isBottomHalf) {
-            // Outer bottom (floor)
-            for (int x = 0; x < TILE; x++)
-                for (int dy = 0; dy < frameT; dy++) {
-                    int yy = TILE - 1 - dy;
-                    px(t, x, yy, (dy == 0) ? frameDark : frame);
-                }
-            // Mid-rail at top (joins top tile)
-            for (int x = 0; x < TILE; x++)
-                for (int dy = 0; dy < railT; dy++) {
-                    px(t, x, dy, frame);
-                }
-            // subtle bottom-edge highlight on the rail
-            for (int x = frameT; x < TILE - frameT; x++) px(t, x, railT, light);
-        } else {
-            // Outer top
-            for (int x = 0; x < TILE; x++)
-                for (int dy = 0; dy < frameT; dy++) {
-                    px(t, x, dy, (dy == 0) ? frameDark : frame);
-                }
-            // Mid-rail at bottom
-            for (int x = 0; x < TILE; x++)
-                for (int dy = 0; dy < railT; dy++) {
-                    int yy = TILE - 1 - dy;
-                    px(t, x, yy, frame);
-                }
-            // subtle top-edge highlight on the rail
-            for (int x = frameT; x < TILE - frameT; x++) px(t, x, TILE - 1 - railT, light);
-        }
-
-        // ---- 3. recessed panel inset ----
-        // Big rectangle in the middle showing depth (shadow on top+left, light on bottom+right).
-        int margin = frameT + Math.max(1, TILE / 16);
-        int y0 = (isBottomHalf ? railT  : frameT) + Math.max(1, TILE / 16);
-        int y1 = (isBottomHalf ? frameT : railT)  + Math.max(1, TILE / 16);
-        int innerY0 = y0;
-        int innerY1 = TILE - 1 - y1;
-        int innerX0 = margin;
-        int innerX1 = TILE - 1 - margin;
-
-        if (innerY1 - innerY0 >= 4 && innerX1 - innerX0 >= 4) {
-            // Shadow: top + left
-            for (int x = innerX0; x <= innerX1; x++) px(t, x, innerY0, shadow);
-            for (int y = innerY0; y <= innerY1; y++) px(t, innerX0, y, shadow);
-            // Highlight: bottom + right
-            for (int x = innerX0 + 1; x <= innerX1; x++) px(t, x, innerY1, light);
-            for (int y = innerY0 + 1; y <= innerY1; y++) px(t, innerX1, y, light);
-        }
-
-        // ---- 4. iron hinge on the LEFT side ----
-        // One hinge per tile; place it close to the outer edge of the half.
-        int hingeW = Math.max(2, TILE / 8);
-        int hingeH = Math.max(3, TILE / 5);
-        int hingeY = isBottomHalf
-                ? TILE - hingeH - Math.max(2, TILE / 6)   // near the bottom in bottom-half
-                : Math.max(2, TILE / 6);                  // near the top in top-half
-        drawHinge(t, 0, hingeY, hingeW, hingeH, iron, ironDark, ironLight);
-
-        // ---- 5. handle (bottom half only) ----
-        if (isBottomHalf) {
-            int kr = Math.max(1, TILE / 12);             // knob radius
-            int hx = TILE - frameT - 1 - kr - Math.max(1, TILE / 24);
-            int hy = TILE / 2 - kr / 2;
-            // round knob with lit upper-left / shadowed lower-right
-            for (int dy = -kr; dy <= kr; dy++)
-                for (int dx = -kr; dx <= kr; dx++) {
-                    if (dx * dx + dy * dy > kr * kr) continue;
-                    int xx = hx + dx, yy = hy + dy;
-                    if (xx < 0 || xx >= TILE || yy < 0 || yy >= TILE) continue;
-                    int color;
-                    if (dx + dy <= -kr / 2)      color = goldLight;
-                    else if (dx + dy >= kr / 2)  color = goldDark;
-                    else                          color = gold;
-                    px(t, xx, yy, color);
-                }
-            // small stem connecting knob to door surface
-            int stemY0 = hy + kr;
-            int stemY1 = Math.min(TILE - 1, hy + kr + Math.max(1, TILE / 16));
-            for (int yy = stemY0; yy <= stemY1; yy++) {
-                if (hx >= 0 && hx < TILE) px(t, hx, yy, goldDark);
-            }
-        }
-    }
-
-    /** Iron hinge: rectangular plate with bevel (light edges right+top, dark left+bottom). */
-    private static void drawHinge(BufferedImage t, int x, int y, int w, int h,
-                                  int base, int dark, int light) {
-        for (int dy = 0; dy < h; dy++)
-            for (int dx = 0; dx < w; dx++) {
-                int xx = x + dx, yy = y + dy;
-                if (xx < 0 || xx >= TILE || yy < 0 || yy >= TILE) continue;
-                int color;
-                if (dy == 0 || dx == w - 1) color = light;
-                else if (dy == h - 1 || dx == 0) color = dark;
-                else color = base;
-                px(t, xx, yy, color);
-            }
-        // two visible rivets (top + bottom of the plate)
-        int rivetX = x + w / 2;
-        int rTop   = y + 1;
-        int rBot   = y + h - 2;
-        if (rivetX < TILE) {
-            if (rTop >= 0 && rTop < TILE) px(t, rivetX, rTop, dark);
-            if (rBot >= 0 && rBot < TILE) px(t, rivetX, rBot, dark);
-        }
-    }
-
-    /** Tile 15 — bottom half of door. */
-    private static void drawDoorBottom(BufferedImage t) {
-        drawDoorPanel(t, true);
-    }
-
-    /** Tile 16 — top half of door. */
-    private static void drawDoorTop(BufferedImage t) {
-        drawDoorPanel(t, false);
     }
 }

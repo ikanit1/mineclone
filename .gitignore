@@ -1,0 +1,3 @@
+# Packed atlas is a write-only debug dump assembled at runtime from
+# assets/textures/blocks/*.png — never read back, no need to version it.
+assets/atlas.png
