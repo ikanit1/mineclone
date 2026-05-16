@@ -331,8 +331,15 @@ public class Game {
                 if (target != BlockType.BEDROCK) {
                     byte targetMeta = world.getBlockMeta(lastHit.x, lastHit.y, lastHit.z);
                     sound.playOneOf(sounds.dig(target), 0.8f, 0.9f + 0.2f * (float) Math.random());
-                    particles.emitBlockBreak(lastHit.x, lastHit.y, lastHit.z, target.particleColor, target.sideTile);
                     world.setBlock(lastHit.x, lastHit.y, lastHit.z, BlockType.AIR);
+                    // Sample light in the now-air cell so debris is shaded
+                    // like the surrounding world, not statically bright.
+                    float pSky = world.getSkyLight(lastHit.x, lastHit.y, lastHit.z)
+                            / (float) Chunk.MAX_LIGHT;
+                    float pBlk = world.getBlockLightWorld(lastHit.x, lastHit.y, lastHit.z)
+                            / (float) Chunk.MAX_LIGHT;
+                    particles.emitBlockBreak(lastHit.x, lastHit.y, lastHit.z,
+                            target.particleColor, target.sideTile, pSky, pBlk);
                     // Remove the other half of a 2-block door
                     if (target == BlockType.DOOR_CLOSED || target == BlockType.DOOR_OPEN) {
                         int otherY = ((targetMeta & 0x4) != 0) ? lastHit.y - 1 : lastHit.y + 1;
@@ -628,7 +635,8 @@ public class Game {
 
         Vector3f camRight = player.camera.right();
         Vector3f camUp = new Vector3f(camRight).cross(player.camera.forward()).normalize();
-        particles.render(proj, view, camRight, camUp, atlas);
+        particles.render(proj, view, camRight, camUp, atlas,
+                daylight, 0.04f + 0.18f * daylight, brightness);
 
         drawUi();
     }

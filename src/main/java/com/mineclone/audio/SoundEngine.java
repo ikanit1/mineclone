@@ -28,6 +28,9 @@ public class SoundEngine {
     private final Map<String, Integer> buffers = new HashMap<>();
     private final List<Integer> activeSources = new ArrayList<>();
     private final Random rng = new Random();
+    private float masterVolume = 1.0f;
+
+    public void setMasterVolume(float v) { masterVolume = Math.max(0f, Math.min(1f, v)); }
 
     public void init() {
         try {
@@ -83,7 +86,7 @@ public class SoundEngine {
         if (buffer == -1) return;
         int src = AL10.alGenSources();
         AL10.alSourcei(src, AL10.AL_BUFFER, buffer);
-        AL10.alSourcef(src, AL10.AL_GAIN, volume);
+        AL10.alSourcef(src, AL10.AL_GAIN, volume * masterVolume);
         AL10.alSourcef(src, AL10.AL_PITCH, pitch);
         AL10.alSourcePlay(src);
         activeSources.add(src);

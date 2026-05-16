@@ -11,9 +11,10 @@ public class Input {
     private boolean[] mousePrev = new boolean[8];
     private boolean[] mouseCur  = new boolean[8];
 
-    private double scrollAccum;   // written by GLFW callback thread-of-poll
+    private double scrollAccum;
     private double scrollThisFrame;
     private boolean cursorGrabbed = true;
+    private final StringBuilder charBuffer = new StringBuilder();
 
     public Input(long window) {
         this.window = window;
@@ -22,6 +23,14 @@ public class Input {
             glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
         }
         glfwSetScrollCallback(window, (win, xoff, yoff) -> scrollAccum += yoff);
+        glfwSetCharCallback(window, (win, codepoint) -> charBuffer.append((char) codepoint));
+    }
+
+    /** Returns and clears all characters typed this frame. */
+    public String pollChars() {
+        String s = charBuffer.toString();
+        charBuffer.setLength(0);
+        return s;
     }
 
     public void update() {

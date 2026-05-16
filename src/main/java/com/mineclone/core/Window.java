@@ -16,6 +16,8 @@ public class Window {
     private int width, height;
     private long handle;
     private boolean resized;
+    private boolean fullscreen;
+    private int windowedX, windowedY, windowedW, windowedH;
 
     public Window(String title, int width, int height) {
         this.title = title;
@@ -72,6 +74,26 @@ public class Window {
     public float getAspect() { return (float) width / Math.max(1, height); }
     public boolean isResized() { return resized; }
     public void setResized(boolean r) { resized = r; }
+
+    public void toggleFullscreen() {
+        long monitor = glfwGetPrimaryMonitor();
+        GLFWVidMode vid = glfwGetVideoMode(monitor);
+        if (vid == null) return;
+        if (!fullscreen) {
+            try (var stack = stackPush()) {
+                IntBuffer wx = stack.mallocInt(1), wy = stack.mallocInt(1);
+                glfwGetWindowPos(handle, wx, wy);
+                windowedX = wx.get(0);
+                windowedY = wy.get(0);
+            }
+            windowedW = width;
+            windowedH = height;
+            glfwSetWindowMonitor(handle, monitor, 0, 0, vid.width(), vid.height(), vid.refreshRate());
+        } else {
+            glfwSetWindowMonitor(handle, 0L, windowedX, windowedY, windowedW, windowedH, 0);
+        }
+        fullscreen = !fullscreen;
+    }
 
     public void destroy() {
         if (handle != 0L) {

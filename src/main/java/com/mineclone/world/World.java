@@ -33,13 +33,16 @@ public class World {
         return chunks.get(key(cx, cz));
     }
 
-    public Iterable<Chunk> getLoadedChunks() { return chunks.values(); }
+    public Iterable<Chunk> getLoadedChunks() {
+        return chunks.values();
+    }
 
     private Chunk generate(int cx, int cz) {
         Chunk c = new Chunk(cx, cz);
         int[][] heights = new int[Chunk.SIZE_X][Chunk.SIZE_Z];
 
-        // Pass 1: terrain only — no trees yet so leaves are never overwritten by later columns.
+        // Pass 1: terrain only — no trees yet so leaves are never overwritten by later
+        // columns.
         for (int x = 0; x < Chunk.SIZE_X; x++) {
             for (int z = 0; z < Chunk.SIZE_Z; z++) {
                 int wx = cx * Chunk.SIZE_X + x;
@@ -53,15 +56,21 @@ public class World {
 
                 for (int y = 0; y < Chunk.SIZE_Y; y++) {
                     BlockType t;
-                    if (y == 0) t = BlockType.BEDROCK;
-                    else if (y < height - 4) t = BlockType.STONE;
-                    else if (y < height) t = (height <= SEA_LEVEL + 1) ? BlockType.SAND : BlockType.DIRT;
+                    if (y == 0)
+                        t = BlockType.BEDROCK;
+                    else if (y < height - 4)
+                        t = BlockType.STONE;
+                    else if (y < height)
+                        t = (height <= SEA_LEVEL + 1) ? BlockType.SAND : BlockType.DIRT;
                     else if (y == height) {
-                        if (height <= SEA_LEVEL + 1) t = BlockType.SAND;
-                        else t = BlockType.GRASS;
-                    }
-                    else if (y <= SEA_LEVEL) t = BlockType.WATER;
-                    else t = BlockType.AIR;
+                        if (height <= SEA_LEVEL + 1)
+                            t = BlockType.SAND;
+                        else
+                            t = BlockType.GRASS;
+                    } else if (y <= SEA_LEVEL)
+                        t = BlockType.WATER;
+                    else
+                        t = BlockType.AIR;
                     c.set(x, y, z, t);
                 }
             }
@@ -71,15 +80,19 @@ public class World {
         for (int x = 0; x < Chunk.SIZE_X; x++) {
             for (int z = 0; z < Chunk.SIZE_Z; z++) {
                 int height = heights[x][z];
-                if (c.get(x, height, z) != BlockType.GRASS) continue;
+                if (c.get(x, height, z) != BlockType.GRASS)
+                    continue;
                 int wx = cx * Chunk.SIZE_X + x;
                 int wz = cz * Chunk.SIZE_Z + z;
                 long h = mix(wx, wz, seed);
-                if ((h & 0x7F) >= 2 || x < 2 || x >= Chunk.SIZE_X - 2 || z < 2 || z >= Chunk.SIZE_Z - 2) continue;
+                if ((h & 0x7F) >= 2 || x < 2 || x >= Chunk.SIZE_X - 2 || z < 2 || z >= Chunk.SIZE_Z - 2)
+                    continue;
                 int th = 4 + (int) ((h >>> 7) & 0x3);
                 int top = height + th;
-                if (top + 2 >= Chunk.SIZE_Y) continue;
-                for (int i = 1; i <= th; i++) c.set(x, height + i, z, BlockType.WOOD);
+                if (top + 2 >= Chunk.SIZE_Y)
+                    continue;
+                for (int i = 1; i <= th; i++)
+                    c.set(x, height + i, z, BlockType.WOOD);
                 for (int dx = -2; dx <= 2; dx++)
                     for (int dz = -2; dz <= 2; dz++)
                         for (int dy = 0; dy <= 2; dy++) {
@@ -100,56 +113,69 @@ public class World {
     }
 
     public int getSkyLight(int wx, int wy, int wz) {
-        if (wy < 0) return 0;
-        if (wy >= Chunk.SIZE_Y) return Chunk.MAX_LIGHT;
+        if (wy < 0)
+            return 0;
+        if (wy >= Chunk.SIZE_Y)
+            return Chunk.MAX_LIGHT;
         int cx = Math.floorDiv(wx, Chunk.SIZE_X);
         int cz = Math.floorDiv(wz, Chunk.SIZE_Z);
         Chunk c = getChunkIfExists(cx, cz);
-        if (c == null) return Chunk.MAX_LIGHT; // assume sky-lit for not-yet-loaded chunks
+        if (c == null)
+            return Chunk.MAX_LIGHT; // assume sky-lit for not-yet-loaded chunks
         int lx = Math.floorMod(wx, Chunk.SIZE_X);
         int lz = Math.floorMod(wz, Chunk.SIZE_Z);
         return c.getSkyLight(lx, wy, lz);
     }
 
     public int getBlockLightWorld(int wx, int wy, int wz) {
-        if (wy < 0 || wy >= Chunk.SIZE_Y) return 0;
+        if (wy < 0 || wy >= Chunk.SIZE_Y)
+            return 0;
         int cx = Math.floorDiv(wx, Chunk.SIZE_X);
         int cz = Math.floorDiv(wz, Chunk.SIZE_Z);
         Chunk c = getChunkIfExists(cx, cz);
-        if (c == null) return 0;
+        if (c == null)
+            return 0;
         return c.getBlockLight(Math.floorMod(wx, Chunk.SIZE_X), wy, Math.floorMod(wz, Chunk.SIZE_Z));
     }
 
     private void setBlockLightWorld(int wx, int wy, int wz, int val) {
-        if (wy < 0 || wy >= Chunk.SIZE_Y) return;
+        if (wy < 0 || wy >= Chunk.SIZE_Y)
+            return;
         int cx = Math.floorDiv(wx, Chunk.SIZE_X);
         int cz = Math.floorDiv(wz, Chunk.SIZE_Z);
         Chunk c = getChunkIfExists(cx, cz);
-        if (c == null) return;
+        if (c == null)
+            return;
         c.setBlockLight(Math.floorMod(wx, Chunk.SIZE_X), wy, Math.floorMod(wz, Chunk.SIZE_Z), val);
         c.dirty = true;
     }
 
     public void floodFillAdd(int wx, int wy, int wz) {
         int emitted = getBlock(wx, wy, wz).emittedLight;
-        if (emitted <= 0) return;
+        if (emitted <= 0)
+            return;
         setBlockLightWorld(wx, wy, wz, emitted);
 
-        int[][] dirs = {{1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1}};
+        int[][] dirs = { { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 }, { 0, -1, 0 }, { 0, 0, 1 }, { 0, 0, -1 } };
         Queue<int[]> queue = new ArrayDeque<>();
         if (emitted > 1)
-            for (int[] d : dirs) queue.add(new int[]{wx+d[0], wy+d[1], wz+d[2], emitted-1});
+            for (int[] d : dirs)
+                queue.add(new int[] { wx + d[0], wy + d[1], wz + d[2], emitted - 1 });
 
         while (!queue.isEmpty()) {
             int[] cur = queue.poll();
             int x = cur[0], y = cur[1], z = cur[2], val = cur[3];
-            if (y < 0 || y >= Chunk.SIZE_Y) continue;
+            if (y < 0 || y >= Chunk.SIZE_Y)
+                continue;
             BlockType bt = getBlock(x, y, z);
-            if (bt.solid && !bt.transparent && !bt.cutout) continue;
-            if (getBlockLightWorld(x, y, z) >= val) continue;
+            if (bt.solid && !bt.transparent && !bt.cutout)
+                continue;
+            if (getBlockLightWorld(x, y, z) >= val)
+                continue;
             setBlockLightWorld(x, y, z, val);
             if (val > 1)
-                for (int[] d : dirs) queue.add(new int[]{x+d[0], y+d[1], z+d[2], val-1});
+                for (int[] d : dirs)
+                    queue.add(new int[] { x + d[0], y + d[1], z + d[2], val - 1 });
         }
     }
 
@@ -159,38 +185,45 @@ public class World {
         for (int x = wx - R; x <= wx + R; x++) {
             for (int y = Math.max(0, wy - R); y <= Math.min(Chunk.SIZE_Y - 1, wy + R); y++) {
                 for (int z = wz - R; z <= wz + R; z++) {
-                    if (getBlockLightWorld(x, y, z) > 0) setBlockLightWorld(x, y, z, 0);
+                    if (getBlockLightWorld(x, y, z) > 0)
+                        setBlockLightWorld(x, y, z, 0);
                     BlockType bt = getBlock(x, y, z);
                     if (bt.emittedLight > 0 && !(x == wx && y == wy && z == wz))
-                        sources.add(new int[]{x, y, z});
+                        sources.add(new int[] { x, y, z });
                 }
             }
         }
-        for (int[] src : sources) floodFillAdd(src[0], src[1], src[2]);
+        for (int[] src : sources)
+            floodFillAdd(src[0], src[1], src[2]);
     }
 
     private static long mix(int a, int b, long seed) {
         long h = seed ^ (a * 0x9E3779B97F4A7C15L) ^ (b * 0xBF58476D1CE4E5B9L);
-        h ^= h >>> 30; h *= 0xBF58476D1CE4E5B9L;
-        h ^= h >>> 27; h *= 0x94D049BB133111EBL;
+        h ^= h >>> 30;
+        h *= 0xBF58476D1CE4E5B9L;
+        h ^= h >>> 27;
+        h *= 0x94D049BB133111EBL;
         h ^= h >>> 31;
         return h;
     }
 
     // ---- world-space accessors ----
     public BlockType getBlock(int wx, int wy, int wz) {
-        if (wy < 0 || wy >= Chunk.SIZE_Y) return BlockType.AIR;
+        if (wy < 0 || wy >= Chunk.SIZE_Y)
+            return BlockType.AIR;
         int cx = Math.floorDiv(wx, Chunk.SIZE_X);
         int cz = Math.floorDiv(wz, Chunk.SIZE_Z);
         Chunk c = getChunkIfExists(cx, cz);
-        if (c == null) return BlockType.AIR;
+        if (c == null)
+            return BlockType.AIR;
         int lx = Math.floorMod(wx, Chunk.SIZE_X);
         int lz = Math.floorMod(wz, Chunk.SIZE_Z);
         return c.get(lx, wy, lz);
     }
 
     public void setBlock(int wx, int wy, int wz, BlockType t) {
-        if (wy < 0 || wy >= Chunk.SIZE_Y) return;
+        if (wy < 0 || wy >= Chunk.SIZE_Y)
+            return;
         int cx = Math.floorDiv(wx, Chunk.SIZE_X);
         int cz = Math.floorDiv(wz, Chunk.SIZE_Z);
         Chunk c = getChunk(cx, cz);
@@ -200,14 +233,49 @@ public class World {
         c.set(lx, wy, lz, t);
         c.computeSkyLight();
         // mark neighbors dirty if on edge so their borders update
-        if (lx == 0)  remeshNeighbour(cx - 1, cz);
-        if (lx == Chunk.SIZE_X - 1) remeshNeighbour(cx + 1, cz);
-        if (lz == 0)  remeshNeighbour(cx, cz - 1);
-        if (lz == Chunk.SIZE_Z - 1) remeshNeighbour(cx, cz + 1);
+        if (lx == 0)
+            remeshNeighbour(cx - 1, cz);
+        if (lx == Chunk.SIZE_X - 1)
+            remeshNeighbour(cx + 1, cz);
+        if (lz == 0)
+            remeshNeighbour(cx, cz - 1);
+        if (lz == Chunk.SIZE_Z - 1)
+            remeshNeighbour(cx, cz + 1);
         // Block must be committed (c.set called above) before flood fill —
         // floodFillAdd reads the new block's emittedLight via getBlock().
-        if (old.emittedLight > 0) floodFillRemove(wx, wy, wz);
-        if (t.emittedLight > 0)   floodFillAdd(wx, wy, wz);
+        //
+        // Re-propagate whenever:
+        // • a light source is removed/changed (old had emittedLight)
+        // • a block's opacity flipped (solid placed/removed in a lit region)
+        boolean wasOpaque = old != BlockType.AIR && !old.transparent && !old.cutout;
+        boolean isOpaque = t != BlockType.AIR && !t.transparent && !t.cutout;
+        if (old.emittedLight > 0 || wasOpaque != isOpaque)
+            floodFillRemove(wx, wy, wz);
+        if (t.emittedLight > 0)
+            floodFillAdd(wx, wy, wz);
+    }
+
+    public byte getBlockMeta(int wx, int wy, int wz) {
+        if (wy < 0 || wy >= Chunk.SIZE_Y)
+            return 0;
+        int cx = Math.floorDiv(wx, Chunk.SIZE_X);
+        int cz = Math.floorDiv(wz, Chunk.SIZE_Z);
+        Chunk c = getChunkIfExists(cx, cz);
+        if (c == null)
+            return 0;
+        return c.getMeta(Math.floorMod(wx, Chunk.SIZE_X), wy, Math.floorMod(wz, Chunk.SIZE_Z));
+    }
+
+    public void setBlock(int wx, int wy, int wz, BlockType t, byte meta) {
+        setBlock(wx, wy, wz, t);
+        if (wy < 0 || wy >= Chunk.SIZE_Y)
+            return;
+        int cx = Math.floorDiv(wx, Chunk.SIZE_X);
+        int cz = Math.floorDiv(wz, Chunk.SIZE_Z);
+        Chunk c = getChunkIfExists(cx, cz);
+        if (c == null)
+            return;
+        c.setMeta(Math.floorMod(wx, Chunk.SIZE_X), wy, Math.floorMod(wz, Chunk.SIZE_Z), meta);
     }
 
     private void remeshNeighbour(int cx, int cz) {

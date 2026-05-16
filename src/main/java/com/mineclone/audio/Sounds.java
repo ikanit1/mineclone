@@ -14,25 +14,40 @@ import java.util.Map;
 /** Maps BlockType -> material -> list of file paths under assets/sounds. */
 public final class Sounds {
 
-    public enum Material { GRASS, STONE, SAND, WOOD, GRAVEL, NONE }
+    public enum Material {
+        GRASS, STONE, SAND, WOOD, GRAVEL, GLASS, NONE
+    }
 
     private static final String ROOT = "assets/sounds";
 
     private final Map<Material, List<String>> stepFiles = new EnumMap<>(Material.class);
-    private final Map<Material, List<String>> digFiles  = new EnumMap<>(Material.class);
+    private final Map<Material, List<String>> digFiles = new EnumMap<>(Material.class);
+
+    /** Stone samples reused for glass step/place (classic MC soundTypeGlass). */
+    private List<String> stoneStep = Collections.emptyList();
+    private List<String> stoneDig = Collections.emptyList();
 
     public Sounds() {
         for (Material m : Material.values()) {
-            if (m == Material.NONE) continue;
+            if (m == Material.NONE || m == Material.GLASS)
+                continue;
             stepFiles.put(m, listMatching(ROOT + "/step", m.name().toLowerCase(Locale.ROOT)));
-            digFiles.put(m,  listMatching(ROOT + "/dig",  m.name().toLowerCase(Locale.ROOT)));
+            digFiles.put(m, listMatching(ROOT + "/dig", m.name().toLowerCase(Locale.ROOT)));
         }
+        // Glass behaves like stone for stepping and placing; only the
+        // destruction is the shatter (random/glass1-3). Walking on glass or
+        // placing a pane must NOT shatter — that was the bug.
+        stoneStep = stepFiles.getOrDefault(Material.STONE, Collections.emptyList());
+        stoneDig = digFiles.getOrDefault(Material.STONE, Collections.emptyList());
+        stepFiles.put(Material.GLASS, stoneStep);
+        digFiles.put(Material.GLASS, listMatching(ROOT + "/random", "glass"));
     }
 
-    private static List<String> listMatching(String dir, String prefix) {
+    static List<String> listMatching(String dir, String prefix) {
         File d = new File(dir);
         File[] kids = d.listFiles();
-        if (kids == null) return Collections.emptyList();
+        if (kids == null)
+            return Collections.emptyList();
         List<String> out = new ArrayList<>();
         for (File f : kids) {
             String n = f.getName().toLowerCase(Locale.ROOT);
@@ -46,23 +61,45 @@ public final class Sounds {
     }
 
     public Material materialOf(BlockType b) {
-        if (b == null) return Material.NONE;
+        if (b == null)
+            return Material.NONE;
         return switch (b) {
             case GRASS, DIRT, LEAVES -> Material.GRASS;
             case STONE, COBBLE, BEDROCK -> Material.STONE;
             case SAND -> Material.SAND;
-            case WOOD, PLANKS -> Material.WOOD;
+            case WOOD, PLANKS, TORCH -> Material.WOOD;
+            case GLASS -> Material.GLASS;
+            case STAIRS, DOOR_CLOSED, DOOR_OPEN -> Material.WOOD;
             default -> Material.NONE;
         };
     }
 
-    public List<String> step(Material m) { return stepFiles.getOrDefault(m, Collections.emptyList()); }
-    public List<String> dig(Material m)  { return digFiles .getOrDefault(m, Collections.emptyList()); }
+    public List<String> step(Material m) {
+        return stepFiles.getOrDefault(m, Collections.emptyList());
+    }
 
-    /** Place sound: reuse the dig samples (matches Minecraft behaviour). */
-    public List<String> place(BlockType b) { return dig(materialOf(b)); }
-    public List<String> dig(BlockType b)   { return dig(materialOf(b)); }
-    public List<String> step(BlockType b)  { return step(materialOf(b)); }
+    public List<String> dig(Material m) {
+        return digFiles.getOrDefault(m, Collections.emptyList());
+    }
+
+    /**
+     * Place sound: reuse the dig samples (matches Minecraft behaviour), except
+     * glass — placing a pane is a soft stone-like clink, never the shatter
+     * that {@link #dig(BlockType)} returns for destroying it.
+     */
+    public List<String> place(BlockType b) {
+        if (materialOf(b) == Material.GLASS)
+            return stoneDig;
+        return dig(materialOf(b));
+    }
+
+    public List<String> dig(BlockType b) {
+        return dig(materialOf(b));
+    }
+
+    public List<String> step(BlockType b) {
+        return step(materialOf(b));
+    }
 
     /** Path to the generic break sound (when a block is destroyed). */
     public String breakRandom() {
@@ -76,5 +113,26 @@ public final class Sounds {
         return f.exists() ? List.of(f.getAbsolutePath()) : Collections.emptyList();
     }
 
-    public List<String> emptyList() { return Arrays.asList(); }
+    public List<String> emptyList() {
+        return Arrays.asList();
+    }
+
+    public List<String> waterSplash() {
+        return listMatching(ROOT + "/liquid", "splash");
+    }
+
+    public List<String> waterSwim() {
+        return listMatching(ROOT + "/liquid", "swim");
+    }
+
+    public List<String> doorToggle() {
+        List<String> out = new ArrayList<>();
+        File open = new File(ROOT + "/random/door_open.ogg");
+        File close = new File(ROOT + "/random/door_close.ogg");
+        if (open.exists())
+            out.add(open.getAbsolutePath());
+        if (close.exists())
+            out.add(close.getAbsolutePath());
+        return out;
+    }
 }

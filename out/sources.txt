@@ -16,6 +16,7 @@ E:\mineclone\src\main\java\com\mineclone\render\MeshData.java
 E:\mineclone\src\main\java\com\mineclone\render\ParticleSystem.java
 E:\mineclone\src\main\java\com\mineclone\render\Shader.java
 E:\mineclone\src\main\java\com\mineclone\render\Shaders.java
+E:\mineclone\src\main\java\com\mineclone\render\SkyRenderer.java
 E:\mineclone\src\main\java\com\mineclone\render\TextRenderer.java
 E:\mineclone\src\main\java\com\mineclone\render\TextureAtlas.java
 E:\mineclone\src\main\java\com\mineclone\render\UiRenderer.java
@@ -24,4 +25,5 @@ E:\mineclone\src\main\java\com\mineclone\world\Chunk.java
 E:\mineclone\src\main\java\com\mineclone\world\ChunkLoader.java
 E:\mineclone\src\main\java\com\mineclone\world\ChunkMesher.java
 E:\mineclone\src\main\java\com\mineclone\world\PerlinNoise.java
+E:\mineclone\src\main\java\com\mineclone\world\WaterSimulator.java
 E:\mineclone\src\main\java\com\mineclone\world\World.java

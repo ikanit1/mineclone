@@ -9,7 +9,9 @@ import org.joml.Vector3f;
 
 /** All 2D interface: F3 debug overlay, hotbar, pause menu, main menu. */
 public class Hud {
-    public enum MenuAction { NONE, START, RESUME, QUIT }
+    public enum MenuAction {
+        NONE, START, RESUME, QUIT, SETTINGS, SETTINGS_BACK
+    }
 
     private final Font font;
     private final TextRenderer text;
@@ -26,21 +28,65 @@ public class Hud {
     // ---------------- F3 debug overlay ----------------
 
     public void drawDebug(int screenW, int screenH, int fps, Vector3f pos,
-                          int chunkX, int chunkZ, int loadedChunks, int drawnChunks) {
+            int chunkX, int chunkZ, int loadedChunks, int drawnChunks,
+            BlockType target, byte targetMeta, boolean wireframe, int skyLight, int blockLight) {
         float lineH = font.getPixelHeight() + 2;
         float y = lineH;
+        long used = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024);
+        long total = Runtime.getRuntime().totalMemory() / (1024 * 1024);
+        String targetStr = target == null ? "—" : target.name() + "  meta=" + (targetMeta & 0xFF);
         String[] lines = {
-                "Mineclone  -  F3 debug",
+                "Mineclone  -  F3 debug  " + (wireframe ? "[WIREFRAME]" : ""),
                 "FPS: " + fps,
                 String.format("XYZ: %.2f / %.2f / %.2f", pos.x, pos.y, pos.z),
-                "Chunk: " + chunkX + " , " + chunkZ,
-                "Chunks loaded: " + loadedChunks,
-                "Chunks drawn: " + drawnChunks,
+                "Chunk: " + chunkX + " , " + chunkZ + "   Loaded: " + loadedChunks + "  Drawn: " + drawnChunks,
+                "Target: " + targetStr,
+                "Light  sky=" + skyLight + "  block=" + blockLight,
+                "Memory: " + used + " MB / " + total + " MB",
         };
         for (String s : lines) {
             text.drawShadowed(font, s, 8, y, screenW, screenH, 1f, 1f, 1f);
             y += lineH;
         }
+    }
+
+    // ---------------- Water overlay ----------------
+
+    public void drawWaterOverlay(int screenW, int screenH) {
+        ui.begin(screenW, screenH);
+        // Full-screen tint to mask x-ray through water geometry
+        ui.quad(0, 0, screenW, screenH, 0.04f, 0.14f, 0.55f, 0.62f);
+        // Slightly lighter center — gives subtle "underwater depth" feel
+        float cx = screenW * 0.2f, cy = screenH * 0.2f;
+        ui.quad(cx, cy, screenW - 2 * cx, screenH - 2 * cy, 0.08f, 0.22f, 0.65f, 0.12f);
+        ui.end();
+    }
+
+    // ---------------- Console bar ----------------
+
+    public void drawConsole(int screenW, int screenH, String input) {
+        float barH = font.getPixelHeight() + 12;
+        float y = screenH - barH;
+        ui.begin(screenW, screenH);
+        ui.quad(0, y, screenW, barH, 0f, 0f, 0f, 0.72f);
+        ui.end();
+        text.drawShadowed(font, "> " + input + "|", 8, y + 6, screenW, screenH, 1f, 1f, 0f);
+    }
+
+    // ---------------- version label ----------------
+
+    public void drawVersionLabel(int screenW, int screenH) {
+        String line1 = "In Development";
+        String line2 = "v0.01 alpha";
+        float padding = 8;
+        float lineH = font.getPixelHeight() + 2;
+
+        float w1 = font.textWidth(line1);
+        float w2 = font.textWidth(line2);
+
+        // top-right aligned
+        text.drawShadowed(font, line1, screenW - w1 - padding, lineH, screenW, screenH, 1f, 0.85f, 0.3f);
+        text.drawShadowed(font, line2, screenW - w2 - padding, lineH * 2, screenW, screenH, 0.8f, 0.8f, 0.8f);
     }
 
     // ---------------- hotbar ----------------
@@ -85,34 +131,155 @@ public class Hud {
 
     public MenuAction drawMainMenu(int screenW, int screenH, double mx, double my, boolean clicked) {
         return menu(screenW, screenH, "MINECLONE",
-                new String[]{"Start Game", "Quit"},
-                new MenuAction[]{MenuAction.START, MenuAction.QUIT},
+                new String[] { "Start Game", "Quit" },
+                new MenuAction[] { MenuAction.START, MenuAction.QUIT },
                 mx, my, clicked, false);
     }
 
     public MenuAction drawPauseMenu(int screenW, int screenH, double mx, double my, boolean clicked) {
         return menu(screenW, screenH, "PAUSED",
-                new String[]{"Back to Game", "Quit"},
-                new MenuAction[]{MenuAction.RESUME, MenuAction.QUIT},
+                new String[] { "Back to Game", "Settings", "Quit" },
+                new MenuAction[] { MenuAction.RESUME, MenuAction.SETTINGS, MenuAction.QUIT },
                 mx, my, clicked, true);
     }
 
+    // ---- Minecraft-style slider settings ----------------------------------------
+    // values[] layout: [0]=renderDist(2-16), [1]=fov(50-120),
+    // [2]=brightness(0-2), [3]=volume(0-1)
+
+    private static final float KNOB_W = 10f;
+    private static final float[] RANGE_MIN = { 2f, 50f, 0f, 0f };
+    private static final float[] RANGE_MAX = { 16f, 120f, 2f, 1f };
+
+    private int draggingSlider = -1;
+
+    /**
+     * @param mouseDown  LMB currently held (for dragging)
+     * @param mouseClick LMB just pressed this frame (for Done button)
+     * @param values     in/out: renderDist, fov, brightness, volume
+     */
+    public MenuAction drawSettings(int sw, int sh, double mx, double my,
+            boolean mouseDown, boolean mouseClick,
+            float[] values) {
+        float pw = 460f, ph = 360f;
+        float px = sw / 2f - pw / 2f, py = sh / 2f - ph / 2f;
+
+        float slW = pw - 60f; // slider track width
+        float slX = px + 30f;
+        float slH = 20f;
+        float rowStep = slH + 24f; // vertical gap between sliders
+        float sl0Y = py + 90f;
+
+        float[] slY = new float[4];
+        for (int i = 0; i < 4; i++)
+            slY[i] = sl0Y + i * rowStep;
+
+        // ── drag logic ────────────────────────────────────────────────────────
+        if (!mouseDown && draggingSlider >= 0)
+            draggingSlider = -1;
+        for (int i = 0; i < 4; i++) {
+            if (mouseDown && draggingSlider < 0 && hov(mx, my, slX, slY[i], slW, slH))
+                draggingSlider = i;
+            if (draggingSlider == i && mouseDown) {
+                float t = (float) Math.max(0.0, Math.min(1.0,
+                        (mx - slX - KNOB_W / 2f) / (slW - KNOB_W)));
+                values[i] = RANGE_MIN[i] + t * (RANGE_MAX[i] - RANGE_MIN[i]);
+            }
+        }
+
+        // ── Done button ───────────────────────────────────────────────────────
+        float bW = 200f, bH = 40f;
+        float bX = sw / 2f - bW / 2f, bY = py + ph - 52f;
+        boolean hBack = hov(mx, my, bX, bY, bW, bH);
+
+        // ── knob positions ────────────────────────────────────────────────────
+        float[] kx = new float[4];
+        for (int i = 0; i < 4; i++) {
+            float t = Math.max(0f, Math.min(1f,
+                    (values[i] - RANGE_MIN[i]) / (RANGE_MAX[i] - RANGE_MIN[i])));
+            kx[i] = slX + t * (slW - KNOB_W);
+        }
+
+        // ── render quads ──────────────────────────────────────────────────────
+        ui.begin(sw, sh);
+        ui.quad(0, 0, sw, sh, 0f, 0f, 0f, 0.60f); // dim
+        ui.quad(px, py, pw, ph, 0.11f, 0.11f, 0.14f, 0.96f); // panel
+
+        for (int i = 0; i < 4; i++) {
+            boolean active = draggingSlider == i;
+            boolean hover = hov(mx, my, slX, slY[i], slW, slH);
+
+            // Track — sunken dark groove
+            ui.quad(slX, slY[i], slW, slH, 0.19f, 0.19f, 0.19f, 1f);
+            ui.quad(slX, slY[i], slW, 1f, 0.10f, 0.10f, 0.10f, 1f); // top shadow
+            ui.quad(slX, slY[i] + slH - 1, slW, 1f, 0.35f, 0.35f, 0.35f, 1f); // bottom shine
+
+            // Knob — raised Minecraft button style
+            float kc = (active || hover) ? 0.78f : 0.67f;
+            ui.quad(kx[i], slY[i], KNOB_W, slH, kc, kc, kc, 1f);
+            ui.quad(kx[i], slY[i], KNOB_W, 2f, kc + 0.18f, kc + 0.18f, kc + 0.18f, 1f); // top shine
+            ui.quad(kx[i], slY[i] + slH - 2, KNOB_W, 2f, kc - 0.22f, kc - 0.22f, kc - 0.22f, 1f); // bottom shadow
+        }
+
+        // Done button
+        float bc = hBack ? 0.52f : 0.28f;
+        ui.quad(bX, bY, bW, bH, bc, bc, bc + 0.06f, 0.95f);
+        ui.quad(bX, bY, bW, 2, 1f, 1f, 1f, 0.22f);
+        ui.end();
+
+        // ── render text ───────────────────────────────────────────────────────
+        float lhOff = font.getPixelHeight() * 0.34f;
+
+        String titleStr = "Settings";
+        float titleW = font.textWidth(titleStr);
+        text.drawShadowed(font, titleStr, sw / 2f - titleW / 2f, py + 28f, sw, sh, 1f, 0.95f, 0.55f);
+
+        String[] labels = { "Render Distance", "FOV", "Brightness", "Sound Volume" };
+        String[] valStrs = {
+                String.valueOf(Math.round(values[0])),
+                Math.round(values[1]) + "°",
+                Math.round(values[2] * 100f) + "%",
+                Math.round(values[3] * 100f) + "%"
+        };
+        for (int i = 0; i < 4; i++) {
+            String s = labels[i] + ": " + valStrs[i];
+            float sW = font.textWidth(s);
+            text.drawShadowed(font, s, slX + (slW - sW) / 2f,
+                    slY[i] + slH / 2f + lhOff, sw, sh, 1f, 1f, 1f);
+        }
+
+        String doneStr = "Done";
+        float doneW = font.textWidth(doneStr);
+        text.drawShadowed(font, doneStr, sw / 2f - doneW / 2f,
+                bY + bH / 2f + lhOff, sw, sh, 1f, 1f, 1f);
+
+        if (mouseClick && hBack)
+            return MenuAction.SETTINGS_BACK;
+        return MenuAction.NONE;
+    }
+
+    private static boolean hov(double mx, double my, float x, float y, float w, float h) {
+        return mx >= x && mx <= x + w && my >= y && my <= y + h;
+    }
+
     private MenuAction menu(int w, int h, String title, String[] labels, MenuAction[] actions,
-                            double mx, double my, boolean clicked, boolean dimWorld) {
+            double mx, double my, boolean clicked, boolean dimWorld) {
         float bw = 300, bh = 50, gap = 16;
         float startY = h / 2f - (labels.length * (bh + gap)) / 2f + 20;
         MenuAction result = MenuAction.NONE;
         boolean[] hover = new boolean[labels.length];
 
         ui.begin(w, h);
-        if (dimWorld) ui.quad(0, 0, w, h, 0f, 0f, 0f, 0.6f);
+        if (dimWorld)
+            ui.quad(0, 0, w, h, 0f, 0f, 0f, 0.6f);
         for (int i = 0; i < labels.length; i++) {
             float x = w / 2f - bw / 2f, y = startY + i * (bh + gap);
             hover[i] = mx >= x && mx <= x + bw && my >= y && my <= y + bh;
             float c = hover[i] ? 0.52f : 0.28f;
             ui.quad(x, y, bw, bh, c, c, c + 0.06f, 0.95f);
             ui.quad(x, y, bw, 2, 1f, 1f, 1f, 0.25f);
-            if (hover[i] && clicked) result = actions[i];
+            if (hover[i] && clicked)
+                result = actions[i];
         }
         ui.end();
 
@@ -125,5 +292,74 @@ public class Hud {
                     y + bh / 2f + font.getPixelHeight() * 0.34f, w, h, 1f, 1f, 1f);
         }
         return result;
+    }
+
+    public BlockType drawCreativeMenu(int w, int h, double mx, double my, boolean clicked, BlockType[] hotbar,
+            int selectedSlot) {
+        BlockType[] all = BlockType.values();
+        int cols = 9;
+        int rows = (int) Math.ceil((double) all.length / cols);
+        float sw = 50f, gap = 8f;
+        float tw = cols * sw + (cols - 1) * gap;
+        float th = rows * sw + (rows - 1) * gap;
+        float startX = w / 2f - tw / 2f;
+        float startY = h / 2f - th / 2f;
+
+        ui.begin(w, h);
+        ui.quad(0, 0, w, h, 0f, 0f, 0f, 0.8f);
+
+        BlockType picked = null;
+        BlockType hovered = null;
+        float hx = 0, hy = 0, hw = 0;
+
+        for (int i = 0; i < all.length; i++) {
+            BlockType b = all[i];
+            int c = i % cols;
+            int r = i / cols;
+            float x = startX + c * (sw + gap);
+            float y = startY + r * (sw + gap);
+
+            boolean hov = hov(mx, my, x, y, sw, sw);
+            float bg = hov ? 0.4f : 0.25f;
+            ui.quad(x, y, sw, sw, bg, bg, bg, 1f);
+
+            float p = 6f; // padding inside slot
+            float[] uv = TextureAtlas.uv(b.sideTile);
+            ui.texQuad(x + p, y + p, sw - p * 2, sw - p * 2, atlas.getTextureId(),
+                    uv[0], uv[1], uv[2], uv[3], 1f, 1f, 1f, 1f);
+
+            if (hov) {
+                hovered = b;
+                hx = x;
+                hy = y;
+                hw = sw;
+                if (clicked) {
+                    picked = b;
+                }
+            }
+        }
+
+        // Selected hotbar indicator at the bottom to remind player which slot gets
+        // replaced
+        float stripW = 9 * (50f + 8f);
+        float stripX = w / 2f - stripW / 2f;
+        float stripY = h - 80f;
+        ui.quad(stripX, stripY, stripW, 60f, 0.1f, 0.1f, 0.1f, 0.6f);
+        ui.quad(stripX + selectedSlot * 58f, stripY, 58f, 60f, 0.4f, 0.8f, 0.2f, 0.6f);
+
+        ui.end();
+
+        // Draw tooltip
+        if (hovered != null) {
+            String name = hovered.name();
+            float twd = font.textWidth(name);
+            text.drawShadowed(font, name, hx + hw / 2f - twd / 2f, hy - 10f, w, h, 1f, 1f, 1f);
+        }
+
+        String title = "Creative Inventory (Press E or ESC to close)";
+        float titleW = font.textWidth(title);
+        text.drawShadowed(font, title, w / 2f - titleW / 2f, startY - 20f, w, h, 1f, 0.9f, 0.6f);
+
+        return picked;
     }
 }
