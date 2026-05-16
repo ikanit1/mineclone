@@ -138,6 +138,7 @@ public class Game {
         for (int dx = -1; dx <= 1; dx++)
             for (int dz = -1; dz <= 1; dz++)
                 loader.applySnapshot(world.getChunk(dx, dz));
+        loader.drainLightFlood(9);
 
         int sx = 8, sz = 8;
         for (int y = Chunk.SIZE_Y - 1; y > 0; y--) {
@@ -345,6 +346,7 @@ public class Game {
         int pcx = (int) Math.floor(player.position.x / Chunk.SIZE_X);
         int pcz = (int) Math.floor(player.position.z / Chunk.SIZE_Z);
         loader.ensureRadius(pcx, pcz, renderRadius + 1);
+        loader.drainLightFlood(2);
         for (ChunkLoader.Ready r : loader.drainReady(3)) {
             Mesh old = chunkMeshes.remove(r.key);
             if (old != null) old.destroy();

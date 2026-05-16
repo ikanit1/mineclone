@@ -39,6 +39,14 @@ public class ChunkLoader {
     /** Chunks for which a mesh upload has been produced (queued or applied). */
     private final Set<Long> meshed      = ConcurrentHashMap.newKeySet();
     private final ConcurrentLinkedQueue<Ready> ready = new ConcurrentLinkedQueue<>();
+    /**
+     * Chunks restored from disk that need their block-light re-flooded from
+     * any emitters they contain. blockLight is written only on the main
+     * thread (per Chunk's concurrency contract), so applySnapshot — which
+     * may run on the gen pool — defers the flood here. Game drains this on
+     * the main thread per frame via {@link #drainLightFlood(int)}.
+     */
+    private final ConcurrentLinkedQueue<Long> pendingLightFlood = new ConcurrentLinkedQueue<>();
 
     public ChunkLoader(World world, ChunkMesher mesher,
                        com.mineclone.save.SaveManager save, String worldId) {
@@ -86,6 +94,38 @@ public class ChunkLoader {
             c.computeSkyLight();
             c.dirty = true;
             c.modified = false;
+            pendingLightFlood.offer(World.key(c.cx, c.cz));
+        }
+    }
+
+    /**
+     * Drain restored chunks needing block-light emitter flood. MUST be called
+     * from the main thread (Chunk.blockLight is single-writer per the engine's
+     * concurrency contract). For each queued chunk, scans every cell and
+     * floods light from any block with {@code emittedLight > 0} via
+     * {@link World#floodFillAdd}. Bounded by {@code maxPerFrame} chunks per
+     * call to keep the per-frame cost predictable when many saved chunks
+     * restore at once. floodFillAdd sets dirty on touched chunks, so the
+     * existing dirty-remesh path picks up the updated light next frame.
+     */
+    public void drainLightFlood(int maxPerFrame) {
+        for (int i = 0; i < maxPerFrame; i++) {
+            Long key = pendingLightFlood.poll();
+            if (key == null) break;
+            int cx = (int) (key >> 32);
+            int cz = key.intValue();
+            Chunk c = world.getChunkIfExists(cx, cz);
+            if (c == null) continue;
+            int bx = cx * Chunk.SIZE_X;
+            int bz = cz * Chunk.SIZE_Z;
+            for (int lx = 0; lx < Chunk.SIZE_X; lx++) {
+                for (int y = 0; y < Chunk.SIZE_Y; y++) {
+                    for (int lz = 0; lz < Chunk.SIZE_Z; lz++) {
+                        if (c.get(lx, y, lz).emittedLight > 0)
+                            world.floodFillAdd(bx + lx, y, bz + lz);
+                    }
+                }
+            }
         }
     }
 
