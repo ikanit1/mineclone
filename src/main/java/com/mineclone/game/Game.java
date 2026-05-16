@@ -82,6 +82,9 @@ public class Game {
     private final MenuBackground menuBackground;
     private boolean showNewWorldConfirm = false;
     private float saveToastTimer = 0f;   // seconds remaining for "Saved" toast
+    /** Eat mouseDown/mouseClicked until the user releases LMB. Prevents the
+     *  click that opened a panel from immediately grabbing a slider in it. */
+    private boolean swallowMouseUntilUp = false;
     private final BlockType[] hotbar = {
             BlockType.STONE, BlockType.DIRT, BlockType.GRASS, BlockType.PLANKS,
             BlockType.GLASS, BlockType.DOOR_CLOSED, BlockType.STAIRS, BlockType.TORCH, BlockType.WATER
@@ -257,30 +260,9 @@ public class Game {
             saveAll();
         }
         daylight = computeDaylight();
-        if (input.keyPressed(GLFW.GLFW_KEY_E)) {
-            state = State.CREATIVE_MENU;
-            input.grabCursor(false);
-            return;
-        }
-        if (input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
-            state = State.PAUSED;
-            saveAll();
-            input.grabCursor(false);
-            return;
-        }
-        if (input.keyPressed(GLFW.GLFW_KEY_F3))
-            showDebug = !showDebug;
-        if (input.keyPressed(GLFW.GLFW_KEY_F4))
-            wireframe = !wireframe;
 
-        // Console: open with T, close with Escape, execute with Enter
-        if (!consoleOpen && input.keyPressed(GLFW.GLFW_KEY_T)) {
-            consoleOpen = true;
-            input.grabCursor(false);
-            consoleLine.setLength(0);
-            input.pollChars(); // discard 't'
-            return;
-        }
+        // Console intercepts ALL game-input keys while open — keep typing
+        // isolated from game actions (E, ESC, T, hotbar digits, F3/F4).
         if (consoleOpen) {
             String typed = input.pollChars();
             consoleLine.append(typed);
@@ -297,7 +279,33 @@ public class Game {
                 consoleLine.setLength(0);
                 input.grabCursor(true);
             }
-            return; // don't update player while console is open
+            return; // don't update player or fire game-key handlers while console is open
+        }
+
+        if (input.keyPressed(GLFW.GLFW_KEY_E)) {
+            state = State.CREATIVE_MENU;
+            input.grabCursor(false);
+            return;
+        }
+        if (input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
+            state = State.PAUSED;
+            saveAll();
+            input.grabCursor(false);
+            swallowMouseUntilUp = true; // pause panel pops where cursor is — eat the click
+            return;
+        }
+        if (input.keyPressed(GLFW.GLFW_KEY_F3))
+            showDebug = !showDebug;
+        if (input.keyPressed(GLFW.GLFW_KEY_F4))
+            wireframe = !wireframe;
+
+        // Open console on T (game key — only when chat is closed).
+        if (input.keyPressed(GLFW.GLFW_KEY_T)) {
+            consoleOpen = true;
+            input.grabCursor(false);
+            consoleLine.setLength(0);
+            input.pollChars(); // discard 't'
+            return;
         }
 
         handleHotbar();
@@ -744,9 +752,16 @@ public class Game {
             fpsLastSample = now;
         }
 
+        // Release the mouse-swallow once the user lets go of LMB.
+        if (swallowMouseUntilUp && !input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT))
+            swallowMouseUntilUp = false;
+
         switch (state) {
             case MENU -> {
-                boolean clicked = input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                boolean clicked = !swallowMouseUntilUp
+                        && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                boolean down = !swallowMouseUntilUp
+                        && input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 double mx = input.getCursorX(), my = input.getCursorY();
 
                 if (showNewWorldConfirm) {
@@ -764,8 +779,7 @@ public class Game {
 
                 if (inSettings) {
                     float[] sv = { renderRadius, fovDegrees, brightness, volume };
-                    Hud.MenuAction a = hud.drawSettings(w, h, mx, my,
-                            input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT), clicked, sv);
+                    Hud.MenuAction a = hud.drawSettings(w, h, mx, my, down, clicked, sv);
                     renderRadius = Math.round(sv[0]);
                     fovDegrees = Math.round(sv[1]);
                     brightness = sv[2];
@@ -792,8 +806,8 @@ public class Game {
                         state = State.PLAYING;
                         input.grabCursor(true);
                     }
-                    case NEW_WORLD -> showNewWorldConfirm = true;
-                    case SETTINGS  -> inSettings = true;
+                    case NEW_WORLD -> { showNewWorldConfirm = true; swallowMouseUntilUp = true; }
+                    case SETTINGS  -> { inSettings = true; swallowMouseUntilUp = true; }
                     case QUIT      -> GLFW.glfwSetWindowShouldClose(window.getHandle(), true);
                     default -> { }
                 }
@@ -821,12 +835,14 @@ public class Game {
             }
             case PAUSED -> {
                 hud.drawHotbar(w, h, hotbar, selectedSlot);
-                boolean clicked = input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                boolean clicked = !swallowMouseUntilUp
+                        && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                boolean down = !swallowMouseUntilUp
+                        && input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 double mx = input.getCursorX(), my = input.getCursorY();
                 if (inSettings) {
                     float[] sv = { renderRadius, fovDegrees, brightness, volume };
-                    Hud.MenuAction a = hud.drawSettings(w, h, mx, my,
-                            input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT), clicked, sv);
+                    Hud.MenuAction a = hud.drawSettings(w, h, mx, my, down, clicked, sv);
                     renderRadius = Math.round(sv[0]);
                     fovDegrees = Math.round(sv[1]);
                     brightness = sv[2];
@@ -854,7 +870,7 @@ public class Game {
                             saveToastTimer = 1.6f;
                             sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
                         }
-                        case SETTINGS -> inSettings = true;
+                        case SETTINGS -> { inSettings = true; swallowMouseUntilUp = true; }
                         case QUIT -> GLFW.glfwSetWindowShouldClose(window.getHandle(), true);
                         default -> { }
                     }
