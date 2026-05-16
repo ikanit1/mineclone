@@ -19,6 +19,12 @@ public class Chunk {
     private final byte[] blockLight = new byte[SIZE_X * SIZE_Y * SIZE_Z];
     private final byte[] meta = new byte[SIZE_X * SIZE_Y * SIZE_Z];
     public boolean dirty = true;
+    /**
+     * True once a block changed AFTER initial generation (player/command/water
+     * edits go through World.setBlock, which sets this). Distinct from
+     * {@link #dirty}, which is the mesh-rebuild flag. Drives whole-chunk save.
+     */
+    public boolean modified = false;
 
     public Chunk(int cx, int cz) {
         this.cx = cx;
@@ -159,5 +165,26 @@ public class Chunk {
 
     private static boolean transparent(BlockType bt) {
         return bt == BlockType.AIR || bt.transparent;
+    }
+
+    /** Defensive copy of the raw block array (length SIZE_X*SIZE_Y*SIZE_Z). */
+    public byte[] copyBlocks() {
+        return blocks.clone();
+    }
+
+    /** Defensive copy of the raw meta array. */
+    public byte[] copyMeta() {
+        return meta.clone();
+    }
+
+    /**
+     * Overwrite this chunk's blocks+meta from a saved snapshot. Does NOT
+     * touch lighting or flags — the caller recomputes sky light, sets
+     * {@code dirty} for remeshing, and leaves {@code modified=false} (a
+     * freshly-restored chunk matches disk).
+     */
+    public void restore(byte[] srcBlocks, byte[] srcMeta) {
+        System.arraycopy(srcBlocks, 0, blocks, 0, blocks.length);
+        System.arraycopy(srcMeta, 0, meta, 0, meta.length);
     }
 }
