@@ -1,6 +1,8 @@
 package com.mineclone.save;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.Random;
 
 public class SaveRoundTrip {
@@ -10,7 +12,7 @@ public class SaveRoundTrip {
         if (!cond) { System.err.println("FAIL: " + what); System.exit(1); }
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         File tmp = new File("saves_test_tmp");
         SaveManager sm = new SaveManager(tmp);
         String id = "rt";
@@ -48,6 +50,20 @@ public class SaveRoundTrip {
         check(!sm.hasSave(id), "deleteWorld removed save");
         new File(tmp, "").delete();
         tmp.delete();
+
+        // ---- options.dat round-trip (isolated temp dir, sibling layout) ----
+        File optsTmp = Files.createTempDirectory("mineclone-opts-").toFile();
+        SaveManager mo = new SaveManager(new File(optsTmp, "saves"));
+        check(mo.loadOptions().renderRadius == Options.defaults().renderRadius,
+              "defaults when options.dat missing");
+        mo.saveOptions(new Options(9, 90, 0.5f, 0.3f));
+        Options ro = mo.loadOptions();
+        check(ro.renderRadius == 9 && ro.fovDegrees == 90
+                && Math.abs(ro.brightness - 0.5f) < 1e-6f
+                && Math.abs(ro.volume - 0.3f) < 1e-6f,
+              "options round-trip");
+        new File(optsTmp, "options.dat").delete();
+        optsTmp.delete();
 
         System.out.println("SaveRoundTrip OK (" + checks + " checks)");
     }
