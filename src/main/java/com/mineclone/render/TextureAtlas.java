@@ -26,7 +26,13 @@ import static org.lwjgl.opengl.GL13.*;
  * Entity / mob textures use a separate atlas — see EntityTextureAtlas (future).
  */
 public class TextureAtlas {
-    public static final int TILE = 16;
+    /**
+     * Pixel size of one tile. Bump this (e.g. 32 → 64) and the entire atlas
+     * scales up: procedural drawings stay valid (they're written in terms of
+     * TILE), and any PNG you drop into {@link #BLOCKS_DIR} is rescaled to
+     * fill TILE×TILE — so higher-resolution source art is preserved.
+     */
+    public static final int TILE = 32;
     public static final int TILES_PER_ROW = 16;
     public static final int ATLAS_SIZE = TILE * TILES_PER_ROW;
     public static final String DEFAULT_PATH = "assets/atlas.png";
@@ -430,20 +436,24 @@ public class TextureAtlas {
                 int v = jitter(r, 118, 10);
                 px(t, x, y, rgb(v, (int) (v * 0.66), (int) (v * 0.38)));
             }
-        // dark vertical grain lines at fixed x columns (irregular spacing)
-        int[] grainCols = { 1, 4, 7, 11, 13 };
+        // dark vertical grain lines at proportional positions across the tile
         Random gn = new Random(67);
-        for (int gx : grainCols) {
+        float[] grainFracs = { 0.06f, 0.25f, 0.44f, 0.69f, 0.81f };
+        for (float frac : grainFracs) {
+            int gx = (int) (frac * TILE);
             for (int y = 0; y < TILE; y++) {
                 int v = 65 + gn.nextInt(15);
                 px(t, gx, y, rgb(v, (int) (v * 0.62), (int) (v * 0.34)));
             }
         }
-        // one knot (oval, 3x4) at random position
+        // one knot (radius scales with tile size) at random position
         Random kn = new Random(68);
-        int kx = 5 + kn.nextInt(5), ky = 4 + kn.nextInt(7);
-        for (int dy = -1; dy <= 1; dy++)
-            for (int dx = -1; dx <= 1; dx++) {
+        int kr = Math.max(1, TILE / 10);
+        int kx = TILE / 3 + kn.nextInt(TILE / 3);
+        int ky = TILE / 4 + kn.nextInt(TILE / 2);
+        for (int dy = -kr; dy <= kr; dy++)
+            for (int dx = -kr; dx <= kr; dx++) {
+                if (dx * dx + dy * dy > kr * kr) continue;
                 int x = kx + dx, y = ky + dy;
                 if (x < 0 || x >= TILE || y < 0 || y >= TILE) continue;
                 int v = (dx == 0 && dy == 0) ? 45 : 70;
@@ -638,12 +648,12 @@ public class TextureAtlas {
     /** Wood planks — 4 horizontal planks with grooves, vertical grain, and 2 knots. */
     private static void drawPlanks(BufferedImage t) {
         Random r = new Random(133);
-        // 4 planks, each 4 rows tall. groove rows at y=3, 7, 11
-        int plankH = 4;
+        // 4 planks regardless of TILE — groove on the last row of each plank.
+        int plankH = TILE / 4;
+        int grooveThickness = Math.max(1, TILE / 16);
         for (int y = 0; y < TILE; y++) {
             int rowInPlank = y % plankH;
-            boolean groove = rowInPlank == (plankH - 1);
-            // alternate plank tones row by row for variety
+            boolean groove = rowInPlank >= (plankH - grooveThickness);
             int plankIdx = y / plankH;
             int tone = (plankIdx % 2 == 0) ? 158 : 148;
             for (int x = 0; x < TILE; x++) {
@@ -651,7 +661,6 @@ public class TextureAtlas {
                 if (groove) {
                     v = jitter(r, 72, 6);
                 } else {
-                    // vertical grain: subtle darker columns
                     int colMod = x % 3;
                     int colShift = (colMod == 0) ? -10 : (colMod == 2 ? +4 : 0);
                     v = jitter(r, tone + colShift, 7);
@@ -659,16 +668,21 @@ public class TextureAtlas {
                 px(t, x, y, rgb(v, (int) (v * 0.74), (int) (v * 0.44)));
             }
         }
-        // 2 knots (small darker oval clusters)
+        // 2 knots — scaled blob, not on groove rows
         Random kn = new Random(134);
+        int kr = Math.max(1, TILE / 16);
         for (int n = 0; n < 2; n++) {
-            int kx = 2 + kn.nextInt(TILE - 4);
-            // place knot inside a plank body (not on groove rows)
+            int kx = TILE / 8 + kn.nextInt(TILE * 3 / 4);
             int plankIdx = kn.nextInt(4);
-            int ky = plankIdx * plankH + 1 + kn.nextInt(2);
-            px(t, kx, ky, rgb(80, 55, 30));
-            if (kx + 1 < TILE) px(t, kx + 1, ky, rgb(95, 65, 35));
-            if (ky + 1 < TILE) px(t, kx, ky + 1, rgb(95, 65, 35));
+            int ky = plankIdx * plankH + plankH / 4 + kn.nextInt(plankH / 3 + 1);
+            for (int dy = -kr; dy <= kr; dy++)
+                for (int dx = -kr; dx <= kr; dx++) {
+                    if (dx * dx + dy * dy > kr * kr) continue;
+                    int x = kx + dx, y = ky + dy;
+                    if (x < 0 || x >= TILE || y < 0 || y >= TILE) continue;
+                    int v = (dx == 0 && dy == 0) ? 80 : 95;
+                    px(t, x, y, rgb(v, (int) (v * 0.7), (int) (v * 0.4)));
+                }
         }
     }
 
@@ -703,88 +717,200 @@ public class TextureAtlas {
     }
 
     private static void drawGlass(BufferedImage t) {
-        // Alpha=0 interior so the cutout shader (discard if alpha<0.1) makes glass see-through
-        int border = 0xFF_B8D4E8; // opaque blue-white frame
+        // Alpha=0 interior so the cutout shader (discard if alpha<0.1) makes glass see-through.
+        // Frame thickness scales with TILE so the look stays consistent at any resolution.
+        int border = 0xFF_B8D4E8;
+        int highlight = 0xFF_E0EEF5;
+        int frame = Math.max(1, TILE / 16);
         for (int y = 0; y < TILE; y++)
             for (int x = 0; x < TILE; x++) {
-                boolean edge = x == 0 || x == TILE - 1 || y == 0 || y == TILE - 1;
+                boolean edge = x < frame || x >= TILE - frame || y < frame || y >= TILE - frame;
                 px(t, x, y, edge ? border : 0x00000000);
             }
+        // diagonal highlight streak across the upper-left corner
+        int streakLen = TILE / 3;
+        for (int i = 0; i < streakLen; i++) {
+            int xi = frame + i, yi = frame + i / 2;
+            if (xi < TILE && yi < TILE) px(t, xi, yi, highlight);
+        }
     }
 
-    /** Shared door panel drawing — fills the tile with wood grain and frame. */
-    private static void drawDoorPanel(BufferedImage t, Random r,
-            boolean topBorder, boolean bottomBorder, boolean midBar,
-            boolean hasHandle) {
-        int frame  = rgb(55, 36, 18);
-        int shadow = rgb(70, 48, 24);
-        int light  = rgb(185, 138, 82);
+    // -------------------------------------------------------------------------
+    // Door — drawn as two stacked TILE×TILE halves that align seamlessly into
+    // one continuous 32×64 (or 64×128, etc.) image when the door is built in
+    // the world. All sizes are expressed in fractions of TILE so the art
+    // upscales cleanly when TILE is bumped.
+    //
+    // Texture V grows downward in the BufferedImage, which corresponds to
+    // DOWNWARD in world space (the mesher maps lower world-Y to higher V).
+    // So inside this function, y=0 is the TOP of the rendered tile in-world.
+    //  - Bottom half: y=0 = mid-rail seam, y=TILE-1 = floor edge.
+    //  - Top half:    y=0 = sky edge,      y=TILE-1 = mid-rail seam.
+    // -------------------------------------------------------------------------
+    private static void drawDoorPanel(BufferedImage t, boolean isBottomHalf) {
+        // Palette
+        int frame      = rgb(72, 48, 22);
+        int frameDark  = rgb(45, 28, 12);
+        int shadow     = rgb(85, 58, 28);
+        int light      = rgb(195, 148, 88);
+        int grooveDark = rgb(80, 52, 26);
+        int iron       = rgb(85, 85, 92);
+        int ironDark   = rgb(50, 50, 56);
+        int ironLight  = rgb(125, 125, 135);
+        int gold       = rgb(220, 175, 50);
+        int goldDark   = rgb(170, 130, 30);
+        int goldLight  = rgb(245, 210, 85);
 
-        // Wood grain fill
+        Random rd = new Random(isBottomHalf ? 201 : 202);
+
+        // ---- 1. wood plank grain background ----
+        // Vertical "planks" — 4 planks across the tile, with subtle tone variation per plank.
+        int plankW = Math.max(2, TILE / 4);
         for (int y = 0; y < TILE; y++)
             for (int x = 0; x < TILE; x++) {
-                int base = (x % 3 == 0) ? 90 : 148;
-                int v = jitter(r, base, 12);
-                px(t, x, y, rgb(v, (int)(v * 0.72), (int)(v * 0.42)));
+                int plankIdx = x / plankW;
+                int tone = (plankIdx % 2 == 0) ? 152 : 142;
+                // vertical grain — every 3rd pixel slightly darker
+                int colShift = (x % 3 == 0) ? -8 : (x % 3 == 1 ? 0 : 4);
+                int v = jitter(rd, tone + colShift, 6);
+                px(t, x, y, rgb(v, (int) (v * 0.72), (int) (v * 0.42)));
+            }
+        // Grooves between vertical planks
+        for (int gx = plankW; gx < TILE; gx += plankW) {
+            for (int y = 0; y < TILE; y++) px(t, gx, y, grooveDark);
+        }
+
+        // ---- 2. frame ----
+        int frameT = Math.max(2, TILE / 16);     // outer frame thickness
+        int railT  = Math.max(2, TILE / 10);     // mid-rail thickness (slightly thicker)
+
+        // Left + right sides (full height)
+        for (int y = 0; y < TILE; y++)
+            for (int dx = 0; dx < frameT; dx++) {
+                px(t, dx, y, frame);
+                px(t, TILE - 1 - dx, y, frame);
+                // dark accent on the very outside pixel
+                if (dx == 0) {
+                    px(t, dx, y, frameDark);
+                    px(t, TILE - 1 - dx, y, frameDark);
+                }
             }
 
-        // Outer frame borders
-        if (topBorder) {
-            for (int x = 0; x < TILE; x++) { px(t, x, 0, frame); px(t, x, 1, frame); }
-        }
-        if (bottomBorder) {
-            for (int x = 0; x < TILE; x++) { px(t, x, TILE-1, frame); px(t, x, TILE-2, frame); }
-        }
-        // Middle horizontal bar (at top or bottom of tile, shared between halves)
-        if (midBar) {
-            int my = bottomBorder ? TILE - 4 : 2; // bar near opposite end from border
-            if (!topBorder && !bottomBorder) my = TILE / 2 - 1;
-            for (int x = 0; x < TILE; x++) { px(t, x, my, frame); px(t, x, my + 1, frame); }
-        }
-        // Side frame
-        for (int y = 0; y < TILE; y++) {
-            px(t, 0, y, frame); px(t, 1, y, frame);
-            px(t, TILE-1, y, frame); px(t, TILE-2, y, frame);
-        }
-        // Center vertical bar dividing two sub-panels
-        for (int y = 0; y < TILE; y++) {
-            px(t, 7, y, frame); px(t, 8, y, frame);
-        }
-        // Panel inset shadow edges (simulate depth)
-        for (int y = 2; y < TILE - 2; y++) {
-            px(t, 2, y, shadow); px(t, TILE-3, y, shadow);
-        }
-        for (int x = 2; x < TILE - 2; x++) {
-            if (topBorder    || x < 7) px(t, x, 2, shadow);
-            if (bottomBorder || x < 7) px(t, x, TILE-3, shadow);
-        }
-        // Panel inset highlights
-        for (int y = 3; y < TILE - 3; y++) {
-            px(t, 3, y, light); px(t, TILE-4, y, light);
+        // Outer top/bottom edge + inner mid-rail edge
+        if (isBottomHalf) {
+            // Outer bottom (floor)
+            for (int x = 0; x < TILE; x++)
+                for (int dy = 0; dy < frameT; dy++) {
+                    int yy = TILE - 1 - dy;
+                    px(t, x, yy, (dy == 0) ? frameDark : frame);
+                }
+            // Mid-rail at top (joins top tile)
+            for (int x = 0; x < TILE; x++)
+                for (int dy = 0; dy < railT; dy++) {
+                    px(t, x, dy, frame);
+                }
+            // subtle bottom-edge highlight on the rail
+            for (int x = frameT; x < TILE - frameT; x++) px(t, x, railT, light);
+        } else {
+            // Outer top
+            for (int x = 0; x < TILE; x++)
+                for (int dy = 0; dy < frameT; dy++) {
+                    px(t, x, dy, (dy == 0) ? frameDark : frame);
+                }
+            // Mid-rail at bottom
+            for (int x = 0; x < TILE; x++)
+                for (int dy = 0; dy < railT; dy++) {
+                    int yy = TILE - 1 - dy;
+                    px(t, x, yy, frame);
+                }
+            // subtle top-edge highlight on the rail
+            for (int x = frameT; x < TILE - frameT; x++) px(t, x, TILE - 1 - railT, light);
         }
 
-        // Handle (golden knob) on bottom half, right sub-panel
-        if (hasHandle) {
-            int hx = 12, hy = 6;
-            px(t, hx, hy,   rgb(210, 175, 45));
-            px(t, hx, hy+1, rgb(210, 175, 45));
-            px(t, hx, hy+2, rgb(180, 145, 30));
+        // ---- 3. recessed panel inset ----
+        // Big rectangle in the middle showing depth (shadow on top+left, light on bottom+right).
+        int margin = frameT + Math.max(1, TILE / 16);
+        int y0 = (isBottomHalf ? railT  : frameT) + Math.max(1, TILE / 16);
+        int y1 = (isBottomHalf ? frameT : railT)  + Math.max(1, TILE / 16);
+        int innerY0 = y0;
+        int innerY1 = TILE - 1 - y1;
+        int innerX0 = margin;
+        int innerX1 = TILE - 1 - margin;
+
+        if (innerY1 - innerY0 >= 4 && innerX1 - innerX0 >= 4) {
+            // Shadow: top + left
+            for (int x = innerX0; x <= innerX1; x++) px(t, x, innerY0, shadow);
+            for (int y = innerY0; y <= innerY1; y++) px(t, innerX0, y, shadow);
+            // Highlight: bottom + right
+            for (int x = innerX0 + 1; x <= innerX1; x++) px(t, x, innerY1, light);
+            for (int y = innerY0 + 1; y <= innerY1; y++) px(t, innerX1, y, light);
+        }
+
+        // ---- 4. iron hinge on the LEFT side ----
+        // One hinge per tile; place it close to the outer edge of the half.
+        int hingeW = Math.max(2, TILE / 8);
+        int hingeH = Math.max(3, TILE / 5);
+        int hingeY = isBottomHalf
+                ? TILE - hingeH - Math.max(2, TILE / 6)   // near the bottom in bottom-half
+                : Math.max(2, TILE / 6);                  // near the top in top-half
+        drawHinge(t, 0, hingeY, hingeW, hingeH, iron, ironDark, ironLight);
+
+        // ---- 5. handle (bottom half only) ----
+        if (isBottomHalf) {
+            int kr = Math.max(1, TILE / 12);             // knob radius
+            int hx = TILE - frameT - 1 - kr - Math.max(1, TILE / 24);
+            int hy = TILE / 2 - kr / 2;
+            // round knob with lit upper-left / shadowed lower-right
+            for (int dy = -kr; dy <= kr; dy++)
+                for (int dx = -kr; dx <= kr; dx++) {
+                    if (dx * dx + dy * dy > kr * kr) continue;
+                    int xx = hx + dx, yy = hy + dy;
+                    if (xx < 0 || xx >= TILE || yy < 0 || yy >= TILE) continue;
+                    int color;
+                    if (dx + dy <= -kr / 2)      color = goldLight;
+                    else if (dx + dy >= kr / 2)  color = goldDark;
+                    else                          color = gold;
+                    px(t, xx, yy, color);
+                }
+            // small stem connecting knob to door surface
+            int stemY0 = hy + kr;
+            int stemY1 = Math.min(TILE - 1, hy + kr + Math.max(1, TILE / 16));
+            for (int yy = stemY0; yy <= stemY1; yy++) {
+                if (hx >= 0 && hx < TILE) px(t, hx, yy, goldDark);
+            }
         }
     }
 
-    /** Tile 15 — bottom half of door (has handle, top is the mid-bar joint). */
+    /** Iron hinge: rectangular plate with bevel (light edges right+top, dark left+bottom). */
+    private static void drawHinge(BufferedImage t, int x, int y, int w, int h,
+                                  int base, int dark, int light) {
+        for (int dy = 0; dy < h; dy++)
+            for (int dx = 0; dx < w; dx++) {
+                int xx = x + dx, yy = y + dy;
+                if (xx < 0 || xx >= TILE || yy < 0 || yy >= TILE) continue;
+                int color;
+                if (dy == 0 || dx == w - 1) color = light;
+                else if (dy == h - 1 || dx == 0) color = dark;
+                else color = base;
+                px(t, xx, yy, color);
+            }
+        // two visible rivets (top + bottom of the plate)
+        int rivetX = x + w / 2;
+        int rTop   = y + 1;
+        int rBot   = y + h - 2;
+        if (rivetX < TILE) {
+            if (rTop >= 0 && rTop < TILE) px(t, rivetX, rTop, dark);
+            if (rBot >= 0 && rBot < TILE) px(t, rivetX, rBot, dark);
+        }
+    }
+
+    /** Tile 15 — bottom half of door. */
     private static void drawDoorBottom(BufferedImage t) {
-        drawDoorPanel(t, new Random(201), false, true, true, true);
-        // Reinforce top edge as mid-bar (joins top tile)
-        int frame = rgb(55, 36, 18);
-        for (int x = 0; x < TILE; x++) { px(t, x, 0, frame); px(t, x, 1, frame); }
+        drawDoorPanel(t, true);
     }
 
-    /** Tile 16 — top half of door (no handle, bottom is the mid-bar joint). */
+    /** Tile 16 — top half of door. */
     private static void drawDoorTop(BufferedImage t) {
-        drawDoorPanel(t, new Random(202), true, false, true, false);
-        // Reinforce bottom edge as mid-bar (joins bottom tile)
-        int frame = rgb(55, 36, 18);
-        for (int x = 0; x < TILE; x++) { px(t, x, TILE-1, frame); px(t, x, TILE-2, frame); }
+        drawDoorPanel(t, false);
     }
 }
