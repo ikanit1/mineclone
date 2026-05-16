@@ -231,6 +231,7 @@ public class World {
         int lz = Math.floorMod(wz, Chunk.SIZE_Z);
         BlockType old = c.get(lx, wy, lz);
         c.set(lx, wy, lz, t);
+        c.modified = true;
         c.computeSkyLight();
         // mark neighbors dirty if on edge so their borders update
         if (lx == 0)
