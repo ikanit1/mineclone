@@ -79,6 +79,9 @@ public class Game {
     private static final float AUTOSAVE_INTERVAL = 120f; // seconds
     private float autosaveTimer = AUTOSAVE_INTERVAL;
     private com.mineclone.save.LevelData pendingLevel;
+    private final MenuBackground menuBackground;
+    private boolean showNewWorldConfirm = false;
+    private float saveToastTimer = 0f;   // seconds remaining for "Saved" toast
     private final BlockType[] hotbar = {
             BlockType.STONE, BlockType.DIRT, BlockType.GRASS, BlockType.PLANKS,
             BlockType.GLASS, BlockType.DOOR_CLOSED, BlockType.STAIRS, BlockType.TORCH, BlockType.WATER
@@ -97,6 +100,7 @@ public class Game {
         this.mesher = new ChunkMesher(world);
         this.loader = new ChunkLoader(world, mesher, save, worldId);
         this.pendingLevel = saved;
+        this.menuBackground = new MenuBackground(save);
         this.atlas = new TextureAtlas(TextureAtlas.DEFAULT_PATH, regenAtlas);
         this.chunkShader = new Shader(Shaders.CHUNK_VERTEX, Shaders.CHUNK_FRAGMENT);
         this.crosshair = new Crosshair();
@@ -106,6 +110,26 @@ public class Game {
 
     private BlockType currentBlock() {
         return hotbar[selectedSlot];
+    }
+
+    /**
+     * Delete the existing save and reset to a fresh random seed. Because
+     * {@code world}/{@code mesher}/{@code loader} are final, we can't hot-swap
+     * them mid-process. We write a fresh level.dat with a new seed and force a
+     * window-close; the next launch enters the new world. Cheap and avoids
+     * tearing down half the engine.
+     */
+    private void startNewWorld() {
+        save.deleteWorld(worldId);
+        com.mineclone.save.LevelData fresh = new com.mineclone.save.LevelData(
+                new java.util.Random().nextLong(),
+                8.5, 80.0, 8.5,
+                0f, 0f,
+                (float) (Math.PI / 6.0),
+                0);
+        save.saveLevel(worldId, fresh);
+        save.flushAndAwait();
+        GLFW.glfwSetWindowShouldClose(window.getHandle(), true);
     }
 
     /** Flush level.dat + every loaded chunk whose blocks changed since gen. */
@@ -196,12 +220,8 @@ public class Game {
     // ---------------- state updates ----------------
 
     private void updateMenu(float dt) {
-        // Slow panorama spin for the backdrop.
-        player.camera.rotate(0.10f * dt, 0f);
-
-        // chunks keep streaming in the background even on the menu
-        ensureChunksLoaded();
-        updateDirtyMeshes();
+        menuBackground.update(dt);
+        if (saveToastTimer > 0f) saveToastTimer -= dt;
     }
 
     private float computeDaylight() {
@@ -230,6 +250,7 @@ public class Game {
 
     private void updatePlaying(float dt) {
         gameTime += dt * TIME_SCALE;
+        if (saveToastTimer > 0f) saveToastTimer -= dt;
         autosaveTimer -= dt;
         if (autosaveTimer <= 0f) {
             autosaveTimer = AUTOSAVE_INTERVAL;
@@ -308,6 +329,7 @@ public class Game {
     }
 
     private void updatePaused() {
+        if (saveToastTimer > 0f) saveToastTimer -= 1f / 60f; // paused: assume 60Hz UI ticks
         if (input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
             if (inSettings) {
                 inSettings = false;
@@ -577,6 +599,22 @@ public class Game {
 
     private void render() {
         glViewport(0, 0, window.getWidth(), window.getHeight());
+        if (state == State.MENU) {
+            glClearColor(0.55f, 0.75f, 0.95f, 1f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            menuBackground.render(chunkShader, atlas, window.getAspect(), fovDegrees);
+            // Vignette: dark edges. Negative-alpha center quad clamps to 0,
+            // so the visible effect is just the outer dim — reads as a vignette
+            // against the orbiting backdrop without needing a radial shader.
+            int sw = window.getWidth(), sh = window.getHeight();
+            ui.begin(sw, sh);
+            ui.quad(0, 0, sw, sh, 0f, 0f, 0f, 0.35f);
+            float fx = sw * 0.18f, fy = sh * 0.18f;
+            ui.quad(fx, fy, sw - 2 * fx, sh - 2 * fy, 0f, 0f, 0f, -0.18f);
+            ui.end();
+            drawUi();
+            return;
+        }
         Vector3f sky = skyColor(daylight);
         glClearColor(sky.x, sky.y, sky.z, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -709,14 +747,56 @@ public class Game {
         switch (state) {
             case MENU -> {
                 boolean clicked = input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                Hud.MenuAction a = hud.drawMainMenu(w, h, input.getCursorX(), input.getCursorY(), clicked);
+                double mx = input.getCursorX(), my = input.getCursorY();
+
+                if (showNewWorldConfirm) {
+                    Hud.MenuAction a = hud.drawConfirm(w, h,
+                            "Delete current world and start a new one?",
+                            "New World", mx, my, clicked, Hud.MenuAction.NEW_WORLD_CONFIRM);
+                    if (input.keyPressed(GLFW.GLFW_KEY_ESCAPE) || a == Hud.MenuAction.CANCEL) {
+                        showNewWorldConfirm = false;
+                    } else if (a == Hud.MenuAction.NEW_WORLD_CONFIRM) {
+                        startNewWorld();
+                        showNewWorldConfirm = false;
+                    }
+                    break;
+                }
+
+                if (inSettings) {
+                    float[] sv = { renderRadius, fovDegrees, brightness, volume };
+                    Hud.MenuAction a = hud.drawSettings(w, h, mx, my,
+                            input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT), clicked, sv);
+                    renderRadius = Math.round(sv[0]);
+                    fovDegrees = Math.round(sv[1]);
+                    brightness = sv[2];
+                    if (sv[3] != volume) {
+                        volume = sv[3];
+                        sound.setMasterVolume(volume);
+                    }
+                    boolean escBack = input.keyPressed(GLFW.GLFW_KEY_ESCAPE);
+                    if (a == Hud.MenuAction.SETTINGS_BACK || escBack) {
+                        inSettings = false;
+                        save.saveOptions(new com.mineclone.save.Options(
+                                renderRadius, fovDegrees, brightness, volume));
+                        sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
+                    }
+                    break;
+                }
+
+                boolean hasSave = save.hasSave(worldId);
+                Hud.MenuAction a = hud.drawMainMenu(w, h, mx, my, clicked, hasSave);
                 if (a != Hud.MenuAction.NONE)
                     sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
-                if (a == Hud.MenuAction.START) {
-                    state = State.PLAYING;
-                    input.grabCursor(true);
-                } else if (a == Hud.MenuAction.QUIT)
-                    GLFW.glfwSetWindowShouldClose(window.getHandle(), true);
+                switch (a) {
+                    case CONTINUE -> {
+                        state = State.PLAYING;
+                        input.grabCursor(true);
+                    }
+                    case NEW_WORLD -> showNewWorldConfirm = true;
+                    case SETTINGS  -> inSettings = true;
+                    case QUIT      -> GLFW.glfwSetWindowShouldClose(window.getHandle(), true);
+                    default -> { }
+                }
             }
             case PLAYING -> {
                 if (player.inWater && hud != null)
@@ -769,10 +849,14 @@ public class Game {
                             state = State.PLAYING;
                             input.grabCursor(true);
                         }
+                        case SAVE -> {
+                            saveAll();
+                            saveToastTimer = 1.6f;
+                            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
+                        }
                         case SETTINGS -> inSettings = true;
                         case QUIT -> GLFW.glfwSetWindowShouldClose(window.getHandle(), true);
-                        default -> {
-                        }
+                        default -> { }
                     }
                 }
             }
@@ -786,6 +870,18 @@ public class Game {
                     sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
                 }
             }
+        }
+
+        if (saveToastTimer > 0f && font != null) {
+            String msg = "Saved";
+            float mw = font.textWidth(msg);
+            float a = Math.min(1f, saveToastTimer / 0.4f);
+            ui.begin(w, h);
+            ui.quad(w / 2f - mw / 2f - 12f, 32f, mw + 24f, font.getPixelHeight() + 16f,
+                    0f, 0f, 0f, 0.55f * a);
+            ui.end();
+            text.draw(font, msg, w / 2f - mw / 2f, 50f + font.getPixelHeight() * 0.5f,
+                    w, h, 0.55f, 1f, 0.55f, a);
         }
 
         // always show version label
@@ -803,6 +899,7 @@ public class Game {
 
     private void cleanup() {
         loader.shutdown();
+        menuBackground.destroy();
         sound.destroy();
         for (Mesh m : chunkMeshes.values()) m.destroy();
         chunkMeshes.clear();

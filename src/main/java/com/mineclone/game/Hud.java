@@ -10,7 +10,13 @@ import org.joml.Vector3f;
 /** All 2D interface: F3 debug overlay, hotbar, pause menu, main menu. */
 public class Hud {
     public enum MenuAction {
-        NONE, START, RESUME, QUIT, SETTINGS, SETTINGS_BACK
+        NONE,
+        CONTINUE,           // main menu: load saves/<DEFAULT_WORLD_ID>
+        NEW_WORLD,          // main menu: open New World confirm
+        NEW_WORLD_CONFIRM,  // confirm dialog: Yes
+        CANCEL,             // confirm dialog: No / explicit dismiss
+        SAVE,               // pause menu: trigger saveAll() + toast
+        RESUME, SETTINGS, SETTINGS_BACK, QUIT
     }
 
     private final Font font;
@@ -129,18 +135,27 @@ public class Hud {
 
     // ---------------- menus ----------------
 
-    public MenuAction drawMainMenu(int screenW, int screenH, double mx, double my, boolean clicked) {
-        return menu(screenW, screenH, "MINECLONE",
-                new String[] { "Start Game", "Quit" },
-                new MenuAction[] { MenuAction.START, MenuAction.QUIT },
-                mx, my, clicked, false);
+    /**
+     * @param hasSave  if false, the Continue button is greyed out and unclickable.
+     */
+    public MenuAction drawMainMenu(int screenW, int screenH, double mx, double my,
+                                   boolean clicked, boolean hasSave) {
+        drawTitle(screenW, screenH, "MINECLONE", 80f);
+        String[] labels   = { "Continue", "New World", "Settings", "Quit" };
+        MenuAction[] acts = { MenuAction.CONTINUE, MenuAction.NEW_WORLD,
+                              MenuAction.SETTINGS, MenuAction.QUIT };
+        boolean[] enabled = { hasSave, true, true, true };
+        return stoneMenu(screenW, screenH, labels, acts, enabled,
+                mx, my, clicked, /*dimWorld=*/false, /*titleArt=*/true);
     }
 
     public MenuAction drawPauseMenu(int screenW, int screenH, double mx, double my, boolean clicked) {
-        return menu(screenW, screenH, "PAUSED",
-                new String[] { "Back to Game", "Settings", "Quit" },
-                new MenuAction[] { MenuAction.RESUME, MenuAction.SETTINGS, MenuAction.QUIT },
-                mx, my, clicked, true);
+        String[] labels   = { "Back to Game", "Save", "Settings", "Quit" };
+        MenuAction[] acts = { MenuAction.RESUME, MenuAction.SAVE,
+                              MenuAction.SETTINGS, MenuAction.QUIT };
+        boolean[] enabled = { true, true, true, true };
+        return stoneMenu(screenW, screenH, labels, acts, enabled,
+                mx, my, clicked, /*dimWorld=*/true, /*titleArt=*/false);
     }
 
     // ---- Minecraft-style slider settings ----------------------------------------
@@ -262,36 +277,123 @@ public class Hud {
         return mx >= x && mx <= x + w && my >= y && my <= y + h;
     }
 
-    private MenuAction menu(int w, int h, String title, String[] labels, MenuAction[] actions,
-            double mx, double my, boolean clicked, boolean dimWorld) {
-        float bw = 300, bh = 50, gap = 16;
-        float startY = h / 2f - (labels.length * (bh + gap)) / 2f + 20;
+    /** Stone-tiled beveled button. Returns true if hovered. */
+    private boolean stoneButton(float x, float y, float w, float h, String label,
+                                int sw, int sh, double mx, double my,
+                                boolean enabled, boolean drawText) {
+        boolean hover = enabled && hov(mx, my, x, y, w, h);
+
+        // Stone background — tile the atlas STONE sprite across the button.
+        // Tile by ~32-px cells so width can be any multiple without UV stretch.
+        // Tint dims when disabled, brightens on hover (Minecraft bevel-style).
+        float tint = !enabled ? 0.45f : (hover ? 1.15f : 0.85f);
+        float[] uv = TextureAtlas.uv(BlockType.STONE.sideTile);
+        float cell = 32f;
+        int cols = Math.max(1, Math.round(w / cell));
+        int rows = Math.max(1, Math.round(h / cell));
+        float cw = w / cols, ch = h / rows;
+        for (int r = 0; r < rows; r++) {
+            for (int c = 0; c < cols; c++) {
+                ui.texQuad(x + c * cw, y + r * ch, cw, ch, atlas.getTextureId(),
+                        uv[0], uv[1], uv[2], uv[3], tint, tint, tint, 1f);
+            }
+        }
+        // Bevel: 2-px light top/left, 2-px dark bottom/right.
+        float lt = enabled ? 1f : 0.5f;
+        float dk = enabled ? 0.10f : 0.18f;
+        ui.quad(x, y, w, 2f, lt, lt, lt, 0.50f);              // top highlight
+        ui.quad(x, y, 2f, h, lt, lt, lt, 0.40f);              // left highlight
+        ui.quad(x, y + h - 2f, w, 2f, dk, dk, dk, 0.55f);     // bottom shadow
+        ui.quad(x + w - 2f, y, 2f, h, dk, dk, dk, 0.45f);     // right shadow
+
+        if (drawText) {
+            float lw = font.textWidth(label);
+            float baseline = y + h / 2f + font.getPixelHeight() * 0.34f;
+            float a = enabled ? 1f : 0.45f;
+            text.drawShadowed(font, label, x + (w - lw) / 2f, baseline, sw, sh, a, a, a);
+        }
+        return hover;
+    }
+
+    /**
+     * Layered pixel-art title: dark 8-direction outline, hard drop shadow,
+     * gold fill, bright top highlight. Uses the existing baked font.
+     */
+    public void drawTitle(int sw, int sh, String title, float topY) {
+        float w = font.textWidth(title);
+        float x = sw / 2f - w / 2f;
+        float y = topY + font.getPixelHeight();
+
+        // Dark outline — 8 offsets
+        float[] dx = { -2,  2,  0,  0, -2, -2,  2,  2 };
+        float[] dy = {  0,  0, -2,  2, -2,  2, -2,  2 };
+        for (int i = 0; i < dx.length; i++)
+            text.draw(font, title, x + dx[i], y + dy[i], sw, sh, 0f, 0f, 0f, 0.95f);
+
+        // Hard drop shadow — 4 px down-right, dark olive
+        text.draw(font, title, x + 4, y + 4, sw, sh, 0.15f, 0.12f, 0.04f, 0.85f);
+
+        // Main fill — light gold
+        text.draw(font, title, x, y, sw, sh, 1.0f, 0.86f, 0.32f, 1f);
+
+        // Bright top highlight — 1 px up, near-white
+        text.draw(font, title, x, y - 1, sw, sh, 1.0f, 0.98f, 0.75f, 0.45f);
+    }
+
+    private MenuAction stoneMenu(int w, int h, String[] labels, MenuAction[] actions,
+                                 boolean[] enabled,
+                                 double mx, double my, boolean clicked,
+                                 boolean dimWorld, boolean titleArt) {
+        float bw = 300, bh = 50, gap = 12;
+        float topInset = titleArt ? 200f : 80f;   // leave room for the title
+        float totalH = labels.length * (bh + gap) - gap;
+        float startY = Math.max(topInset, h / 2f - totalH / 2f + 20);
         MenuAction result = MenuAction.NONE;
-        boolean[] hover = new boolean[labels.length];
 
         ui.begin(w, h);
-        if (dimWorld)
-            ui.quad(0, 0, w, h, 0f, 0f, 0f, 0.6f);
+        if (dimWorld) ui.quad(0, 0, w, h, 0f, 0f, 0f, 0.6f);
+
+        // Buttons + click handling. Each button's hit area is its own quad,
+        // so the disabled-Continue grey state simply ignores clicks.
         for (int i = 0; i < labels.length; i++) {
             float x = w / 2f - bw / 2f, y = startY + i * (bh + gap);
-            hover[i] = mx >= x && mx <= x + bw && my >= y && my <= y + bh;
-            float c = hover[i] ? 0.52f : 0.28f;
-            ui.quad(x, y, bw, bh, c, c, c + 0.06f, 0.95f);
-            ui.quad(x, y, bw, 2, 1f, 1f, 1f, 0.25f);
-            if (hover[i] && clicked)
-                result = actions[i];
+            boolean hover = stoneButton(x, y, bw, bh, labels[i], w, h, mx, my, enabled[i], true);
+            if (hover && clicked) result = actions[i];
         }
         ui.end();
-
-        float tw = font.textWidth(title);
-        text.drawShadowed(font, title, w / 2f - tw / 2f, startY - 36, w, h, 1f, 0.95f, 0.55f);
-        for (int i = 0; i < labels.length; i++) {
-            float y = startY + i * (bh + gap);
-            float lw = font.textWidth(labels[i]);
-            text.drawShadowed(font, labels[i], w / 2f - lw / 2f,
-                    y + bh / 2f + font.getPixelHeight() * 0.34f, w, h, 1f, 1f, 1f);
-        }
         return result;
+    }
+
+    /**
+     * Modal Yes/No confirm dialog. Returns {@code confirmAction} when Yes is
+     * clicked, NONE otherwise. The caller is responsible for ESC handling and
+     * for dismissing the dialog after a confirm.
+     */
+    public MenuAction drawConfirm(int sw, int sh, String message, String confirmLabel,
+                                  double mx, double my, boolean clicked,
+                                  MenuAction confirmAction) {
+        float pw = 460f, ph = 200f;
+        float px = sw / 2f - pw / 2f, py = sh / 2f - ph / 2f;
+        float bw = 180f, bh = 50f, gap = 20f;
+        float by = py + ph - bh - 24f;
+        float yesX = sw / 2f - bw - gap / 2f;
+        float noX  = sw / 2f + gap / 2f;
+
+        ui.begin(sw, sh);
+        ui.quad(0, 0, sw, sh, 0f, 0f, 0f, 0.72f);                  // full dim
+        ui.quad(px, py, pw, ph, 0.11f, 0.11f, 0.14f, 0.97f);       // panel
+        ui.quad(px, py, pw, 2f, 1f, 1f, 1f, 0.18f);                // top highlight
+        boolean hYes = stoneButton(yesX, by, bw, bh, confirmLabel, sw, sh, mx, my, true, true);
+        boolean hNo  = stoneButton(noX,  by, bw, bh, "Cancel",     sw, sh, mx, my, true, true);
+        ui.end();
+
+        float mw = font.textWidth(message);
+        text.drawShadowed(font, message, sw / 2f - mw / 2f,
+                py + 56f + font.getPixelHeight(), sw, sh, 1f, 0.95f, 0.55f);
+
+        if (clicked && hYes) return confirmAction;
+        if (clicked && hNo)  return MenuAction.CANCEL;
+        return MenuAction.NONE;
     }
 
     public BlockType drawCreativeMenu(int w, int h, double mx, double my, boolean clicked, BlockType[] hotbar,
