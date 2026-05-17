@@ -29,18 +29,23 @@ dependencies {
     implementation 'org.lwjgl:lwjgl-glfw'
     implementation 'org.lwjgl:lwjgl-opengl'
     implementation 'org.lwjgl:lwjgl-stb'
+    implementation 'org.lwjgl:lwjgl-openal'
 
     runtimeOnly "org.lwjgl:lwjgl::$lwjglNatives"
     runtimeOnly "org.lwjgl:lwjgl-glfw::$lwjglNatives"
     runtimeOnly "org.lwjgl:lwjgl-opengl::$lwjglNatives"
     runtimeOnly "org.lwjgl:lwjgl-stb::$lwjglNatives"
+    runtimeOnly "org.lwjgl:lwjgl-openal::$lwjglNatives"
 
     implementation "org.joml:joml:$jomlVersion"
 }
 
 application {
     mainClass = 'com.mineclone.Main'
-    applicationDefaultJvmArgs = ['-Dorg.lwjgl.util.NoChecks=false']
+    applicationDefaultJvmArgs = [
+        '-Dorg.lwjgl.util.NoChecks=false',
+        "-Dmineclone.appDir=${projectDir.absolutePath}"
+    ]
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -51,5 +56,59 @@ tasks.withType(JavaCompile).configureEach {
 jar {
     manifest {
         attributes 'Main-Class': 'com.mineclone.Main'
+    }
+}
+
+def appName = 'Mineclone'
+def jpackageInputDir = layout.buildDirectory.dir('jpackage/input')
+def jpackageOutputDir = layout.buildDirectory.dir('jpackage')
+
+tasks.register('prepareJpackageInput', Copy) {
+    dependsOn tasks.named('jar')
+    into jpackageInputDir
+
+    from(tasks.named('jar').flatMap { it.archiveFile }) {
+        rename { "${appName}.jar" }
+    }
+    into('lib') {
+        from configurations.runtimeClasspath
+    }
+    into('assets') {
+        from 'assets'
+        exclude 'atlas.png'
+    }
+}
+
+tasks.register('jpackage', Exec) {
+    group = 'distribution'
+    description = 'Builds a portable Windows app image with Mineclone.exe.'
+    dependsOn tasks.named('prepareJpackageInput')
+
+    doFirst {
+        delete layout.buildDirectory.dir("jpackage/${appName}")
+    }
+
+    commandLine 'jpackage',
+            '--type', 'app-image',
+            '--name', appName,
+            '--app-version', project.version.toString(),
+            '--vendor', 'Mineclone',
+            '--dest', jpackageOutputDir.get().asFile.absolutePath,
+            '--input', jpackageInputDir.get().asFile.absolutePath,
+            '--main-jar', "${appName}.jar",
+            '--main-class', 'com.mineclone.Main',
+            '--java-options', '-Dorg.lwjgl.util.NoChecks=false',
+            '--java-options', '-Dmineclone.appDir=$APPDIR'
+}
+
+tasks.register('portableZip', Zip) {
+    group = 'distribution'
+    description = 'Builds a zip containing the portable app image.'
+    dependsOn tasks.named('jpackage')
+    archiveBaseName = appName
+    archiveClassifier = 'windows-portable'
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+    from(layout.buildDirectory.dir("jpackage/${appName}")) {
+        into appName
     }
 }

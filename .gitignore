@@ -4,3 +4,12 @@ assets/atlas.png
 
 # Brainstorming visual-companion scratch (mockups, server state)
 .superpowers/
+
+# Gradle/build outputs
+.gradle/
+build/
+out/
+
+# Local runtime state
+saves/
+options.dat
