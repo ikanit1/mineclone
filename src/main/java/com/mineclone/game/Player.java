@@ -82,7 +82,7 @@ public class Player {
             boolean sinking = input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT);
             velocity.y += GRAVITY * 0.08f * dt;
             if (!sinking)
-                velocity.y += 2.4f * dt;
+                velocity.y += 1.5f * dt;
 
             // Вертикальный drag: сдерживает накопление скорости
             velocity.y *= (float) Math.pow(0.5, dt);
