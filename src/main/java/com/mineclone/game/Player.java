@@ -25,6 +25,8 @@ public class Player {
     public static final float SWIM_SPEED = 2.0f;
     public static final float SWIM_UP_MAX = 2.5f;
     public static final float SINK_MAX = -2.0f;
+    public static final float GROUND_ACCEL = 14f;
+    public static final float AIR_ACCEL = 2.5f;
 
     public final Vector3f position = new Vector3f(8, 90, 8);
 
@@ -97,8 +99,14 @@ public class Player {
             onGround = false;
             swimSoundTimer -= dt;
         } else {
-            velocity.x = wish.x * speed;
-            velocity.z = wish.z * speed;
+            // MC-подобное движение: экспоненциальное приближение к цели.
+            // Сильный разгон/торможение на земле, слабый контроль в воздухе.
+            float targetX = wish.x * WALK_SPEED;
+            float targetZ = wish.z * WALK_SPEED;
+            float rate = onGround ? GROUND_ACCEL : AIR_ACCEL;
+            float t = 1f - (float) Math.exp(-rate * dt);
+            velocity.x += (targetX - velocity.x) * t;
+            velocity.z += (targetZ - velocity.z) * t;
             velocity.y += GRAVITY * dt;
             if (input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE) && onGround) {
                 velocity.y = JUMP_VELOCITY;
