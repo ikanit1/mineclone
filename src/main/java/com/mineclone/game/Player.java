@@ -11,6 +11,7 @@ public class Player {
     public boolean onGround = false;
     public boolean flying = false;
     public boolean inWater = false;
+    public boolean eyeInWater = false;
     public float swimSoundTimer = 0f;
 
     public static final float WIDTH = 0.6f;
@@ -21,6 +22,9 @@ public class Player {
     public static final float FLY_SPEED = 12f;
     public static final float JUMP_VELOCITY = 8.4f;
     public static final float GRAVITY = -28f;
+    public static final float SWIM_SPEED = 2.0f;
+    public static final float SWIM_UP_MAX = 2.5f;
+    public static final float SINK_MAX = -2.0f;
 
     public final Vector3f position = new Vector3f(8, 90, 8);
 
@@ -56,29 +60,45 @@ public class Player {
             wish.normalize();
 
         float speed = flying ? FLY_SPEED : WALK_SPEED;
-        velocity.x = wish.x * speed;
-        velocity.z = wish.z * speed;
 
         inWater = !flying && touchingWater(world);
+        eyeInWater = !flying && eyeBlockIsWater(world);
 
         if (flying) {
+            velocity.x = wish.x * speed;
+            velocity.z = wish.z * speed;
             velocity.y = 0;
             if (input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE))
                 velocity.y = speed;
             if (input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT))
                 velocity.y = -speed;
         } else if (inWater) {
-            velocity.y += GRAVITY * 0.12f * dt;
-            velocity.y = Math.max(velocity.y, -3f);
-            velocity.x *= (float) Math.pow(0.75, dt * 10);
-            velocity.z *= (float) Math.pow(0.75, dt * 10);
+            // Горизонталь: exponential lerp к wish*SWIM_SPEED (инерция воды)
+            float hDrag = (float) Math.pow(0.15, dt);
+            velocity.x = velocity.x * hDrag + wish.x * SWIM_SPEED * (1f - hDrag);
+            velocity.z = velocity.z * hDrag + wish.z * SWIM_SPEED * (1f - hDrag);
+
+            // Вертикаль: гравитация + плавучесть
+            boolean sinking = input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT);
+            velocity.y += GRAVITY * 0.08f * dt;
+            if (!sinking)
+                velocity.y += 2.4f * dt;
+
+            // Вертикальный drag: сдерживает накопление скорости
+            velocity.y *= (float) Math.pow(0.5, dt);
+
+            // Управление вертикалью
             if (input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE))
-                velocity.y = 3.5f;
-            if (input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT))
-                velocity.y = -3.5f;
+                velocity.y = Math.min(velocity.y + 12f * dt, SWIM_UP_MAX);
+            if (sinking)
+                velocity.y = Math.max(velocity.y - 8f * dt, SINK_MAX);
+
+            velocity.y = Math.max(velocity.y, SINK_MAX);
             onGround = false;
             swimSoundTimer -= dt;
         } else {
+            velocity.x = wish.x * speed;
+            velocity.z = wish.z * speed;
             velocity.y += GRAVITY * dt;
             if (input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE) && onGround) {
                 velocity.y = JUMP_VELOCITY;
@@ -92,6 +112,14 @@ public class Player {
         moveAxis(world, 0, 0, velocity.z * dt);
 
         camera.position.set(position.x, position.y + EYE_HEIGHT, position.z);
+    }
+
+    private boolean eyeBlockIsWater(World world) {
+        int ex = (int) Math.floor(position.x);
+        int ey = (int) Math.floor(position.y + EYE_HEIGHT);
+        int ez = (int) Math.floor(position.z);
+        BlockType b = world.getBlock(ex, ey, ez);
+        return b == BlockType.WATER || b == BlockType.WATER_FLOW;
     }
 
     private boolean touchingWater(World world) {
