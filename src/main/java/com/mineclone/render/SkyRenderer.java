@@ -1,5 +1,6 @@
 package com.mineclone.render;
 
+import com.mineclone.core.AppPaths;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.joml.Vector4f;
@@ -157,8 +158,8 @@ public class SkyRenderer {
     private interface Drawer { void draw(BufferedImage img); }
 
     private static int loadOrGenerate(String name, Drawer drawer) {
-        new File(TEX_DIR).mkdirs();
-        File file = new File(TEX_DIR, name);
+        AppPaths.file(TEX_DIR).mkdirs();
+        File file = new File(AppPaths.file(TEX_DIR), name);
         BufferedImage img = null;
         if (file.exists()) {
             try { img = ImageIO.read(file); } catch (IOException ignored) {}

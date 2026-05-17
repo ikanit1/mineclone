@@ -19,16 +19,49 @@ import java.util.*;
  * above (vertical column). Otherwise the cell is orphaned and removed.
  */
 public final class WaterSimulator {
+    private static final Set<Long> activeChunks = new HashSet<>();
+    private static boolean seededLoadedChunks = false;
 
     private WaterSimulator() { }
 
+    public static void activateChunkIfWater(World world, int cx, int cz) {
+        Chunk chunk = world.getChunkIfExists(cx, cz);
+        if (chunk != null && chunkHasWater(chunk))
+            activeChunks.add(World.key(cx, cz));
+    }
+
+    public static void activateAround(int wx, int wz) {
+        int cx = Math.floorDiv(wx, Chunk.SIZE_X);
+        int cz = Math.floorDiv(wz, Chunk.SIZE_Z);
+        for (int dx = -1; dx <= 1; dx++)
+            for (int dz = -1; dz <= 1; dz++)
+                activeChunks.add(World.key(cx + dx, cz + dz));
+    }
+
+    public static void forgetChunk(long key) {
+        activeChunks.remove(key);
+    }
+
     public static void tick(World world) {
+        if (activeChunks.isEmpty() && !seededLoadedChunks) {
+            seedLoadedWaterChunks(world);
+            seededLoadedChunks = true;
+        }
+        if (activeChunks.isEmpty())
+            return;
+
         Set<Long> toRemove = new HashSet<>(256);
         Map<Long, Integer> toAdd = new HashMap<>(256);
+        Set<Long> scan = new HashSet<>(activeChunks);
+        activeChunks.clear();
         int[][] sides = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
 
-        // Single pass over all loaded chunks: classify each water cell.
-        for (Chunk chunk : world.getLoadedChunks()) {
+        for (long key : scan) {
+            int cx = (int) (key >> 32);
+            int cz = (int) key;
+            Chunk chunk = world.getChunkIfExists(cx, cz);
+            if (chunk == null)
+                continue;
             int bx = chunk.cx * Chunk.SIZE_X;
             int bz = chunk.cz * Chunk.SIZE_Z;
             for (int lx = 0; lx < Chunk.SIZE_X; lx++) {
@@ -69,6 +102,26 @@ public final class WaterSimulator {
             if (world.getBlock(wx, wy, wz) != BlockType.AIR) continue;
             setBlockSafe(world, wx, wy, wz, BlockType.WATER_FLOW, (byte) (int) e.getValue());
         }
+    }
+
+    private static void seedLoadedWaterChunks(World world) {
+        for (Chunk chunk : world.getLoadedChunks()) {
+            if (chunkHasWater(chunk))
+                activeChunks.add(World.key(chunk.cx, chunk.cz));
+        }
+    }
+
+    private static boolean chunkHasWater(Chunk chunk) {
+        for (int lx = 0; lx < Chunk.SIZE_X; lx++) {
+            for (int y = 0; y < Chunk.SIZE_Y; y++) {
+                for (int lz = 0; lz < Chunk.SIZE_Z; lz++) {
+                    BlockType b = chunk.get(lx, y, lz);
+                    if (b == BlockType.WATER || b == BlockType.WATER_FLOW)
+                        return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -145,6 +198,7 @@ public final class WaterSimulator {
         c.setMeta(lx, wy, lz, meta);
         c.dirty = true;
         c.modified = true;
+        activateAround(wx, wz);
         // Edge cells: neighbouring chunk needs a rebuild too so its mesh sees the change.
         if (lx == 0)                       markNeighbourDirty(world, cx - 1, cz);
         if (lx == Chunk.SIZE_X - 1)        markNeighbourDirty(world, cx + 1, cz);

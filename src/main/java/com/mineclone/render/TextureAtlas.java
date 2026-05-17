@@ -1,5 +1,6 @@
 package com.mineclone.render;
 
+import com.mineclone.core.AppPaths;
 import org.lwjgl.BufferUtils;
 
 import javax.imageio.ImageIO;
@@ -94,7 +95,7 @@ public class TextureAtlas {
     public TextureAtlas(String pngPath, boolean dumpAtlas) {
         BufferedImage img = assemble();
         if (dumpAtlas)
-            savePng(img, new File(pngPath));
+            savePng(img, AppPaths.file(pngPath));
 
         ByteBuffer buffer = imageToRgbaBuffer(img);
         textureId = glGenTextures();
@@ -121,7 +122,7 @@ public class TextureAtlas {
 
         int missing = 0;
         for (int i = 0; i < TILE_NAMES.length; i++) {
-            File tileFile = new File(BLOCKS_DIR, TILE_NAMES[i] + ".png");
+            File tileFile = new File(AppPaths.file(BLOCKS_DIR), TILE_NAMES[i] + ".png");
             BufferedImage tile = loadTile(tileFile);
             if (tile == null) {
                 System.err.println("Missing sprite: " + tileFile.getPath()

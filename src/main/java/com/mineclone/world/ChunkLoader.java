@@ -171,6 +171,10 @@ public class ChunkLoader {
         meshed.add(key);
     }
 
+    public void forget(long key) {
+        meshed.remove(key);
+    }
+
     public void shutdown() {
         genPool.shutdownNow();
         meshPool.shutdownNow();

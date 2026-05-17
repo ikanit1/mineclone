@@ -33,6 +33,10 @@ public class World {
         return chunks.get(key(cx, cz));
     }
 
+    public Chunk removeChunk(int cx, int cz) {
+        return chunks.remove(key(cx, cz));
+    }
+
     public Iterable<Chunk> getLoadedChunks() {
         return chunks.values();
     }
@@ -160,23 +164,35 @@ public class World {
         Queue<int[]> queue = new ArrayDeque<>();
         if (emitted > 1)
             for (int[] d : dirs)
-                queue.add(new int[] { wx + d[0], wy + d[1], wz + d[2], emitted - 1 });
+                enqueueBlockLight(queue, wx + d[0], wy + d[1], wz + d[2], emitted - 1);
 
         while (!queue.isEmpty()) {
             int[] cur = queue.poll();
             int x = cur[0], y = cur[1], z = cur[2], val = cur[3];
-            if (y < 0 || y >= Chunk.SIZE_Y)
-                continue;
-            BlockType bt = getBlock(x, y, z);
-            if (bt.solid && !bt.transparent && !bt.cutout)
-                continue;
-            if (getBlockLightWorld(x, y, z) >= val)
-                continue;
-            setBlockLightWorld(x, y, z, val);
             if (val > 1)
                 for (int[] d : dirs)
-                    queue.add(new int[] { x + d[0], y + d[1], z + d[2], val - 1 });
+                    enqueueBlockLight(queue, x + d[0], y + d[1], z + d[2], val - 1);
         }
+    }
+
+    private void enqueueBlockLight(Queue<int[]> queue, int wx, int wy, int wz, int val) {
+        if (wy < 0 || wy >= Chunk.SIZE_Y)
+            return;
+        int cx = Math.floorDiv(wx, Chunk.SIZE_X);
+        int cz = Math.floorDiv(wz, Chunk.SIZE_Z);
+        Chunk c = getChunkIfExists(cx, cz);
+        if (c == null)
+            return;
+        int lx = Math.floorMod(wx, Chunk.SIZE_X);
+        int lz = Math.floorMod(wz, Chunk.SIZE_Z);
+        BlockType bt = c.get(lx, wy, lz);
+        if (bt.solid && !bt.transparent && !bt.cutout)
+            return;
+        if (c.getBlockLight(lx, wy, lz) >= val)
+            return;
+        c.setBlockLight(lx, wy, lz, val);
+        c.dirty = true;
+        queue.add(new int[] { wx, wy, wz, val });
     }
 
     public void floodFillRemove(int wx, int wy, int wz) {
@@ -232,6 +248,7 @@ public class World {
         BlockType old = c.get(lx, wy, lz);
         c.set(lx, wy, lz, t);
         c.modified = true;
+        WaterSimulator.activateAround(wx, wz);
         c.computeSkyLight();
         // mark neighbors dirty if on edge so their borders update
         if (lx == 0)

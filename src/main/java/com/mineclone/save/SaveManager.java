@@ -1,5 +1,7 @@
 package com.mineclone.save;
 
+import com.mineclone.core.AppPaths;
+
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
@@ -28,7 +30,7 @@ public final class SaveManager {
             });
 
     public SaveManager() {
-        this(new File(SaveFormat.SAVES_ROOT));
+        this(AppPaths.file(SaveFormat.SAVES_ROOT));
     }
 
     /** Test seam: point the manager at an arbitrary saves root. */
@@ -175,14 +177,16 @@ public final class SaveManager {
         f.delete();
     }
 
-    /** Block until queued chunk writes finish (call before process exit). */
+    /** Block until queued chunk writes finish. Safe to call multiple times. */
     public void flushAndAwait() {
-        chunkWriter.submit(() -> {});
-        chunkWriter.shutdown();
         try {
-            chunkWriter.awaitTermination(10, java.util.concurrent.TimeUnit.SECONDS);
+            chunkWriter.submit(() -> {}).get(10, java.util.concurrent.TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        } catch (java.util.concurrent.ExecutionException e) {
+            System.err.println("flush save queue failed: " + e.getMessage());
+        } catch (java.util.concurrent.TimeoutException e) {
+            System.err.println("flush save queue timed out");
         }
     }
 }

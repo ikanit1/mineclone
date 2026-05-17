@@ -16,6 +16,7 @@ public class Hud {
         NEW_WORLD_CONFIRM,  // confirm dialog: Yes
         CANCEL,             // confirm dialog: No / explicit dismiss
         SAVE,               // pause menu: trigger saveAll() + toast
+        MAIN_MENU,          // pause menu: save and return to main menu
         RESUME, SETTINGS, SETTINGS_BACK, QUIT
     }
 
@@ -150,12 +151,59 @@ public class Hud {
     }
 
     public MenuAction drawPauseMenu(int screenW, int screenH, double mx, double my, boolean clicked) {
-        String[] labels   = { "Back to Game", "Save", "Settings", "Quit" };
+        String[] labels   = { "Back to Game", "Save", "Settings", "Main Menu", "Quit" };
         MenuAction[] acts = { MenuAction.RESUME, MenuAction.SAVE,
-                              MenuAction.SETTINGS, MenuAction.QUIT };
-        boolean[] enabled = { true, true, true, true };
+                              MenuAction.SETTINGS, MenuAction.MAIN_MENU,
+                              MenuAction.QUIT };
+        boolean[] enabled = { true, true, true, true, true };
         return stoneMenu(screenW, screenH, labels, acts, enabled,
                 mx, my, clicked, /*dimWorld=*/true, /*titleArt=*/false);
+    }
+
+    public void drawLoading(int screenW, int screenH, float progress, float time) {
+        float p = Math.max(0f, Math.min(1f, progress));
+        float panelW = Math.min(520f, screenW - 48f);
+        float panelH = 170f;
+        float panelX = screenW / 2f - panelW / 2f;
+        float panelY = screenH / 2f - panelH / 2f;
+        float barX = panelX + 42f;
+        float barY = panelY + 98f;
+        float barW = panelW - 84f;
+        float barH = 24f;
+
+        ui.begin(screenW, screenH);
+        ui.quad(0, 0, screenW, screenH, 0f, 0f, 0f, 0.58f);
+        ui.quad(panelX, panelY, panelW, panelH, 0.08f, 0.08f, 0.10f, 0.88f);
+        ui.quad(panelX, panelY, panelW, 2f, 1f, 1f, 1f, 0.18f);
+        ui.quad(panelX, panelY + panelH - 2f, panelW, 2f, 0f, 0f, 0f, 0.55f);
+
+        float[] uv = TextureAtlas.uv(BlockType.STONE.sideTile);
+        float cell = 24f;
+        int cols = Math.max(1, Math.round(barW / cell));
+        for (int i = 0; i < cols; i++) {
+            float x = barX + i * (barW / cols);
+            ui.texQuad(x, barY, barW / cols, barH, atlas.getTextureId(),
+                    uv[0], uv[1], uv[2], uv[3], 0.55f, 0.55f, 0.55f, 1f);
+        }
+
+        ui.quad(barX + 3f, barY + 3f, Math.max(0f, (barW - 6f) * p), barH - 6f,
+                0.42f, 0.78f, 0.34f, 0.95f);
+        float sweepX = barX + 3f + ((time * 90f) % Math.max(1f, barW - 6f));
+        ui.quad(sweepX, barY + 4f, 18f, barH - 8f, 0.90f, 1.00f, 0.70f, 0.20f);
+        ui.quad(barX, barY, barW, 2f, 1f, 1f, 1f, 0.35f);
+        ui.quad(barX, barY + barH - 2f, barW, 2f, 0f, 0f, 0f, 0.55f);
+        ui.end();
+
+        String dots = ".".repeat(((int) (time * 3f) % 4));
+        String title = "Preparing world" + dots;
+        float titleW = font.textWidth(title);
+        text.drawShadowed(font, title, screenW / 2f - titleW / 2f,
+                panelY + 48f, screenW, screenH, 1f, 0.95f, 0.55f);
+
+        String pct = Math.round(p * 100f) + "%";
+        float pctW = font.textWidth(pct);
+        text.drawShadowed(font, pct, screenW / 2f - pctW / 2f,
+                barY + barH + 30f, screenW, screenH, 0.82f, 0.95f, 0.75f);
     }
 
     // ---- Minecraft-style slider settings ----------------------------------------

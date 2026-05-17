@@ -2,6 +2,7 @@ package com.mineclone.game;
 
 import com.mineclone.audio.SoundEngine;
 import com.mineclone.audio.Sounds;
+import com.mineclone.core.AppPaths;
 import com.mineclone.core.Input;
 import com.mineclone.core.Window;
 import com.mineclone.render.*;
@@ -24,7 +25,7 @@ public class Game {
     private float volume;
 
     private enum State {
-        MENU, PLAYING, PAUSED, CREATIVE_MENU
+        MENU, LOADING, PLAYING, PAUSED, CREATIVE_MENU
     }
 
     private final Window window;
@@ -70,6 +71,7 @@ public class Game {
     private boolean wireframe = false;
     private boolean consoleOpen = false;
     private final StringBuilder consoleLine = new StringBuilder();
+    private static final int CHUNK_UNLOAD_MARGIN = 3;
 
     private final Map<Long, Mesh> chunkMeshes = new HashMap<>();
     private final Map<Long, Mesh> waterMeshes = new HashMap<>();
@@ -82,6 +84,12 @@ public class Game {
     private final MenuBackground menuBackground;
     private boolean showNewWorldConfirm = false;
     private float saveToastTimer = 0f;   // seconds remaining for "Saved" toast
+    private String commandToast = "";
+    private float commandToastTimer = 0f;
+    private float commandHelpTimer = 0f;
+    private float loadingProgress = 0f;
+    private float loadingVisualProgress = 0f;
+    private float loadingTimer = 0f;
     /** Eat mouseDown/mouseClicked until the user releases LMB. Prevents the
      *  click that opened a panel from immediately grabbing a slider in it. */
     private boolean swallowMouseUntilUp = false;
@@ -144,20 +152,24 @@ public class Game {
                 gameTime, selectedSlot);
         save.saveLevel(worldId, d);
         for (com.mineclone.world.Chunk c : world.getLoadedChunks()) {
-            if (c.modified) {
-                save.saveChunkAsync(worldId,
-                        new com.mineclone.save.ChunkSnapshot(c.cx, c.cz,
-                                c.copyBlocks(), c.copyMeta()));
-                c.modified = false;
-            }
+            saveChunkIfModified(c);
         }
+    }
+
+    private void saveChunkIfModified(Chunk c) {
+        if (!c.modified)
+            return;
+        save.saveChunkAsync(worldId,
+                new com.mineclone.save.ChunkSnapshot(c.cx, c.cz,
+                        c.copyBlocks(), c.copyMeta()));
+        c.modified = false;
     }
 
     public void run() {
         sound.init();
         sound.setMasterVolume(volume);
         try {
-            font = new Font("assets/minecraft.ttf", 22f);
+            font = new Font(AppPaths.path("assets/minecraft.ttf"), 22f);
         } catch (java.io.IOException e) {
             System.err.println("Failed to load font: " + e.getMessage());
         }
@@ -206,6 +218,7 @@ public class Game {
 
             switch (state) {
                 case MENU -> updateMenu(dt);
+                case LOADING -> updateLoading(dt);
                 case PLAYING -> updatePlaying(dt);
                 case PAUSED -> updatePaused();
                 case CREATIVE_MENU -> updateCreativeMenu(dt);
@@ -225,6 +238,41 @@ public class Game {
     private void updateMenu(float dt) {
         menuBackground.update(dt);
         if (saveToastTimer > 0f) saveToastTimer -= dt;
+        updateCommandToast(dt);
+    }
+
+    private void updateCommandToast(float dt) {
+        if (commandToastTimer > 0f)
+            commandToastTimer -= dt;
+        if (commandHelpTimer > 0f)
+            commandHelpTimer -= dt;
+    }
+
+    private void beginLoadingToPlay() {
+        loadingProgress = 0f;
+        loadingVisualProgress = 0f;
+        loadingTimer = 0f;
+        daylight = computeDaylight();
+        player.camera.position.set(player.position.x, player.position.y + Player.EYE_HEIGHT, player.position.z);
+        state = State.LOADING;
+        input.grabCursor(false);
+        swallowMouseUntilUp = true;
+    }
+
+    private void updateLoading(float dt) {
+        loadingTimer += dt;
+        updateCommandToast(dt);
+        ensureChunksLoaded();
+        updateDirtyMeshes();
+        loadingProgress = computeLoadingProgress();
+        loadingVisualProgress += (loadingProgress - loadingVisualProgress)
+                * Math.min(1f, dt * 8f);
+        if (loadingProgress >= 1f && loadingTimer >= 0.45f) {
+            loadingVisualProgress = 1f;
+            state = State.PLAYING;
+            input.grabCursor(true);
+            swallowMouseUntilUp = false;
+        }
     }
 
     private float computeDaylight() {
@@ -254,6 +302,7 @@ public class Game {
     private void updatePlaying(float dt) {
         gameTime += dt * TIME_SCALE;
         if (saveToastTimer > 0f) saveToastTimer -= dt;
+        updateCommandToast(dt);
         autosaveTimer -= dt;
         if (autosaveTimer <= 0f) {
             autosaveTimer = AUTOSAVE_INTERVAL;
@@ -338,6 +387,7 @@ public class Game {
 
     private void updatePaused() {
         if (saveToastTimer > 0f) saveToastTimer -= 1f / 60f; // paused: assume 60Hz UI ticks
+        updateCommandToast(1f / 60f);
         if (input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
             if (inSettings) {
                 inSettings = false;
@@ -352,6 +402,7 @@ public class Game {
     }
 
     private void updateCreativeMenu(float dt) {
+        updateCommandToast(dt);
         if (input.keyPressed(GLFW.GLFW_KEY_E) || input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
             state = State.PLAYING;
             input.grabCursor(true);
@@ -384,13 +435,55 @@ public class Game {
         loader.ensureRadius(pcx, pcz, renderRadius + 1);
         loader.drainLightFlood(2);
         for (ChunkLoader.Ready r : loader.drainReady(3)) {
+            int cx = (int) (r.key >> 32);
+            int cz = (int) r.key;
+            if (world.getChunkIfExists(cx, cz) == null) {
+                loader.forget(r.key);
+                continue;
+            }
             Mesh old = chunkMeshes.remove(r.key);
             if (old != null) old.destroy();
             Mesh oldW = waterMeshes.remove(r.key);
             if (oldW != null) oldW.destroy();
             if (!r.data[0].isEmpty()) chunkMeshes.put(r.key, r.data[0].upload());
             if (!r.data[1].isEmpty()) waterMeshes.put(r.key, r.data[1].upload());
+            WaterSimulator.activateChunkIfWater(world, cx, cz);
         }
+        evictDistantChunks(pcx, pcz);
+    }
+
+    private void evictDistantChunks(int pcx, int pcz) {
+        int keepRadius = renderRadius + CHUNK_UNLOAD_MARGIN;
+        for (Chunk c : world.getLoadedChunks()) {
+            if (Math.abs(c.cx - pcx) <= keepRadius && Math.abs(c.cz - pcz) <= keepRadius)
+                continue;
+            saveChunkIfModified(c);
+            long key = World.key(c.cx, c.cz);
+            Mesh old = chunkMeshes.remove(key);
+            if (old != null) old.destroy();
+            Mesh oldW = waterMeshes.remove(key);
+            if (oldW != null) oldW.destroy();
+            loader.forget(key);
+            WaterSimulator.forgetChunk(key);
+            world.removeChunk(c.cx, c.cz);
+        }
+    }
+
+    private float computeLoadingProgress() {
+        int pcx = (int) Math.floor(player.position.x / Chunk.SIZE_X);
+        int pcz = (int) Math.floor(player.position.z / Chunk.SIZE_Z);
+        int radius = Math.max(1, Math.min(3, renderRadius));
+        int ready = 0;
+        int total = (radius * 2 + 1) * (radius * 2 + 1);
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                int cx = pcx + dx, cz = pcz + dz;
+                long key = World.key(cx, cz);
+                if (world.getChunkIfExists(cx, cz) != null && chunkMeshes.containsKey(key))
+                    ready++;
+            }
+        }
+        return ready / (float) total;
     }
 
     private Raycaster.Hit lastHit = null;
@@ -486,16 +579,8 @@ public class Game {
         String[] parts = cmd.split("\\s+");
         try {
             switch (parts[0]) {
-                case "/time" -> {
-                    if (parts.length >= 3 && parts[1].equals("set")) {
-                        gameTime = switch (parts[2]) {
-                            case "day"   -> (float)(Math.PI / 6.0);
-                            case "noon"  -> (float)(Math.PI / 2.0);
-                            case "night" -> (float)(Math.PI * 1.2);
-                            default -> gameTime;
-                        };
-                    }
-                }
+                case "/time" -> executeTimeCommand(parts);
+                case "/help", "/commands" -> showCommandHelp();
                 case "/speed" -> {
                     if (parts.length >= 2) {
                         float s = Float.parseFloat(parts[1]);
@@ -529,7 +614,109 @@ public class Game {
                 }
                 case "/debug" -> showDebug = !showDebug;
             }
-        } catch (NumberFormatException ignored) {}
+        } catch (NumberFormatException e) {
+            showCommandToast("Invalid number");
+        }
+    }
+
+    private void executeTimeCommand(String[] parts) {
+        if (parts.length == 1 || (parts.length == 2 && parts[1].equalsIgnoreCase("query"))) {
+            showCommandToast("Time: " + formatGameTime());
+            return;
+        }
+        if (parts.length < 3) {
+            showCommandToast("Usage: /time set <preset|0-24>");
+            return;
+        }
+
+        String op = parts[1].toLowerCase();
+        switch (op) {
+            case "set" -> {
+                Float preset = timePreset(parts[2].toLowerCase());
+                if (preset != null) {
+                    gameTime = normalizeGameTime(preset);
+                    daylight = computeDaylight();
+                    showCommandToast("Time set to " + parts[2].toLowerCase());
+                    return;
+                }
+                try {
+                    float hours = Float.parseFloat(parts[2]);
+                    if (hours < 0f || hours > 24f) {
+                        showCommandToast("Usage: /time set <preset|0-24>");
+                        return;
+                    }
+                    gameTime = normalizeGameTime(hoursToGameTime(hours));
+                    daylight = computeDaylight();
+                    showCommandToast("Time: " + formatGameTime());
+                } catch (NumberFormatException e) {
+                    showCommandToast("Unknown time preset");
+                }
+            }
+            case "add" -> {
+                try {
+                    float hours = Float.parseFloat(parts[2]);
+                    gameTime = normalizeGameTime(gameTime + hoursToRadians(hours));
+                    daylight = computeDaylight();
+                    showCommandToast("Added " + formatHours(hours) + " hours");
+                } catch (NumberFormatException e) {
+                    showCommandToast("Usage: /time add <hours>");
+                }
+            }
+            default -> showCommandToast("Usage: /time set <preset|0-24>");
+        }
+    }
+
+    private Float timePreset(String name) {
+        return switch (name) {
+            case "day", "sunrise" -> (float) (Math.PI / 6.0);
+            case "noon" -> (float) (Math.PI / 2.0);
+            case "sunset" -> (float) (5.0 * Math.PI / 6.0);
+            case "night" -> (float) (7.0 * Math.PI / 6.0);
+            case "midnight" -> (float) (3.0 * Math.PI / 2.0);
+            default -> null;
+        };
+    }
+
+    private static float hoursToGameTime(float hours) {
+        return hoursToRadians(hours) - (float) (Math.PI / 2.0);
+    }
+
+    private static float hoursToRadians(float hours) {
+        return (hours / 24f) * (float) (Math.PI * 2.0);
+    }
+
+    private static float normalizeGameTime(float t) {
+        float cycle = (float) (Math.PI * 2.0);
+        t %= cycle;
+        if (t < 0f)
+            t += cycle;
+        return t;
+    }
+
+    private String formatGameTime() {
+        float cycle = (float) (Math.PI * 2.0);
+        float hours = ((normalizeGameTime(gameTime) + (float) (Math.PI / 2.0)) / cycle) * 24f;
+        hours %= 24f;
+        int totalMinutes = Math.floorMod(Math.round(hours * 60f), 24 * 60);
+        int hh = totalMinutes / 60;
+        int mm = totalMinutes % 60;
+        return String.format("%02d:%02d", hh, mm);
+    }
+
+    private static String formatHours(float hours) {
+        if (Math.abs(hours - Math.round(hours)) < 0.0001f)
+            return String.format("%.1f", hours);
+        return String.valueOf(hours);
+    }
+
+    private void showCommandToast(String message) {
+        commandToast = message;
+        commandToastTimer = 2.0f;
+    }
+
+    private void showCommandHelp() {
+        commandHelpTimer = 6.0f;
+        showCommandToast("Showing command help");
     }
 
     private float customFlySpeed = -1f;
@@ -658,16 +845,16 @@ public class Game {
         glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
         glDisable(GL_BLEND);
         drawnChunks = 0;
-        for (Map.Entry<Long, Mesh> e : chunkMeshes.entrySet()) {
-            long k = e.getKey();
-            int cx = (int) (k >> 32);
-            int cz = (int) (k & 0xFFFFFFFFL);
-            if (Math.abs(cx - pcx) > renderRadius || Math.abs(cz - pcz) > renderRadius)
-                continue;
+        for (int cx = pcx - renderRadius; cx <= pcx + renderRadius; cx++) {
+            for (int cz = pcz - renderRadius; cz <= pcz + renderRadius; cz++) {
+                Mesh mesh = chunkMeshes.get(World.key(cx, cz));
+                if (mesh == null)
+                    continue;
             Matrix4f model = new Matrix4f().translate(cx * Chunk.SIZE_X, 0, cz * Chunk.SIZE_Z);
             chunkShader.setMat4("uModel", model);
-            e.getValue().render();
+                mesh.render();
             drawnChunks++;
+            }
         }
         chunkShader.unbind();
 
@@ -688,7 +875,14 @@ public class Game {
         chunkShader.setFloat("uTime", totalTime);
         atlas.bind(0);
 
-        List<Long> waterKeys = new ArrayList<>(waterMeshes.keySet());
+        List<Long> waterKeys = new ArrayList<>();
+        for (int cx = pcx - renderRadius; cx <= pcx + renderRadius; cx++) {
+            for (int cz = pcz - renderRadius; cz <= pcz + renderRadius; cz++) {
+                long key = World.key(cx, cz);
+                if (waterMeshes.containsKey(key))
+                    waterKeys.add(key);
+            }
+        }
         waterKeys.sort((ka, kb) -> {
             int cxa = (int)(ka >> 32), cza = (int)(ka & 0xFFFFFFFFL);
             int cxb = (int)(kb >> 32), czb = (int)(kb & 0xFFFFFFFFL);
@@ -702,8 +896,6 @@ public class Game {
         });
         for (Long k : waterKeys) {
             int cx = (int)(k >> 32), cz = (int)(k & 0xFFFFFFFFL);
-            if (Math.abs(cx - pcx) > renderRadius || Math.abs(cz - pcz) > renderRadius)
-                continue;
             Matrix4f model = new Matrix4f().translate(cx * Chunk.SIZE_X, 0, cz * Chunk.SIZE_Z);
             chunkShader.setMat4("uModel", model);
             Mesh wm = waterMeshes.get(k);
@@ -803,14 +995,16 @@ public class Game {
                     sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
                 switch (a) {
                     case CONTINUE -> {
-                        state = State.PLAYING;
-                        input.grabCursor(true);
+                        beginLoadingToPlay();
                     }
                     case NEW_WORLD -> { showNewWorldConfirm = true; swallowMouseUntilUp = true; }
                     case SETTINGS  -> { inSettings = true; swallowMouseUntilUp = true; }
                     case QUIT      -> GLFW.glfwSetWindowShouldClose(window.getHandle(), true);
                     default -> { }
                 }
+            }
+            case LOADING -> {
+                hud.drawLoading(w, h, loadingVisualProgress, loadingTimer);
             }
             case PLAYING -> {
                 if (player.inWater && hud != null)
@@ -871,6 +1065,15 @@ public class Game {
                             sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
                         }
                         case SETTINGS -> { inSettings = true; swallowMouseUntilUp = true; }
+                        case MAIN_MENU -> {
+                            saveAll();
+                            save.flushAndAwait();
+                            saveToastTimer = 1.6f;
+                            inSettings = false;
+                            state = State.MENU;
+                            input.grabCursor(false);
+                            swallowMouseUntilUp = true;
+                        }
                         case QUIT -> GLFW.glfwSetWindowShouldClose(window.getHandle(), true);
                         default -> { }
                     }
@@ -900,8 +1103,64 @@ public class Game {
                     w, h, 0.55f, 1f, 0.55f, a);
         }
 
+        if (commandToastTimer > 0f && font != null && !commandToast.isEmpty()) {
+            float mw = font.textWidth(commandToast);
+            float a = Math.min(1f, commandToastTimer / 0.35f);
+            float y = saveToastTimer > 0f ? 82f : 32f;
+            ui.begin(w, h);
+            ui.quad(w / 2f - mw / 2f - 12f, y, mw + 24f, font.getPixelHeight() + 16f,
+                    0f, 0f, 0f, 0.55f * a);
+            ui.end();
+            text.draw(font, commandToast, w / 2f - mw / 2f,
+                    y + 18f + font.getPixelHeight() * 0.5f,
+                    w, h, 0.85f, 0.95f, 1f, a);
+        }
+
+        if (commandHelpTimer > 0f && font != null) {
+            drawCommandHelp(w, h);
+        }
+
         // always show version label
         hud.drawVersionLabel(w, h);
+    }
+
+    private void drawCommandHelp(int w, int h) {
+        String[] lines = {
+                "Commands",
+                "/help  - show this list",
+                "/time [query]",
+                "/time set day|sunrise|noon|sunset|night|midnight|0-24",
+                "/time add <hours>",
+                "/tp <x> <y> <z>",
+                "/fly",
+                "/speed <value>",
+                "/fill <block> [radius]",
+                "/debug"
+        };
+        float lineH = font.getPixelHeight() + 5f;
+        float panelW = 0f;
+        for (String line : lines)
+            panelW = Math.max(panelW, font.textWidth(line));
+        panelW += 32f;
+        float panelH = lines.length * lineH + 26f;
+        float x = Math.max(24f, w / 2f - panelW / 2f);
+        float y = Math.max(80f, h / 2f - panelH / 2f);
+        float a = Math.min(1f, commandHelpTimer / 0.35f);
+
+        ui.begin(w, h);
+        ui.quad(x, y, panelW, panelH, 0f, 0f, 0f, 0.72f * a);
+        ui.quad(x, y, panelW, 2f, 1f, 1f, 1f, 0.20f * a);
+        ui.quad(x, y + panelH - 2f, panelW, 2f, 0f, 0f, 0f, 0.55f * a);
+        ui.end();
+
+        float textY = y + 22f;
+        for (int i = 0; i < lines.length; i++) {
+            float r = i == 0 ? 1f : 0.82f;
+            float g = i == 0 ? 0.95f : 0.90f;
+            float b = i == 0 ? 0.55f : 1f;
+            text.drawShadowed(font, lines[i], x + 16f, textY + i * lineH,
+                    w, h, r, g, b);
+        }
     }
 
     private int countLoadedChunks() {

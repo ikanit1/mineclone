@@ -1,5 +1,6 @@
 package com.mineclone.audio;
 
+import com.mineclone.core.AppPaths;
 import com.mineclone.world.BlockType;
 
 import java.io.File;
@@ -44,7 +45,7 @@ public final class Sounds {
     }
 
     static List<String> listMatching(String dir, String prefix) {
-        File d = new File(dir);
+        File d = AppPaths.file(dir);
         File[] kids = d.listFiles();
         if (kids == null)
             return Collections.emptyList();
@@ -103,13 +104,13 @@ public final class Sounds {
 
     /** Path to the generic break sound (when a block is destroyed). */
     public String breakRandom() {
-        File f = new File(ROOT + "/random/break.ogg");
+        File f = AppPaths.file(ROOT + "/random/break.ogg");
         return f.exists() ? f.getAbsolutePath() : null;
     }
 
     /** Classic UI button click (random/click.ogg). */
     public List<String> uiClick() {
-        File f = new File(ROOT + "/random/click.ogg");
+        File f = AppPaths.file(ROOT + "/random/click.ogg");
         return f.exists() ? List.of(f.getAbsolutePath()) : Collections.emptyList();
     }
 
@@ -127,8 +128,8 @@ public final class Sounds {
 
     public List<String> doorToggle() {
         List<String> out = new ArrayList<>();
-        File open = new File(ROOT + "/random/door_open.ogg");
-        File close = new File(ROOT + "/random/door_close.ogg");
+        File open = AppPaths.file(ROOT + "/random/door_open.ogg");
+        File close = AppPaths.file(ROOT + "/random/door_close.ogg");
         if (open.exists())
             out.add(open.getAbsolutePath());
         if (close.exists())
