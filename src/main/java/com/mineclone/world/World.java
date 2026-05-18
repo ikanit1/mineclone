@@ -195,6 +195,57 @@ public class World {
         queue.add(new int[] { wx, wy, wz, val });
     }
 
+    /**
+     * Seed block-light into chunk (cx,cz) from the border cells of its loaded
+     * neighbours.  Called when a chunk first loads so it inherits torch light
+     * that was already propagated in adjacent chunks.  Re-flooding the emitter
+     * in the neighbour would fail (BFS stops at cells that already hold the
+     * correct value); reading the border directly and pushing inward avoids that.
+     */
+    public void injectNeighbourLight(int cx, int cz) {
+        int bx = cx * Chunk.SIZE_X;
+        int bz = cz * Chunk.SIZE_Z;
+        Queue<int[]> queue = new ArrayDeque<>();
+        int[][] dirs = { {1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1} };
+
+        Chunk nPX = getChunkIfExists(cx + 1, cz);
+        if (nPX != null)
+            for (int y = 0; y < Chunk.SIZE_Y; y++)
+                for (int lz = 0; lz < Chunk.SIZE_Z; lz++) {
+                    int nv = nPX.getBlockLight(0, y, lz);
+                    if (nv > 1) enqueueBlockLight(queue, bx + Chunk.SIZE_X - 1, y, bz + lz, nv - 1);
+                }
+        Chunk nNX = getChunkIfExists(cx - 1, cz);
+        if (nNX != null)
+            for (int y = 0; y < Chunk.SIZE_Y; y++)
+                for (int lz = 0; lz < Chunk.SIZE_Z; lz++) {
+                    int nv = nNX.getBlockLight(Chunk.SIZE_X - 1, y, lz);
+                    if (nv > 1) enqueueBlockLight(queue, bx, y, bz + lz, nv - 1);
+                }
+        Chunk nPZ = getChunkIfExists(cx, cz + 1);
+        if (nPZ != null)
+            for (int y = 0; y < Chunk.SIZE_Y; y++)
+                for (int lx = 0; lx < Chunk.SIZE_X; lx++) {
+                    int nv = nPZ.getBlockLight(lx, y, 0);
+                    if (nv > 1) enqueueBlockLight(queue, bx + lx, y, bz + Chunk.SIZE_Z - 1, nv - 1);
+                }
+        Chunk nNZ = getChunkIfExists(cx, cz - 1);
+        if (nNZ != null)
+            for (int y = 0; y < Chunk.SIZE_Y; y++)
+                for (int lx = 0; lx < Chunk.SIZE_X; lx++) {
+                    int nv = nNZ.getBlockLight(lx, y, Chunk.SIZE_Z - 1);
+                    if (nv > 1) enqueueBlockLight(queue, bx + lx, y, bz, nv - 1);
+                }
+
+        while (!queue.isEmpty()) {
+            int[] cur = queue.poll();
+            int x = cur[0], y = cur[1], z = cur[2], val = cur[3];
+            if (val > 1)
+                for (int[] d : dirs)
+                    enqueueBlockLight(queue, x + d[0], y + d[1], z + d[2], val - 1);
+        }
+    }
+
     public void floodFillRemove(int wx, int wy, int wz) {
         int R = 15;
         List<int[]> sources = new ArrayList<>();
@@ -248,7 +299,7 @@ public class World {
         BlockType old = c.get(lx, wy, lz);
         c.set(lx, wy, lz, t);
         c.modified = true;
-        WaterSimulator.activateAround(wx, wz);
+        WaterSimulator.activateAround(this, wx, wz);
         c.computeSkyLight();
         // mark neighbors dirty if on edge so their borders update
         if (lx == 0)
