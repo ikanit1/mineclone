@@ -148,8 +148,8 @@ public class Hud {
         float hotbarX = screenW / 2f - totalW / 2f;
         float hotbarY = screenH - slot - 16f;
 
-        float hs  = 9f;   // heart sprite display size (px)
-        float gap = 1f;   // 1-px gap between hearts (MC style)
+        float hs  = 14f;  // heart sprite display size (px)
+        float gap = 2f;   // gap between hearts
         float x0  = hotbarX;
         float y0  = hotbarY - 6f - hs - 5f;  // just above hotbar backing quad
 
