@@ -154,6 +154,34 @@ public class ParticleSystem {
         }
     }
 
+    public void emitWaterSplash(float x, float y, float z, float skyFrac, float blockFrac) {
+        float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
+        int count = 8 + rnd.nextInt(7);
+        for (int i = 0; i < count && particles.size() < MAX; i++) {
+            P p = new P();
+            p.worldLit = true;
+            p.skyL = skyFrac;
+            p.blockL = blockFrac;
+            float angle = rnd.nextFloat() * (float) (Math.PI * 2);
+            float horiz = 1.5f + rnd.nextFloat() * 2.5f;
+            p.x = x + (rnd.nextFloat() - 0.5f) * 0.6f;
+            p.y = y;
+            p.z = z + (rnd.nextFloat() - 0.5f) * 0.6f;
+            p.vx = (float) Math.cos(angle) * horiz;
+            p.vy = 2.5f + rnd.nextFloat() * 3f;
+            p.vz = (float) Math.sin(angle) * horiz;
+            p.life = p.maxLife = 0.35f + rnd.nextFloat() * 0.35f;
+            p.size = 0.06f + rnd.nextFloat() * 0.07f;
+            p.gravityScale = 1f;
+            p.cr = 0.5f + rnd.nextFloat() * 0.4f;
+            p.cg = 0.7f + rnd.nextFloat() * 0.25f;
+            p.cb = 1.0f;
+            p.baseAlpha = 0.7f + rnd.nextFloat() * 0.3f;
+            p.u0 = uvP[0]; p.v0 = uvP[1]; p.u1 = uvP[2]; p.v1 = uvP[3];
+            particles.add(p);
+        }
+    }
+
     // -------------------------------------------------------------------------
     //  Update & render
     // -------------------------------------------------------------------------

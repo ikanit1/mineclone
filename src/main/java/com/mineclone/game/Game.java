@@ -366,6 +366,13 @@ public class Game {
 
         handleHotbar();
         player.update(dt, world, input);
+        if (player.lastFallDamage > 0f) {
+            if (player.lastFallDamage >= 4f)
+                sound.playOneOf(sounds.fallBig(), 0.9f, 0.95f + 0.1f * (float) Math.random());
+            else
+                sound.playOneOf(sounds.fallSmall(), 0.7f, 0.95f + 0.1f * (float) Math.random());
+            player.lastFallDamage = 0f;
+        }
         if (player.isDead()) {
             state = State.DEAD;
             input.grabCursor(false);
@@ -378,6 +385,12 @@ public class Game {
         }
         if (player.inWater && !wasInWater) {
             sound.playOneOf(sounds.waterSplash(), 0.8f, 0.9f + 0.1f * (float) Math.random());
+            int bx = (int) Math.floor(player.position.x);
+            int by = (int) Math.floor(player.position.y + 0.5f);
+            int bz = (int) Math.floor(player.position.z);
+            float skyF = world.getSkyLight(bx, by, bz) / (float) Chunk.MAX_LIGHT;
+            float blkF = world.getBlockLightWorld(bx, by, bz) / (float) Chunk.MAX_LIGHT;
+            particles.emitWaterSplash(player.position.x, player.position.y + 0.5f, player.position.z, skyF, blkF);
         }
         wasInWater = player.inWater;
         waterFlowSoundTimer -= dt;

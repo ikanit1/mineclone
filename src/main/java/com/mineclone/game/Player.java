@@ -17,6 +17,7 @@ public class Player {
     public float health = 20f;
     public static final float MAX_HEALTH = 20f;
     public float fallDistance = 0f;
+    public float lastFallDamage = 0f;
     private boolean wasOnGround = false;
     private float regenTimer = 0f;
 
@@ -146,7 +147,10 @@ public class Player {
         if (onGround && !wasOnGround) {
             if (!inWater) {
                 float dmg = Math.max(0f, fallDistance - 3f);
-                if (dmg > 0f) takeDamage(dmg);
+                if (dmg > 0f) {
+                    takeDamage(dmg);
+                    lastFallDamage = dmg;
+                }
             }
             fallDistance = 0f;
         }

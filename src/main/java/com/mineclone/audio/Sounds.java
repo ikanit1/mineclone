@@ -126,6 +126,21 @@ public final class Sounds {
         return listMatching(ROOT + "/liquid", "swim");
     }
 
+    public List<String> waterFlow() {
+        File f = AppPaths.file(ROOT + "/liquid/water.ogg");
+        return f.exists() ? List.of(f.getAbsolutePath()) : Collections.emptyList();
+    }
+
+    public List<String> fallBig() {
+        File f = AppPaths.file(ROOT + "/damage/fallbig.ogg");
+        return f.exists() ? List.of(f.getAbsolutePath()) : Collections.emptyList();
+    }
+
+    public List<String> fallSmall() {
+        File f = AppPaths.file(ROOT + "/damage/fallsmall.ogg");
+        return f.exists() ? List.of(f.getAbsolutePath()) : Collections.emptyList();
+    }
+
     public List<String> doorToggle() {
         List<String> out = new ArrayList<>();
         File open = AppPaths.file(ROOT + "/random/door_open.ogg");
