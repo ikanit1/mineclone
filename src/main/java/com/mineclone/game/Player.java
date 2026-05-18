@@ -13,6 +13,13 @@ public class Player {
     public boolean inWater = false;
     public boolean eyeInWater = false;
     public float swimSoundTimer = 0f;
+    private boolean prevInWater = false;
+
+    public float health = 20f;
+    public static final float MAX_HEALTH = 20f;
+    public float fallDistance = 0f;
+    private boolean wasOnGround = false;
+    private float regenTimer = 0f;
 
     public static final float WIDTH = 0.6f;
     public static final float HEIGHT = 1.8f;
@@ -65,6 +72,7 @@ public class Player {
 
         inWater = !flying && touchingWater(world);
         eyeInWater = !flying && eyeBlockIsWater(world);
+        boolean justEnteredWater = inWater && !prevInWater;
 
         if (flying) {
             velocity.x = wish.x * speed;
@@ -80,22 +88,33 @@ public class Player {
             velocity.x = velocity.x * hDrag + wish.x * SWIM_SPEED * (1f - hDrag);
             velocity.z = velocity.z * hDrag + wish.z * SWIM_SPEED * (1f - hDrag);
 
-            // Вертикаль: гравитация + плавучесть
+            // Погружение: поглощаем вертикальную скорость при входе в воду
+            if (justEnteredWater && velocity.y < 0f)
+                velocity.y = Math.max(velocity.y * 0.4f, -4f);
+
             boolean sinking = input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT);
-            velocity.y += GRAVITY * 0.08f * dt;
+            boolean spaceDown = input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE);
+
+            // Вертикаль: увеличенная гравитация + меньше плавучести = быстрее тонет
+            velocity.y += GRAVITY * 0.12f * dt;
             if (!sinking)
-                velocity.y += 1.5f * dt;
+                velocity.y += 1.0f * dt;
 
-            // Вертикальный drag: сдерживает накопление скорости
-            velocity.y *= (float) Math.pow(0.5, dt);
+            // Вертикальный drag
+            velocity.y *= (float) Math.pow(0.25, dt);
 
-            // Управление вертикалью
-            if (input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE))
-                velocity.y = Math.min(velocity.y + 12f * dt, SWIM_UP_MAX);
+            if (spaceDown) {
+                if (!eyeInWater) {
+                    // На поверхности воды: небольшой прыжок наружу
+                    velocity.y = Math.min(velocity.y + 12f * dt, 4.5f);
+                } else {
+                    // Под водой: плывём вверх
+                    velocity.y = Math.min(velocity.y + 12f * dt, SWIM_UP_MAX);
+                }
+            }
             if (sinking)
                 velocity.y = Math.max(velocity.y - 8f * dt, SINK_MAX);
 
-            velocity.y = Math.max(velocity.y, SINK_MAX);
             onGround = false;
             swimSoundTimer -= dt;
         } else {
@@ -119,6 +138,7 @@ public class Player {
         moveAxis(world, 0, velocity.y * dt, 0);
         moveAxis(world, 0, 0, velocity.z * dt);
 
+        prevInWater = inWater;
         camera.position.set(position.x, position.y + EYE_HEIGHT, position.z);
     }
 
@@ -306,5 +326,22 @@ public class Player {
                 }
             }
         }
+    }
+
+    public void takeDamage(float amount) {
+        health = Math.max(0f, health - amount);
+    }
+
+    public void respawn() {
+        health = MAX_HEALTH;
+        fallDistance = 0f;
+        regenTimer = 0f;
+        position.set(8, 90, 8);
+        velocity.set(0, 0, 0);
+        onGround = false;
+    }
+
+    public boolean isDead() {
+        return health <= 0f;
     }
 }
