@@ -139,7 +139,7 @@ public class Hud {
 
     public void drawHearts(int screenW, int screenH, float health) {
         float hs = 9, gap = 2;
-        float x0 = 4, y0 = screenH - 82f;
+        float x0 = 4, y0 = screenH - 90f;
         ui.begin(screenW, screenH);
         for (int i = 0; i < 10; i++) {
             float x = x0 + i * (hs + gap);
