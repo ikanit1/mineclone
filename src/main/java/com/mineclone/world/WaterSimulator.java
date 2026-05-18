@@ -93,6 +93,7 @@ public final class WaterSimulator {
                         int myLevel = (b == BlockType.WATER) ? 0 : (chunk.getMeta(lx, y, lz) & 0xF);
 
                         // Existing WATER_FLOW with 2+ source neighbours becomes a source.
+                        // Skip trySpread — this cell becomes WATER at end of tick; neighbours rescan next tick.
                         if (b == BlockType.WATER_FLOW && countSourceNeighbors(world, wx, wy, wz, sides) >= 2) {
                             toSource.add(pack(wx, wy, wz));
                             continue;
@@ -130,6 +131,7 @@ public final class WaterSimulator {
             BlockType current = world.getBlock(wx, wy, wz);
             if (current == BlockType.AIR) {
                 // Newly filled cell: upgrade to source if it has 2+ source neighbours.
+                // toRemove only removes WATER_FLOW cells, so WATER source neighbours are stable here.
                 if (countSourceNeighbors(world, wx, wy, wz, sides) >= 2) {
                     toSource.add(pk);
                 } else {
@@ -150,9 +152,12 @@ public final class WaterSimulator {
         }
 
         // Upgrade eligible WATER_FLOW cells to full sources (infinite-source rule).
+        // Guard: only write to AIR or WATER_FLOW — never overwrite a WATER source or solid block.
         for (long pk : toSource) {
             int wx = unpackX(pk), wy = unpackY(pk), wz = unpackZ(pk);
-            setBlockSafe(world, wx, wy, wz, BlockType.WATER, (byte) 0);
+            BlockType cur = world.getBlock(wx, wy, wz);
+            if (cur == BlockType.AIR || cur == BlockType.WATER_FLOW)
+                setBlockSafe(world, wx, wy, wz, BlockType.WATER, (byte) 0);
         }
     }
 
