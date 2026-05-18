@@ -27,7 +27,7 @@ public class Game {
     private float volume;
 
     private enum State {
-        MENU, LOADING, PLAYING, PAUSED, CREATIVE_MENU
+        MENU, LOADING, PLAYING, PAUSED, CREATIVE_MENU, DEAD
     }
 
     private final Window window;
@@ -399,6 +399,10 @@ public class Game {
             WaterSimulator.tick(world);
         }
         updateDirtyMeshes();
+        if (player.isDead()) {
+            state = State.DEAD;
+            input.grabCursor(false);
+        }
     }
 
     private void updatePaused() {
@@ -1049,6 +1053,7 @@ public class Game {
                     hud.drawWaterOverlay(w, h);
                 crosshair.render(w, h);
                 hud.drawHotbar(w, h, hotbar, selectedSlot);
+                hud.drawHearts(w, h, player.health);
                 if (showDebug) {
                     int pcx = (int) Math.floor(player.position.x / Chunk.SIZE_X);
                     int pcz = (int) Math.floor(player.position.z / Chunk.SIZE_Z);
@@ -1125,6 +1130,18 @@ public class Game {
                 if (picked != null) {
                     hotbar[selectedSlot] = picked;
                     sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
+                }
+            }
+            case DEAD -> {
+                boolean clicked = !swallowMouseUntilUp
+                        && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                double mx = input.getCursorX(), my = input.getCursorY();
+                Hud.MenuAction a = hud.drawDeathScreen(w, h, mx, my, clicked);
+                if (a == Hud.MenuAction.RESPAWN) {
+                    player.respawn();
+                    state = State.PLAYING;
+                    input.grabCursor(true);
+                    swallowMouseUntilUp = true;
                 }
             }
         }
