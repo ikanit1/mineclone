@@ -18,6 +18,7 @@ public class Player {
     public static final float MAX_HEALTH = 20f;
     public float fallDistance = 0f;
     public float lastFallDamage = 0f;
+    public float lastFallDistance = 0f;
     private boolean wasOnGround = false;
     private float regenTimer = 0f;
 
@@ -154,6 +155,7 @@ public class Player {
                     takeDamage(dmg);
                     lastFallDamage = dmg;
                 }
+                lastFallDistance = fallDistance;
             }
             fallDistance = 0f;
         }

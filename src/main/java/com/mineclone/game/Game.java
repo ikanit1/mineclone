@@ -373,6 +373,19 @@ public class Game {
                 sound.playOneOf(sounds.fallSmall(), 0.7f, 0.95f + 0.1f * (float) Math.random());
             player.lastFallDamage = 0f;
         }
+        if (player.lastFallDistance >= 2f) {
+            int bx = (int) Math.floor(player.position.x);
+            int by = (int) Math.floor(player.position.y - 0.05f);
+            int bz = (int) Math.floor(player.position.z);
+            BlockType ground = world.getBlock(bx, by, bz);
+            int tile = (ground != null && ground.solid) ? ground.sideTile : BlockType.DIRT.sideTile;
+            float skyF = world.getSkyLight(bx, by + 1, bz) / (float) Chunk.MAX_LIGHT;
+            float blkF = world.getBlockLightWorld(bx, by + 1, bz) / (float) Chunk.MAX_LIGHT;
+            int count = (int) Math.min(22, 5 + player.lastFallDistance * 1.4f);
+            particles.emitLandingPuff(player.position.x, player.position.y, player.position.z,
+                    tile, skyF, blkF, count);
+            player.lastFallDistance = 0f;
+        }
         if (player.isDead()) {
             state = State.DEAD;
             input.grabCursor(false);

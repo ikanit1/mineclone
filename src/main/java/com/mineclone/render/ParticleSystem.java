@@ -182,6 +182,39 @@ public class ParticleSystem {
         }
     }
 
+    public void emitLandingPuff(float x, float y, float z, int sideTile,
+                                float skyFrac, float blockFrac, int count) {
+        float[] uv = TextureAtlas.uv(sideTile);
+        float span = 4f / TextureAtlas.ATLAS_SIZE;
+        for (int i = 0; i < count && particles.size() < MAX; i++) {
+            P p = new P();
+            p.worldLit = true;
+            p.skyL = skyFrac;
+            p.blockL = blockFrac;
+            p.x = x + (rnd.nextFloat() - 0.5f) * 1.0f;
+            p.y = y + 0.05f;
+            p.z = z + (rnd.nextFloat() - 0.5f) * 1.0f;
+            float angle = rnd.nextFloat() * (float) (Math.PI * 2);
+            float horiz = 1.2f + rnd.nextFloat() * 2.8f;
+            p.vx = (float) Math.cos(angle) * horiz;
+            p.vy = 0.8f + rnd.nextFloat() * 1.8f;
+            p.vz = (float) Math.sin(angle) * horiz;
+            p.life = p.maxLife = 0.25f + rnd.nextFloat() * 0.25f;
+            p.size = 0.05f + rnd.nextFloat() * 0.08f;
+            p.growRate = 0f;
+            p.gravityScale = 1.5f;
+            p.cr = 1f; p.cg = 1f; p.cb = 1f;
+            p.baseAlpha = 1f;
+            float maxU = uv[2] - uv[0] - span;
+            float maxV = uv[3] - uv[1] - span;
+            p.u0 = uv[0] + rnd.nextFloat() * Math.max(0f, maxU);
+            p.v0 = uv[1] + rnd.nextFloat() * Math.max(0f, maxV);
+            p.u1 = p.u0 + span;
+            p.v1 = p.v0 + span;
+            particles.add(p);
+        }
+    }
+
     // -------------------------------------------------------------------------
     //  Update & render
     // -------------------------------------------------------------------------
