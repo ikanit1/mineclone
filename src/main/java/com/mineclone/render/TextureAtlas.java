@@ -74,6 +74,9 @@ public class TextureAtlas {
             "water_flow_08", "water_flow_09", "water_flow_10", "water_flow_11",
             "water_flow_12", "water_flow_13", "water_flow_14", "water_flow_15",
             "water_particle", // 33
+            "heart_empty",    // 34
+            "heart_full",     // 35
+            "heart_half",     // 36
     };
 
     /** First tile index of the water_flow animation strip (16 frames). */

@@ -137,18 +137,37 @@ public class Hud {
 
     // ---------------- health hearts ----------------
 
+    private static final int HEART_EMPTY_TILE = 34;
+    private static final int HEART_FULL_TILE  = 35;
+    private static final int HEART_HALF_TILE  = 36;
+
     public void drawHearts(int screenW, int screenH, float health) {
-        float hs = 9, gap = 2;
-        float x0 = 4, y0 = screenH - 90f;
+        // Mirror hotbar geometry so hearts sit flush above its left edge
+        float slot = 52f, pad = 4f;
+        float totalW = 9 * slot + 8 * pad;   // 9 hotbar slots
+        float hotbarX = screenW / 2f - totalW / 2f;
+        float hotbarY = screenH - slot - 16f;
+
+        float hs  = 9f;   // heart sprite display size (px)
+        float gap = 1f;   // 1-px gap between hearts (MC style)
+        float x0  = hotbarX;
+        float y0  = hotbarY - 6f - hs - 5f;  // just above hotbar backing quad
+
+        float[] uvE = TextureAtlas.uv(HEART_EMPTY_TILE);
+        float[] uvF = TextureAtlas.uv(HEART_FULL_TILE);
+        float[] uvH = TextureAtlas.uv(HEART_HALF_TILE);
+        int tid = atlas.getTextureId();
+
         ui.begin(screenW, screenH);
         for (int i = 0; i < 10; i++) {
             float x = x0 + i * (hs + gap);
-            ui.quad(x, y0, hs, hs, 0.23f, 0f, 0f, 0.9f);
+            // Empty container behind every slot
+            ui.texQuad(x, y0, hs, hs, tid, uvE[0], uvE[1], uvE[2], uvE[3], 1f, 1f, 1f, 1f);
             float hp = health - i * 2f;
             if (hp >= 2f) {
-                ui.quad(x, y0, hs, hs, 0.86f, 0f, 0f, 1f);
+                ui.texQuad(x, y0, hs, hs, tid, uvF[0], uvF[1], uvF[2], uvF[3], 1f, 1f, 1f, 1f);
             } else if (hp >= 1f) {
-                ui.quad(x, y0, hs * 0.5f, hs, 0.86f, 0f, 0f, 1f);
+                ui.texQuad(x, y0, hs, hs, tid, uvH[0], uvH[1], uvH[2], uvH[3], 1f, 1f, 1f, 1f);
             }
         }
         ui.end();
