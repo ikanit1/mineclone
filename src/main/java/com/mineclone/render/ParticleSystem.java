@@ -21,6 +21,8 @@ public class ParticleSystem {
 
     /** Tile index in the atlas used for solid-color flame/smoke particles. */
     public static final int PARTICLE_TILE = 13;
+    /** Tile index for the water-drop splash particle sprite. */
+    public static final int WATER_PARTICLE_TILE = 33;
 
     private static final class P {
         float x, y, z, vx, vy, vz;
@@ -155,7 +157,7 @@ public class ParticleSystem {
     }
 
     public void emitWaterSplash(float x, float y, float z, float skyFrac, float blockFrac) {
-        float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
+        float[] uvP = TextureAtlas.uv(WATER_PARTICLE_TILE);
         int count = 8 + rnd.nextInt(7);
         for (int i = 0; i < count && particles.size() < MAX; i++) {
             P p = new P();
@@ -173,10 +175,8 @@ public class ParticleSystem {
             p.life = p.maxLife = 0.35f + rnd.nextFloat() * 0.35f;
             p.size = 0.06f + rnd.nextFloat() * 0.07f;
             p.gravityScale = 1f;
-            p.cr = 0.5f + rnd.nextFloat() * 0.4f;
-            p.cg = 0.7f + rnd.nextFloat() * 0.25f;
-            p.cb = 1.0f;
-            p.baseAlpha = 0.7f + rnd.nextFloat() * 0.3f;
+            p.cr = 1f; p.cg = 1f; p.cb = 1f;
+            p.baseAlpha = 0.85f + rnd.nextFloat() * 0.15f;
             p.u0 = uvP[0]; p.v0 = uvP[1]; p.u1 = uvP[2]; p.v1 = uvP[3];
             particles.add(p);
         }
