@@ -27,6 +27,10 @@ public class ChunkMesher {
      */
     private static final float[] AO_TABLE = { 1.0f, 0.86f, 0.74f, 0.62f };
 
+    // Half-texel inset (0.5 px in a 256-px atlas) keeps UV safely inside each
+    // tile so floating-point rounding never samples the adjacent tile row/col.
+    private static final float UV_INSET = 0.5f / 256f;
+
     private final World world;
 
     public ChunkMesher(World world) {
@@ -252,7 +256,10 @@ public class ChunkMesher {
                 { x + 1, y + h10, z     },
                 { x,     y + h00, z     }
             };
-            float[][] uvCorner = { { u0, v1 }, { u1, v1 }, { u1, v0 }, { u0, v0 } };
+            float[][] uvCorner = {
+                { u0 + UV_INSET, v1 - UV_INSET }, { u1 - UV_INSET, v1 - UV_INSET },
+                { u1 - UV_INSET, v0 + UV_INSET }, { u0 + UV_INSET, v0 + UV_INSET }
+            };
             addWaterQuad(pos, uvs, light, blockLightList, idx, corners, uvCorner, lv, waterBl);
         }
 
@@ -313,8 +320,11 @@ public class ChunkMesher {
                 continue;
             }
 
-            float hA = Math.max(faceCornerH[f][0], faceBot);
-            float hB = Math.max(faceCornerH[f][1], faceBot);
+            // For falling-column blocks (waterAbove=true) the block is full height;
+            // use topY so the side face extends to 1.0 and closes the gap at the
+            // waterfall / horizontal-water junction instead of averaging down.
+            float hA = Math.max(waterAbove ? topY : faceCornerH[f][0], faceBot);
+            float hB = Math.max(waterAbove ? topY : faceCornerH[f][1], faceBot);
             if (hA <= faceBot && hB <= faceBot) continue; // degenerate face
 
             // inset solid-neighbour faces slightly inward to prevent z-fighting
@@ -333,7 +343,7 @@ public class ChunkMesher {
             float vB  = v0 + (v1 - v0) * faceBot;
             float vTA = v0 + (v1 - v0) * hA;
             float vTB = v0 + (v1 - v0) * hB;
-            float[][] uvS = { { u0, vB }, { u1, vB }, { u1, vTA }, { u0, vTB } };
+            float[][] uvS = { { u0 + UV_INSET, vB }, { u1 - UV_INSET, vB }, { u1 - UV_INSET, vTA }, { u0 + UV_INSET, vTB } };
             addWaterQuad(pos, uvs, light, blockLightList, idx, sideCorners, uvS, lv * sideLights[f], waterBl);
         }
     }
