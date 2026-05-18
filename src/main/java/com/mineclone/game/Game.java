@@ -365,6 +365,11 @@ public class Game {
 
         handleHotbar();
         player.update(dt, world, input);
+        if (player.isDead()) {
+            state = State.DEAD;
+            input.grabCursor(false);
+            return;
+        }
         float hSpeed = (float) Math.sqrt(player.velocity.x * player.velocity.x + player.velocity.z * player.velocity.z);
         if (player.inWater && player.swimSoundTimer <= 0f && hSpeed > 0.3f) {
             player.swimSoundTimer = 1.2f;
@@ -399,10 +404,6 @@ public class Game {
             WaterSimulator.tick(world);
         }
         updateDirtyMeshes();
-        if (player.isDead()) {
-            state = State.DEAD;
-            input.grabCursor(false);
-        }
     }
 
     private void updatePaused() {
@@ -411,6 +412,9 @@ public class Game {
         if (input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
             if (inSettings) {
                 inSettings = false;
+            } else if (player.isDead()) {
+                state = State.DEAD;
+                input.grabCursor(false);
             } else {
                 state = State.PLAYING;
                 input.grabCursor(true);
