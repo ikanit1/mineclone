@@ -132,6 +132,10 @@ public class Player {
         moveAxis(world, 0, velocity.y * dt, 0);
         moveAxis(world, 0, 0, velocity.z * dt);
 
+        // Refresh water contact after movement (player may have entered water this frame)
+        inWater = !flying && touchingWater(world);
+        eyeInWater = !flying && eyeBlockIsWater(world);
+
         // Fall distance tracking (position-based, not velocity-based — more stable)
         if (!onGround && !inWater && !flying && position.y < prevY)
             fallDistance += prevY - position.y;
@@ -152,8 +156,9 @@ public class Player {
 
         // Slow HP regen (~0.5 HP per 4 s)
         regenTimer += dt;
-        if (regenTimer >= 4f && health < MAX_HEALTH) {
-            health = Math.min(MAX_HEALTH, health + 0.5f);
+        if (regenTimer >= 4f) {
+            if (health < MAX_HEALTH)
+                health = Math.min(MAX_HEALTH, health + 0.5f);
             regenTimer = 0f;
         }
 
