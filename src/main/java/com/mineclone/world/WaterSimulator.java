@@ -30,16 +30,34 @@ public final class WaterSimulator {
             activeChunks.add(World.key(cx, cz));
     }
 
-    public static void activateAround(int wx, int wz) {
+    /**
+     * Activate the 3×3 chunks around a world-space (x, z) so the simulator
+     * rescans them next tick. Only adds chunks that actually exist — prevents
+     * the set from accumulating dead keys for never-loaded coordinates.
+     */
+    public static void activateAround(World world, int wx, int wz) {
         int cx = Math.floorDiv(wx, Chunk.SIZE_X);
         int cz = Math.floorDiv(wz, Chunk.SIZE_Z);
         for (int dx = -1; dx <= 1; dx++)
-            for (int dz = -1; dz <= 1; dz++)
-                activeChunks.add(World.key(cx + dx, cz + dz));
+            for (int dz = -1; dz <= 1; dz++) {
+                int ncx = cx + dx, ncz = cz + dz;
+                if (world.getChunkIfExists(ncx, ncz) != null)
+                    activeChunks.add(World.key(ncx, ncz));
+            }
     }
 
     public static void forgetChunk(long key) {
         activeChunks.remove(key);
+    }
+
+    /**
+     * Clear all simulator state. Call when transitioning between worlds so the
+     * seeded-loaded-chunks flag and stale active-chunk keys from the previous
+     * world don't leak into the new one.
+     */
+    public static void reset() {
+        activeChunks.clear();
+        seededLoadedChunks = false;
     }
 
     public static void tick(World world) {
@@ -94,13 +112,23 @@ public final class WaterSimulator {
         }
 
         // Apply additions. Skip cells we just removed (they might re-appear next tick).
+        // A cell is fillable when AIR, or when it holds a strictly weaker WATER_FLOW
+        // (we strengthen it to the new lower level). Never overwrite WATER sources
+        // or solid blocks.
         for (Map.Entry<Long, Integer> e : toAdd.entrySet()) {
             long pk = e.getKey();
             if (toRemove.contains(pk)) continue;
             int wx = unpackX(pk), wy = unpackY(pk), wz = unpackZ(pk);
-            // Re-check the cell is still AIR (the world may have changed between scan and apply)
-            if (world.getBlock(wx, wy, wz) != BlockType.AIR) continue;
-            setBlockSafe(world, wx, wy, wz, BlockType.WATER_FLOW, (byte) (int) e.getValue());
+            int newLevel = e.getValue();
+            BlockType current = world.getBlock(wx, wy, wz);
+            if (current == BlockType.AIR) {
+                setBlockSafe(world, wx, wy, wz, BlockType.WATER_FLOW, (byte) newLevel);
+            } else if (current == BlockType.WATER_FLOW) {
+                int curLevel = world.getBlockMeta(wx, wy, wz) & 0xF;
+                if (newLevel < curLevel)
+                    setBlockSafe(world, wx, wy, wz, BlockType.WATER_FLOW, (byte) newLevel);
+            }
+            // else: WATER source, solid, or any other block — leave it alone
         }
     }
 
@@ -162,17 +190,29 @@ public final class WaterSimulator {
                                   Map<Long, Integer> toAdd, int[][] sides) {
         BlockType below = world.getBlock(wx, wy - 1, wz);
         boolean canFall = (below == BlockType.AIR);
+        // A falling stream is also allowed to OVERWRITE a weaker flow below
+        // (higher meta = less full). Lets stronger water refresh stale pools.
+        if (!canFall && below == BlockType.WATER_FLOW) {
+            int belowLevel = world.getBlockMeta(wx, wy - 1, wz) & 0xF;
+            if (myLevel < belowLevel) canFall = true;
+        }
         if (canFall) {
             long pk = pack(wx, wy - 1, wz);
-            int newLevel = (myLevel == 0) ? 1 : myLevel;
+            // Reset level to 0 on fall so the bottom of any waterfall spreads
+            // 7 blocks sideways regardless of how far the source is horizontally.
+            int newLevel = 0;
             Integer prev = toAdd.get(pk);
             if (prev == null || newLevel < prev) toAdd.put(pk, newLevel);
         }
 
-        // A cell with water above AND open air below is mid-fall — skip sideways.
-        if (canFall) {
-            BlockType above = world.getBlock(wx, wy + 1, wz);
-            if (above == BlockType.WATER || above == BlockType.WATER_FLOW) return;
+        // Skip sideways spread for any block that is part of a vertical column.
+        // Only pool sideways when resting on a solid floor (water above, solid below).
+        BlockType above = world.getBlock(wx, wy + 1, wz);
+        boolean hasWaterAbove = above == BlockType.WATER || above == BlockType.WATER_FLOW;
+        if (hasWaterAbove) {
+            if (canFall) return; // still falling — no sideways arms
+            if (below == BlockType.WATER_FLOW || below == BlockType.WATER) return; // mid-column
+            // else: solid floor below → fall through to sideways pool spread
         }
 
         if (myLevel >= 7) return;
@@ -180,7 +220,14 @@ public final class WaterSimulator {
         for (int[] d : sides) {
             int nx = wx + d[0], nz = wz + d[1];
             BlockType nb = world.getBlock(nx, wy, nz);
-            if (nb != BlockType.AIR) continue;
+            boolean canFill = (nb == BlockType.AIR);
+            // Also fill cells that already hold a WEAKER flow (higher meta).
+            // This is how stronger flows reach areas previously settled by a far source.
+            if (!canFill && nb == BlockType.WATER_FLOW) {
+                int nbLevel = world.getBlockMeta(nx, wy, nz) & 0xF;
+                if (sideLevel < nbLevel) canFill = true;
+            }
+            if (!canFill) continue;
             long pk = pack(nx, wy, nz);
             Integer prev = toAdd.get(pk);
             if (prev == null || sideLevel < prev) toAdd.put(pk, sideLevel);
@@ -198,7 +245,7 @@ public final class WaterSimulator {
         c.setMeta(lx, wy, lz, meta);
         c.dirty = true;
         c.modified = true;
-        activateAround(wx, wz);
+        activateAround(world, wx, wz);
         // Edge cells: neighbouring chunk needs a rebuild too so its mesh sees the change.
         if (lx == 0)                       markNeighbourDirty(world, cx - 1, cz);
         if (lx == Chunk.SIZE_X - 1)        markNeighbourDirty(world, cx + 1, cz);
