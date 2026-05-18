@@ -13,7 +13,6 @@ public class Player {
     public boolean inWater = false;
     public boolean eyeInWater = false;
     public float swimSoundTimer = 0f;
-    private boolean prevInWater = false;
 
     public float health = 20f;
     public static final float MAX_HEALTH = 20f;
@@ -72,7 +71,6 @@ public class Player {
 
         inWater = !flying && touchingWater(world);
         eyeInWater = !flying && eyeBlockIsWater(world);
-        boolean justEnteredWater = inWater && !prevInWater;
 
         if (flying) {
             velocity.x = wish.x * speed;
@@ -88,20 +86,14 @@ public class Player {
             velocity.x = velocity.x * hDrag + wish.x * SWIM_SPEED * (1f - hDrag);
             velocity.z = velocity.z * hDrag + wish.z * SWIM_SPEED * (1f - hDrag);
 
-            // Погружение: поглощаем вертикальную скорость при входе в воду
-            if (justEnteredWater && velocity.y < 0f)
-                velocity.y = Math.max(velocity.y * 0.4f, -4f);
-
             boolean sinking = input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT);
             boolean spaceDown = input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE);
 
-            // Вертикаль: увеличенная гравитация + меньше плавучести = быстрее тонет
-            velocity.y += GRAVITY * 0.12f * dt;
+            // MC-faithful: vy = vy * 0.8 - 0.02 per 50ms tick → continuous form
+            float waterVDrag = (float) Math.pow(0.8, dt / 0.05f);
+            velocity.y = velocity.y * waterVDrag - 0.4f * dt;
             if (!sinking)
                 velocity.y += 1.0f * dt;
-
-            // Вертикальный drag
-            velocity.y *= (float) Math.pow(0.25, dt);
 
             if (spaceDown) {
                 if (!eyeInWater) {
@@ -133,12 +125,38 @@ public class Player {
             }
         }
 
+        float prevY = position.y;
+
         // Move with collisions axis by axis (AABB sweep)
         moveAxis(world, velocity.x * dt, 0, 0);
         moveAxis(world, 0, velocity.y * dt, 0);
         moveAxis(world, 0, 0, velocity.z * dt);
 
-        prevInWater = inWater;
+        // Fall distance tracking (position-based, not velocity-based — more stable)
+        if (!onGround && !inWater && !flying && position.y < prevY)
+            fallDistance += prevY - position.y;
+
+        // MLG: touching water resets fall damage counter
+        if (inWater)
+            fallDistance = 0f;
+
+        // Landing: apply fall damage (guard !inWater covers same-frame water+ground)
+        if (onGround && !wasOnGround) {
+            if (!inWater) {
+                float dmg = Math.max(0f, fallDistance - 3f);
+                if (dmg > 0f) takeDamage(dmg);
+            }
+            fallDistance = 0f;
+        }
+        wasOnGround = onGround;
+
+        // Slow HP regen (~0.5 HP per 4 s)
+        regenTimer += dt;
+        if (regenTimer >= 4f && health < MAX_HEALTH) {
+            health = Math.min(MAX_HEALTH, health + 0.5f);
+            regenTimer = 0f;
+        }
+
         camera.position.set(position.x, position.y + EYE_HEIGHT, position.z);
     }
 
