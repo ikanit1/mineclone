@@ -892,6 +892,7 @@ public class Game {
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDepthMask(false);
+        glDisable(GL_CULL_FACE);
         chunkShader.bind();
         chunkShader.setMat4("uProjection", proj);
         chunkShader.setMat4("uView", view);
@@ -934,6 +935,7 @@ public class Game {
         chunkShader.unbind();
         glDepthMask(true);
         glDisable(GL_BLEND);
+        glEnable(GL_CULL_FACE);
         // --- End water pass ---
 
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // restore before outline/particles/UI
