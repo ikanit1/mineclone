@@ -17,7 +17,8 @@ public class Hud {
         CANCEL,             // confirm dialog: No / explicit dismiss
         SAVE,               // pause menu: trigger saveAll() + toast
         MAIN_MENU,          // pause menu: save and return to main menu
-        RESUME, SETTINGS, SETTINGS_BACK, QUIT
+        RESUME, SETTINGS, SETTINGS_BACK, QUIT,
+        RESPAWN
     }
 
     private final Font font;
@@ -132,6 +133,45 @@ public class Hud {
             float x = x0 + i * (slot + pad);
             text.drawShadowed(font, String.valueOf(i + 1), x + 4, y0 + 16, screenW, screenH, 1f, 1f, 1f);
         }
+    }
+
+    // ---------------- health hearts ----------------
+
+    public void drawHearts(int screenW, int screenH, float health) {
+        float hs = 9, gap = 2;
+        float x0 = 4, y0 = screenH - 82f;
+        ui.begin(screenW, screenH);
+        for (int i = 0; i < 10; i++) {
+            float x = x0 + i * (hs + gap);
+            ui.quad(x, y0, hs, hs, 0.23f, 0f, 0f, 0.9f);
+            float hp = health - i * 2f;
+            if (hp >= 2f) {
+                ui.quad(x, y0, hs, hs, 0.86f, 0f, 0f, 1f);
+            } else if (hp >= 1f) {
+                ui.quad(x, y0, hs * 0.5f, hs, 0.86f, 0f, 0f, 1f);
+            }
+        }
+        ui.end();
+    }
+
+    // ---------------- death screen ----------------
+
+    public MenuAction drawDeathScreen(int screenW, int screenH,
+                                      double mx, double my, boolean clicked) {
+        float bw = 300, bh = 50;
+        float bx = screenW / 2f - bw / 2f;
+        float by = screenH / 2f + 20;
+        ui.begin(screenW, screenH);
+        ui.quad(0, 0, screenW, screenH, 0.35f, 0f, 0f, 0.7f);
+        boolean hover = stoneButton(bx, by, bw, bh, "Возродиться",
+                screenW, screenH, mx, my, true, true);
+        ui.end();
+        String title = "Вы умерли";
+        float tw = font.textWidth(title);
+        text.drawShadowed(font, title, screenW / 2f - tw / 2f,
+                screenH / 2f - 20f, screenW, screenH, 1f, 0.3f, 0.3f);
+        if (clicked && hover) return MenuAction.RESPAWN;
+        return MenuAction.NONE;
     }
 
     // ---------------- menus ----------------
