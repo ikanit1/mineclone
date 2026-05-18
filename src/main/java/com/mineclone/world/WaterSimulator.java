@@ -227,9 +227,11 @@ public final class WaterSimulator {
         }
         if (canFall) {
             long pk = pack(wx, wy - 1, wz);
-            // Reset level to 0 on fall so the bottom of any waterfall spreads
-            // 7 blocks sideways regardless of how far the source is horizontally.
-            int newLevel = 0;
+            // Preserve level on fall. A source (level 0) creates a level-0 column
+            // so the bottom-of-fall pools up to 7 cells horizontally — matches MC.
+            // Non-source flows keep their level: level-3 falls as level 3, spreading
+            // 4 more blocks. This prevents cascading resets over gentle slopes.
+            int newLevel = myLevel;
             Integer prev = toAdd.get(pk);
             if (prev == null || newLevel < prev) toAdd.put(pk, newLevel);
         }
