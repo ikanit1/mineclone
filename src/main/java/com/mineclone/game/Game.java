@@ -227,6 +227,7 @@ public class Game {
                 case PLAYING -> updatePlaying(dt);
                 case PAUSED -> updatePaused();
                 case CREATIVE_MENU -> updateCreativeMenu(dt);
+                case DEAD -> updateDead(dt);
             }
 
             this.lastDt = dt;
@@ -432,6 +433,13 @@ public class Game {
             input.grabCursor(true);
             return;
         }
+        ensureChunksLoaded();
+        updateDirtyMeshes();
+    }
+
+    private void updateDead(float dt) {
+        if (saveToastTimer > 0f) saveToastTimer -= dt;
+        updateCommandToast(dt);
         ensureChunksLoaded();
         updateDirtyMeshes();
     }
@@ -1137,6 +1145,7 @@ public class Game {
                 }
             }
             case DEAD -> {
+                hud.drawHearts(w, h, player.health);
                 boolean clicked = !swallowMouseUntilUp
                         && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 double mx = input.getCursorX(), my = input.getCursorY();
