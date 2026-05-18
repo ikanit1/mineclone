@@ -240,10 +240,23 @@ public final class WaterSimulator {
         // Only pool sideways when resting on a solid floor (water above, solid below).
         BlockType above = world.getBlock(wx, wy + 1, wz);
         boolean hasWaterAbove = above == BlockType.WATER || above == BlockType.WATER_FLOW;
+        boolean bottomOfFall = false;
         if (hasWaterAbove) {
             if (canFall) return; // still falling — no sideways arms
             if (below == BlockType.WATER_FLOW || below == BlockType.WATER) return; // mid-column
-            // else: solid floor below → fall through to sideways pool spread
+            // solid floor below → this IS the bottom of a fall.
+            // MC behavior: bottom-of-fall acts as a fresh source for horizontal spread.
+            bottomOfFall = true;
+        }
+
+        // At the bottom of a fall, override level to 0 so the spread reaches 7 blocks
+        // regardless of what level the falling water was. Also schedule a self-update
+        // so the cell's stored level becomes 0 (keeps the support chain consistent).
+        if (bottomOfFall && myLevel > 0) {
+            long selfPk = pack(wx, wy, wz);
+            Integer prevSelf = toAdd.get(selfPk);
+            if (prevSelf == null || 0 < prevSelf) toAdd.put(selfPk, 0);
+            myLevel = 0;
         }
 
         if (myLevel >= 7) return;
