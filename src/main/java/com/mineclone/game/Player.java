@@ -89,11 +89,9 @@ public class Player {
             boolean sinking = input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT);
             boolean spaceDown = input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE);
 
-            // MC-faithful: vy = vy * 0.8 - 0.02 per 50ms tick → continuous form
+            // vertical drag: slow sink by default; SPACE overrides to swim up
             float waterVDrag = (float) Math.pow(0.8, dt / 0.05f);
             velocity.y = velocity.y * waterVDrag - 0.4f * dt;
-            if (!sinking)
-                velocity.y += 1.0f * dt;
 
             if (spaceDown) {
                 if (!eyeInWater) {
