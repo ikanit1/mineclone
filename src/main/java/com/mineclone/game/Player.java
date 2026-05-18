@@ -96,10 +96,13 @@ public class Player {
 
             if (spaceDown) {
                 if (!eyeInWater) {
-                    // На поверхности воды: небольшой прыжок наружу
-                    velocity.y = Math.min(velocity.y + 12f * dt, 4.5f);
+                    // Water exit jump: instant JUMP_VELOCITY on first press, like land jump
+                    if (input.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE))
+                        velocity.y = JUMP_VELOCITY;
+                    else
+                        velocity.y = Math.min(velocity.y + 12f * dt, JUMP_VELOCITY);
                 } else {
-                    // Под водой: плывём вверх
+                    // Underwater: swim upward
                     velocity.y = Math.min(velocity.y + 12f * dt, SWIM_UP_MAX);
                 }
             }
