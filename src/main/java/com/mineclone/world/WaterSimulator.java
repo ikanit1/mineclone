@@ -93,12 +93,8 @@ public final class WaterSimulator {
                         int myLevel = (b == BlockType.WATER) ? 0 : (chunk.getMeta(lx, y, lz) & 0xF);
 
                         // Existing WATER_FLOW with 2+ source neighbours becomes a source.
-                        // Level cap: only level-1 flows qualify — they are directly adjacent to a source.
-                        // Higher levels are too far away to legitimately form a stable pool, and
-                        // without the cap they cascade near large water bodies (ocean/lake expansion bug).
                         // Skip trySpread — this cell becomes WATER at end of tick; neighbours rescan next tick.
-                        if (b == BlockType.WATER_FLOW && myLevel == 1
-                                && countSourceNeighbors(world, wx, wy, wz, sides) >= 2) {
+                        if (b == BlockType.WATER_FLOW && countSourceNeighbors(world, wx, wy, wz, sides) >= 2) {
                             toSource.add(pack(wx, wy, wz));
                             continue;
                         }
@@ -134,10 +130,9 @@ public final class WaterSimulator {
             int newLevel = e.getValue();
             BlockType current = world.getBlock(wx, wy, wz);
             if (current == BlockType.AIR) {
-                // Newly filled cell: upgrade to source only if the flow is level 1
-                // (directly adjacent to a source) and has 2+ source neighbours.
+                // Newly filled cell: upgrade to source if it has 2+ source neighbours.
                 // toRemove only removes WATER_FLOW cells, so WATER source neighbours are stable here.
-                if (newLevel == 1 && countSourceNeighbors(world, wx, wy, wz, sides) >= 2) {
+                if (countSourceNeighbors(world, wx, wy, wz, sides) >= 2) {
                     toSource.add(pk);
                 } else {
                     setBlockSafe(world, wx, wy, wz, BlockType.WATER_FLOW, (byte) newLevel);
@@ -145,8 +140,8 @@ public final class WaterSimulator {
             } else if (current == BlockType.WATER_FLOW) {
                 int curLevel = world.getBlockMeta(wx, wy, wz) & 0xF;
                 if (newLevel < curLevel) {
-                    // Strengthened flow: check for source upgrade (level-1 only).
-                    if (newLevel == 1 && countSourceNeighbors(world, wx, wy, wz, sides) >= 2) {
+                    // Strengthened flow: check for source upgrade before writing.
+                    if (countSourceNeighbors(world, wx, wy, wz, sides) >= 2) {
                         toSource.add(pk);
                     } else {
                         setBlockSafe(world, wx, wy, wz, BlockType.WATER_FLOW, (byte) newLevel);
