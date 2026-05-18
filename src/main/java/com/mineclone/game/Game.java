@@ -21,6 +21,8 @@ import static org.lwjgl.opengl.GL11.*;
 public class Game {
     private int renderRadius;
     private int fovDegrees;
+    private float currentFov;
+    private float lastDt = 0.016f;
     private float brightness;
     private float volume;
 
@@ -105,6 +107,7 @@ public class Game {
         com.mineclone.save.Options opts = save.loadOptions();
         this.renderRadius = opts.renderRadius;
         this.fovDegrees = opts.fovDegrees;
+        this.currentFov = opts.fovDegrees;
         this.brightness = opts.brightness;
         this.volume = opts.volume;
         com.mineclone.save.LevelData saved = save.loadLevel(worldId);
@@ -226,6 +229,7 @@ public class Game {
                 case CREATIVE_MENU -> updateCreativeMenu(dt);
             }
 
+            this.lastDt = dt;
             render();
             sound.tick();
             window.update();
@@ -844,7 +848,9 @@ public class Game {
         glClearColor(sky.x, sky.y, sky.z, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        Matrix4f proj = player.camera.getProjection(window.getAspect(), fovDegrees, 0.1f, 600f);
+        float targetFov = player.eyeInWater ? fovDegrees * 0.85f : fovDegrees;
+        currentFov += (targetFov - currentFov) * (1f - (float) Math.exp(-lastDt * 8f));
+        Matrix4f proj = player.camera.getProjection(window.getAspect(), currentFov, 0.1f, 600f);
         Matrix4f view = player.camera.getView();
 
         // Sky (sun + moon) — rendered before chunks, no depth write so they sit behind
