@@ -68,6 +68,7 @@ public class Game {
     private float waterTickTimer = WATER_TICK_INTERVAL;
     private float totalTime = 0f;
     private boolean wasInWater = false;
+    private float waterFlowSoundTimer = 0f;
     private boolean wireframe = false;
     private boolean consoleOpen = false;
     private final StringBuilder consoleLine = new StringBuilder();
@@ -140,6 +141,7 @@ public class Game {
                 0);
         save.saveLevel(worldId, fresh);
         save.flushAndAwait();
+        WaterSimulator.reset();
         GLFW.glfwSetWindowShouldClose(window.getHandle(), true);
     }
 
@@ -359,14 +361,24 @@ public class Game {
 
         handleHotbar();
         player.update(dt, world, input);
-        if (player.inWater && player.swimSoundTimer <= 0f) {
-            player.swimSoundTimer = 0.8f;
+        float hSpeed = (float) Math.sqrt(player.velocity.x * player.velocity.x + player.velocity.z * player.velocity.z);
+        if (player.inWater && player.swimSoundTimer <= 0f && hSpeed > 0.3f) {
+            player.swimSoundTimer = 1.2f;
             sound.playOneOf(sounds.waterSwim(), 0.4f, 0.9f + 0.2f * (float) Math.random());
         }
         if (player.inWater && !wasInWater) {
             sound.playOneOf(sounds.waterSplash(), 0.8f, 0.9f + 0.1f * (float) Math.random());
         }
         wasInWater = player.inWater;
+        waterFlowSoundTimer -= dt;
+        if (waterFlowSoundTimer <= 0f) {
+            if (hasNearbyFlowingWater()) {
+                sound.playOneOf(sounds.waterFlow(), 0.35f, 0.85f + 0.15f * (float) Math.random());
+                waterFlowSoundTimer = 5f + (float) Math.random() * 7f;
+            } else {
+                waterFlowSoundTimer = 2f;
+            }
+        }
         updateFootsteps();
         ensureChunksLoaded();
         handleInteraction();
@@ -762,6 +774,19 @@ public class Game {
         lastPos.set(cur);
     }
 
+    private boolean hasNearbyFlowingWater() {
+        int px = (int) Math.floor(player.position.x);
+        int py = (int) Math.floor(player.position.y);
+        int pz = (int) Math.floor(player.position.z);
+        int R = 6;
+        for (int x = px - R; x <= px + R; x++)
+            for (int y = py - 2; y <= py + 4; y++)
+                for (int z = pz - R; z <= pz + R; z++)
+                    if (world.getBlock(x, y, z) == com.mineclone.world.BlockType.WATER_FLOW)
+                        return true;
+        return false;
+    }
+
     private boolean playerOccupies(int bx, int by, int bz) {
         float hw = Player.WIDTH / 2f;
         float minX = player.position.x - hw, maxX = player.position.x + hw;
@@ -777,6 +802,11 @@ public class Game {
         for (Chunk c : world.getLoadedChunks()) {
             if (!c.dirty) continue;
             long key = World.key(c.cx, c.cz);
+            // Skip chunks whose applySnapshot is still running on the gen pool —
+            // skyLight is mid-recompute (zeroed then BFS-filled) and reading it
+            // now would bake 0-light into the mesh. After pendingGen is cleared
+            // the chunk stays dirty, so it will be rebuilt on the next frame.
+            if (loader.isPendingGen(key)) continue;
             Mesh old = chunkMeshes.remove(key);
             if (old != null) old.destroy();
             Mesh oldW = waterMeshes.remove(key);
@@ -827,9 +857,9 @@ public class Game {
         chunkShader.setMat4("uProjection", proj);
         chunkShader.setMat4("uView", view);
         chunkShader.setInt("uAtlas", 0);
-        Vector3f fogColor = player.inWater ? new Vector3f(0.04f, 0.14f, 0.55f) : sky;
-        float fogStart = player.inWater ? 3f  : renderRadius * Chunk.SIZE_X * 0.5f;
-        float fogEnd   = player.inWater ? 12f : renderRadius * Chunk.SIZE_X * 1.0f;
+        Vector3f fogColor = player.eyeInWater ? new Vector3f(0.04f, 0.14f, 0.55f) : sky;
+        float fogStart = player.eyeInWater ? 3f  : renderRadius * Chunk.SIZE_X * 0.5f;
+        float fogEnd   = player.eyeInWater ? 12f : renderRadius * Chunk.SIZE_X * 1.0f;
         chunkShader.setVec3("uFogColor", fogColor);
         chunkShader.setFloat("uFogStart", fogStart);
         chunkShader.setFloat("uFogEnd", fogEnd);
@@ -1007,7 +1037,7 @@ public class Game {
                 hud.drawLoading(w, h, loadingVisualProgress, loadingTimer);
             }
             case PLAYING -> {
-                if (player.inWater && hud != null)
+                if (player.eyeInWater && hud != null)
                     hud.drawWaterOverlay(w, h);
                 crosshair.render(w, h);
                 hud.drawHotbar(w, h, hotbar, selectedSlot);
