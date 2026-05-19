@@ -1,0 +1,212 @@
+{
+  "main": {
+    "id": "0f7d2782a00a1cf4",
+    "type": "split",
+    "children": [
+      {
+        "id": "476aba564be899d0",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "0e97807b0ee8ad8e",
+            "type": "leaf",
+            "state": {
+              "type": "graph",
+              "state": {},
+              "icon": "lucide-git-fork",
+              "title": "Граф"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "cc6d8e1d41c3fb9a",
+    "type": "split",
+    "children": [
+      {
+        "id": "b6923b3b58af268c",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "f3421d29f0fe400c",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Файловый менеджер"
+            }
+          },
+          {
+            "id": "95cefb1049961a82",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Поиск"
+            }
+          },
+          {
+            "id": "baa1cc4e6fcb1753",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Закладки"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "04e66f7d2b59b1bb",
+    "type": "split",
+    "children": [
+      {
+        "id": "1b63025d95e96cee",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "28f4b48c1511c820",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "Без названия.canvas",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Обратные ссылки для Без названия"
+            }
+          },
+          {
+            "id": "ab28d126a966af22",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "Без названия.canvas",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Исходящие ссылки из Без названия"
+            }
+          },
+          {
+            "id": "bb52ca4441a994b1",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Теги"
+            }
+          },
+          {
+            "id": "d79cbf5f7e57221a",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Все свойства"
+            }
+          },
+          {
+            "id": "0ef4087eb3ee4a5b",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "Без названия.canvas",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Структура Без названия"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Меню быстрого перехода": false,
+      "graph:Граф": false,
+      "canvas:Создать новый холст": false,
+      "daily-notes:Сегодняшняя заметка": false,
+      "templates:Вставить шаблон": false,
+      "command-palette:Открыть палитру команд": false,
+      "bases:Создать новую базу": false
+    }
+  },
+  "active": "0e97807b0ee8ad8e",
+  "lastOpenFiles": [
+    "graph.canvas",
+    "_COMMUNITY_Ground Movement Plan.md",
+    "_COMMUNITY_Game Features Design.md",
+    "_COMMUNITY_Architecture Docs & ADRs.md",
+    "_COMMUNITY_Terrain Noise.md",
+    "_COMMUNITY_Block Types & World Data.md",
+    "_COMMUNITY_Chunk Persistence.md",
+    "_COMMUNITY_Shaders.md",
+    "_COMMUNITY_Mesh Primitives.md",
+    "_COMMUNITY_Held Item Renderer.md",
+    "_COMMUNITY_HUD & UI.md",
+    "_COMMUNITY_Render Pipeline.md",
+    "_COMMUNITY_Chunk & World Management.md",
+    "_COMMUNITY_Game Core & Save.md",
+    "_COMMUNITY_Window & OpenGL.md",
+    "_COMMUNITY_Input System.md",
+    "_COMMUNITY_Sound Engine Core.md",
+    "_COMMUNITY_Sound System.md",
+    "New World Flow (Confirm Dialog, Delete Save, Relaunch).md",
+    "MC-Accurate Water Fluid Drag (Continuous Force Model).md",
+    "Variable-Height Water Rendering (Level-Based topY).md",
+    "Autosave (PausePeriodicQuit + Manual Save Button).md",
+    "Layered MINECLONE Title (Gold Fill, Outline, Shadow).md",
+    "Stone-Textured Beveled Menu Buttons.md",
+    "Death Screen and Respawn State (DEAD).md",
+    "Chunk Modified Flag (Post-Generation Edits).md",
+    "Без названия.canvas"
+  ]
+}

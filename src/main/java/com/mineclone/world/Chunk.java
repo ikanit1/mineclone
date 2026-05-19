@@ -18,7 +18,7 @@ public class Chunk {
     // as skyLight.
     private final byte[] blockLight = new byte[SIZE_X * SIZE_Y * SIZE_Z];
     private final byte[] meta = new byte[SIZE_X * SIZE_Y * SIZE_Z];
-    public boolean dirty = true;
+    public volatile boolean dirty = true;
     /**
      * True once a block changed AFTER initial generation (player/command/water
      * edits go through World.setBlock, which sets this). Distinct from

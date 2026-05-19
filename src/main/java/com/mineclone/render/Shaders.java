@@ -59,7 +59,16 @@ public final class Shaders {
                 vUv = newBase + localUv;
             } else if (isWater) {
                 blRaw = aBlockLight - 10.0;
-                vUv = aUv;
+                // Gentle ripple animation for still water (4 fps — slower than flow)
+                int frame = int(mod(floor(uTime * 4.0), 16.0));
+                int targetTile = 17 + frame;
+                int col = targetTile - (targetTile / 16) * 16;
+                int row = targetTile / 16;
+                float ts = 1.0 / 16.0;
+                vec2 tileBase = floor(aUv / ts) * ts;
+                vec2 localUv  = aUv - tileBase;
+                vec2 newBase  = vec2(float(col), float(row)) * ts;
+                vUv = newBase + localUv;
             } else {
                 vUv = aUv;
             }

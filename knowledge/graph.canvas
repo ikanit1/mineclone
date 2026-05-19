@@ -1,0 +1,5975 @@
+{
+  "nodes": [
+    {
+      "id": "g0",
+      "type": "group",
+      "label": "Sound System",
+      "x": 0,
+      "y": 0,
+      "width": 2200,
+      "height": 3120,
+      "color": "1"
+    },
+    {
+      "id": "n_core_apppaths_apppaths_apppaths",
+      "type": "file",
+      "file": ".AppPaths().md",
+      "x": 20,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_input_input_input",
+      "type": "file",
+      "file": ".Input().md",
+      "x": 220,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_particlesystem_particlesystem_particlesystem",
+      "type": "file",
+      "file": ".ParticleSystem().md",
+      "x": 420,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_sounds_sounds_sounds",
+      "type": "file",
+      "file": ".Sounds().md",
+      "x": 20,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_apppaths_apppaths_basedir",
+      "type": "file",
+      "file": ".baseDir().md",
+      "x": 220,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_beginloadingtoplay",
+      "type": "file",
+      "file": ".beginLoadingToPlay().md",
+      "x": 420,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_blocksoundposition",
+      "type": "file",
+      "file": ".blockSoundPosition().md",
+      "x": 20,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_sounds_sounds_breakrandom",
+      "type": "file",
+      "file": ".breakRandom().md",
+      "x": 220,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_computedaylight",
+      "type": "file",
+      "file": ".computeDaylight().md",
+      "x": 420,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_computeloadingprogress",
+      "type": "file",
+      "file": ".computeLoadingProgress().md",
+      "x": 20,
+      "y": 320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_currentblock",
+      "type": "file",
+      "file": ".currentBlock().md",
+      "x": 220,
+      "y": 320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_particlesystem_particlesystem_destroy",
+      "type": "file",
+      "file": ".destroy()_8.md",
+      "x": 420,
+      "y": 320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_sounds_sounds_dig",
+      "type": "file",
+      "file": ".dig().md",
+      "x": 20,
+      "y": 400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_sounds_sounds_doortoggle",
+      "type": "file",
+      "file": ".doorToggle().md",
+      "x": 220,
+      "y": 400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_particlesystem_particlesystem_emitblockbreak",
+      "type": "file",
+      "file": ".emitBlockBreak().md",
+      "x": 420,
+      "y": 400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_particlesystem_particlesystem_emitlandingpuff",
+      "type": "file",
+      "file": ".emitLandingPuff().md",
+      "x": 20,
+      "y": 480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_particlesystem_particlesystem_emittorcheffects",
+      "type": "file",
+      "file": ".emitTorchEffects().md",
+      "x": 220,
+      "y": 480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_emittorchparticles",
+      "type": "file",
+      "file": ".emitTorchParticles().md",
+      "x": 420,
+      "y": 480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_particlesystem_particlesystem_emitwatersplash",
+      "type": "file",
+      "file": ".emitWaterSplash().md",
+      "x": 20,
+      "y": 560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_sounds_sounds_emptylist",
+      "type": "file",
+      "file": ".emptyList().md",
+      "x": 220,
+      "y": 560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_executecommand",
+      "type": "file",
+      "file": ".executeCommand().md",
+      "x": 420,
+      "y": 560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_executespawnpointcommand",
+      "type": "file",
+      "file": ".executeSpawnPointCommand().md",
+      "x": 20,
+      "y": 640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_executetimecommand",
+      "type": "file",
+      "file": ".executeTimeCommand().md",
+      "x": 220,
+      "y": 640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_facingfromcamera",
+      "type": "file",
+      "file": ".facingFromCamera().md",
+      "x": 420,
+      "y": 640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_sounds_sounds_fallbig",
+      "type": "file",
+      "file": ".fallBig().md",
+      "x": 20,
+      "y": 720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_sounds_sounds_fallsmall",
+      "type": "file",
+      "file": ".fallSmall().md",
+      "x": 220,
+      "y": 720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_apppaths_apppaths_file",
+      "type": "file",
+      "file": ".file().md",
+      "x": 420,
+      "y": 720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_findnearbyflowingwater",
+      "type": "file",
+      "file": ".findNearbyFlowingWater().md",
+      "x": 20,
+      "y": 800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_findrespawnposition",
+      "type": "file",
+      "file": ".findRespawnPosition().md",
+      "x": 220,
+      "y": 800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_findsurfacespawn",
+      "type": "file",
+      "file": ".findSurfaceSpawn().md",
+      "x": 420,
+      "y": 800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_formatgametime",
+      "type": "file",
+      "file": ".formatGameTime().md",
+      "x": 20,
+      "y": 880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_formathours",
+      "type": "file",
+      "file": ".formatHours().md",
+      "x": 220,
+      "y": 880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_camera_camera_forward",
+      "type": "file",
+      "file": ".forward().md",
+      "x": 420,
+      "y": 880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_input_input_grabcursor",
+      "type": "file",
+      "file": ".grabCursor().md",
+      "x": 20,
+      "y": 960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_handlehotbar",
+      "type": "file",
+      "file": ".handleHotbar().md",
+      "x": 220,
+      "y": 960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_handleinteraction",
+      "type": "file",
+      "file": ".handleInteraction().md",
+      "x": 420,
+      "y": 960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_hourstogametime",
+      "type": "file",
+      "file": ".hoursToGameTime().md",
+      "x": 20,
+      "y": 1040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_hourstoradians",
+      "type": "file",
+      "file": ".hoursToRadians().md",
+      "x": 220,
+      "y": 1040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_window_window_init",
+      "type": "file",
+      "file": ".init()_1.md",
+      "x": 420,
+      "y": 1040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_player_player_isdead",
+      "type": "file",
+      "file": ".isDead().md",
+      "x": 20,
+      "y": 1120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_input_input_keypressed",
+      "type": "file",
+      "file": ".keyPressed().md",
+      "x": 220,
+      "y": 1120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_sounds_sounds_listmatching",
+      "type": "file",
+      "file": ".listMatching().md",
+      "x": 420,
+      "y": 1120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_mineclone_main_main_main",
+      "type": "file",
+      "file": ".main().md",
+      "x": 20,
+      "y": 1200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_sounds_sounds_materialof",
+      "type": "file",
+      "file": ".materialOf().md",
+      "x": 220,
+      "y": 1200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_normalizegametime",
+      "type": "file",
+      "file": ".normalizeGameTime().md",
+      "x": 420,
+      "y": 1200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_apppaths_apppaths_path",
+      "type": "file",
+      "file": ".path().md",
+      "x": 20,
+      "y": 1280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_sounds_sounds_place",
+      "type": "file",
+      "file": ".place().md",
+      "x": 220,
+      "y": 1280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_playlandingstep",
+      "type": "file",
+      "file": ".playLandingStep().md",
+      "x": 420,
+      "y": 1280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_playeroccupies",
+      "type": "file",
+      "file": ".playerOccupies().md",
+      "x": 20,
+      "y": 1360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_playersoundposition",
+      "type": "file",
+      "file": ".playerSoundPosition().md",
+      "x": 220,
+      "y": 1360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_player_player_respawn",
+      "type": "file",
+      "file": ".respawn().md",
+      "x": 420,
+      "y": 1360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_respawnplayer",
+      "type": "file",
+      "file": ".respawnPlayer().md",
+      "x": 20,
+      "y": 1440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_run",
+      "type": "file",
+      "file": ".run().md",
+      "x": 220,
+      "y": 1440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunk_chunk_set",
+      "type": "file",
+      "file": ".set().md",
+      "x": 420,
+      "y": 1440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_soundengine_soundengine_setmastervolume",
+      "type": "file",
+      "file": ".setMasterVolume().md",
+      "x": 20,
+      "y": 1520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_showcommandhelp",
+      "type": "file",
+      "file": ".showCommandHelp().md",
+      "x": 220,
+      "y": 1520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_showcommandtoast",
+      "type": "file",
+      "file": ".showCommandToast().md",
+      "x": 420,
+      "y": 1520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_skycolor",
+      "type": "file",
+      "file": ".skyColor().md",
+      "x": 20,
+      "y": 1600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_stairfacingfromcamera",
+      "type": "file",
+      "file": ".stairFacingFromCamera().md",
+      "x": 220,
+      "y": 1600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_starthandswing",
+      "type": "file",
+      "file": ".startHandSwing().md",
+      "x": 420,
+      "y": 1600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_sounds_sounds_step",
+      "type": "file",
+      "file": ".step().md",
+      "x": 20,
+      "y": 1680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_timepreset",
+      "type": "file",
+      "file": ".timePreset().md",
+      "x": 220,
+      "y": 1680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_sounds_sounds_uiclick",
+      "type": "file",
+      "file": ".uiClick().md",
+      "x": 420,
+      "y": 1680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_particlesystem_particlesystem_update",
+      "type": "file",
+      "file": ".update()_4.md",
+      "x": 20,
+      "y": 1760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_updateactiveworld",
+      "type": "file",
+      "file": ".updateActiveWorld().md",
+      "x": 220,
+      "y": 1760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_updatecommandtoast",
+      "type": "file",
+      "file": ".updateCommandToast().md",
+      "x": 420,
+      "y": 1760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_updatecreativemenu",
+      "type": "file",
+      "file": ".updateCreativeMenu().md",
+      "x": 20,
+      "y": 1840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_updatedead",
+      "type": "file",
+      "file": ".updateDead().md",
+      "x": 220,
+      "y": 1840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_updatefootsteps",
+      "type": "file",
+      "file": ".updateFootsteps().md",
+      "x": 420,
+      "y": 1840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_updatehelditem",
+      "type": "file",
+      "file": ".updateHeldItem().md",
+      "x": 20,
+      "y": 1920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_soundengine_soundengine_updatelistener",
+      "type": "file",
+      "file": ".updateListener().md",
+      "x": 220,
+      "y": 1920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_updateloading",
+      "type": "file",
+      "file": ".updateLoading().md",
+      "x": 420,
+      "y": 1920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_updatemenu",
+      "type": "file",
+      "file": ".updateMenu().md",
+      "x": 20,
+      "y": 2000,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_updatepaused",
+      "type": "file",
+      "file": ".updatePaused().md",
+      "x": 220,
+      "y": 2000,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_updateplaying",
+      "type": "file",
+      "file": ".updatePlaying().md",
+      "x": 420,
+      "y": 2000,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_sounds_sounds_waterflow",
+      "type": "file",
+      "file": ".waterFlow().md",
+      "x": 20,
+      "y": 2080,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_sounds_sounds_watersplash",
+      "type": "file",
+      "file": ".waterSplash().md",
+      "x": 220,
+      "y": 2080,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_sounds_sounds_waterswim",
+      "type": "file",
+      "file": ".waterSwim().md",
+      "x": 420,
+      "y": 2080,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_apppaths_apppaths",
+      "type": "file",
+      "file": "AppPaths.md",
+      "x": 20,
+      "y": 2160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_apppaths_java",
+      "type": "file",
+      "file": "AppPaths.java.md",
+      "x": 220,
+      "y": 2160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game",
+      "type": "file",
+      "file": "Game.md",
+      "x": 420,
+      "y": 2160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_java",
+      "type": "file",
+      "file": "Game.java.md",
+      "x": 20,
+      "y": 2240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_mineclone_main_main",
+      "type": "file",
+      "file": "Main.md",
+      "x": 220,
+      "y": 2240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_main_java",
+      "type": "file",
+      "file": "Main.java.md",
+      "x": 420,
+      "y": 2240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_particlesystem_p",
+      "type": "file",
+      "file": "P.md",
+      "x": 20,
+      "y": 2320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_particlesystem_particlesystem",
+      "type": "file",
+      "file": "ParticleSystem.md",
+      "x": 220,
+      "y": 2320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_particlesystem_java",
+      "type": "file",
+      "file": "ParticleSystem.java.md",
+      "x": 420,
+      "y": 2320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_sounds_sounds",
+      "type": "file",
+      "file": "Sounds.md",
+      "x": 20,
+      "y": 2400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_sounds_java",
+      "type": "file",
+      "file": "Sounds.java.md",
+      "x": 220,
+      "y": 2400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g1",
+      "type": "group",
+      "label": "Chunk & World Management",
+      "x": 2280,
+      "y": 0,
+      "width": 1980,
+      "height": 2520,
+      "color": "2"
+    },
+    {
+      "id": "n_world_chunkloader_chunkloader_chunkloader",
+      "type": "file",
+      "file": ".ChunkLoader().md",
+      "x": 2300,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_menubackground_menubackground_menubackground",
+      "type": "file",
+      "file": ".MenuBackground().md",
+      "x": 2500,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkloader_ready_ready",
+      "type": "file",
+      "file": ".Ready().md",
+      "x": 2700,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_watersimulator_watersimulator_watersimulator",
+      "type": "file",
+      "file": ".WaterSimulator().md",
+      "x": 2300,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_world_world_world",
+      "type": "file",
+      "file": ".World().md",
+      "x": 2500,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_watersimulator_watersimulator_activatearound",
+      "type": "file",
+      "file": ".activateAround().md",
+      "x": 2700,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_watersimulator_watersimulator_activatechunkifwater",
+      "type": "file",
+      "file": ".activateChunkIfWater().md",
+      "x": 2300,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkloader_chunkloader_applysnapshot",
+      "type": "file",
+      "file": ".applySnapshot().md",
+      "x": 2500,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_watersimulator_watersimulator_chunkhaswater",
+      "type": "file",
+      "file": ".chunkHasWater().md",
+      "x": 2700,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_cleanup",
+      "type": "file",
+      "file": ".cleanup().md",
+      "x": 2300,
+      "y": 320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_countloadedchunks",
+      "type": "file",
+      "file": ".countLoadedChunks().md",
+      "x": 2500,
+      "y": 320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_watersimulator_watersimulator_countsourceneighbors",
+      "type": "file",
+      "file": ".countSourceNeighbors().md",
+      "x": 2700,
+      "y": 320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkloader_chunkloader_daemon",
+      "type": "file",
+      "file": ".daemon().md",
+      "x": 2300,
+      "y": 400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_menubackground_menubackground_destroy",
+      "type": "file",
+      "file": ".destroy()_2.md",
+      "x": 2500,
+      "y": 400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_uirenderer_uirenderer_destroy",
+      "type": "file",
+      "file": ".destroy()_13.md",
+      "x": 2700,
+      "y": 400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkloader_chunkloader_drainlightflood",
+      "type": "file",
+      "file": ".drainLightFlood().md",
+      "x": 2300,
+      "y": 480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkloader_chunkloader_drainready",
+      "type": "file",
+      "file": ".drainReady().md",
+      "x": 2500,
+      "y": 480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_world_world_enqueueblocklight",
+      "type": "file",
+      "file": ".enqueueBlockLight().md",
+      "x": 2700,
+      "y": 480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_ensurechunksloaded",
+      "type": "file",
+      "file": ".ensureChunksLoaded().md",
+      "x": 2300,
+      "y": 560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkloader_chunkloader_ensureradius",
+      "type": "file",
+      "file": ".ensureRadius().md",
+      "x": 2500,
+      "y": 560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_evictdistantchunks",
+      "type": "file",
+      "file": ".evictDistantChunks().md",
+      "x": 2700,
+      "y": 560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_world_world_floodfilladd",
+      "type": "file",
+      "file": ".floodFillAdd().md",
+      "x": 2300,
+      "y": 640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_world_world_floodfillremove",
+      "type": "file",
+      "file": ".floodFillRemove().md",
+      "x": 2500,
+      "y": 640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkloader_chunkloader_forget",
+      "type": "file",
+      "file": ".forget().md",
+      "x": 2700,
+      "y": 640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_watersimulator_watersimulator_forgetchunk",
+      "type": "file",
+      "file": ".forgetChunk().md",
+      "x": 2300,
+      "y": 720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_world_world_generate",
+      "type": "file",
+      "file": ".generate().md",
+      "x": 2500,
+      "y": 720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunk_chunk_getblocklight",
+      "type": "file",
+      "file": ".getBlockLight().md",
+      "x": 2700,
+      "y": 720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_world_world_getblocklightworld",
+      "type": "file",
+      "file": ".getBlockLightWorld().md",
+      "x": 2300,
+      "y": 800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_world_world_getchunk",
+      "type": "file",
+      "file": ".getChunk().md",
+      "x": 2500,
+      "y": 800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_world_world_getchunkifexists",
+      "type": "file",
+      "file": ".getChunkIfExists().md",
+      "x": 2700,
+      "y": 800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_world_world_getloadedchunks",
+      "type": "file",
+      "file": ".getLoadedChunks().md",
+      "x": 2300,
+      "y": 880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_world_world_getskylight",
+      "type": "file",
+      "file": ".getSkyLight()_1.md",
+      "x": 2500,
+      "y": 880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkloader_chunkloader_haspendinglightflood",
+      "type": "file",
+      "file": ".hasPendingLightFlood().md",
+      "x": 2700,
+      "y": 880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_watersimulator_watersimulator_hassupport",
+      "type": "file",
+      "file": ".hasSupport().md",
+      "x": 2300,
+      "y": 960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_world_world_injectneighbourlight",
+      "type": "file",
+      "file": ".injectNeighbourLight().md",
+      "x": 2500,
+      "y": 960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkloader_chunkloader_invalidateneighbours",
+      "type": "file",
+      "file": ".invalidateNeighbours().md",
+      "x": 2700,
+      "y": 960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkloader_chunkloader_isfullyready",
+      "type": "file",
+      "file": ".isFullyReady().md",
+      "x": 2300,
+      "y": 1040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkloader_chunkloader_ispendinggen",
+      "type": "file",
+      "file": ".isPendingGen().md",
+      "x": 2500,
+      "y": 1040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_world_world_key",
+      "type": "file",
+      "file": ".key().md",
+      "x": 2700,
+      "y": 1040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkloader_chunkloader_markmeshed",
+      "type": "file",
+      "file": ".markMeshed().md",
+      "x": 2300,
+      "y": 1120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_watersimulator_watersimulator_markneighbourdirty",
+      "type": "file",
+      "file": ".markNeighbourDirty().md",
+      "x": 2500,
+      "y": 1120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_world_world_mix",
+      "type": "file",
+      "file": ".mix().md",
+      "x": 2700,
+      "y": 1120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkloader_chunkloader_neighboursready",
+      "type": "file",
+      "file": ".neighboursReady().md",
+      "x": 2300,
+      "y": 1200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_watersimulator_watersimulator_pack",
+      "type": "file",
+      "file": ".pack().md",
+      "x": 2500,
+      "y": 1200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_world_world_remeshneighbour",
+      "type": "file",
+      "file": ".remeshNeighbour().md",
+      "x": 2700,
+      "y": 1200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_world_world_removechunk",
+      "type": "file",
+      "file": ".removeChunk().md",
+      "x": 2300,
+      "y": 1280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunk_chunk_restore",
+      "type": "file",
+      "file": ".restore().md",
+      "x": 2500,
+      "y": 1280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_menubackground_menubackground_sampleterraintop",
+      "type": "file",
+      "file": ".sampleTerrainTop().md",
+      "x": 2700,
+      "y": 1280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_watersimulator_watersimulator_seedloadedwaterchunks",
+      "type": "file",
+      "file": ".seedLoadedWaterChunks().md",
+      "x": 2300,
+      "y": 1360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_world_world_setblock",
+      "type": "file",
+      "file": ".setBlock().md",
+      "x": 2500,
+      "y": 1360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_world_world_setblocklightworld",
+      "type": "file",
+      "file": ".setBlockLightWorld().md",
+      "x": 2700,
+      "y": 1360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_watersimulator_watersimulator_setblocksafe",
+      "type": "file",
+      "file": ".setBlockSafe().md",
+      "x": 2300,
+      "y": 1440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkloader_chunkloader_shutdown",
+      "type": "file",
+      "file": ".shutdown().md",
+      "x": 2500,
+      "y": 1440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkloader_chunkloader_submitgen",
+      "type": "file",
+      "file": ".submitGen().md",
+      "x": 2700,
+      "y": 1440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkloader_chunkloader_submitmesh",
+      "type": "file",
+      "file": ".submitMesh().md",
+      "x": 2300,
+      "y": 1520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_watersimulator_watersimulator_tick",
+      "type": "file",
+      "file": ".tick()_1.md",
+      "x": 2500,
+      "y": 1520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_watersimulator_watersimulator_tryspread",
+      "type": "file",
+      "file": ".trySpread().md",
+      "x": 2700,
+      "y": 1520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_watersimulator_watersimulator_unpackx",
+      "type": "file",
+      "file": ".unpackX().md",
+      "x": 2300,
+      "y": 1600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_watersimulator_watersimulator_unpacky",
+      "type": "file",
+      "file": ".unpackY().md",
+      "x": 2500,
+      "y": 1600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_watersimulator_watersimulator_unpackz",
+      "type": "file",
+      "file": ".unpackZ().md",
+      "x": 2700,
+      "y": 1600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_menubackground_menubackground_update",
+      "type": "file",
+      "file": ".update()_2.md",
+      "x": 2300,
+      "y": 1680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_updatedirtymeshes",
+      "type": "file",
+      "file": ".updateDirtyMeshes().md",
+      "x": 2500,
+      "y": 1680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkloader_chunkloader",
+      "type": "file",
+      "file": "ChunkLoader.md",
+      "x": 2700,
+      "y": 1680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkloader_java",
+      "type": "file",
+      "file": "ChunkLoader.java.md",
+      "x": 2300,
+      "y": 1760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_menubackground_menubackground",
+      "type": "file",
+      "file": "MenuBackground.md",
+      "x": 2500,
+      "y": 1760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_menubackground_java",
+      "type": "file",
+      "file": "MenuBackground.java.md",
+      "x": 2700,
+      "y": 1760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkloader_ready",
+      "type": "file",
+      "file": "Ready.md",
+      "x": 2300,
+      "y": 1840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_watersimulator_watersimulator",
+      "type": "file",
+      "file": "WaterSimulator.md",
+      "x": 2500,
+      "y": 1840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_watersimulator_java",
+      "type": "file",
+      "file": "WaterSimulator.java.md",
+      "x": 2700,
+      "y": 1840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_world_world",
+      "type": "file",
+      "file": "World.md",
+      "x": 2300,
+      "y": 1920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_world_java",
+      "type": "file",
+      "file": "World.java.md",
+      "x": 2500,
+      "y": 1920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g2",
+      "type": "group",
+      "label": "Render Pipeline",
+      "x": 4340,
+      "y": 0,
+      "width": 1760,
+      "height": 1920,
+      "color": "3"
+    },
+    {
+      "id": "n_render_blockoutline_blockoutline_blockoutline",
+      "type": "file",
+      "file": ".BlockOutline().md",
+      "x": 4360,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_crosshair_crosshair_crosshair",
+      "type": "file",
+      "file": ".Crosshair().md",
+      "x": 4560,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_font_font_font",
+      "type": "file",
+      "file": ".Font().md",
+      "x": 4760,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_shader_shader_shader",
+      "type": "file",
+      "file": ".Shader().md",
+      "x": 4360,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_textrenderer_textrenderer_textrenderer",
+      "type": "file",
+      "file": ".TextRenderer().md",
+      "x": 4560,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_shader_shader_bind",
+      "type": "file",
+      "file": ".bind().md",
+      "x": 4760,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_textureatlas_textureatlas_bind",
+      "type": "file",
+      "file": ".bind()_1.md",
+      "x": 4360,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_blockoutline_blockoutline_box",
+      "type": "file",
+      "file": ".box().md",
+      "x": 4560,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_font_font_buildstring",
+      "type": "file",
+      "file": ".buildString().md",
+      "x": 4760,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_shader_shader_compile",
+      "type": "file",
+      "file": ".compile().md",
+      "x": 4360,
+      "y": 320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_blockoutline_blockoutline_concat",
+      "type": "file",
+      "file": ".concat().md",
+      "x": 4560,
+      "y": 320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_blockoutline_blockoutline_destroy",
+      "type": "file",
+      "file": ".destroy()_3.md",
+      "x": 4760,
+      "y": 320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_crosshair_crosshair_destroy",
+      "type": "file",
+      "file": ".destroy()_4.md",
+      "x": 4360,
+      "y": 400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_font_font_destroy",
+      "type": "file",
+      "file": ".destroy()_5.md",
+      "x": 4560,
+      "y": 400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_shader_shader_destroy",
+      "type": "file",
+      "file": ".destroy()_9.md",
+      "x": 4760,
+      "y": 400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_textrenderer_textrenderer_destroy",
+      "type": "file",
+      "file": ".destroy()_11.md",
+      "x": 4360,
+      "y": 480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_blockoutline_blockoutline_draw",
+      "type": "file",
+      "file": ".draw().md",
+      "x": 4560,
+      "y": 480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_textrenderer_textrenderer_draw",
+      "type": "file",
+      "file": ".draw()_2.md",
+      "x": 4760,
+      "y": 480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_font_font_getbitmaph",
+      "type": "file",
+      "file": ".getBitmapH().md",
+      "x": 4360,
+      "y": 560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_font_font_getbitmapw",
+      "type": "file",
+      "file": ".getBitmapW().md",
+      "x": 4560,
+      "y": 560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_camera_camera_getprojection",
+      "type": "file",
+      "file": ".getProjection().md",
+      "x": 4760,
+      "y": 560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_font_font_gettexture",
+      "type": "file",
+      "file": ".getTexture().md",
+      "x": 4360,
+      "y": 640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_camera_camera_getview",
+      "type": "file",
+      "file": ".getView().md",
+      "x": 4560,
+      "y": 640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_shader_shader_loc",
+      "type": "file",
+      "file": ".loc().md",
+      "x": 4760,
+      "y": 640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_font_font_readfiletodirectbuffer",
+      "type": "file",
+      "file": ".readFileToDirectBuffer().md",
+      "x": 4360,
+      "y": 720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_render",
+      "type": "file",
+      "file": ".render().md",
+      "x": 4560,
+      "y": 720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_menubackground_menubackground_render",
+      "type": "file",
+      "file": ".render()_1.md",
+      "x": 4760,
+      "y": 720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_blockoutline_blockoutline_render",
+      "type": "file",
+      "file": ".render()_2.md",
+      "x": 4360,
+      "y": 800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_crosshair_crosshair_render",
+      "type": "file",
+      "file": ".render()_3.md",
+      "x": 4560,
+      "y": 800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_helditemrenderer_helditemrenderer_render",
+      "type": "file",
+      "file": ".render()_4.md",
+      "x": 4760,
+      "y": 800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_particlesystem_particlesystem_render",
+      "type": "file",
+      "file": ".render()_6.md",
+      "x": 4360,
+      "y": 880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_blockoutline_blockoutline_renderdoor",
+      "type": "file",
+      "file": ".renderDoor().md",
+      "x": 4560,
+      "y": 880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_blockoutline_blockoutline_renderstairs",
+      "type": "file",
+      "file": ".renderStairs().md",
+      "x": 4760,
+      "y": 880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_camera_camera_right",
+      "type": "file",
+      "file": ".right().md",
+      "x": 4360,
+      "y": 960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_camera_camera_rotate",
+      "type": "file",
+      "file": ".rotate().md",
+      "x": 4560,
+      "y": 960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_shader_shader_setfloat",
+      "type": "file",
+      "file": ".setFloat().md",
+      "x": 4760,
+      "y": 960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_shader_shader_setint",
+      "type": "file",
+      "file": ".setInt().md",
+      "x": 4360,
+      "y": 1040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_shader_shader_setmat4",
+      "type": "file",
+      "file": ".setMat4().md",
+      "x": 4560,
+      "y": 1040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_shader_shader_setvec2",
+      "type": "file",
+      "file": ".setVec2().md",
+      "x": 4760,
+      "y": 1040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_shader_shader_setvec3",
+      "type": "file",
+      "file": ".setVec3().md",
+      "x": 4360,
+      "y": 1120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_shader_shader_setvec4",
+      "type": "file",
+      "file": ".setVec4().md",
+      "x": 4560,
+      "y": 1120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_shader_shader_unbind",
+      "type": "file",
+      "file": ".unbind().md",
+      "x": 4760,
+      "y": 1120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_blockoutline_blockoutline",
+      "type": "file",
+      "file": "BlockOutline.md",
+      "x": 4360,
+      "y": 1200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_blockoutline_java",
+      "type": "file",
+      "file": "BlockOutline.java.md",
+      "x": 4560,
+      "y": 1200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_camera_camera",
+      "type": "file",
+      "file": "Camera.md",
+      "x": 4760,
+      "y": 1200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_camera_java",
+      "type": "file",
+      "file": "Camera.java.md",
+      "x": 4360,
+      "y": 1280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_crosshair_crosshair",
+      "type": "file",
+      "file": "Crosshair.md",
+      "x": 4560,
+      "y": 1280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_crosshair_java",
+      "type": "file",
+      "file": "Crosshair.java.md",
+      "x": 4760,
+      "y": 1280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_font_font",
+      "type": "file",
+      "file": "Font.md",
+      "x": 4360,
+      "y": 1360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_font_java",
+      "type": "file",
+      "file": "Font.java.md",
+      "x": 4560,
+      "y": 1360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_shader_shader",
+      "type": "file",
+      "file": "Shader.md",
+      "x": 4760,
+      "y": 1360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_shader_java",
+      "type": "file",
+      "file": "Shader.java.md",
+      "x": 4360,
+      "y": 1440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_textrenderer_textrenderer",
+      "type": "file",
+      "file": "TextRenderer.md",
+      "x": 4560,
+      "y": 1440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_textrenderer_java",
+      "type": "file",
+      "file": "TextRenderer.java.md",
+      "x": 4760,
+      "y": 1440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g3",
+      "type": "group",
+      "label": "HUD & UI",
+      "x": 6180,
+      "y": 0,
+      "width": 1540,
+      "height": 1720,
+      "color": "4"
+    },
+    {
+      "id": "n_game_hud_hud_hud",
+      "type": "file",
+      "file": ".Hud().md",
+      "x": 6200,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_inventoryaction_inventoryaction",
+      "type": "file",
+      "file": ".InventoryAction().md",
+      "x": 6400,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_uirenderer_uirenderer_uirenderer",
+      "type": "file",
+      "file": ".UiRenderer().md",
+      "x": 6600,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_uirenderer_uirenderer_begin",
+      "type": "file",
+      "file": ".begin().md",
+      "x": 6200,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_inventoryaction_clearcursor",
+      "type": "file",
+      "file": ".clearCursor().md",
+      "x": 6400,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_displayname",
+      "type": "file",
+      "file": ".displayName().md",
+      "x": 6600,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_drawcommandhelp",
+      "type": "file",
+      "file": ".drawCommandHelp().md",
+      "x": 6200,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_drawconfirm",
+      "type": "file",
+      "file": ".drawConfirm().md",
+      "x": 6400,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_drawconsole",
+      "type": "file",
+      "file": ".drawConsole().md",
+      "x": 6600,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_drawcreativemenu",
+      "type": "file",
+      "file": ".drawCreativeMenu().md",
+      "x": 6200,
+      "y": 320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_drawdeathscreen",
+      "type": "file",
+      "file": ".drawDeathScreen().md",
+      "x": 6400,
+      "y": 320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_drawdebug",
+      "type": "file",
+      "file": ".drawDebug().md",
+      "x": 6600,
+      "y": 320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_drawhearts",
+      "type": "file",
+      "file": ".drawHearts().md",
+      "x": 6200,
+      "y": 400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_drawhelditem",
+      "type": "file",
+      "file": ".drawHeldItem().md",
+      "x": 6400,
+      "y": 400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_drawhotbar",
+      "type": "file",
+      "file": ".drawHotbar().md",
+      "x": 6600,
+      "y": 400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_drawinventory",
+      "type": "file",
+      "file": ".drawInventory().md",
+      "x": 6200,
+      "y": 480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_drawitemicon",
+      "type": "file",
+      "file": ".drawItemIcon().md",
+      "x": 6400,
+      "y": 480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_drawloading",
+      "type": "file",
+      "file": ".drawLoading().md",
+      "x": 6600,
+      "y": 480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_drawmainmenu",
+      "type": "file",
+      "file": ".drawMainMenu().md",
+      "x": 6200,
+      "y": 560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_drawpausemenu",
+      "type": "file",
+      "file": ".drawPauseMenu().md",
+      "x": 6400,
+      "y": 560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_drawsettings",
+      "type": "file",
+      "file": ".drawSettings().md",
+      "x": 6600,
+      "y": 560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_textrenderer_textrenderer_drawshadowed",
+      "type": "file",
+      "file": ".drawShadowed().md",
+      "x": 6200,
+      "y": 640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_drawslotback",
+      "type": "file",
+      "file": ".drawSlotBack().md",
+      "x": 6400,
+      "y": 640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_drawtitle",
+      "type": "file",
+      "file": ".drawTitle().md",
+      "x": 6600,
+      "y": 640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_drawui",
+      "type": "file",
+      "file": ".drawUi().md",
+      "x": 6200,
+      "y": 720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_drawversionlabel",
+      "type": "file",
+      "file": ".drawVersionLabel().md",
+      "x": 6400,
+      "y": 720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_drawwateroverlay",
+      "type": "file",
+      "file": ".drawWaterOverlay().md",
+      "x": 6600,
+      "y": 720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_uirenderer_uirenderer_end",
+      "type": "file",
+      "file": ".end().md",
+      "x": 6200,
+      "y": 800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_font_font_getpixelheight",
+      "type": "file",
+      "file": ".getPixelHeight().md",
+      "x": 6400,
+      "y": 800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_textureatlas_textureatlas_gettextureid",
+      "type": "file",
+      "file": ".getTextureId().md",
+      "x": 6600,
+      "y": 800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_hov",
+      "type": "file",
+      "file": ".hov().md",
+      "x": 6200,
+      "y": 880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_inventoryaction_none",
+      "type": "file",
+      "file": ".none().md",
+      "x": 6400,
+      "y": 880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_inventoryaction_palette",
+      "type": "file",
+      "file": ".palette().md",
+      "x": 6600,
+      "y": 880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_uirenderer_uirenderer_quad",
+      "type": "file",
+      "file": ".quad().md",
+      "x": 6200,
+      "y": 960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_uirenderer_uirenderer_screenh",
+      "type": "file",
+      "file": ".screenH().md",
+      "x": 6400,
+      "y": 960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_uirenderer_uirenderer_screenw",
+      "type": "file",
+      "file": ".screenW().md",
+      "x": 6600,
+      "y": 960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_inventoryaction_slot",
+      "type": "file",
+      "file": ".slot().md",
+      "x": 6200,
+      "y": 1040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_stonebutton",
+      "type": "file",
+      "file": ".stoneButton().md",
+      "x": 6400,
+      "y": 1040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud_stonemenu",
+      "type": "file",
+      "file": ".stoneMenu().md",
+      "x": 6600,
+      "y": 1040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_uirenderer_uirenderer_texquad",
+      "type": "file",
+      "file": ".texQuad().md",
+      "x": 6200,
+      "y": 1120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_font_font_textwidth",
+      "type": "file",
+      "file": ".textWidth().md",
+      "x": 6400,
+      "y": 1120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_uirenderer_uirenderer_upload",
+      "type": "file",
+      "file": ".upload()_1.md",
+      "x": 6600,
+      "y": 1120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_textureatlas_textureatlas_uv",
+      "type": "file",
+      "file": ".uv().md",
+      "x": 6200,
+      "y": 1200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_hud",
+      "type": "file",
+      "file": "Hud.md",
+      "x": 6400,
+      "y": 1200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_java",
+      "type": "file",
+      "file": "Hud.java.md",
+      "x": 6600,
+      "y": 1200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_hud_inventoryaction",
+      "type": "file",
+      "file": "InventoryAction.md",
+      "x": 6200,
+      "y": 1280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_uirenderer_uirenderer",
+      "type": "file",
+      "file": "UiRenderer.md",
+      "x": 6400,
+      "y": 1280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_uirenderer_java",
+      "type": "file",
+      "file": "UiRenderer.java.md",
+      "x": 6600,
+      "y": 1280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g4",
+      "type": "group",
+      "label": "Window & OpenGL",
+      "x": 7800,
+      "y": 0,
+      "width": 1540,
+      "height": 1520,
+      "color": "5"
+    },
+    {
+      "id": "n_render_skyrenderer_skyrenderer_skyrenderer",
+      "type": "file",
+      "file": ".SkyRenderer().md",
+      "x": 7820,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_textureatlas_textureatlas_textureatlas",
+      "type": "file",
+      "file": ".TextureAtlas().md",
+      "x": 8020,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_window_window_window",
+      "type": "file",
+      "file": ".Window().md",
+      "x": 8220,
+      "y": 80,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_textureatlas_textureatlas_assemble",
+      "type": "file",
+      "file": ".assemble().md",
+      "x": 7820,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_textureatlas_textureatlas_blittile",
+      "type": "file",
+      "file": ".blitTile().md",
+      "x": 8020,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_skyrenderer_skyrenderer_clamp",
+      "type": "file",
+      "file": ".clamp().md",
+      "x": 8220,
+      "y": 160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_window_window_destroy",
+      "type": "file",
+      "file": ".destroy()_1.md",
+      "x": 7820,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_skyrenderer_skyrenderer_destroy",
+      "type": "file",
+      "file": ".destroy()_10.md",
+      "x": 8020,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_textureatlas_textureatlas_destroy",
+      "type": "file",
+      "file": ".destroy()_12.md",
+      "x": 8220,
+      "y": 240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_skyrenderer_drawer_draw",
+      "type": "file",
+      "file": ".draw()_1.md",
+      "x": 7820,
+      "y": 320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_skyrenderer_skyrenderer_drawclouds",
+      "type": "file",
+      "file": ".drawClouds().md",
+      "x": 8020,
+      "y": 320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_skyrenderer_skyrenderer_drawmoon",
+      "type": "file",
+      "file": ".drawMoon().md",
+      "x": 8220,
+      "y": 320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_skyrenderer_skyrenderer_drawstars",
+      "type": "file",
+      "file": ".drawStars().md",
+      "x": 7820,
+      "y": 400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_skyrenderer_skyrenderer_drawsun",
+      "type": "file",
+      "file": ".drawSun().md",
+      "x": 8020,
+      "y": 400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_window_window_getaspect",
+      "type": "file",
+      "file": ".getAspect().md",
+      "x": 8220,
+      "y": 400,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_window_window_getheight",
+      "type": "file",
+      "file": ".getHeight().md",
+      "x": 7820,
+      "y": 480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_window_window_getwidth",
+      "type": "file",
+      "file": ".getWidth().md",
+      "x": 8020,
+      "y": 480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_textureatlas_textureatlas_imagetorgbabuffer",
+      "type": "file",
+      "file": ".imageToRgbaBuffer().md",
+      "x": 8220,
+      "y": 480,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_window_window_isresized",
+      "type": "file",
+      "file": ".isResized().md",
+      "x": 7820,
+      "y": 560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_skyrenderer_skyrenderer_lerp",
+      "type": "file",
+      "file": ".lerp().md",
+      "x": 8020,
+      "y": 560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_skyrenderer_skyrenderer_loadorgenerate",
+      "type": "file",
+      "file": ".loadOrGenerate().md",
+      "x": 8220,
+      "y": 560,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_textureatlas_textureatlas_loadtile",
+      "type": "file",
+      "file": ".loadTile().md",
+      "x": 7820,
+      "y": 640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_textureatlas_textureatlas_placeholder",
+      "type": "file",
+      "file": ".placeholder().md",
+      "x": 8020,
+      "y": 640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_skyrenderer_skyrenderer_render",
+      "type": "file",
+      "file": ".render()_7.md",
+      "x": 8220,
+      "y": 640,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_skyrenderer_skyrenderer_renderclouds",
+      "type": "file",
+      "file": ".renderClouds().md",
+      "x": 7820,
+      "y": 720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_skyrenderer_skyrenderer_renderdisc",
+      "type": "file",
+      "file": ".renderDisc().md",
+      "x": 8020,
+      "y": 720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_skyrenderer_skyrenderer_renderquad",
+      "type": "file",
+      "file": ".renderQuad().md",
+      "x": 8220,
+      "y": 720,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_skyrenderer_skyrenderer_renderstars",
+      "type": "file",
+      "file": ".renderStars().md",
+      "x": 7820,
+      "y": 800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_textureatlas_textureatlas_savepng",
+      "type": "file",
+      "file": ".savePng().md",
+      "x": 8020,
+      "y": 800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_window_window_setresized",
+      "type": "file",
+      "file": ".setResized().md",
+      "x": 8220,
+      "y": 800,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_window_window_shouldclose",
+      "type": "file",
+      "file": ".shouldClose().md",
+      "x": 7820,
+      "y": 880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_window_window_togglefullscreen",
+      "type": "file",
+      "file": ".toggleFullscreen().md",
+      "x": 8020,
+      "y": 880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_window_window_update",
+      "type": "file",
+      "file": ".update()_1.md",
+      "x": 8220,
+      "y": 880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_skyrenderer_skyrenderer_uploadtexture",
+      "type": "file",
+      "file": ".uploadTexture().md",
+      "x": 7820,
+      "y": 960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_skyrenderer_drawer",
+      "type": "file",
+      "file": "Drawer.md",
+      "x": 8020,
+      "y": 960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_skyrenderer_skyrenderer",
+      "type": "file",
+      "file": "SkyRenderer.md",
+      "x": 8220,
+      "y": 960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_skyrenderer_java",
+      "type": "file",
+      "file": "SkyRenderer.java.md",
+      "x": 7820,
+      "y": 1040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_textureatlas_textureatlas",
+      "type": "file",
+      "file": "TextureAtlas.md",
+      "x": 8020,
+      "y": 1040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_textureatlas_java",
+      "type": "file",
+      "file": "TextureAtlas.java.md",
+      "x": 8220,
+      "y": 1040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_window_window",
+      "type": "file",
+      "file": "Window.md",
+      "x": 7820,
+      "y": 1120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_window_java",
+      "type": "file",
+      "file": "Window.java.md",
+      "x": 8020,
+      "y": 1120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g5",
+      "type": "group",
+      "label": "Game Core & Save",
+      "x": 0,
+      "y": 3200,
+      "width": 1540,
+      "height": 1520,
+      "color": "6"
+    },
+    {
+      "id": "n_game_game_game_game",
+      "type": "file",
+      "file": ".Game().md",
+      "x": 20,
+      "y": 3280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_leveldata_leveldata_leveldata",
+      "type": "file",
+      "file": ".LevelData().md",
+      "x": 220,
+      "y": 3280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_options_options_options",
+      "type": "file",
+      "file": ".Options().md",
+      "x": 420,
+      "y": 3280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_saveformat_saveformat_saveformat",
+      "type": "file",
+      "file": ".SaveFormat().md",
+      "x": 20,
+      "y": 3360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_savemanager_savemanager_savemanager",
+      "type": "file",
+      "file": ".SaveManager().md",
+      "x": 220,
+      "y": 3360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_savemanager_savemanager_chunkfile",
+      "type": "file",
+      "file": ".chunkFile().md",
+      "x": 420,
+      "y": 3360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_saveformat_saveformat_chunkfilename",
+      "type": "file",
+      "file": ".chunkFileName().md",
+      "x": 20,
+      "y": 3440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_savemanager_savemanager_chunksdir",
+      "type": "file",
+      "file": ".chunksDir().md",
+      "x": 220,
+      "y": 3440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunk_chunk_copyblocks",
+      "type": "file",
+      "file": ".copyBlocks().md",
+      "x": 420,
+      "y": 3440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunk_chunk_copymeta",
+      "type": "file",
+      "file": ".copyMeta().md",
+      "x": 20,
+      "y": 3520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_leveldata_leveldata_defaultinventory",
+      "type": "file",
+      "file": ".defaultInventory().md",
+      "x": 220,
+      "y": 3520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_options_options_defaults",
+      "type": "file",
+      "file": ".defaults().md",
+      "x": 420,
+      "y": 3520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_savemanager_savemanager_deleterecursive",
+      "type": "file",
+      "file": ".deleteRecursive().md",
+      "x": 20,
+      "y": 3600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_savemanager_savemanager_deleteworld",
+      "type": "file",
+      "file": ".deleteWorld().md",
+      "x": 220,
+      "y": 3600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_finddefaultspawn",
+      "type": "file",
+      "file": ".findDefaultSpawn().md",
+      "x": 420,
+      "y": 3600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_savemanager_savemanager_flushandawait",
+      "type": "file",
+      "file": ".flushAndAwait().md",
+      "x": 20,
+      "y": 3680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_window_window_gethandle",
+      "type": "file",
+      "file": ".getHandle().md",
+      "x": 220,
+      "y": 3680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_savemanager_savemanager_hassave",
+      "type": "file",
+      "file": ".hasSave().md",
+      "x": 420,
+      "y": 3680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_savemanager_savemanager_levelfile",
+      "type": "file",
+      "file": ".levelFile().md",
+      "x": 20,
+      "y": 3760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_savemanager_savemanager_loadchunk",
+      "type": "file",
+      "file": ".loadChunk().md",
+      "x": 220,
+      "y": 3760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_savemanager_savemanager_loadlevel",
+      "type": "file",
+      "file": ".loadLevel().md",
+      "x": 420,
+      "y": 3760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_savemanager_savemanager_loadoptions",
+      "type": "file",
+      "file": ".loadOptions().md",
+      "x": 20,
+      "y": 3840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_leveldata_leveldata_normalizeinventory",
+      "type": "file",
+      "file": ".normalizeInventory().md",
+      "x": 220,
+      "y": 3840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_savemanager_savemanager_optionsfile",
+      "type": "file",
+      "file": ".optionsFile().md",
+      "x": 420,
+      "y": 3840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_watersimulator_watersimulator_reset",
+      "type": "file",
+      "file": ".reset().md",
+      "x": 20,
+      "y": 3920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_saveall",
+      "type": "file",
+      "file": ".saveAll().md",
+      "x": 220,
+      "y": 3920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_savemanager_savemanager_savechunkasync",
+      "type": "file",
+      "file": ".saveChunkAsync().md",
+      "x": 420,
+      "y": 3920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_savemanager_savemanager_savechunkblocking",
+      "type": "file",
+      "file": ".saveChunkBlocking().md",
+      "x": 20,
+      "y": 4000,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_savechunkifmodified",
+      "type": "file",
+      "file": ".saveChunkIfModified().md",
+      "x": 220,
+      "y": 4000,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_savemanager_savemanager_savelevel",
+      "type": "file",
+      "file": ".saveLevel().md",
+      "x": 420,
+      "y": 4000,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_savemanager_savemanager_saveoptions",
+      "type": "file",
+      "file": ".saveOptions().md",
+      "x": 20,
+      "y": 4080,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_game_game_startnewworld",
+      "type": "file",
+      "file": ".startNewWorld().md",
+      "x": 220,
+      "y": 4080,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_savemanager_savemanager_worlddir",
+      "type": "file",
+      "file": ".worldDir().md",
+      "x": 420,
+      "y": 4080,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_leveldata_leveldata",
+      "type": "file",
+      "file": "LevelData.md",
+      "x": 20,
+      "y": 4160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_leveldata_java",
+      "type": "file",
+      "file": "LevelData.java.md",
+      "x": 220,
+      "y": 4160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_options_options",
+      "type": "file",
+      "file": "Options.md",
+      "x": 420,
+      "y": 4160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_options_java",
+      "type": "file",
+      "file": "Options.java.md",
+      "x": 20,
+      "y": 4240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_saveformat_saveformat",
+      "type": "file",
+      "file": "SaveFormat.md",
+      "x": 220,
+      "y": 4240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_saveformat_java",
+      "type": "file",
+      "file": "SaveFormat.java.md",
+      "x": 420,
+      "y": 4240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_savemanager_savemanager",
+      "type": "file",
+      "file": "SaveManager.md",
+      "x": 20,
+      "y": 4320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_savemanager_java",
+      "type": "file",
+      "file": "SaveManager.java.md",
+      "x": 220,
+      "y": 4320,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g6",
+      "type": "group",
+      "label": "Block Types & World Data",
+      "x": 2280,
+      "y": 3200,
+      "width": 1540,
+      "height": 1420,
+      "color": "1"
+    },
+    {
+      "id": "n_world_chunk_chunk_chunk",
+      "type": "file",
+      "file": ".Chunk().md",
+      "x": 2300,
+      "y": 3280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkmesher_chunkmesher_chunkmesher",
+      "type": "file",
+      "file": ".ChunkMesher().md",
+      "x": 2500,
+      "y": 3280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkmesher_chunkmesher_addwaterquad",
+      "type": "file",
+      "file": ".addWaterQuad().md",
+      "x": 2700,
+      "y": 3280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkmesher_chunkmesher_b",
+      "type": "file",
+      "file": ".b().md",
+      "x": 2300,
+      "y": 3360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkmesher_chunkmesher_blocklightat",
+      "type": "file",
+      "file": ".blockLightAt().md",
+      "x": 2500,
+      "y": 3360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkmesher_chunkmesher_builddata",
+      "type": "file",
+      "file": ".buildData().md",
+      "x": 2700,
+      "y": 3360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkmesher_chunkmesher_computeflowdir",
+      "type": "file",
+      "file": ".computeFlowDir().md",
+      "x": 2300,
+      "y": 3440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunk_chunk_computeskylight",
+      "type": "file",
+      "file": ".computeSkyLight().md",
+      "x": 2500,
+      "y": 3440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkmesher_chunkmesher_emitbox",
+      "type": "file",
+      "file": ".emitBox()_1.md",
+      "x": 2700,
+      "y": 3440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkmesher_chunkmesher_emitcross",
+      "type": "file",
+      "file": ".emitCross().md",
+      "x": 2300,
+      "y": 3520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkmesher_chunkmesher_emitdoor",
+      "type": "file",
+      "file": ".emitDoor().md",
+      "x": 2500,
+      "y": 3520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkmesher_chunkmesher_emitface",
+      "type": "file",
+      "file": ".emitFace().md",
+      "x": 2700,
+      "y": 3520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkmesher_chunkmesher_emitstairs",
+      "type": "file",
+      "file": ".emitStairs().md",
+      "x": 2300,
+      "y": 3600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkmesher_chunkmesher_emitwaterblock",
+      "type": "file",
+      "file": ".emitWaterBlock().md",
+      "x": 2500,
+      "y": 3600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunk_chunk_get",
+      "type": "file",
+      "file": ".get().md",
+      "x": 2700,
+      "y": 3600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_world_world_getblockmeta",
+      "type": "file",
+      "file": ".getBlockMeta().md",
+      "x": 2300,
+      "y": 3680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunk_chunk_getmeta",
+      "type": "file",
+      "file": ".getMeta().md",
+      "x": 2500,
+      "y": 3680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunk_chunk_getraw",
+      "type": "file",
+      "file": ".getRaw().md",
+      "x": 2700,
+      "y": 3680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunk_chunk_getskylight",
+      "type": "file",
+      "file": ".getSkyLight().md",
+      "x": 2300,
+      "y": 3760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunk_chunk_idx",
+      "type": "file",
+      "file": ".idx().md",
+      "x": 2500,
+      "y": 3760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunk_chunk_inbounds",
+      "type": "file",
+      "file": ".inBounds().md",
+      "x": 2700,
+      "y": 3760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkmesher_chunkmesher_isopaqueworld",
+      "type": "file",
+      "file": ".isOpaqueWorld().md",
+      "x": 2300,
+      "y": 3840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunk_chunk_setblocklight",
+      "type": "file",
+      "file": ".setBlockLight().md",
+      "x": 2500,
+      "y": 3840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunk_chunk_setmeta",
+      "type": "file",
+      "file": ".setMeta().md",
+      "x": 2700,
+      "y": 3840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkmesher_chunkmesher_shoulddrawface",
+      "type": "file",
+      "file": ".shouldDrawFace().md",
+      "x": 2300,
+      "y": 3920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkmesher_chunkmesher_skyat",
+      "type": "file",
+      "file": ".skyAt().md",
+      "x": 2500,
+      "y": 3920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunk_chunk_smoothskylight",
+      "type": "file",
+      "file": ".smoothSkyLight().md",
+      "x": 2700,
+      "y": 3920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkmesher_chunkmesher_tofloatarray",
+      "type": "file",
+      "file": ".toFloatArray()_1.md",
+      "x": 2300,
+      "y": 4000,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkmesher_chunkmesher_tointarray",
+      "type": "file",
+      "file": ".toIntArray()_1.md",
+      "x": 2500,
+      "y": 4000,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunk_chunk_transparent",
+      "type": "file",
+      "file": ".transparent().md",
+      "x": 2700,
+      "y": 4000,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkmesher_chunkmesher_watercornertopy",
+      "type": "file",
+      "file": ".waterCornerTopY().md",
+      "x": 2300,
+      "y": 4080,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkmesher_chunkmesher_waterleveltopy",
+      "type": "file",
+      "file": ".waterLevelTopY().md",
+      "x": 2500,
+      "y": 4080,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_blocktype_blocktype",
+      "type": "file",
+      "file": "BlockType().md",
+      "x": 2700,
+      "y": 4080,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_blocktype_java",
+      "type": "file",
+      "file": "BlockType.java.md",
+      "x": 2300,
+      "y": 4160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunk_chunk",
+      "type": "file",
+      "file": "Chunk.md",
+      "x": 2500,
+      "y": 4160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunk_java",
+      "type": "file",
+      "file": "Chunk.java.md",
+      "x": 2700,
+      "y": 4160,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkmesher_chunkmesher",
+      "type": "file",
+      "file": "ChunkMesher.md",
+      "x": 2300,
+      "y": 4240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_chunkmesher_java",
+      "type": "file",
+      "file": "ChunkMesher.java.md",
+      "x": 2500,
+      "y": 4240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_blocktype_byid",
+      "type": "file",
+      "file": "byId().md",
+      "x": 2700,
+      "y": 4240,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g7",
+      "type": "group",
+      "label": "Input System",
+      "x": 4340,
+      "y": 3200,
+      "width": 1320,
+      "height": 1120,
+      "color": "2"
+    },
+    {
+      "id": "n_game_raycaster_hit_hit",
+      "type": "file",
+      "file": ".Hit().md",
+      "x": 4360,
+      "y": 3280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_raycaster_raycaster_raycaster",
+      "type": "file",
+      "file": ".Raycaster().md",
+      "x": 4560,
+      "y": 3280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_raycaster_raycaster_cast",
+      "type": "file",
+      "file": ".cast().md",
+      "x": 4760,
+      "y": 3280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_player_player_eyeblockiswater",
+      "type": "file",
+      "file": ".eyeBlockIsWater().md",
+      "x": 4360,
+      "y": 3360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_world_world_getblock",
+      "type": "file",
+      "file": ".getBlock().md",
+      "x": 4560,
+      "y": 3360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_input_input_getcursorx",
+      "type": "file",
+      "file": ".getCursorX().md",
+      "x": 4760,
+      "y": 3360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_input_input_getcursory",
+      "type": "file",
+      "file": ".getCursorY().md",
+      "x": 4360,
+      "y": 3440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_input_input_getdx",
+      "type": "file",
+      "file": ".getDx().md",
+      "x": 4560,
+      "y": 3440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_input_input_getdy",
+      "type": "file",
+      "file": ".getDy().md",
+      "x": 4760,
+      "y": 3440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_input_input_getscroll",
+      "type": "file",
+      "file": ".getScroll().md",
+      "x": 4360,
+      "y": 3520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_player_player_hasbodyclearance",
+      "type": "file",
+      "file": ".hasBodyClearance().md",
+      "x": 4560,
+      "y": 3520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_input_input_iscursorgrabbed",
+      "type": "file",
+      "file": ".isCursorGrabbed().md",
+      "x": 4760,
+      "y": 3520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_input_input_keydown",
+      "type": "file",
+      "file": ".keyDown().md",
+      "x": 4360,
+      "y": 3600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_input_input_mousedown",
+      "type": "file",
+      "file": ".mouseDown().md",
+      "x": 4560,
+      "y": 3600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_input_input_mousepressed",
+      "type": "file",
+      "file": ".mousePressed().md",
+      "x": 4760,
+      "y": 3600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_player_player_moveaxis",
+      "type": "file",
+      "file": ".moveAxis().md",
+      "x": 4360,
+      "y": 3680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_input_input_pollchars",
+      "type": "file",
+      "file": ".pollChars().md",
+      "x": 4560,
+      "y": 3680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_player_player_resolvestairs",
+      "type": "file",
+      "file": ".resolveStairs().md",
+      "x": 4760,
+      "y": 3680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_player_player_takedamage",
+      "type": "file",
+      "file": ".takeDamage().md",
+      "x": 4360,
+      "y": 3760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_player_player_touchingwater",
+      "type": "file",
+      "file": ".touchingWater().md",
+      "x": 4560,
+      "y": 3760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_player_player_tryclimbwaterledge",
+      "type": "file",
+      "file": ".tryClimbWaterLedge().md",
+      "x": 4760,
+      "y": 3760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_input_input_update",
+      "type": "file",
+      "file": ".update().md",
+      "x": 4360,
+      "y": 3840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_player_player_update",
+      "type": "file",
+      "file": ".update()_3.md",
+      "x": 4560,
+      "y": 3840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_raycaster_hit",
+      "type": "file",
+      "file": "Hit.md",
+      "x": 4760,
+      "y": 3840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_input_input",
+      "type": "file",
+      "file": "Input.md",
+      "x": 4360,
+      "y": 3920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_core_input_java",
+      "type": "file",
+      "file": "Input.java.md",
+      "x": 4560,
+      "y": 3920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_player_player",
+      "type": "file",
+      "file": "Player.md",
+      "x": 4760,
+      "y": 3920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_player_java",
+      "type": "file",
+      "file": "Player.java.md",
+      "x": 4360,
+      "y": 4000,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_raycaster_raycaster",
+      "type": "file",
+      "file": "Raycaster.md",
+      "x": 4560,
+      "y": 4000,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_game_raycaster_java",
+      "type": "file",
+      "file": "Raycaster.java.md",
+      "x": 4760,
+      "y": 4000,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g8",
+      "type": "group",
+      "label": "Game Features Design",
+      "x": 6180,
+      "y": 3200,
+      "width": 1100,
+      "height": 1020,
+      "color": "3"
+    },
+    {
+      "id": "n_concept_bfs_flood_fill",
+      "type": "file",
+      "file": "BFS Flood-Fill Block Light.md",
+      "x": 6200,
+      "y": 3280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_block_metadata",
+      "type": "file",
+      "file": "Block Metadata System (byte meta per Chunk).md",
+      "x": 6400,
+      "y": 3280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_creative_menu",
+      "type": "file",
+      "file": "Creative Inventory Menu (E key, Block Grid).md",
+      "x": 6600,
+      "y": 3280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_day_night_cycle",
+      "type": "file",
+      "file": "DayNight Cycle (uDaylight Uniform).md",
+      "x": 6200,
+      "y": 3360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_death_screen",
+      "type": "file",
+      "file": "Death Screen and Respawn State (DEAD).md",
+      "x": 6400,
+      "y": 3360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_door_mechanics",
+      "type": "file",
+      "file": "Door OpenClose Toggle (Camera-Facing Meta).md",
+      "x": 6600,
+      "y": 3360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_health_system",
+      "type": "file",
+      "file": "Health System (HP, Fall Damage, MLG, Regen).md",
+      "x": 6200,
+      "y": 3440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_water_infinite_source",
+      "type": "file",
+      "file": "Infinite Source Creation (2x2 Pool Rule).md",
+      "x": 6400,
+      "y": 3440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_mc_water_physics",
+      "type": "file",
+      "file": "MC-Accurate Water Fluid Drag (Continuous Force Model).md",
+      "x": 6600,
+      "y": 3440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_ground_movement",
+      "type": "file",
+      "file": "MC-Like Ground Movement (Exponential Accel).md",
+      "x": 6200,
+      "y": 3520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_plan_creative_foundation",
+      "type": "file",
+      "file": "Plan Creative Foundation.md",
+      "x": 6400,
+      "y": 3520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_plan_game_feel",
+      "type": "file",
+      "file": "Plan Game Feel (Particles, DayNight, Torch).md",
+      "x": 6600,
+      "y": 3520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_plan_mlg_water_health",
+      "type": "file",
+      "file": "Plan MLG Water Bucket & Health System.md",
+      "x": 6200,
+      "y": 3600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_plan_water_physics_0517",
+      "type": "file",
+      "file": "Plan Water Physics (MC-style, 2026-05-17).md",
+      "x": 6400,
+      "y": 3600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_plan_water_physics_0519",
+      "type": "file",
+      "file": "Plan Water Physics MC-style (2026-05-19).md",
+      "x": 6600,
+      "y": 3600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_spec_creative_foundation",
+      "type": "file",
+      "file": "Spec Creative Foundation Design.md",
+      "x": 6200,
+      "y": 3680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_spec_game_feel",
+      "type": "file",
+      "file": "Spec Game Feel Design.md",
+      "x": 6400,
+      "y": 3680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_spec_mlg_water_health",
+      "type": "file",
+      "file": "Spec MLG Water Bucket & Health System Design.md",
+      "x": 6600,
+      "y": 3680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_spec_water_physics",
+      "type": "file",
+      "file": "Spec Water Physics MC-style Design.md",
+      "x": 6200,
+      "y": 3760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_stair_collision",
+      "type": "file",
+      "file": "Stair AABB Collision (Auto-Step, Half-Block).md",
+      "x": 6400,
+      "y": 3760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_swimming_physics",
+      "type": "file",
+      "file": "Swimming Physics (Buoyancy + Paddle).md",
+      "x": 6600,
+      "y": 3760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_particle_textures",
+      "type": "file",
+      "file": "Textured Block-Break Particles (Atlas UV).md",
+      "x": 6200,
+      "y": 3840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_water_variable_height",
+      "type": "file",
+      "file": "Variable-Height Water Rendering (Level-Based topY).md",
+      "x": 6400,
+      "y": 3840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_water_simulator",
+      "type": "file",
+      "file": "WaterSimulator (BFS Tick).md",
+      "x": 6600,
+      "y": 3840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_waterfall_counter_reset",
+      "type": "file",
+      "file": "Waterfall Level Counter Reset on Fall.md",
+      "x": 6200,
+      "y": 3920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g9",
+      "type": "group",
+      "label": "Architecture Docs & ADRs",
+      "x": 7800,
+      "y": 3200,
+      "width": 1100,
+      "height": 1020,
+      "color": "4"
+    },
+    {
+      "id": "n_adr_chunk_loading",
+      "type": "file",
+      "file": "ADR Chunk Loading Strategy.md",
+      "x": 7820,
+      "y": 3280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_adr_rendering",
+      "type": "file",
+      "file": "ADR Chunk Rendering Approach.md",
+      "x": 8020,
+      "y": 3280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_arch_overview",
+      "type": "file",
+      "file": "Architecture Overview.md",
+      "x": 8220,
+      "y": 3280,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_autosave",
+      "type": "file",
+      "file": "Autosave (PausePeriodicQuit + Manual Save Button).md",
+      "x": 7820,
+      "y": 3360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_chunk_loading",
+      "type": "file",
+      "file": "Chunk Loading (Background Thread Pool).md",
+      "x": 8020,
+      "y": 3360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_chunk_modified_flag",
+      "type": "file",
+      "file": "Chunk Modified Flag (Post-Generation Edits).md",
+      "x": 8220,
+      "y": 3360,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_dual_mesh",
+      "type": "file",
+      "file": "Dual-Mesh Transparent Water Pass.md",
+      "x": 7820,
+      "y": 3440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_mineclone_title",
+      "type": "file",
+      "file": "Layered MINECLONE Title (Gold Fill, Outline, Shadow).md",
+      "x": 8020,
+      "y": 3440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_menu_background",
+      "type": "file",
+      "file": "MenuBackground (Dedicated Mini-World + Orbit Camera).md",
+      "x": 8220,
+      "y": 3440,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_readme_knowledge_base",
+      "type": "file",
+      "file": "Mineclone Knowledge Base.md",
+      "x": 7820,
+      "y": 3520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_new_world_flow",
+      "type": "file",
+      "file": "New World Flow (Confirm Dialog, Delete Save, Relaunch).md",
+      "x": 8020,
+      "y": 3520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_options_persistence",
+      "type": "file",
+      "file": "Options Persistence (options.dat).md",
+      "x": 8220,
+      "y": 3520,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_plan_main_menu_revamp",
+      "type": "file",
+      "file": "Plan Main Menu Revamp + Settings Persistence.md",
+      "x": 7820,
+      "y": 3600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_plan_underwater_effects",
+      "type": "file",
+      "file": "Plan Underwater Effects.md",
+      "x": 8020,
+      "y": 3600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_plan_water_rendering",
+      "type": "file",
+      "file": "Plan Water Rendering.md",
+      "x": 8220,
+      "y": 3600,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_plan_world_persistence",
+      "type": "file",
+      "file": "Plan World Persistence.md",
+      "x": 7820,
+      "y": 3680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_render_pipeline",
+      "type": "file",
+      "file": "Render Pipeline (Opaque + Water Passes).md",
+      "x": 8020,
+      "y": 3680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_save_manager",
+      "type": "file",
+      "file": "SaveManager (Disk IO, GZIP, Background Executor).md",
+      "x": 8220,
+      "y": 3680,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_spec_save_menu_revamp",
+      "type": "file",
+      "file": "Spec Save System and Menu Revamp Design.md",
+      "x": 7820,
+      "y": 3760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_spec_underwater_effects",
+      "type": "file",
+      "file": "Spec Underwater Effects Design.md",
+      "x": 8020,
+      "y": 3760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_spec_water_rendering",
+      "type": "file",
+      "file": "Spec Water Rendering Design.md",
+      "x": 8220,
+      "y": 3760,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_stone_buttons",
+      "type": "file",
+      "file": "Stone-Textured Beveled Menu Buttons.md",
+      "x": 7820,
+      "y": 3840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_underwater_fov",
+      "type": "file",
+      "file": "Underwater FOV Reduction (Smooth Interpolation).md",
+      "x": 8020,
+      "y": 3840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_water_surface_doublesided",
+      "type": "file",
+      "file": "Water Surface Visible From Below (Disable Backface Culling).md",
+      "x": 8220,
+      "y": 3840,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_concept_save_package",
+      "type": "file",
+      "file": "com.mineclone.save Package (SaveManager, LevelData, ChunkSnapshot, Options).md",
+      "x": 7820,
+      "y": 3920,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g10",
+      "type": "group",
+      "label": "Sound Engine Core",
+      "x": 0,
+      "y": 4800,
+      "width": 880,
+      "height": 620,
+      "color": "5"
+    },
+    {
+      "id": "n_render_meshdata_meshdata_meshdata",
+      "type": "file",
+      "file": ".MeshData().md",
+      "x": 20,
+      "y": 4880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_soundengine_soundengine_destroy",
+      "type": "file",
+      "file": ".destroy().md",
+      "x": 220,
+      "y": 4880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_soundengine_soundengine_init",
+      "type": "file",
+      "file": ".init().md",
+      "x": 420,
+      "y": 4880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_meshdata_meshdata_isempty",
+      "type": "file",
+      "file": ".isEmpty().md",
+      "x": 20,
+      "y": 4960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_soundengine_soundengine_loadbuffer",
+      "type": "file",
+      "file": ".loadBuffer().md",
+      "x": 220,
+      "y": 4960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_soundengine_soundengine_play",
+      "type": "file",
+      "file": ".play().md",
+      "x": 420,
+      "y": 4960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_soundengine_soundengine_playat",
+      "type": "file",
+      "file": ".playAt().md",
+      "x": 20,
+      "y": 5040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_soundengine_soundengine_playoneof",
+      "type": "file",
+      "file": ".playOneOf().md",
+      "x": 220,
+      "y": 5040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_soundengine_soundengine_playoneofat",
+      "type": "file",
+      "file": ".playOneOfAt().md",
+      "x": 420,
+      "y": 5040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_soundengine_soundengine_tick",
+      "type": "file",
+      "file": ".tick().md",
+      "x": 20,
+      "y": 5120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_meshdata_meshdata_upload",
+      "type": "file",
+      "file": ".upload().md",
+      "x": 220,
+      "y": 5120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_meshdata_meshdata",
+      "type": "file",
+      "file": "MeshData.md",
+      "x": 420,
+      "y": 5120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_meshdata_java",
+      "type": "file",
+      "file": "MeshData.java.md",
+      "x": 20,
+      "y": 5200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_soundengine_soundengine",
+      "type": "file",
+      "file": "SoundEngine.md",
+      "x": 220,
+      "y": 5200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_audio_soundengine_java",
+      "type": "file",
+      "file": "SoundEngine.java.md",
+      "x": 420,
+      "y": 5200,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g11",
+      "type": "group",
+      "label": "Held Item Renderer",
+      "x": 2280,
+      "y": 4800,
+      "width": 880,
+      "height": 520,
+      "color": "6"
+    },
+    {
+      "id": "n_render_helditemrenderer_helditemrenderer_helditemrenderer",
+      "type": "file",
+      "file": ".HeldItemRenderer().md",
+      "x": 2300,
+      "y": 4880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_helditemrenderer_helditemrenderer_clamp01",
+      "type": "file",
+      "file": ".clamp01().md",
+      "x": 2500,
+      "y": 4880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_helditemrenderer_helditemrenderer_createblockmesh",
+      "type": "file",
+      "file": ".createBlockMesh().md",
+      "x": 2700,
+      "y": 4880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_helditemrenderer_helditemrenderer_createitemmesh",
+      "type": "file",
+      "file": ".createItemMesh().md",
+      "x": 2300,
+      "y": 4960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_helditemrenderer_helditemrenderer_createsolidbox",
+      "type": "file",
+      "file": ".createSolidBox().md",
+      "x": 2500,
+      "y": 4960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_helditemrenderer_helditemrenderer_createtorchmesh",
+      "type": "file",
+      "file": ".createTorchMesh().md",
+      "x": 2700,
+      "y": 4960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_helditemrenderer_helditemrenderer_destroy",
+      "type": "file",
+      "file": ".destroy()_6.md",
+      "x": 2300,
+      "y": 5040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_helditemrenderer_helditemrenderer_emitbox",
+      "type": "file",
+      "file": ".emitBox().md",
+      "x": 2500,
+      "y": 5040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_helditemrenderer_helditemrenderer_tofloatarray",
+      "type": "file",
+      "file": ".toFloatArray().md",
+      "x": 2700,
+      "y": 5040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_helditemrenderer_helditemrenderer_tointarray",
+      "type": "file",
+      "file": ".toIntArray().md",
+      "x": 2300,
+      "y": 5120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_helditemrenderer_helditemrenderer",
+      "type": "file",
+      "file": "HeldItemRenderer.md",
+      "x": 2500,
+      "y": 5120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_helditemrenderer_java",
+      "type": "file",
+      "file": "HeldItemRenderer.java.md",
+      "x": 2700,
+      "y": 5120,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g12",
+      "type": "group",
+      "label": "Terrain Noise",
+      "x": 4340,
+      "y": 4800,
+      "width": 660,
+      "height": 420,
+      "color": "1"
+    },
+    {
+      "id": "n_world_perlinnoise_perlinnoise_perlinnoise",
+      "type": "file",
+      "file": ".PerlinNoise().md",
+      "x": 4360,
+      "y": 4880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_perlinnoise_perlinnoise_fade",
+      "type": "file",
+      "file": ".fade().md",
+      "x": 4560,
+      "y": 4880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_perlinnoise_perlinnoise_fbm",
+      "type": "file",
+      "file": ".fbm().md",
+      "x": 4760,
+      "y": 4880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_perlinnoise_perlinnoise_grad",
+      "type": "file",
+      "file": ".grad().md",
+      "x": 4360,
+      "y": 4960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_perlinnoise_perlinnoise_lerp",
+      "type": "file",
+      "file": ".lerp()_1.md",
+      "x": 4560,
+      "y": 4960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_perlinnoise_perlinnoise_noise",
+      "type": "file",
+      "file": ".noise().md",
+      "x": 4760,
+      "y": 4960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_perlinnoise_perlinnoise",
+      "type": "file",
+      "file": "PerlinNoise.md",
+      "x": 4360,
+      "y": 5040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_world_perlinnoise_java",
+      "type": "file",
+      "file": "PerlinNoise.java.md",
+      "x": 4560,
+      "y": 5040,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g13",
+      "type": "group",
+      "label": "Mesh Primitives",
+      "x": 6180,
+      "y": 4800,
+      "width": 660,
+      "height": 400,
+      "color": "2"
+    },
+    {
+      "id": "n_render_mesh_mesh_mesh",
+      "type": "file",
+      "file": ".Mesh().md",
+      "x": 6200,
+      "y": 4880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_mesh_mesh_destroy",
+      "type": "file",
+      "file": ".destroy()_7.md",
+      "x": 6400,
+      "y": 4880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_mesh_mesh_getindexcount",
+      "type": "file",
+      "file": ".getIndexCount().md",
+      "x": 6600,
+      "y": 4880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_mesh_mesh_render",
+      "type": "file",
+      "file": ".render()_5.md",
+      "x": 6200,
+      "y": 4960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_mesh_mesh",
+      "type": "file",
+      "file": "Mesh.md",
+      "x": 6400,
+      "y": 4960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_mesh_java",
+      "type": "file",
+      "file": "Mesh.java.md",
+      "x": 6600,
+      "y": 4960,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g14",
+      "type": "group",
+      "label": "Shaders",
+      "x": 7800,
+      "y": 4800,
+      "width": 600,
+      "height": 400,
+      "color": "3"
+    },
+    {
+      "id": "n_render_shaders_shaders_shaders",
+      "type": "file",
+      "file": ".Shaders().md",
+      "x": 7820,
+      "y": 4880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_shaders_shaders",
+      "type": "file",
+      "file": "Shaders.md",
+      "x": 8020,
+      "y": 4880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_render_shaders_java",
+      "type": "file",
+      "file": "Shaders.java.md",
+      "x": 8220,
+      "y": 4880,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g15",
+      "type": "group",
+      "label": "Chunk Persistence",
+      "x": 0,
+      "y": 5500,
+      "width": 600,
+      "height": 400,
+      "color": "4"
+    },
+    {
+      "id": "n_save_chunksnapshot_chunksnapshot_chunksnapshot",
+      "type": "file",
+      "file": ".ChunkSnapshot().md",
+      "x": 20,
+      "y": 5580,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_chunksnapshot_chunksnapshot",
+      "type": "file",
+      "file": "ChunkSnapshot.md",
+      "x": 220,
+      "y": 5580,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "n_save_chunksnapshot_java",
+      "type": "file",
+      "file": "ChunkSnapshot.java.md",
+      "x": 420,
+      "y": 5580,
+      "width": 180,
+      "height": 60
+    },
+    {
+      "id": "g16",
+      "type": "group",
+      "label": "Ground Movement Plan",
+      "x": 2280,
+      "y": 5500,
+      "width": 600,
+      "height": 400,
+      "color": "5"
+    },
+    {
+      "id": "n_plan_ground_movement",
+      "type": "file",
+      "file": "Plan MC-Like Ground Movement.md",
+      "x": 2300,
+      "y": 5580,
+      "width": 180,
+      "height": 60
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_main_java_mineclone_main_main",
+      "fromNode": "n_main_java",
+      "toNode": "n_mineclone_main_main",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_mineclone_main_main_mineclone_main_main_main",
+      "fromNode": "n_mineclone_main_main",
+      "toNode": "n_mineclone_main_main_main",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_mineclone_main_main_main_core_window_window_init",
+      "fromNode": "n_mineclone_main_main_main",
+      "toNode": "n_core_window_window_init",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_mineclone_main_main_main_game_game_game_run",
+      "fromNode": "n_mineclone_main_main_main",
+      "toNode": "n_game_game_game_run",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_mineclone_main_main_main_render_uirenderer_uirenderer_destroy",
+      "fromNode": "n_mineclone_main_main_main",
+      "toNode": "n_render_uirenderer_uirenderer_destroy",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_soundengine_java_audio_soundengine_soundengine",
+      "fromNode": "n_audio_soundengine_java",
+      "toNode": "n_audio_soundengine_soundengine",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_audio_soundengine_soundengine_setmastervolume",
+      "fromNode": "n_audio_soundengine_soundengine",
+      "toNode": "n_audio_soundengine_soundengine_setmastervolume",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_audio_soundengine_soundengine_init",
+      "fromNode": "n_audio_soundengine_soundengine",
+      "toNode": "n_audio_soundengine_soundengine_init",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_audio_soundengine_soundengine_loadbuffer",
+      "fromNode": "n_audio_soundengine_soundengine",
+      "toNode": "n_audio_soundengine_soundengine_loadbuffer",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_audio_soundengine_soundengine_updatelistener",
+      "fromNode": "n_audio_soundengine_soundengine",
+      "toNode": "n_audio_soundengine_soundengine_updatelistener",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_audio_soundengine_soundengine_playoneof",
+      "fromNode": "n_audio_soundengine_soundengine",
+      "toNode": "n_audio_soundengine_soundengine_playoneof",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_audio_soundengine_soundengine_play",
+      "fromNode": "n_audio_soundengine_soundengine",
+      "toNode": "n_audio_soundengine_soundengine_play",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_audio_soundengine_soundengine_playoneofat",
+      "fromNode": "n_audio_soundengine_soundengine",
+      "toNode": "n_audio_soundengine_soundengine_playoneofat",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_audio_soundengine_soundengine_playat",
+      "fromNode": "n_audio_soundengine_soundengine",
+      "toNode": "n_audio_soundengine_soundengine_playat",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_audio_soundengine_soundengine_tick",
+      "fromNode": "n_audio_soundengine_soundengine",
+      "toNode": "n_audio_soundengine_soundengine_tick",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_audio_soundengine_soundengine_destroy",
+      "fromNode": "n_audio_soundengine_soundengine",
+      "toNode": "n_audio_soundengine_soundengine_destroy",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_setmastervolume_game_game_game_run",
+      "fromNode": "n_audio_soundengine_soundengine_setmastervolume",
+      "toNode": "n_game_game_game_run",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_setmastervolume_game_game_game_drawui",
+      "fromNode": "n_audio_soundengine_soundengine_setmastervolume",
+      "toNode": "n_game_game_game_drawui",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_loadbuffer_audio_soundengine_soundengine_play",
+      "fromNode": "n_audio_soundengine_soundengine_loadbuffer",
+      "toNode": "n_audio_soundengine_soundengine_play",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_loadbuffer_audio_soundengine_soundengine_playat",
+      "fromNode": "n_audio_soundengine_soundengine_loadbuffer",
+      "toNode": "n_audio_soundengine_soundengine_playat",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_loadbuffer_world_chunk_chunk_get",
+      "fromNode": "n_audio_soundengine_soundengine_loadbuffer",
+      "toNode": "n_world_chunk_chunk_get",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_updatelistener_world_chunk_chunk_set",
+      "fromNode": "n_audio_soundengine_soundengine_updatelistener",
+      "toNode": "n_world_chunk_chunk_set",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_updatelistener_game_game_game_run",
+      "fromNode": "n_audio_soundengine_soundengine_updatelistener",
+      "toNode": "n_game_game_game_run",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_playoneof_audio_soundengine_soundengine_play",
+      "fromNode": "n_audio_soundengine_soundengine_playoneof",
+      "toNode": "n_audio_soundengine_soundengine_play",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_playoneof_render_meshdata_meshdata_isempty",
+      "fromNode": "n_audio_soundengine_soundengine_playoneof",
+      "toNode": "n_render_meshdata_meshdata_isempty",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_playoneof_world_chunk_chunk_get",
+      "fromNode": "n_audio_soundengine_soundengine_playoneof",
+      "toNode": "n_world_chunk_chunk_get",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_playoneof_game_game_game_handlehotbar",
+      "fromNode": "n_audio_soundengine_soundengine_playoneof",
+      "toNode": "n_game_game_game_handlehotbar",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_playoneof_game_game_game_drawui",
+      "fromNode": "n_audio_soundengine_soundengine_playoneof",
+      "toNode": "n_game_game_game_drawui",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_playoneofat_audio_soundengine_soundengine_playat",
+      "fromNode": "n_audio_soundengine_soundengine_playoneofat",
+      "toNode": "n_audio_soundengine_soundengine_playat",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_playoneofat_render_meshdata_meshdata_isempty",
+      "fromNode": "n_audio_soundengine_soundengine_playoneofat",
+      "toNode": "n_render_meshdata_meshdata_isempty",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_playoneofat_world_chunk_chunk_get",
+      "fromNode": "n_audio_soundengine_soundengine_playoneofat",
+      "toNode": "n_world_chunk_chunk_get",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_playoneofat_game_game_game_updateplaying",
+      "fromNode": "n_audio_soundengine_soundengine_playoneofat",
+      "toNode": "n_game_game_game_updateplaying",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_playoneofat_game_game_game_handleinteraction",
+      "fromNode": "n_audio_soundengine_soundengine_playoneofat",
+      "toNode": "n_game_game_game_handleinteraction",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_playoneofat_game_game_game_updatefootsteps",
+      "fromNode": "n_audio_soundengine_soundengine_playoneofat",
+      "toNode": "n_game_game_game_updatefootsteps",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_soundengine_soundengine_playoneofat_game_game_game_playlandingstep",
+      "fromNode": "n_audio_soundengine_soundengine_playoneofat",
+      "toNode": "n_game_game_game_playlandingstep",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_sounds_java_audio_sounds_sounds",
+      "fromNode": "n_audio_sounds_java",
+      "toNode": "n_audio_sounds_sounds",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_audio_sounds_sounds_sounds",
+      "fromNode": "n_audio_sounds_sounds",
+      "toNode": "n_audio_sounds_sounds_sounds",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_audio_sounds_sounds_listmatching",
+      "fromNode": "n_audio_sounds_sounds",
+      "toNode": "n_audio_sounds_sounds_listmatching",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_audio_sounds_sounds_materialof",
+      "fromNode": "n_audio_sounds_sounds",
+      "toNode": "n_audio_sounds_sounds_materialof",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_audio_sounds_sounds_step",
+      "fromNode": "n_audio_sounds_sounds",
+      "toNode": "n_audio_sounds_sounds_step",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_audio_sounds_sounds_dig",
+      "fromNode": "n_audio_sounds_sounds",
+      "toNode": "n_audio_sounds_sounds_dig",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_audio_sounds_sounds_place",
+      "fromNode": "n_audio_sounds_sounds",
+      "toNode": "n_audio_sounds_sounds_place",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_audio_sounds_sounds_breakrandom",
+      "fromNode": "n_audio_sounds_sounds",
+      "toNode": "n_audio_sounds_sounds_breakrandom",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_audio_sounds_sounds_uiclick",
+      "fromNode": "n_audio_sounds_sounds",
+      "toNode": "n_audio_sounds_sounds_uiclick",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_audio_sounds_sounds_emptylist",
+      "fromNode": "n_audio_sounds_sounds",
+      "toNode": "n_audio_sounds_sounds_emptylist",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_audio_sounds_sounds_watersplash",
+      "fromNode": "n_audio_sounds_sounds",
+      "toNode": "n_audio_sounds_sounds_watersplash",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_audio_sounds_sounds_waterswim",
+      "fromNode": "n_audio_sounds_sounds",
+      "toNode": "n_audio_sounds_sounds_waterswim",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_audio_sounds_sounds_waterflow",
+      "fromNode": "n_audio_sounds_sounds",
+      "toNode": "n_audio_sounds_sounds_waterflow",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_audio_sounds_sounds_fallbig",
+      "fromNode": "n_audio_sounds_sounds",
+      "toNode": "n_audio_sounds_sounds_fallbig",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_audio_sounds_sounds_fallsmall",
+      "fromNode": "n_audio_sounds_sounds",
+      "toNode": "n_audio_sounds_sounds_fallsmall",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_audio_sounds_sounds_doortoggle",
+      "fromNode": "n_audio_sounds_sounds",
+      "toNode": "n_audio_sounds_sounds_doortoggle",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_sounds_audio_sounds_sounds_listmatching",
+      "fromNode": "n_audio_sounds_sounds_sounds",
+      "toNode": "n_audio_sounds_sounds_listmatching",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_sounds_audio_sounds_sounds_emptylist",
+      "fromNode": "n_audio_sounds_sounds_sounds",
+      "toNode": "n_audio_sounds_sounds_emptylist",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_listmatching_audio_sounds_sounds_emptylist",
+      "fromNode": "n_audio_sounds_sounds_listmatching",
+      "toNode": "n_audio_sounds_sounds_emptylist",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_listmatching_audio_sounds_sounds_watersplash",
+      "fromNode": "n_audio_sounds_sounds_listmatching",
+      "toNode": "n_audio_sounds_sounds_watersplash",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_listmatching_audio_sounds_sounds_waterswim",
+      "fromNode": "n_audio_sounds_sounds_listmatching",
+      "toNode": "n_audio_sounds_sounds_waterswim",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_listmatching_core_apppaths_apppaths_file",
+      "fromNode": "n_audio_sounds_sounds_listmatching",
+      "toNode": "n_core_apppaths_apppaths_file",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_materialof_audio_sounds_sounds_place",
+      "fromNode": "n_audio_sounds_sounds_materialof",
+      "toNode": "n_audio_sounds_sounds_place",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_materialof_audio_sounds_sounds_dig",
+      "fromNode": "n_audio_sounds_sounds_materialof",
+      "toNode": "n_audio_sounds_sounds_dig",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_materialof_audio_sounds_sounds_step",
+      "fromNode": "n_audio_sounds_sounds_materialof",
+      "toNode": "n_audio_sounds_sounds_step",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_step_audio_sounds_sounds_emptylist",
+      "fromNode": "n_audio_sounds_sounds_step",
+      "toNode": "n_audio_sounds_sounds_emptylist",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_step_game_game_game_updatefootsteps",
+      "fromNode": "n_audio_sounds_sounds_step",
+      "toNode": "n_game_game_game_updatefootsteps",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_step_game_game_game_playlandingstep",
+      "fromNode": "n_audio_sounds_sounds_step",
+      "toNode": "n_game_game_game_playlandingstep",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_dig_audio_sounds_sounds_emptylist",
+      "fromNode": "n_audio_sounds_sounds_dig",
+      "toNode": "n_audio_sounds_sounds_emptylist",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_dig_audio_sounds_sounds_place",
+      "fromNode": "n_audio_sounds_sounds_dig",
+      "toNode": "n_audio_sounds_sounds_place",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_dig_game_game_game_handleinteraction",
+      "fromNode": "n_audio_sounds_sounds_dig",
+      "toNode": "n_game_game_game_handleinteraction",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_place_game_game_game_handleinteraction",
+      "fromNode": "n_audio_sounds_sounds_place",
+      "toNode": "n_game_game_game_handleinteraction",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_breakrandom_core_apppaths_apppaths_file",
+      "fromNode": "n_audio_sounds_sounds_breakrandom",
+      "toNode": "n_core_apppaths_apppaths_file",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_uiclick_audio_sounds_sounds_emptylist",
+      "fromNode": "n_audio_sounds_sounds_uiclick",
+      "toNode": "n_audio_sounds_sounds_emptylist",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_uiclick_core_apppaths_apppaths_file",
+      "fromNode": "n_audio_sounds_sounds_uiclick",
+      "toNode": "n_core_apppaths_apppaths_file",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_uiclick_game_game_game_handlehotbar",
+      "fromNode": "n_audio_sounds_sounds_uiclick",
+      "toNode": "n_game_game_game_handlehotbar",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_uiclick_game_game_game_drawui",
+      "fromNode": "n_audio_sounds_sounds_uiclick",
+      "toNode": "n_game_game_game_drawui",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_emptylist_audio_sounds_sounds_waterflow",
+      "fromNode": "n_audio_sounds_sounds_emptylist",
+      "toNode": "n_audio_sounds_sounds_waterflow",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_emptylist_audio_sounds_sounds_fallbig",
+      "fromNode": "n_audio_sounds_sounds_emptylist",
+      "toNode": "n_audio_sounds_sounds_fallbig",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_emptylist_audio_sounds_sounds_fallsmall",
+      "fromNode": "n_audio_sounds_sounds_emptylist",
+      "toNode": "n_audio_sounds_sounds_fallsmall",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_watersplash_game_game_game_updateplaying",
+      "fromNode": "n_audio_sounds_sounds_watersplash",
+      "toNode": "n_game_game_game_updateplaying",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_waterswim_game_game_game_updateplaying",
+      "fromNode": "n_audio_sounds_sounds_waterswim",
+      "toNode": "n_game_game_game_updateplaying",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_waterflow_core_apppaths_apppaths_file",
+      "fromNode": "n_audio_sounds_sounds_waterflow",
+      "toNode": "n_core_apppaths_apppaths_file",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_waterflow_game_game_game_updateplaying",
+      "fromNode": "n_audio_sounds_sounds_waterflow",
+      "toNode": "n_game_game_game_updateplaying",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_fallbig_core_apppaths_apppaths_file",
+      "fromNode": "n_audio_sounds_sounds_fallbig",
+      "toNode": "n_core_apppaths_apppaths_file",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_fallbig_game_game_game_updateplaying",
+      "fromNode": "n_audio_sounds_sounds_fallbig",
+      "toNode": "n_game_game_game_updateplaying",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_fallsmall_core_apppaths_apppaths_file",
+      "fromNode": "n_audio_sounds_sounds_fallsmall",
+      "toNode": "n_core_apppaths_apppaths_file",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_fallsmall_game_game_game_updateplaying",
+      "fromNode": "n_audio_sounds_sounds_fallsmall",
+      "toNode": "n_game_game_game_updateplaying",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_doortoggle_core_apppaths_apppaths_file",
+      "fromNode": "n_audio_sounds_sounds_doortoggle",
+      "toNode": "n_core_apppaths_apppaths_file",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_audio_sounds_sounds_doortoggle_game_game_game_handleinteraction",
+      "fromNode": "n_audio_sounds_sounds_doortoggle",
+      "toNode": "n_game_game_game_handleinteraction",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_apppaths_java_core_apppaths_apppaths",
+      "fromNode": "n_core_apppaths_java",
+      "toNode": "n_core_apppaths_apppaths",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_core_apppaths_apppaths_core_apppaths_apppaths_apppaths",
+      "fromNode": "n_core_apppaths_apppaths",
+      "toNode": "n_core_apppaths_apppaths_apppaths",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_apppaths_apppaths_core_apppaths_apppaths_basedir",
+      "fromNode": "n_core_apppaths_apppaths",
+      "toNode": "n_core_apppaths_apppaths_basedir",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_apppaths_apppaths_core_apppaths_apppaths_file",
+      "fromNode": "n_core_apppaths_apppaths",
+      "toNode": "n_core_apppaths_apppaths_file",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_apppaths_apppaths_core_apppaths_apppaths_path",
+      "fromNode": "n_core_apppaths_apppaths",
+      "toNode": "n_core_apppaths_apppaths_path",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_apppaths_apppaths_basedir_core_apppaths_apppaths_file",
+      "fromNode": "n_core_apppaths_apppaths_basedir",
+      "toNode": "n_core_apppaths_apppaths_file",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_core_apppaths_apppaths_basedir_world_chunk_chunk_get",
+      "fromNode": "n_core_apppaths_apppaths_basedir",
+      "toNode": "n_world_chunk_chunk_get",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_apppaths_apppaths_file_core_apppaths_apppaths_path",
+      "fromNode": "n_core_apppaths_apppaths_file",
+      "toNode": "n_core_apppaths_apppaths_path",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_core_apppaths_apppaths_file_render_skyrenderer_skyrenderer_loadorgenerate",
+      "fromNode": "n_core_apppaths_apppaths_file",
+      "toNode": "n_render_skyrenderer_skyrenderer_loadorgenerate",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_apppaths_apppaths_file_render_textureatlas_textureatlas_textureatlas",
+      "fromNode": "n_core_apppaths_apppaths_file",
+      "toNode": "n_render_textureatlas_textureatlas_textureatlas",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_apppaths_apppaths_file_render_textureatlas_textureatlas_assemble",
+      "fromNode": "n_core_apppaths_apppaths_file",
+      "toNode": "n_render_textureatlas_textureatlas_assemble",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_apppaths_apppaths_file_save_savemanager_savemanager_savemanager",
+      "fromNode": "n_core_apppaths_apppaths_file",
+      "toNode": "n_save_savemanager_savemanager_savemanager",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_apppaths_apppaths_path_game_game_game_run",
+      "fromNode": "n_core_apppaths_apppaths_path",
+      "toNode": "n_game_game_game_run",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_java_core_input_input",
+      "fromNode": "n_core_input_java",
+      "toNode": "n_core_input_input",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_core_input_input_core_input_input_input",
+      "fromNode": "n_core_input_input",
+      "toNode": "n_core_input_input_input",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_input_input_core_input_input_pollchars",
+      "fromNode": "n_core_input_input",
+      "toNode": "n_core_input_input_pollchars",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_input_input_core_input_input_update",
+      "fromNode": "n_core_input_input",
+      "toNode": "n_core_input_input_update",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_input_input_core_input_input_keydown",
+      "fromNode": "n_core_input_input",
+      "toNode": "n_core_input_input_keydown",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_input_input_core_input_input_keypressed",
+      "fromNode": "n_core_input_input",
+      "toNode": "n_core_input_input_keypressed",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_input_input_core_input_input_mousedown",
+      "fromNode": "n_core_input_input",
+      "toNode": "n_core_input_input_mousedown",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_input_input_core_input_input_mousepressed",
+      "fromNode": "n_core_input_input",
+      "toNode": "n_core_input_input_mousepressed",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_input_input_core_input_input_getdx",
+      "fromNode": "n_core_input_input",
+      "toNode": "n_core_input_input_getdx",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_input_input_core_input_input_getdy",
+      "fromNode": "n_core_input_input",
+      "toNode": "n_core_input_input_getdy",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_input_input_core_input_input_getscroll",
+      "fromNode": "n_core_input_input",
+      "toNode": "n_core_input_input_getscroll",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_input_input_core_input_input_grabcursor",
+      "fromNode": "n_core_input_input",
+      "toNode": "n_core_input_input_grabcursor",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_input_input_core_input_input_iscursorgrabbed",
+      "fromNode": "n_core_input_input",
+      "toNode": "n_core_input_input_iscursorgrabbed",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_input_input_core_input_input_getcursorx",
+      "fromNode": "n_core_input_input",
+      "toNode": "n_core_input_input_getcursorx",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_input_input_core_input_input_getcursory",
+      "fromNode": "n_core_input_input",
+      "toNode": "n_core_input_input_getcursory",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_input_input_input_core_input_input_grabcursor",
+      "fromNode": "n_core_input_input_input",
+      "toNode": "n_core_input_input_grabcursor",
+      "label": "calls [EXTRACTED]"
+    },
+    {
+      "id": "e_core_input_input_pollchars_game_game_game_updateplaying",
+      "fromNode": "n_core_input_input_pollchars",
+      "toNode": "n_game_game_game_updateplaying",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_keydown_game_player_player_update",
+      "fromNode": "n_core_input_input_keydown",
+      "toNode": "n_game_player_player_update",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_keypressed_game_game_game_run",
+      "fromNode": "n_core_input_input_keypressed",
+      "toNode": "n_game_game_game_run",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_keypressed_game_game_game_updateplaying",
+      "fromNode": "n_core_input_input_keypressed",
+      "toNode": "n_game_game_game_updateplaying",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_keypressed_game_game_game_updatepaused",
+      "fromNode": "n_core_input_input_keypressed",
+      "toNode": "n_game_game_game_updatepaused",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_keypressed_game_game_game_updatecreativemenu",
+      "fromNode": "n_core_input_input_keypressed",
+      "toNode": "n_game_game_game_updatecreativemenu",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_keypressed_game_game_game_handlehotbar",
+      "fromNode": "n_core_input_input_keypressed",
+      "toNode": "n_game_game_game_handlehotbar",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_keypressed_game_game_game_drawui",
+      "fromNode": "n_core_input_input_keypressed",
+      "toNode": "n_game_game_game_drawui",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_keypressed_game_player_player_update",
+      "fromNode": "n_core_input_input_keypressed",
+      "toNode": "n_game_player_player_update",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_mousedown_game_game_game_drawui",
+      "fromNode": "n_core_input_input_mousedown",
+      "toNode": "n_game_game_game_drawui",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_mousepressed_game_game_game_handleinteraction",
+      "fromNode": "n_core_input_input_mousepressed",
+      "toNode": "n_game_game_game_handleinteraction",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_mousepressed_game_game_game_drawui",
+      "fromNode": "n_core_input_input_mousepressed",
+      "toNode": "n_game_game_game_drawui",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_getdx_game_player_player_update",
+      "fromNode": "n_core_input_input_getdx",
+      "toNode": "n_game_player_player_update",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_getdy_game_player_player_update",
+      "fromNode": "n_core_input_input_getdy",
+      "toNode": "n_game_player_player_update",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_getscroll_game_game_game_handlehotbar",
+      "fromNode": "n_core_input_input_getscroll",
+      "toNode": "n_game_game_game_handlehotbar",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_grabcursor_game_game_game_run",
+      "fromNode": "n_core_input_input_grabcursor",
+      "toNode": "n_game_game_game_run",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_grabcursor_game_game_game_beginloadingtoplay",
+      "fromNode": "n_core_input_input_grabcursor",
+      "toNode": "n_game_game_game_beginloadingtoplay",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_grabcursor_game_game_game_updateloading",
+      "fromNode": "n_core_input_input_grabcursor",
+      "toNode": "n_game_game_game_updateloading",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_grabcursor_game_game_game_updateplaying",
+      "fromNode": "n_core_input_input_grabcursor",
+      "toNode": "n_game_game_game_updateplaying",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_grabcursor_game_game_game_updatepaused",
+      "fromNode": "n_core_input_input_grabcursor",
+      "toNode": "n_game_game_game_updatepaused",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_grabcursor_game_game_game_updatecreativemenu",
+      "fromNode": "n_core_input_input_grabcursor",
+      "toNode": "n_game_game_game_updatecreativemenu",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_grabcursor_game_game_game_drawui",
+      "fromNode": "n_core_input_input_grabcursor",
+      "toNode": "n_game_game_game_drawui",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_getcursorx_game_game_game_drawui",
+      "fromNode": "n_core_input_input_getcursorx",
+      "toNode": "n_game_game_game_drawui",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_input_input_getcursory_game_game_game_drawui",
+      "fromNode": "n_core_input_input_getcursory",
+      "toNode": "n_game_game_game_drawui",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_java_core_window_window",
+      "fromNode": "n_core_window_java",
+      "toNode": "n_core_window_window",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_core_window_window_core_window_window_window",
+      "fromNode": "n_core_window_window",
+      "toNode": "n_core_window_window_window",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_window_window_core_window_window_init",
+      "fromNode": "n_core_window_window",
+      "toNode": "n_core_window_window_init",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_window_window_core_window_window_shouldclose",
+      "fromNode": "n_core_window_window",
+      "toNode": "n_core_window_window_shouldclose",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_window_window_core_window_window_update",
+      "fromNode": "n_core_window_window",
+      "toNode": "n_core_window_window_update",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_window_window_core_window_window_gethandle",
+      "fromNode": "n_core_window_window",
+      "toNode": "n_core_window_window_gethandle",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_window_window_core_window_window_getwidth",
+      "fromNode": "n_core_window_window",
+      "toNode": "n_core_window_window_getwidth",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_window_window_core_window_window_getheight",
+      "fromNode": "n_core_window_window",
+      "toNode": "n_core_window_window_getheight",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_window_window_core_window_window_getaspect",
+      "fromNode": "n_core_window_window",
+      "toNode": "n_core_window_window_getaspect",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_window_window_core_window_window_isresized",
+      "fromNode": "n_core_window_window",
+      "toNode": "n_core_window_window_isresized",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_window_window_core_window_window_setresized",
+      "fromNode": "n_core_window_window",
+      "toNode": "n_core_window_window_setresized",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_window_window_core_window_window_togglefullscreen",
+      "fromNode": "n_core_window_window",
+      "toNode": "n_core_window_window_togglefullscreen",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_window_window_core_window_window_destroy",
+      "fromNode": "n_core_window_window",
+      "toNode": "n_core_window_window_destroy",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_core_window_window_init_world_chunk_chunk_set",
+      "fromNode": "n_core_window_window_init",
+      "toNode": "n_world_chunk_chunk_set",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_window_init_world_chunk_chunk_get",
+      "fromNode": "n_core_window_window_init",
+      "toNode": "n_world_chunk_chunk_get",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_window_init_game_game_game_run",
+      "fromNode": "n_core_window_window_init",
+      "toNode": "n_game_game_game_run",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_window_shouldclose_game_game_game_run",
+      "fromNode": "n_core_window_window_shouldclose",
+      "toNode": "n_game_game_game_run",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_window_gethandle_game_game_game_game",
+      "fromNode": "n_core_window_window_gethandle",
+      "toNode": "n_game_game_game_game",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_window_gethandle_game_game_game_startnewworld",
+      "fromNode": "n_core_window_window_gethandle",
+      "toNode": "n_game_game_game_startnewworld",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_window_gethandle_game_game_game_drawui",
+      "fromNode": "n_core_window_window_gethandle",
+      "toNode": "n_game_game_game_drawui",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_window_getwidth_game_game_game_render",
+      "fromNode": "n_core_window_window_getwidth",
+      "toNode": "n_game_game_game_render",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_window_getwidth_game_game_game_drawui",
+      "fromNode": "n_core_window_window_getwidth",
+      "toNode": "n_game_game_game_drawui",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_window_getwidth_render_skyrenderer_skyrenderer_uploadtexture",
+      "fromNode": "n_core_window_window_getwidth",
+      "toNode": "n_render_skyrenderer_skyrenderer_uploadtexture",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_window_getwidth_render_skyrenderer_skyrenderer_drawsun",
+      "fromNode": "n_core_window_window_getwidth",
+      "toNode": "n_render_skyrenderer_skyrenderer_drawsun",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_window_getwidth_render_skyrenderer_skyrenderer_drawmoon",
+      "fromNode": "n_core_window_window_getwidth",
+      "toNode": "n_render_skyrenderer_skyrenderer_drawmoon",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_window_getwidth_render_skyrenderer_skyrenderer_drawstars",
+      "fromNode": "n_core_window_window_getwidth",
+      "toNode": "n_render_skyrenderer_skyrenderer_drawstars",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_window_getwidth_render_skyrenderer_skyrenderer_drawclouds",
+      "fromNode": "n_core_window_window_getwidth",
+      "toNode": "n_render_skyrenderer_skyrenderer_drawclouds",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_window_getwidth_render_textureatlas_textureatlas_loadtile",
+      "fromNode": "n_core_window_window_getwidth",
+      "toNode": "n_render_textureatlas_textureatlas_loadtile",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_window_getheight_game_game_game_render",
+      "fromNode": "n_core_window_window_getheight",
+      "toNode": "n_game_game_game_render",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_window_getheight_game_game_game_drawui",
+      "fromNode": "n_core_window_window_getheight",
+      "toNode": "n_game_game_game_drawui",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_window_getheight_render_skyrenderer_skyrenderer_uploadtexture",
+      "fromNode": "n_core_window_window_getheight",
+      "toNode": "n_render_skyrenderer_skyrenderer_uploadtexture",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_window_getheight_render_textureatlas_textureatlas_loadtile",
+      "fromNode": "n_core_window_window_getheight",
+      "toNode": "n_render_textureatlas_textureatlas_loadtile",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_window_getaspect_game_game_game_render",
+      "fromNode": "n_core_window_window_getaspect",
+      "toNode": "n_game_game_game_render",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_window_togglefullscreen_world_chunk_chunk_get",
+      "fromNode": "n_core_window_window_togglefullscreen",
+      "toNode": "n_world_chunk_chunk_get",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_core_window_window_togglefullscreen_game_game_game_run",
+      "fromNode": "n_core_window_window_togglefullscreen",
+      "toNode": "n_game_game_game_run",
+      "label": "calls [INFERRED]"
+    },
+    {
+      "id": "e_game_game_java_game_game_game",
+      "fromNode": "n_game_game_java",
+      "toNode": "n_game_game_game",
+      "label": "contains [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_game",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_game",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_currentblock",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_currentblock",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_startnewworld",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_startnewworld",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_saveall",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_saveall",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_savechunkifmodified",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_savechunkifmodified",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_run",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_run",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_updatemenu",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_updatemenu",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_updatecommandtoast",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_updatecommandtoast",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_beginloadingtoplay",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_beginloadingtoplay",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_updateloading",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_updateloading",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_computedaylight",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_computedaylight",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_skycolor",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_skycolor",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_updateplaying",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_updateplaying",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_updateactiveworld",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_updateactiveworld",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_updatepaused",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_updatepaused",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_updatecreativemenu",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_updatecreativemenu",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_updatedead",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_updatedead",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_respawnplayer",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_respawnplayer",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_findrespawnposition",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_findrespawnposition",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_findsurfacespawn",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_findsurfacespawn",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_finddefaultspawn",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_finddefaultspawn",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_handlehotbar",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_handlehotbar",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_updatehelditem",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_updatehelditem",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_starthandswing",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_starthandswing",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_ensurechunksloaded",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_ensurechunksloaded",
+      "label": "method [EXTRACTED]"
+    },
+    {
+      "id": "e_game_game_game_game_game_game_evictdistantchunks",
+      "fromNode": "n_game_game_game",
+      "toNode": "n_game_game_game_evictdistantchunks",
+      "label": "method [EXTRACTED]"
+    }
+  ]
+}

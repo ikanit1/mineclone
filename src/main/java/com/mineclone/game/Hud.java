@@ -26,6 +26,23 @@ public class Hud {
     private final UiRenderer ui;
     private final TextureAtlas atlas;
 
+    public static final class InventoryAction {
+        public final int slot;
+        public final BlockType paletteItem;
+        public final boolean clearCursor;
+
+        private InventoryAction(int slot, BlockType paletteItem, boolean clearCursor) {
+            this.slot = slot;
+            this.paletteItem = paletteItem;
+            this.clearCursor = clearCursor;
+        }
+
+        public static InventoryAction none() { return new InventoryAction(-1, null, false); }
+        public static InventoryAction slot(int slot) { return new InventoryAction(slot, null, false); }
+        public static InventoryAction palette(BlockType item) { return new InventoryAction(-1, item, false); }
+        public static InventoryAction clearCursor() { return new InventoryAction(-1, null, true); }
+    }
+
     public Hud(Font font, TextRenderer text, UiRenderer ui, TextureAtlas atlas) {
         this.font = font;
         this.text = text;
@@ -78,14 +95,14 @@ public class Hud {
         ui.begin(screenW, screenH);
         ui.quad(0, y, screenW, barH, 0f, 0f, 0f, 0.72f);
         ui.end();
-        text.drawShadowed(font, "> " + input + "|", 8, y + 6, screenW, screenH, 1f, 1f, 0f);
+        text.drawShadowed(font, "> " + input + "|", 8, y + 6, screenW, screenH, 1f, 1f, 1f);
     }
 
     // ---------------- version label ----------------
 
     public void drawVersionLabel(int screenW, int screenH) {
         String line1 = "In Development";
-        String line2 = "v0.01 alpha";
+        String line2 = "v0.9.0 alpha";
         float padding = 8;
         float lineH = font.getPixelHeight() + 2;
 
@@ -100,7 +117,7 @@ public class Hud {
     // ---------------- hotbar ----------------
 
     public void drawHotbar(int screenW, int screenH, BlockType[] hotbar, int selected) {
-        int n = hotbar.length;
+        int n = Math.min(9, hotbar.length);
         float slot = 52, pad = 4;
         float totalW = n * slot + (n - 1) * pad;
         float x0 = screenW / 2f - totalW / 2f;
@@ -133,6 +150,45 @@ public class Hud {
             float x = x0 + i * (slot + pad);
             text.drawShadowed(font, String.valueOf(i + 1), x + 4, y0 + 16, screenW, screenH, 1f, 1f, 1f);
         }
+    }
+
+    public void drawHeldItem(int screenW, int screenH, BlockType held,
+            float equipProgress, float swingProgress, float walkDistance, boolean underwater) {
+        float swing = Math.max(0f, Math.min(1f, swingProgress));
+        float equip = Math.max(0f, Math.min(1f, equipProgress));
+        float bob = (float) Math.sin(walkDistance * 5.2f) * 4f;
+        float swingArc = (float) Math.sin((1f - swing) * Math.PI);
+
+        float armW = Math.max(70f, screenW * 0.070f);
+        float armH = Math.max(150f, screenH * 0.245f);
+        float armX = screenW - armW - 38f + swingArc * 46f;
+        float armY = screenH - armH + (1f - equip) * 70f + bob + swingArc * 20f;
+
+        ui.begin(screenW, screenH);
+        ui.quad(armX + 8f, armY + 16f, armW, armH, 0.34f, 0.20f, 0.14f, 0.95f);
+        ui.quad(armX, armY, armW, armH - 14f, 0.74f, 0.51f, 0.35f, 1f);
+        ui.quad(armX, armY, armW, 8f, 0.92f, 0.70f, 0.50f, 1f);
+        ui.quad(armX + armW - 10f, armY + 10f, 10f, armH - 24f, 0.50f, 0.31f, 0.22f, 1f);
+        ui.quad(armX + 8f, armY + armH - 34f, armW - 16f, 26f, 0.54f, 0.34f, 0.23f, 1f);
+        if (underwater)
+            ui.quad(armX, armY, armW, armH, 0.08f, 0.22f, 0.65f, 0.20f);
+
+        if (held != null && held != BlockType.AIR) {
+            int tile = held == BlockType.GRASS ? held.topTile : held.sideTile;
+            float[] uv = TextureAtlas.uv(tile);
+            float size = Math.max(58f, Math.min(86f, screenH * 0.105f));
+            float ix = armX - size * 0.50f - swingArc * 22f;
+            float iy = armY + armH * 0.16f + (1f - equip) * 20f - swingArc * 24f;
+            int tid = atlas.getTextureId();
+            ui.quad(ix - 5f, iy + 7f, size + 10f, size + 10f, 0f, 0f, 0f, 0.30f);
+            ui.texQuad(ix + size * 0.18f, iy + size * 0.24f, size, size, tid,
+                    uv[0], uv[1], uv[2], uv[3], 0.50f, 0.50f, 0.50f, 1f);
+            ui.texQuad(ix, iy, size, size, tid,
+                    uv[0], uv[1], uv[2], uv[3], 1f, 1f, 1f, 1f);
+            ui.quad(ix, iy, size, 3f, 1f, 1f, 1f, 0.25f);
+            ui.quad(ix + size - 3f, iy, 3f, size, 0f, 0f, 0f, 0.22f);
+        }
+        ui.end();
     }
 
     // ---------------- health hearts ----------------
@@ -177,18 +233,47 @@ public class Hud {
 
     public MenuAction drawDeathScreen(int screenW, int screenH,
                                       double mx, double my, boolean clicked) {
+        float panelW = Math.min(460f, screenW - 48f);
+        float panelH = 230f;
+        float panelX = screenW / 2f - panelW / 2f;
+        float panelY = screenH / 2f - panelH / 2f;
         float bw = 300, bh = 50;
         float bx = screenW / 2f - bw / 2f;
-        float by = screenH / 2f + 20;
+        float by = panelY + panelH - bh - 28f;
         ui.begin(screenW, screenH);
-        ui.quad(0, 0, screenW, screenH, 0.35f, 0f, 0f, 0.7f);
+        ui.quad(0, 0, screenW, screenH, 0.45f, 0f, 0f, 0.72f);
+        ui.quad(panelX, panelY, panelW, panelH, 0.03f, 0.03f, 0.04f, 0.78f);
+        ui.quad(panelX, panelY, panelW, 2f, 1f, 0.25f, 0.25f, 0.35f);
+        ui.quad(panelX, panelY + panelH - 2f, panelW, 2f, 0f, 0f, 0f, 0.55f);
         boolean hover = stoneButton(bx, by, bw, bh, "Возродиться",
-                screenW, screenH, mx, my, true, true);
+                screenW, screenH, mx, my, true, false);
         ui.end();
         String title = "Вы умерли";
         float tw = font.textWidth(title);
+        // Keep the old localized string out of view; the ASCII label below is
+        // reliable with the bundled bitmap font and avoids mojibake.
         text.drawShadowed(font, title, screenW / 2f - tw / 2f,
-                screenH / 2f - 20f, screenW, screenH, 1f, 0.3f, 0.3f);
+                -1000f, screenW, screenH, 1f, 0.3f, 0.3f);
+
+        String clearTitle = "You died!";
+        float clearTitleW = font.textWidth(clearTitle);
+        text.drawShadowed(font, clearTitle, screenW / 2f - clearTitleW / 2f,
+                panelY + 52f, screenW, screenH, 1f, 0.25f, 0.25f);
+
+        String line1 = "Your inventory is safe in this build.";
+        String line2 = "Respawn at your world spawn to continue.";
+        float line1W = font.textWidth(line1);
+        float line2W = font.textWidth(line2);
+        text.drawShadowed(font, line1, screenW / 2f - line1W / 2f,
+                panelY + 96f, screenW, screenH, 1f, 1f, 1f);
+        text.drawShadowed(font, line2, screenW / 2f - line2W / 2f,
+                panelY + 126f, screenW, screenH, 0.85f, 0.85f, 0.85f);
+
+        String respawn = "Respawn";
+        float respawnW = font.textWidth(respawn);
+        text.drawShadowed(font, respawn, bx + (bw - respawnW) / 2f,
+                by + bh / 2f + font.getPixelHeight() * 0.34f,
+                screenW, screenH, 1f, 1f, 1f);
         if (clicked && hover) return MenuAction.RESPAWN;
         return MenuAction.NONE;
     }
@@ -501,6 +586,164 @@ public class Hud {
         if (clicked && hYes) return confirmAction;
         if (clicked && hNo)  return MenuAction.CANCEL;
         return MenuAction.NONE;
+    }
+
+    public InventoryAction drawInventory(int w, int h, double mx, double my,
+            boolean clicked, boolean rightClicked,
+            BlockType[] inventory, int selectedSlot, BlockType cursorItem) {
+        BlockType[] palette = BlockType.values();
+        float slot = 42f;
+        float gap = 5f;
+        float panelW = 9 * slot + 8 * gap + 52f;
+        float panelH = 470f;
+        float panelX = w / 2f - panelW / 2f;
+        float panelY = h / 2f - panelH / 2f;
+        float invX = panelX + 22f;
+        float titleY = panelY + 34f;
+        float paletteLabelY = panelY + 78f;
+        float paletteY = panelY + 96f;
+        float invLabelY = panelY + 166f;
+        float invY = panelY + 186f;
+        float hotbarLabelY = panelY + 356f;
+        float hotbarY = panelY + 376f;
+        float trashX = panelX + panelW - 70f;
+        float trashY = panelY + 24f;
+
+        InventoryAction action = InventoryAction.none();
+        BlockType hovered = null;
+        float hoverX = 0, hoverY = 0;
+
+        ui.begin(w, h);
+        ui.quad(0, 0, w, h, 0f, 0f, 0f, 0.65f);
+        ui.quad(panelX, panelY, panelW, panelH, 0.74f, 0.74f, 0.70f, 1f);
+        ui.quad(panelX, panelY, panelW, 4f, 1f, 1f, 1f, 0.45f);
+        ui.quad(panelX, panelY + panelH - 4f, panelW, 4f, 0f, 0f, 0f, 0.45f);
+        ui.quad(trashX, trashY, 44f, 44f, 0.28f, 0.12f, 0.12f, 0.95f);
+        ui.quad(trashX + 10f, trashY + 12f, 24f, 4f, 0.95f, 0.95f, 0.95f, 0.85f);
+        ui.quad(trashX + 13f, trashY + 18f, 18f, 16f, 0.80f, 0.80f, 0.80f, 0.85f);
+
+        int paletteCols = 9;
+        float pSlot = 34f;
+        float pGap = 5f;
+        for (int i = 1; i < palette.length; i++) {
+            BlockType b = palette[i];
+            int c = (i - 1) % paletteCols;
+            int r = (i - 1) / paletteCols;
+            float x = invX + c * (pSlot + pGap);
+            float y = paletteY + r * (pSlot + pGap);
+            boolean hov = hov(mx, my, x, y, pSlot, pSlot);
+            drawSlotBack(x, y, pSlot, hov);
+            drawItemIcon(b, x + 4f, y + 4f, pSlot - 8f, 1f);
+            if (hov) {
+                hovered = b;
+                hoverX = x;
+                hoverY = y;
+                if (clicked)
+                    action = InventoryAction.palette(b);
+            }
+        }
+
+        for (int row = 0; row < 3; row++) {
+            for (int col = 0; col < 9; col++) {
+                int slotIndex = 9 + row * 9 + col;
+                float x = invX + col * (slot + gap);
+                float y = invY + row * (slot + gap);
+                boolean hov = hov(mx, my, x, y, slot, slot);
+                drawSlotBack(x, y, slot, hov);
+                drawItemIcon(inventory[slotIndex], x + 6f, y + 6f, slot - 12f, 1f);
+                if (hov) {
+                    hovered = inventory[slotIndex];
+                    hoverX = x;
+                    hoverY = y;
+                    if (clicked)
+                        action = InventoryAction.slot(slotIndex);
+                }
+            }
+        }
+
+        for (int col = 0; col < 9; col++) {
+            float x = invX + col * (slot + gap);
+            float y = hotbarY;
+            boolean hov = hov(mx, my, x, y, slot, slot);
+            drawSlotBack(x, y, slot, hov);
+            drawItemIcon(inventory[col], x + 6f, y + 6f, slot - 12f, 1f);
+            if (col == selectedSlot) {
+                ui.quad(x - 3f, y - 3f, slot + 6f, 3f, 1f, 1f, 1f, 0.95f);
+                ui.quad(x - 3f, y + slot, slot + 6f, 3f, 1f, 1f, 1f, 0.95f);
+                ui.quad(x - 3f, y, 3f, slot, 1f, 1f, 1f, 0.95f);
+                ui.quad(x + slot, y, 3f, slot, 1f, 1f, 1f, 0.95f);
+            }
+            if (hov) {
+                hovered = inventory[col];
+                hoverX = x;
+                hoverY = y;
+                if (clicked)
+                    action = InventoryAction.slot(col);
+            }
+        }
+
+        boolean trashHover = hov(mx, my, trashX, trashY, 44f, 44f);
+        if ((clicked || rightClicked) && trashHover && cursorItem != null && cursorItem != BlockType.AIR)
+            action = InventoryAction.clearCursor();
+
+        if (cursorItem != null && cursorItem != BlockType.AIR) {
+            drawItemIcon(cursorItem, (float) mx - 18f, (float) my - 18f, 36f, 1f);
+        }
+        ui.end();
+
+        String title = "Inventory";
+        text.drawShadowed(font, title, panelX + 22f, titleY, w, h, 0.20f, 0.20f, 0.20f);
+        String creative = "Blocks";
+        text.drawShadowed(font, creative, invX, paletteLabelY, w, h, 0.20f, 0.20f, 0.20f);
+        String main = "Inventory";
+        text.drawShadowed(font, main, invX, invLabelY, w, h, 0.20f, 0.20f, 0.20f);
+        String hotbarText = "Hotbar";
+        text.drawShadowed(font, hotbarText, invX, hotbarLabelY, w, h, 0.20f, 0.20f, 0.20f);
+
+        if (hovered != null && hovered != BlockType.AIR) {
+            String name = displayName(hovered);
+            float twd = font.textWidth(name);
+            float tx = Math.min(w - twd - 12f, Math.max(8f, hoverX + 4f));
+            text.drawShadowed(font, name, tx, hoverY - 8f, w, h, 1f, 1f, 1f);
+        }
+
+        return action;
+    }
+
+    private void drawSlotBack(float x, float y, float size, boolean hover) {
+        float c = hover ? 0.58f : 0.42f;
+        ui.quad(x, y, size, size, c, c, c, 1f);
+        ui.quad(x, y, size, 2f, 0.18f, 0.18f, 0.18f, 1f);
+        ui.quad(x, y, 2f, size, 0.18f, 0.18f, 0.18f, 1f);
+        ui.quad(x + size - 2f, y, 2f, size, 0.88f, 0.88f, 0.88f, 1f);
+        ui.quad(x, y + size - 2f, size, 2f, 0.88f, 0.88f, 0.88f, 1f);
+    }
+
+    private void drawItemIcon(BlockType b, float x, float y, float size, float alpha) {
+        if (b == null || b == BlockType.AIR)
+            return;
+        int tile = b == BlockType.GRASS ? b.topTile : b.sideTile;
+        float[] uv = TextureAtlas.uv(tile);
+        ui.quad(x + 3f, y + 4f, size, size, 0f, 0f, 0f, 0.25f * alpha);
+        ui.texQuad(x, y, size, size, atlas.getTextureId(),
+                uv[0], uv[1], uv[2], uv[3], 1f, 1f, 1f, alpha);
+    }
+
+    private static String displayName(BlockType b) {
+        String raw = b.name().toLowerCase().replace('_', ' ');
+        StringBuilder sb = new StringBuilder(raw.length());
+        boolean cap = true;
+        for (int i = 0; i < raw.length(); i++) {
+            char ch = raw.charAt(i);
+            if (cap && ch >= 'a' && ch <= 'z') {
+                sb.append((char) (ch - 32));
+                cap = false;
+            } else {
+                sb.append(ch);
+                cap = ch == ' ';
+            }
+        }
+        return sb.toString();
     }
 
     public BlockType drawCreativeMenu(int w, int h, double mx, double my, boolean clicked, BlockType[] hotbar,

@@ -1,0 +1,16 @@
+---
+source_file: "docs/superpowers/specs/2026-05-15-creative-foundation-design.md"
+type: "document"
+community: "Game Features Design"
+tags:
+  - graphify/document
+  - graphify/EXTRACTED
+  - community/Game_Features_Design
+---
+
+# Stair AABB Collision (Auto-Step, Half-Block)
+
+## Connections
+- [[Spec Creative Foundation Design]] - `conceptually_related_to` [EXTRACTED]
+
+#graphify/document #graphify/EXTRACTED #community/Game_Features_Design

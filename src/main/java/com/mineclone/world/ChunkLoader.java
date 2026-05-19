@@ -3,6 +3,7 @@ package com.mineclone.world;
 import com.mineclone.render.MeshData;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -40,13 +41,18 @@ public class ChunkLoader {
     private final Set<Long> meshed      = ConcurrentHashMap.newKeySet();
     private final ConcurrentLinkedQueue<Ready> ready = new ConcurrentLinkedQueue<>();
     /**
-     * Chunks restored from disk that need their block-light re-flooded from
-     * any emitters they contain. blockLight is written only on the main
-     * thread (per Chunk's concurrency contract), so applySnapshot — which
-     * may run on the gen pool — defers the flood here. Game drains this on
-     * the main thread per frame via {@link #drainLightFlood(int)}.
+     * Chunks that need their block-light re-flooded from any emitters they
+     * contain. blockLight is written only on the main thread (per Chunk's
+     * concurrency contract), so applySnapshot — which may run on the gen
+     * pool — defers the flood here. Game drains this on the main thread per
+     * frame via {@link #drainLightFlood(int)}.
+     * <p>
+     * Set semantics (not Queue): when chunk C loads we also enqueue its 8
+     * loaded neighbours so their emitters re-flood and reach C. Without
+     * dedup a chunk could appear up to 9× and we'd rescan its 32 768 cells
+     * needlessly.
      */
-    private final ConcurrentLinkedQueue<Long> pendingLightFlood = new ConcurrentLinkedQueue<>();
+    private final Set<Long> pendingLightFlood = ConcurrentHashMap.newKeySet();
 
     public ChunkLoader(World world, ChunkMesher mesher,
                        com.mineclone.save.SaveManager save, String worldId) {
@@ -66,18 +72,32 @@ public class ChunkLoader {
                 long k = World.key(cx, cz);
                 if (world.getChunkIfExists(cx, cz) == null) {
                     submitGen(cx, cz, k);
-                } else if (!pendingGen.contains(k) && !meshed.contains(k) && !pendingMesh.contains(k)) {
+                } else if (!pendingGen.contains(k) && !pendingLightFlood.contains(k)
+                        && !meshed.contains(k) && !pendingMesh.contains(k)) {
                     if (neighboursReady(cx, cz)) submitMesh(cx, cz, k);
                 }
             }
         }
     }
 
-    private boolean neighboursReady(int cx, int cz) {
-        return world.getChunkIfExists(cx + 1, cz) != null
-            && world.getChunkIfExists(cx - 1, cz) != null
-            && world.getChunkIfExists(cx, cz + 1) != null
-            && world.getChunkIfExists(cx, cz - 1) != null;
+    public boolean neighboursReady(int cx, int cz) {
+        return isFullyReady(cx + 1, cz) && isFullyReady(cx - 1, cz)
+            && isFullyReady(cx, cz + 1) && isFullyReady(cx, cz - 1);
+    }
+
+    private boolean isFullyReady(int cx, int cz) {
+        long k = World.key(cx, cz);
+        return world.getChunkIfExists(cx, cz) != null
+                && !pendingGen.contains(k)
+                && !pendingLightFlood.contains(k);
+    }
+
+    public boolean isPendingGen(long key) {
+        return pendingGen.contains(key);
+    }
+
+    public boolean hasPendingLightFlood(long key) {
+        return pendingLightFlood.contains(key);
     }
 
     /**
@@ -94,7 +114,23 @@ public class ChunkLoader {
             c.computeSkyLight();
             c.dirty = true;
             c.modified = false;
-            pendingLightFlood.offer(World.key(c.cx, c.cz));
+        }
+        // Always queue this chunk: flood its own emitters and inherit border light
+        // from already-lit neighbours via injectNeighbourLight in drainLightFlood.
+        pendingLightFlood.add(World.key(c.cx, c.cz));
+        // Neighbours that were already meshed used stale sky light sampled from
+        // this chunk (either MAX_LIGHT for unloaded, or pre-restore values).
+        // Mark them dirty so they resample our finalised sky light next frame.
+        invalidateNeighbours(c.cx, c.cz);
+    }
+
+    private void invalidateNeighbours(int cx, int cz) {
+        int[][] dirs = {{1,0},{-1,0},{0,1},{0,-1}};
+        for (int[] d : dirs) {
+            long k = World.key(cx + d[0], cz + d[1]);
+            Chunk n = world.getChunkIfExists(cx + d[0], cz + d[1]);
+            if (n != null && meshed.contains(k))
+                n.dirty = true;
         }
     }
 
@@ -109,9 +145,11 @@ public class ChunkLoader {
      * existing dirty-remesh path picks up the updated light next frame.
      */
     public void drainLightFlood(int maxPerFrame) {
-        for (int i = 0; i < maxPerFrame; i++) {
-            Long key = pendingLightFlood.poll();
-            if (key == null) break;
+        Iterator<Long> it = pendingLightFlood.iterator();
+        int n = 0;
+        while (it.hasNext() && n < maxPerFrame) {
+            Long key = it.next();
+            it.remove();
             int cx = (int) (key >> 32);
             int cz = key.intValue();
             Chunk c = world.getChunkIfExists(cx, cz);
@@ -126,6 +164,11 @@ public class ChunkLoader {
                     }
                 }
             }
+            // Inherit light from already-lit neighbours — re-flooding the
+            // emitter in a neighbour doesn't work (BFS stops at cells that
+            // already hold the correct value), so we read border values directly.
+            world.injectNeighbourLight(cx, cz);
+            n++;
         }
     }
 
@@ -173,6 +216,7 @@ public class ChunkLoader {
 
     public void forget(long key) {
         meshed.remove(key);
+        pendingLightFlood.remove(key);
     }
 
     public void shutdown() {

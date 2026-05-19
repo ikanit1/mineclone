@@ -56,6 +56,56 @@ All GLSL is inlined as Java string literals in `Shaders.java`. There are five pr
 ### Sound
 `SoundEngine` wraps OpenAL. `Sounds` maps `BlockType` → OGG file lists under `assets/sounds/`. Sounds play one-shot with randomised pitch/volume.
 
+## Knowledge Base
+
+Obsidian vault: `e:\mineclone\knowledge`
+
+Структура заметок:
+- `architecture/` — архитектура системы
+- `decisions/` — ADR-решения (почему сделано именно так)
+- `bugs/` — известные проблемы и их корневые причины
+- `features/` — описания фич и планы
+- `_COMMUNITY_*.md` — обзоры 17 архитектурных кластеров кодовой базы (сгенерированы graphify)
+- `graph.canvas` — визуальная карта проекта с группировкой по кластерам
+
+## Knowledge Graph (graphify)
+
+Граф знаний: `e:\mineclone\graphify-out\`
+
+- `graph.json` — машиночитаемый граф (511 узлов, 1296 рёбер, 17 сообществ)
+- `graph.html` — интерактивная визуализация (открыть в браузере)
+- `GRAPH_REPORT.md` — аудит-отчёт с god-нодами и неожиданными связями
+
+**17 архитектурных кластеров:**
+| ID | Кластер | Узлов |
+|---|---|---|
+| 0 | Sound System | 89 |
+| 1 | Chunk & World Management | 71 |
+| 2 | Render Pipeline | 54 |
+| 3 | HUD & UI | 48 |
+| 4 | Window & OpenGL | 41 |
+| 5 | Game Core & Save | 41 |
+| 6 | Block Types & World Data | 39 |
+| 7 | Input System | 30 |
+| 8 | Game Features Design | 25 |
+| 9 | Architecture Docs & ADRs | 25 |
+| 10 | Sound Engine Core | 15 |
+| 11 | Held Item Renderer | 12 |
+| 12 | Terrain Noise | 8 |
+| 13 | Mesh Primitives | 6 |
+| 14 | Shaders | 3 |
+| 15 | Chunk Persistence | 3 |
+| 16 | Ground Movement Plan | 1 |
+
+**`Game`** — главный хаб (bridge node): соединяет Sound System, Chunk Management, Render Pipeline, HUD и Game Core.
+
+Перед тем как предлагать решение по архитектуре или рендерингу, читай релевантные заметки из `knowledge/` и `graphify-out/GRAPH_REPORT.md`. Если фиксируешь нетривиальное решение — предложи добавить ADR в `knowledge/decisions/`.
+
+Запуск с доступом к vault и графу:
+```powershell
+claude --add-dir "E:\mineclone\knowledge" --add-dir "E:\mineclone\graphify-out"
+```
+
 ## Key constants & tuning knobs
 | Location | Constant | Effect |
 |---|---|---|

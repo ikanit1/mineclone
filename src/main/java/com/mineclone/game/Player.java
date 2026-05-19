@@ -32,19 +32,28 @@ public class Player {
     public static final float GRAVITY = -28f;
     public static final float SWIM_SPEED = 2.0f;
     public static final float SWIM_UP_MAX = 2.5f;
+    public static final float WATER_IDLE_SINK_ACCEL = 6.4f;
+    public static final float WATER_IDLE_SINK_MAX = -1.6f;
     public static final float SINK_MAX = -2.0f;
     public static final float GROUND_ACCEL = 14f;
     public static final float AIR_ACCEL = 2.5f;
+    private static final float WATER_LEDGE_PROBE = 0.22f;
+    private static final float WATER_LEDGE_MAX_STEP = 1.45f;
 
     public final Vector3f position = new Vector3f(8, 90, 8);
 
     public void update(float dt, World world, com.mineclone.core.Input input) {
+        update(dt, world, input, true);
+    }
+
+    public void update(float dt, World world, com.mineclone.core.Input input, boolean controlsEnabled) {
         // mouse look
         float sens = 0.0025f;
-        camera.rotate((float) (input.getDx() * sens), (float) (input.getDy() * sens));
+        if (controlsEnabled)
+            camera.rotate((float) (input.getDx() * sens), (float) (input.getDy() * sens));
 
         // toggle fly
-        if (input.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_F))
+        if (controlsEnabled && input.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_F))
             flying = !flying;
 
         // horizontal input
@@ -58,18 +67,19 @@ public class Player {
             right.normalize();
 
         Vector3f wish = new Vector3f();
-        if (input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_W))
+        if (controlsEnabled && input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_W))
             wish.add(fwd);
-        if (input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_S))
+        if (controlsEnabled && input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_S))
             wish.sub(fwd);
-        if (input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_D))
+        if (controlsEnabled && input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_D))
             wish.add(right);
-        if (input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_A))
+        if (controlsEnabled && input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_A))
             wish.sub(right);
         if (wish.lengthSquared() > 0.0001)
             wish.normalize();
 
         float speed = flying ? FLY_SPEED : WALK_SPEED;
+        boolean jumpDown = controlsEnabled && input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE);
 
         inWater = !flying && touchingWater(world);
         eyeInWater = !flying && eyeBlockIsWater(world);
@@ -78,9 +88,9 @@ public class Player {
             velocity.x = wish.x * speed;
             velocity.z = wish.z * speed;
             velocity.y = 0;
-            if (input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE))
+            if (jumpDown)
                 velocity.y = speed;
-            if (input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT))
+            if (controlsEnabled && input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT))
                 velocity.y = -speed;
         } else if (inWater) {
             // Горизонталь: exponential lerp к wish*SWIM_SPEED (инерция воды)
@@ -88,14 +98,13 @@ public class Player {
             velocity.x = velocity.x * hDrag + wish.x * SWIM_SPEED * (1f - hDrag);
             velocity.z = velocity.z * hDrag + wish.z * SWIM_SPEED * (1f - hDrag);
 
-            boolean sinking = input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT);
-            boolean spaceDown = input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE);
+            boolean sinking = controlsEnabled && input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT);
 
             // vertical drag: slow sink by default; SPACE overrides to swim up
             float waterVDrag = (float) Math.pow(0.8, dt / 0.05f);
-            velocity.y = velocity.y * waterVDrag - 0.4f * dt;
+            velocity.y *= waterVDrag;
 
-            if (spaceDown) {
+            if (jumpDown) {
                 if (!eyeInWater) {
                     // Water exit jump: instant JUMP_VELOCITY on first press, like land jump
                     if (input.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE))
@@ -106,6 +115,8 @@ public class Player {
                     // Underwater: swim upward
                     velocity.y = Math.min(velocity.y + 12f * dt, SWIM_UP_MAX);
                 }
+            } else if (!sinking && velocity.y > WATER_IDLE_SINK_MAX) {
+                velocity.y = Math.max(velocity.y - WATER_IDLE_SINK_ACCEL * dt, WATER_IDLE_SINK_MAX);
             }
             if (sinking)
                 velocity.y = Math.max(velocity.y - 8f * dt, SINK_MAX);
@@ -122,7 +133,7 @@ public class Player {
             velocity.x += (targetX - velocity.x) * t;
             velocity.z += (targetZ - velocity.z) * t;
             velocity.y += GRAVITY * dt;
-            if (input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE) && onGround) {
+            if (jumpDown && onGround) {
                 velocity.y = JUMP_VELOCITY;
                 onGround = false;
             }
@@ -134,6 +145,9 @@ public class Player {
         moveAxis(world, velocity.x * dt, 0, 0);
         moveAxis(world, 0, velocity.y * dt, 0);
         moveAxis(world, 0, 0, velocity.z * dt);
+        if (!flying && inWater && !eyeInWater && jumpDown) {
+            tryClimbWaterLedge(world, wish);
+        }
 
         // Refresh water contact after movement (player may have entered water this frame)
         inWater = !flying && touchingWater(world);
@@ -196,6 +210,65 @@ public class Player {
                         return true;
                 }
         return false;
+    }
+
+    private boolean tryClimbWaterLedge(World world, Vector3f wish) {
+        if (wish.lengthSquared() < 0.0001f)
+            return false;
+
+        Vector3f dir = new Vector3f(wish);
+        dir.normalize();
+        float targetX = position.x + dir.x * WATER_LEDGE_PROBE;
+        float targetZ = position.z + dir.z * WATER_LEDGE_PROBE;
+        float hw = WIDTH / 2f;
+
+        int x0 = (int) Math.floor(targetX - hw + 1e-3f);
+        int x1 = (int) Math.floor(targetX + hw - 1e-3f);
+        int z0 = (int) Math.floor(targetZ - hw + 1e-3f);
+        int z1 = (int) Math.floor(targetZ + hw - 1e-3f);
+        int y0 = (int) Math.floor(position.y - 0.2f);
+        int y1 = (int) Math.floor(position.y + WATER_LEDGE_MAX_STEP);
+
+        float bestTop = Float.POSITIVE_INFINITY;
+        for (int x = x0; x <= x1; x++)
+            for (int y = y0; y <= y1; y++)
+                for (int z = z0; z <= z1; z++) {
+                    BlockType b = world.getBlock(x, y, z);
+                    if (!b.solid)
+                        continue;
+                    float top = y + 1.0f;
+                    float step = top - position.y;
+                    if (step > 0.05f && step <= WATER_LEDGE_MAX_STEP && top < bestTop
+                            && hasBodyClearance(world, targetX, top + 1e-4f, targetZ)) {
+                        bestTop = top;
+                    }
+                }
+
+        if (!Float.isFinite(bestTop))
+            return false;
+
+        position.x = targetX;
+        position.y = bestTop + 1e-4f;
+        position.z = targetZ;
+        velocity.y = 0f;
+        onGround = true;
+        return true;
+    }
+
+    private boolean hasBodyClearance(World world, float x, float y, float z) {
+        float hw = WIDTH / 2f;
+        int x0 = (int) Math.floor(x - hw + 1e-3f);
+        int x1 = (int) Math.floor(x + hw - 1e-3f);
+        int y0 = (int) Math.floor(y);
+        int y1 = (int) Math.floor(y + HEIGHT - 1e-3f);
+        int z0 = (int) Math.floor(z - hw + 1e-3f);
+        int z1 = (int) Math.floor(z + hw - 1e-3f);
+        for (int bx = x0; bx <= x1; bx++)
+            for (int by = y0; by <= y1; by++)
+                for (int bz = z0; bz <= z1; bz++)
+                    if (world.getBlock(bx, by, bz).solid)
+                        return false;
+        return true;
     }
 
     private void moveAxis(World world, float dx, float dy, float dz) {
@@ -362,13 +435,19 @@ public class Player {
         health = Math.max(0f, health - amount);
     }
 
-    public void respawn() {
+    public void respawn(float x, float y, float z) {
         health = MAX_HEALTH;
         fallDistance = 0f;
         regenTimer = 0f;
-        position.set(8, 90, 8);
+        lastFallDamage = 0f;
+        lastFallDistance = 0f;
+        position.set(x, y, z);
         velocity.set(0, 0, 0);
         onGround = false;
+        inWater = false;
+        eyeInWater = false;
+        wasOnGround = false;
+        camera.position.set(position.x, position.y + EYE_HEIGHT, position.z);
     }
 
     public boolean isDead() {

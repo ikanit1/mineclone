@@ -9,7 +9,7 @@ public final class SaveFormat {
     /** "MCLD" — first int of every save file. */
     public static final int MAGIC = 0x4D434C44;
 
-    public static final int LEVEL_VERSION = 1;
+    public static final int LEVEL_VERSION = 3;
     public static final int CHUNK_VERSION = 1;
     public static final int OPTIONS_VERSION = 1;
 

@@ -1,6 +1,7 @@
 package com.mineclone.save;
 
 import com.mineclone.core.AppPaths;
+import com.mineclone.world.BlockType;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -62,9 +63,14 @@ public final class SaveManager {
             o.writeInt(SaveFormat.LEVEL_VERSION);
             o.writeLong(d.seed);
             o.writeDouble(d.px); o.writeDouble(d.py); o.writeDouble(d.pz);
+            o.writeDouble(d.spawnX); o.writeDouble(d.spawnY); o.writeDouble(d.spawnZ);
             o.writeFloat(d.yaw); o.writeFloat(d.pitch);
             o.writeFloat(d.timeOfDay);
             o.writeInt(d.selectedSlot);
+            o.writeInt(d.inventory.length);
+            for (BlockType b : d.inventory) {
+                o.writeByte(b == null ? BlockType.AIR.ordinal() : b.ordinal());
+            }
         } catch (IOException e) {
             System.err.println("saveLevel failed: " + e.getMessage());
         }
@@ -77,13 +83,31 @@ public final class SaveManager {
         try (DataInputStream in = new DataInputStream(new GZIPInputStream(
                 new BufferedInputStream(new FileInputStream(f))))) {
             if (in.readInt() != SaveFormat.MAGIC) return null;
-            if (in.readInt() != SaveFormat.LEVEL_VERSION) return null;
+            int version = in.readInt();
+            if (version < 1 || version > SaveFormat.LEVEL_VERSION) return null;
             long seed = in.readLong();
             double px = in.readDouble(), py = in.readDouble(), pz = in.readDouble();
+            double spawnX = 8.5, spawnY = 80.0, spawnZ = 8.5;
+            if (version >= 2) {
+                spawnX = in.readDouble();
+                spawnY = in.readDouble();
+                spawnZ = in.readDouble();
+            }
             float yaw = in.readFloat(), pitch = in.readFloat();
             float tod = in.readFloat();
             int slot = in.readInt();
-            return new LevelData(seed, px, py, pz, yaw, pitch, tod, slot);
+            BlockType[] inventory = LevelData.defaultInventory();
+            if (version >= 3) {
+                int n = Math.max(0, Math.min(128, in.readInt()));
+                inventory = new BlockType[Math.max(36, n)];
+                for (int i = 0; i < n; i++) {
+                    int blockId = in.readUnsignedByte();
+                    inventory[i] = blockId >= 0 && blockId < BlockType.VALUES.length
+                            ? BlockType.VALUES[blockId]
+                            : BlockType.AIR;
+                }
+            }
+            return new LevelData(seed, px, py, pz, spawnX, spawnY, spawnZ, yaw, pitch, tod, slot, inventory);
         } catch (IOException e) {
             System.err.println("loadLevel failed: " + e.getMessage());
             return null;

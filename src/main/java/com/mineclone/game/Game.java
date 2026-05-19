@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 import static org.lwjgl.opengl.GL11.*;
 
@@ -38,6 +39,7 @@ public class Game {
     private final Player player = new Player();
     private final TextureAtlas atlas;
     private final Shader chunkShader;
+    private final HeldItemRenderer heldItemRenderer;
     private final Crosshair crosshair;
     private final BlockOutline outline;
     private final SkyRenderer skyRenderer;
@@ -64,6 +66,7 @@ public class Game {
     private int drawnChunks;
 
     private float stepDistance = 0f;
+    private float walkedDistance = 0f; // monotonic; drives view bob (never resets)
     private final Vector3f lastPos = new Vector3f();
     private float torchParticleTimer = 0f;
     private static final float WATER_TICK_INTERVAL = 0.18f; // ~5.5 Hz — one cell of spread per tick
@@ -79,11 +82,16 @@ public class Game {
     private final Map<Long, Mesh> chunkMeshes = new HashMap<>();
     private final Map<Long, Mesh> waterMeshes = new HashMap<>();
     private int selectedSlot = 0;
+    private final BlockType[] inventory = com.mineclone.save.LevelData.defaultInventory();
+    private BlockType cursorItem = BlockType.AIR;
     private final com.mineclone.save.SaveManager save = new com.mineclone.save.SaveManager();
     private final String worldId = com.mineclone.save.SaveFormat.DEFAULT_WORLD_ID;
     private static final float AUTOSAVE_INTERVAL = 120f; // seconds
+    private static final int RESPAWN_RADIUS = 10;
     private float autosaveTimer = AUTOSAVE_INTERVAL;
     private com.mineclone.save.LevelData pendingLevel;
+    private final Vector3f worldSpawn = new Vector3f(8.5f, 80.0f, 8.5f);
+    private final Random respawnRandom = new Random();
     private final MenuBackground menuBackground;
     private boolean showNewWorldConfirm = false;
     private float saveToastTimer = 0f;   // seconds remaining for "Saved" toast
@@ -96,10 +104,9 @@ public class Game {
     /** Eat mouseDown/mouseClicked until the user releases LMB. Prevents the
      *  click that opened a panel from immediately grabbing a slider in it. */
     private boolean swallowMouseUntilUp = false;
-    private final BlockType[] hotbar = {
-            BlockType.STONE, BlockType.DIRT, BlockType.GRASS, BlockType.PLANKS,
-            BlockType.GLASS, BlockType.DOOR_CLOSED, BlockType.STAIRS, BlockType.TORCH, BlockType.WATER
-    };
+    private float handSwing = 0f;
+    private float equipProgress = 1f;
+    private BlockType lastHeldBlock = inventory[0];
 
     public Game(Window window, boolean regenAtlas) {
         this.window = window;
@@ -115,16 +122,20 @@ public class Game {
         this.mesher = new ChunkMesher(world);
         this.loader = new ChunkLoader(world, mesher, save, worldId);
         this.pendingLevel = saved;
+        if (saved != null) {
+            this.worldSpawn.set((float) saved.spawnX, (float) saved.spawnY, (float) saved.spawnZ);
+        }
         this.menuBackground = new MenuBackground(save);
         this.atlas = new TextureAtlas(TextureAtlas.DEFAULT_PATH, regenAtlas);
         this.chunkShader = new Shader(Shaders.CHUNK_VERTEX, Shaders.CHUNK_FRAGMENT);
+        this.heldItemRenderer = new HeldItemRenderer();
         this.crosshair = new Crosshair();
         this.outline = new BlockOutline();
         this.skyRenderer = new SkyRenderer();
     }
 
     private BlockType currentBlock() {
-        return hotbar[selectedSlot];
+        return inventory[selectedSlot];
     }
 
     /**
@@ -136,12 +147,16 @@ public class Game {
      */
     private void startNewWorld() {
         save.deleteWorld(worldId);
+        long seed = new java.util.Random().nextLong();
+        Vector3f spawn = findDefaultSpawn(seed);
         com.mineclone.save.LevelData fresh = new com.mineclone.save.LevelData(
-                new java.util.Random().nextLong(),
-                8.5, 80.0, 8.5,
+                seed,
+                spawn.x, spawn.y, spawn.z,
+                spawn.x, spawn.y, spawn.z,
                 0f, 0f,
                 (float) (Math.PI / 6.0),
-                0);
+                0,
+                com.mineclone.save.LevelData.defaultInventory());
         save.saveLevel(worldId, fresh);
         save.flushAndAwait();
         WaterSimulator.reset();
@@ -153,8 +168,9 @@ public class Game {
         com.mineclone.save.LevelData d = new com.mineclone.save.LevelData(
                 world.seed,
                 player.position.x, player.position.y, player.position.z,
+                worldSpawn.x, worldSpawn.y, worldSpawn.z,
                 player.camera.yaw, player.camera.pitch,
-                gameTime, selectedSlot);
+                gameTime, selectedSlot, inventory);
         save.saveLevel(worldId, d);
         for (com.mineclone.world.Chunk c : world.getLoadedChunks()) {
             saveChunkIfModified(c);
@@ -205,7 +221,10 @@ public class Game {
             player.camera.yaw = pendingLevel.yaw;
             player.camera.pitch = pendingLevel.pitch;
             gameTime = pendingLevel.timeOfDay;
-            selectedSlot = Math.floorMod(pendingLevel.selectedSlot, hotbar.length);
+            selectedSlot = Math.floorMod(pendingLevel.selectedSlot, 9);
+            System.arraycopy(pendingLevel.inventory, 0, inventory, 0,
+                    Math.min(inventory.length, pendingLevel.inventory.length));
+            lastHeldBlock = currentBlock();
         }
 
         // Start in menu with the cursor free.
@@ -230,6 +249,7 @@ public class Game {
                 case DEAD -> updateDead(dt);
             }
 
+            sound.updateListener(player.camera.position, player.camera.forward());
             this.lastDt = dt;
             render();
             sound.tick();
@@ -335,7 +355,9 @@ public class Game {
                 consoleLine.setLength(0);
                 input.grabCursor(true);
             }
-            return; // don't update player or fire game-key handlers while console is open
+            player.update(dt, world, input, false);
+            updateActiveWorld(dt);
+            return; // keep the world ticking, but don't move the player while typing
         }
 
         if (input.keyPressed(GLFW.GLFW_KEY_E)) {
@@ -365,15 +387,20 @@ public class Game {
         }
 
         handleHotbar();
+        updateHeldItem(dt);
         player.update(dt, world, input);
+        float landingDistance = player.lastFallDistance;
+        if (landingDistance > 0.05f && !player.inWater) {
+            playLandingStep(landingDistance);
+        }
         if (player.lastFallDamage > 0f) {
             if (player.lastFallDamage >= 4f)
-                sound.playOneOf(sounds.fallBig(), 0.9f, 0.95f + 0.1f * (float) Math.random());
+                sound.playOneOfAt(sounds.fallBig(), playerSoundPosition(), 0.9f, 0.95f + 0.1f * (float) Math.random());
             else
-                sound.playOneOf(sounds.fallSmall(), 0.7f, 0.95f + 0.1f * (float) Math.random());
+                sound.playOneOfAt(sounds.fallSmall(), playerSoundPosition(), 0.7f, 0.95f + 0.1f * (float) Math.random());
             player.lastFallDamage = 0f;
         }
-        if (player.lastFallDistance >= 2f) {
+        if (landingDistance >= 2f) {
             int bx = (int) Math.floor(player.position.x);
             int by = (int) Math.floor(player.position.y - 0.05f);
             int bz = (int) Math.floor(player.position.z);
@@ -381,11 +408,11 @@ public class Game {
             int tile = (ground != null && ground.solid) ? ground.sideTile : BlockType.DIRT.sideTile;
             float skyF = world.getSkyLight(bx, by + 1, bz) / (float) Chunk.MAX_LIGHT;
             float blkF = world.getBlockLightWorld(bx, by + 1, bz) / (float) Chunk.MAX_LIGHT;
-            int count = (int) Math.min(22, 5 + player.lastFallDistance * 1.4f);
+            int count = (int) Math.min(22, 5 + landingDistance * 1.4f);
             particles.emitLandingPuff(player.position.x, player.position.y, player.position.z,
                     tile, skyF, blkF, count);
-            player.lastFallDistance = 0f;
         }
+        player.lastFallDistance = 0f;
         if (player.isDead()) {
             state = State.DEAD;
             input.grabCursor(false);
@@ -394,10 +421,10 @@ public class Game {
         float hSpeed = (float) Math.sqrt(player.velocity.x * player.velocity.x + player.velocity.z * player.velocity.z);
         if (player.inWater && player.swimSoundTimer <= 0f && hSpeed > 0.3f) {
             player.swimSoundTimer = 1.2f;
-            sound.playOneOf(sounds.waterSwim(), 0.4f, 0.9f + 0.2f * (float) Math.random());
+            sound.playOneOfAt(sounds.waterSwim(), playerSoundPosition(), 0.4f, 0.9f + 0.2f * (float) Math.random());
         }
         if (player.inWater && !wasInWater) {
-            sound.playOneOf(sounds.waterSplash(), 0.8f, 0.9f + 0.1f * (float) Math.random());
+            sound.playOneOfAt(sounds.waterSplash(), playerSoundPosition(), 0.8f, 0.9f + 0.1f * (float) Math.random());
             int bx = (int) Math.floor(player.position.x);
             int by = (int) Math.floor(player.position.y + 0.5f);
             int bz = (int) Math.floor(player.position.z);
@@ -408,8 +435,9 @@ public class Game {
         wasInWater = player.inWater;
         waterFlowSoundTimer -= dt;
         if (waterFlowSoundTimer <= 0f) {
-            if (hasNearbyFlowingWater()) {
-                sound.playOneOf(sounds.waterFlow(), 0.35f, 0.85f + 0.15f * (float) Math.random());
+            Vector3f waterSoundPos = findNearbyFlowingWater();
+            if (waterSoundPos != null) {
+                sound.playOneOfAt(sounds.waterFlow(), waterSoundPos, 0.35f, 0.85f + 0.15f * (float) Math.random());
                 waterFlowSoundTimer = 5f + (float) Math.random() * 7f;
             } else {
                 waterFlowSoundTimer = 2f;
@@ -418,6 +446,11 @@ public class Game {
         updateFootsteps();
         ensureChunksLoaded();
         handleInteraction();
+        updateActiveWorld(dt);
+    }
+
+    private void updateActiveWorld(float dt) {
+        ensureChunksLoaded();
         torchParticleTimer -= dt;
         if (torchParticleTimer <= 0f) {
             torchParticleTimer = 0.07f;
@@ -464,35 +497,105 @@ public class Game {
     }
 
     private void updateDead(float dt) {
+        gameTime += dt * TIME_SCALE;
+        daylight = computeDaylight();
         if (saveToastTimer > 0f) saveToastTimer -= dt;
         updateCommandToast(dt);
+        updateActiveWorld(dt);
+    }
+
+    private void respawnPlayer() {
+        Vector3f spawn = findRespawnPosition();
+        player.respawn(spawn.x, spawn.y, spawn.z);
+        lastPos.set(player.position);
+        wasInWater = false;
+        waterFlowSoundTimer = 0f;
         ensureChunksLoaded();
         updateDirtyMeshes();
+    }
+
+    private Vector3f findRespawnPosition() {
+        int baseX = (int) Math.floor(worldSpawn.x);
+        int baseZ = (int) Math.floor(worldSpawn.z);
+        for (int attempts = 0; attempts < 24; attempts++) {
+            int dx = respawnRandom.nextInt(RESPAWN_RADIUS * 2 + 1) - RESPAWN_RADIUS;
+            int dz = respawnRandom.nextInt(RESPAWN_RADIUS * 2 + 1) - RESPAWN_RADIUS;
+            Vector3f pos = findSurfaceSpawn(baseX + dx, baseZ + dz);
+            if (pos != null)
+                return pos;
+        }
+        Vector3f exact = findSurfaceSpawn(baseX, baseZ);
+        if (exact != null)
+            return exact;
+        return new Vector3f(worldSpawn.x, worldSpawn.y, worldSpawn.z);
+    }
+
+    private Vector3f findSurfaceSpawn(int wx, int wz) {
+        world.getChunk(Math.floorDiv(wx, Chunk.SIZE_X), Math.floorDiv(wz, Chunk.SIZE_Z));
+        for (int y = Chunk.SIZE_Y - 3; y > 0; y--) {
+            BlockType ground = world.getBlock(wx, y, wz);
+            BlockType feet = world.getBlock(wx, y + 1, wz);
+            BlockType head = world.getBlock(wx, y + 2, wz);
+            if (ground.solid && !feet.solid && !head.solid)
+                return new Vector3f(wx + 0.5f, y + 1.0001f, wz + 0.5f);
+        }
+        return null;
+    }
+
+    private static Vector3f findDefaultSpawn(long seed) {
+        World spawnWorld = new World(seed);
+        int sx = 8;
+        int sz = 8;
+        spawnWorld.getChunk(Math.floorDiv(sx, Chunk.SIZE_X), Math.floorDiv(sz, Chunk.SIZE_Z));
+        for (int y = Chunk.SIZE_Y - 3; y > 0; y--) {
+            BlockType ground = spawnWorld.getBlock(sx, y, sz);
+            BlockType feet = spawnWorld.getBlock(sx, y + 1, sz);
+            BlockType head = spawnWorld.getBlock(sx, y + 2, sz);
+            if (ground.solid && !feet.solid && !head.solid)
+                return new Vector3f(sx + 0.5f, y + 1.0001f, sz + 0.5f);
+        }
+        return new Vector3f(sx + 0.5f, World.SEA_LEVEL + 8.0f, sz + 0.5f);
     }
 
     private void handleHotbar() {
         int prev = selectedSlot;
         int[] keys = { GLFW.GLFW_KEY_1, GLFW.GLFW_KEY_2, GLFW.GLFW_KEY_3, GLFW.GLFW_KEY_4,
                 GLFW.GLFW_KEY_5, GLFW.GLFW_KEY_6, GLFW.GLFW_KEY_7, GLFW.GLFW_KEY_8, GLFW.GLFW_KEY_9 };
-        for (int i = 0; i < keys.length && i < hotbar.length; i++) {
+        for (int i = 0; i < keys.length && i < 9; i++) {
             if (input.keyPressed(keys[i]))
                 selectedSlot = i;
         }
         double scroll = input.getScroll();
         if (scroll != 0) {
             int dir = scroll > 0 ? -1 : 1; // scroll up -> previous slot
-            selectedSlot = Math.floorMod(selectedSlot + dir, hotbar.length);
+            selectedSlot = Math.floorMod(selectedSlot + dir, 9);
         }
-        if (selectedSlot != prev)
+        if (selectedSlot != prev) {
+            equipProgress = 0f;
             sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
+        }
+    }
+
+    private void updateHeldItem(float dt) {
+        BlockType held = currentBlock();
+        if (held != lastHeldBlock) {
+            lastHeldBlock = held;
+            equipProgress = 0f;
+        }
+        equipProgress = Math.min(1f, equipProgress + dt * 7.5f);
+        handSwing = Math.max(0f, handSwing - dt * 4.5f);
+    }
+
+    private void startHandSwing() {
+        handSwing = 1f;
     }
 
     private void ensureChunksLoaded() {
         int pcx = (int) Math.floor(player.position.x / Chunk.SIZE_X);
         int pcz = (int) Math.floor(player.position.z / Chunk.SIZE_Z);
         loader.ensureRadius(pcx, pcz, renderRadius + 1);
-        loader.drainLightFlood(2);
-        for (ChunkLoader.Ready r : loader.drainReady(3)) {
+        loader.drainLightFlood(8);
+        for (ChunkLoader.Ready r : loader.drainReady(8)) {
             int cx = (int) (r.key >> 32);
             int cz = (int) r.key;
             if (world.getChunkIfExists(cx, cz) == null) {
@@ -559,10 +662,12 @@ public class Game {
                         world.getBlock(lastHit.x, lastHit.y, lastHit.z), (byte)((m + 1) & 0x0F));
             }
             if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
+                startHandSwing();
                 BlockType target = world.getBlock(lastHit.x, lastHit.y, lastHit.z);
                 if (target != BlockType.BEDROCK) {
                     byte targetMeta = world.getBlockMeta(lastHit.x, lastHit.y, lastHit.z);
-                    sound.playOneOf(sounds.dig(target), 0.8f, 0.9f + 0.2f * (float) Math.random());
+                    sound.playOneOfAt(sounds.dig(target), blockSoundPosition(lastHit.x, lastHit.y, lastHit.z),
+                            0.8f, 0.9f + 0.2f * (float) Math.random());
                     world.setBlock(lastHit.x, lastHit.y, lastHit.z, BlockType.AIR);
                     // Sample light in the now-air cell so debris is shaded
                     // like the surrounding world, not statically bright.
@@ -582,6 +687,7 @@ public class Game {
                 }
             }
             if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT)) {
+                startHandSwing();
                 BlockType target = world.getBlock(lastHit.x, lastHit.y, lastHit.z);
                 if (target == BlockType.DOOR_CLOSED || target == BlockType.DOOR_OPEN) {
                     byte m = world.getBlockMeta(lastHit.x, lastHit.y, lastHit.z);
@@ -594,27 +700,32 @@ public class Game {
                         byte om = world.getBlockMeta(lastHit.x, otherY, lastHit.z);
                         world.setBlock(lastHit.x, otherY, lastHit.z, next, om);
                     }
-                    sound.playOneOf(sounds.doorToggle(), 0.8f, 0.95f + 0.1f * (float) Math.random());
+                    sound.playOneOfAt(sounds.doorToggle(), blockSoundPosition(lastHit.x, lastHit.y, lastHit.z),
+                            0.8f, 0.95f + 0.1f * (float) Math.random());
                 } else {
                     int px = lastHit.x + lastHit.nx;
                     int py = lastHit.y + lastHit.ny;
                     int pz = lastHit.z + lastHit.nz;
                     if (!playerOccupies(px, py, pz)) {
                         BlockType placing = currentBlock();
+                        if (placing == null || placing == BlockType.AIR)
+                            return;
                         byte meta = 0;
                         if (placing == BlockType.DOOR_CLOSED) {
                             meta = facingFromCamera();
                             // Place 2-block door: bottom + top
                             if (world.getBlock(px, py + 1, pz) == BlockType.AIR
                                     && !playerOccupies(px, py + 1, pz)) {
-                                sound.playOneOf(sounds.place(placing), 0.8f, 0.85f + 0.2f * (float) Math.random());
+                                sound.playOneOfAt(sounds.place(placing), blockSoundPosition(px, py, pz),
+                                        0.8f, 0.85f + 0.2f * (float) Math.random());
                                 world.setBlock(px, py, pz, BlockType.DOOR_CLOSED, meta);
                                 world.setBlock(px, py + 1, pz, BlockType.DOOR_CLOSED, (byte) (meta | 0x4));
                             }
                         } else {
                             if (placing == BlockType.STAIRS)
                                 meta = stairFacingFromCamera();
-                            sound.playOneOf(sounds.place(placing), 0.8f, 0.85f + 0.2f * (float) Math.random());
+                            sound.playOneOfAt(sounds.place(placing), blockSoundPosition(px, py, pz),
+                                    0.8f, 0.85f + 0.2f * (float) Math.random());
                             world.setBlock(px, py, pz, placing, meta);
                         }
                     }
@@ -656,6 +767,7 @@ public class Game {
                         player.position.set(tx, ty, tz);
                     }
                 }
+                case "/spawnpoint" -> executeSpawnPointCommand(parts);
                 case "/fly" -> player.flying = !player.flying;
                 case "/fill" -> {
                     String blockName = parts.length >= 2 ? parts[1].toUpperCase() : "WATER";
@@ -675,6 +787,23 @@ public class Game {
         } catch (NumberFormatException e) {
             showCommandToast("Invalid number");
         }
+    }
+
+    private void executeSpawnPointCommand(String[] parts) {
+        if (parts.length == 1) {
+            worldSpawn.set(player.position);
+        } else if (parts.length >= 4) {
+            float x = Float.parseFloat(parts[1]);
+            float y = Float.parseFloat(parts[2]);
+            float z = Float.parseFloat(parts[3]);
+            worldSpawn.set(x, y, z);
+        } else {
+            showCommandToast("Usage: /spawnpoint [x y z]");
+            return;
+        }
+        saveAll();
+        showCommandToast(String.format("Spawn point set: %.1f %.1f %.1f",
+                worldSpawn.x, worldSpawn.y, worldSpawn.z));
     }
 
     private void executeTimeCommand(String[] parts) {
@@ -807,30 +936,60 @@ public class Game {
         }
         if (player.onGround) {
             float dx = cur.x - lastPos.x, dz = cur.z - lastPos.z;
-            stepDistance += (float) Math.sqrt(dx * dx + dz * dz);
+            float step = (float) Math.sqrt(dx * dx + dz * dz);
+            stepDistance += step;
+            walkedDistance += step;
             if (stepDistance > 2.0f) {
                 stepDistance = 0f;
                 int bx = (int) Math.floor(cur.x);
                 int by = (int) Math.floor(cur.y - 0.1f);
                 int bz = (int) Math.floor(cur.z);
                 BlockType under = world.getBlock(bx, by, bz);
-                sound.playOneOf(sounds.step(under), 0.35f, 0.95f + 0.1f * (float) Math.random());
+                sound.playOneOfAt(sounds.step(under), new Vector3f(cur.x, cur.y + 0.15f, cur.z),
+                        0.35f, 0.95f + 0.1f * (float) Math.random());
             }
         }
         lastPos.set(cur);
     }
 
-    private boolean hasNearbyFlowingWater() {
+    private void playLandingStep(float fallDistance) {
+        int bx = (int) Math.floor(player.position.x);
+        int by = (int) Math.floor(player.position.y - 0.05f);
+        int bz = (int) Math.floor(player.position.z);
+        BlockType under = world.getBlock(bx, by, bz);
+        float volume = Math.min(0.65f, 0.32f + fallDistance * 0.08f);
+        sound.playOneOfAt(sounds.step(under), playerSoundPosition(), volume, 0.85f + 0.15f * (float) Math.random());
+    }
+
+    private Vector3f playerSoundPosition() {
+        return new Vector3f(player.position.x, player.position.y + 0.7f, player.position.z);
+    }
+
+    private static Vector3f blockSoundPosition(int x, int y, int z) {
+        return new Vector3f(x + 0.5f, y + 0.5f, z + 0.5f);
+    }
+
+    private Vector3f findNearbyFlowingWater() {
         int px = (int) Math.floor(player.position.x);
         int py = (int) Math.floor(player.position.y);
         int pz = (int) Math.floor(player.position.z);
         int R = 6;
+        int bestX = 0, bestY = 0, bestZ = 0;
+        int bestDist = Integer.MAX_VALUE;
         for (int x = px - R; x <= px + R; x++)
             for (int y = py - 2; y <= py + 4; y++)
                 for (int z = pz - R; z <= pz + R; z++)
-                    if (world.getBlock(x, y, z) == com.mineclone.world.BlockType.WATER_FLOW)
-                        return true;
-        return false;
+                    if (world.getBlock(x, y, z) == com.mineclone.world.BlockType.WATER_FLOW) {
+                        int dx = x - px, dy = y - py, dz = z - pz;
+                        int dist = dx * dx + dy * dy + dz * dz;
+                        if (dist < bestDist) {
+                            bestDist = dist;
+                            bestX = x;
+                            bestY = y;
+                            bestZ = z;
+                        }
+                    }
+        return bestDist == Integer.MAX_VALUE ? null : blockSoundPosition(bestX, bestY, bestZ);
     }
 
     private boolean playerOccupies(int bx, int by, int bz) {
@@ -848,11 +1007,11 @@ public class Game {
         for (Chunk c : world.getLoadedChunks()) {
             if (!c.dirty) continue;
             long key = World.key(c.cx, c.cz);
-            // Skip chunks whose applySnapshot is still running on the gen pool —
-            // skyLight is mid-recompute (zeroed then BFS-filled) and reading it
-            // now would bake 0-light into the mesh. After pendingGen is cleared
-            // the chunk stays dirty, so it will be rebuilt on the next frame.
-            if (loader.isPendingGen(key)) continue;
+            // Skip chunks whose saved blocks or deferred light flood are still
+            // being applied. Meshing during that window bakes stale block/sky
+            // light into chunk-shaped patches until a later rebuild catches up.
+            if (loader.isPendingGen(key) || loader.hasPendingLightFlood(key)) continue;
+            if (!loader.neighboursReady(c.cx, c.cz)) continue;
             Mesh old = chunkMeshes.remove(key);
             if (old != null) old.destroy();
             Mesh oldW = waterMeshes.remove(key);
@@ -862,7 +1021,7 @@ public class Game {
             if (!data[1].isEmpty()) waterMeshes.put(key, data[1].upload());
             loader.markMeshed(key);
             c.dirty = false;
-            if (++rebuilt >= 4) break;
+            if (++rebuilt >= 8) break;
         }
     }
 
@@ -898,7 +1057,7 @@ public class Game {
         // Sky (sun + moon) — rendered before chunks, no depth write so they sit behind
         // geometry
         glDepthMask(false);
-        skyRenderer.render(proj, view, player.position, gameTime, daylight);
+        skyRenderer.render(proj, view, player.position, gameTime, daylight, totalTime);
         glDepthMask(true);
 
         chunkShader.bind();
@@ -1007,6 +1166,17 @@ public class Game {
         particles.render(proj, view, camRight, camUp, atlas,
                 daylight, 0.04f + 0.18f * daylight, brightness);
 
+        if (state == State.PLAYING) {
+            int ex = (int) Math.floor(player.position.x);
+            int ey = (int) Math.floor(player.position.y + 0.6f); // eye level
+            int ez = (int) Math.floor(player.position.z);
+            float skyFrac   = world.getSkyLight(ex, ey, ez)         / (float) Chunk.MAX_LIGHT;
+            float blockFrac = world.getBlockLightWorld(ex, ey, ez)  / (float) Chunk.MAX_LIGHT;
+            heldItemRenderer.render(atlas, currentBlock(), window.getAspect(), currentFov,
+                    equipProgress, handSwing, walkedDistance, player.eyeInWater,
+                    daylight, brightness, skyFrac, blockFrac);
+        }
+
         drawUi();
     }
 
@@ -1090,7 +1260,7 @@ public class Game {
                 if (player.eyeInWater && hud != null)
                     hud.drawWaterOverlay(w, h);
                 crosshair.render(w, h);
-                hud.drawHotbar(w, h, hotbar, selectedSlot);
+                hud.drawHotbar(w, h, inventory, selectedSlot);
                 hud.drawHearts(w, h, player.health);
                 if (showDebug) {
                     int pcx = (int) Math.floor(player.position.x / Chunk.SIZE_X);
@@ -1109,7 +1279,7 @@ public class Game {
                     hud.drawConsole(w, h, consoleLine.toString());
             }
             case PAUSED -> {
-                hud.drawHotbar(w, h, hotbar, selectedSlot);
+                hud.drawHotbar(w, h, inventory, selectedSlot);
                 boolean clicked = !swallowMouseUntilUp
                         && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 boolean down = !swallowMouseUntilUp
@@ -1161,12 +1331,24 @@ public class Game {
                 }
             }
             case CREATIVE_MENU -> {
-                hud.drawHotbar(w, h, hotbar, selectedSlot);
+                hud.drawHotbar(w, h, inventory, selectedSlot);
                 boolean clicked = input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                boolean rightClicked = input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
                 double mx = input.getCursorX(), my = input.getCursorY();
-                BlockType picked = hud.drawCreativeMenu(w, h, mx, my, clicked, hotbar, selectedSlot);
-                if (picked != null) {
-                    hotbar[selectedSlot] = picked;
+                Hud.InventoryAction action = hud.drawInventory(w, h, mx, my, clicked, rightClicked,
+                        inventory, selectedSlot, cursorItem);
+                if (action.paletteItem != null) {
+                    cursorItem = action.paletteItem;
+                    equipProgress = 0f;
+                    sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
+                } else if (action.slot >= 0) {
+                    BlockType slotItem = inventory[action.slot];
+                    inventory[action.slot] = cursorItem == null ? BlockType.AIR : cursorItem;
+                    cursorItem = slotItem == null ? BlockType.AIR : slotItem;
+                    equipProgress = 0f;
+                    sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
+                } else if (action.clearCursor) {
+                    cursorItem = BlockType.AIR;
                     sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
                 }
             }
@@ -1177,7 +1359,7 @@ public class Game {
                 double mx = input.getCursorX(), my = input.getCursorY();
                 Hud.MenuAction a = hud.drawDeathScreen(w, h, mx, my, clicked);
                 if (a == Hud.MenuAction.RESPAWN) {
-                    player.respawn();
+                    respawnPlayer();
                     state = State.PLAYING;
                     input.grabCursor(true);
                     swallowMouseUntilUp = true;
@@ -1226,6 +1408,7 @@ public class Game {
                 "/time set day|sunrise|noon|sunset|night|midnight|0-24",
                 "/time add <hours>",
                 "/tp <x> <y> <z>",
+                "/spawnpoint [x y z]",
                 "/fly",
                 "/speed <value>",
                 "/fill <block> [radius]",
@@ -1276,6 +1459,7 @@ public class Game {
         waterMeshes.clear();
         atlas.destroy();
         chunkShader.destroy();
+        heldItemRenderer.destroy();
         crosshair.destroy();
         outline.destroy();
         skyRenderer.destroy();

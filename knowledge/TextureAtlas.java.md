@@ -1,0 +1,17 @@
+---
+source_file: "render\TextureAtlas.java"
+type: "code"
+community: "Window & OpenGL"
+location: "L1"
+tags:
+  - graphify/code
+  - graphify/EXTRACTED
+  - community/Window_&_OpenGL
+---
+
+# TextureAtlas.java
+
+## Connections
+- [[TextureAtlas]] - `contains` [EXTRACTED]
+
+#graphify/code #graphify/EXTRACTED #community/Window_&_OpenGL
