@@ -28,6 +28,8 @@ public class Player {
 
     public static final float WALK_SPEED = 4.8f;
     public static final float FLY_SPEED = 12f;
+    /** Active fly speed; FLY_SPEED by default, overridable via the /speed command. */
+    public float flySpeed = FLY_SPEED;
     public static final float JUMP_VELOCITY = 8.4f;
     public static final float GRAVITY = -28f;
     public static final float SWIM_SPEED = 2.0f;
@@ -78,7 +80,7 @@ public class Player {
         if (wish.lengthSquared() > 0.0001)
             wish.normalize();
 
-        float speed = flying ? FLY_SPEED : WALK_SPEED;
+        float speed = flying ? flySpeed : WALK_SPEED;
         boolean jumpDown = controlsEnabled && input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE);
 
         inWater = !flying && touchingWater(world);
