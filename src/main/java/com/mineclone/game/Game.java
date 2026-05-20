@@ -33,9 +33,9 @@ public class Game {
 
     private final Window window;
     private final Input input;
-    private final World world;
-    private final ChunkMesher mesher;
-    private final ChunkLoader loader;
+    private World world;
+    private ChunkMesher mesher;
+    private ChunkLoader loader;
     private final Player player = new Player();
     private final TextureAtlas atlas;
     private final Shader chunkShader;
@@ -85,15 +85,19 @@ public class Game {
     private final BlockType[] inventory = com.mineclone.save.LevelData.defaultInventory();
     private BlockType cursorItem = BlockType.AIR;
     private final com.mineclone.save.SaveManager save = new com.mineclone.save.SaveManager();
-    private final String worldId = com.mineclone.save.SaveFormat.DEFAULT_WORLD_ID;
+    private String worldId;
+    private String worldDisplayName = "";
+    private boolean inWorldSelect = false;
+    private String pendingDeleteId = null;
+    private int worldSelectScroll = 0;
+    private java.util.List<com.mineclone.save.SaveManager.WorldInfo> worldList =
+            java.util.List.of();
     private static final float AUTOSAVE_INTERVAL = 120f; // seconds
     private static final int RESPAWN_RADIUS = 10;
     private float autosaveTimer = AUTOSAVE_INTERVAL;
-    private com.mineclone.save.LevelData pendingLevel;
     private final Vector3f worldSpawn = new Vector3f(8.5f, 80.0f, 8.5f);
     private final Random respawnRandom = new Random();
     private final MenuBackground menuBackground;
-    private boolean showNewWorldConfirm = false;
     private float saveToastTimer = 0f;   // seconds remaining for "Saved" toast
     private String commandToast = "";
     private float commandToastTimer = 0f;
@@ -117,14 +121,6 @@ public class Game {
         this.currentFov = opts.fovDegrees;
         this.brightness = opts.brightness;
         this.volume = opts.volume;
-        com.mineclone.save.LevelData saved = save.loadLevel(worldId);
-        this.world = new World(saved != null ? saved.seed : new java.util.Random().nextLong());
-        this.mesher = new ChunkMesher(world);
-        this.loader = new ChunkLoader(world, mesher, save, worldId);
-        this.pendingLevel = saved;
-        if (saved != null) {
-            this.worldSpawn.set((float) saved.spawnX, (float) saved.spawnY, (float) saved.spawnZ);
-        }
         this.menuBackground = new MenuBackground(save);
         this.atlas = new TextureAtlas(TextureAtlas.DEFAULT_PATH, regenAtlas);
         this.chunkShader = new Shader(Shaders.CHUNK_VERTEX, Shaders.CHUNK_FRAGMENT);
@@ -138,34 +134,11 @@ public class Game {
         return inventory[selectedSlot];
     }
 
-    /**
-     * Delete the existing save and reset to a fresh random seed. Because
-     * {@code world}/{@code mesher}/{@code loader} are final, we can't hot-swap
-     * them mid-process. We write a fresh level.dat with a new seed and force a
-     * window-close; the next launch enters the new world. Cheap and avoids
-     * tearing down half the engine.
-     */
-    private void startNewWorld() {
-        save.deleteWorld(worldId);
-        long seed = new java.util.Random().nextLong();
-        Vector3f spawn = findDefaultSpawn(seed);
-        com.mineclone.save.LevelData fresh = new com.mineclone.save.LevelData(
-                seed,
-                spawn.x, spawn.y, spawn.z,
-                spawn.x, spawn.y, spawn.z,
-                0f, 0f,
-                (float) (Math.PI / 6.0),
-                0,
-                com.mineclone.save.LevelData.defaultInventory());
-        save.saveLevel(worldId, fresh);
-        save.flushAndAwait();
-        WaterSimulator.reset();
-        GLFW.glfwSetWindowShouldClose(window.getHandle(), true);
-    }
-
     /** Flush level.dat + every loaded chunk whose blocks changed since gen. */
     private void saveAll() {
+        if (world == null) return;
         com.mineclone.save.LevelData d = new com.mineclone.save.LevelData(
+                worldDisplayName,
                 world.seed,
                 player.position.x, player.position.y, player.position.z,
                 worldSpawn.x, worldSpawn.y, worldSpawn.z,
@@ -199,34 +172,6 @@ public class Game {
         if (font != null)
             hud = new Hud(font, text, ui, atlas);
 
-        // Preload spawn 3x3 so the world is ready to act as a menu backdrop and
-        // the player has ground on Start. Everything else streams via ChunkLoader.
-        for (int dx = -1; dx <= 1; dx++)
-            for (int dz = -1; dz <= 1; dz++)
-                loader.applySnapshot(world.getChunk(dx, dz));
-        loader.drainLightFlood(9);
-
-        int sx = 8, sz = 8;
-        for (int y = Chunk.SIZE_Y - 1; y > 0; y--) {
-            if (world.getBlock(sx, y, sz).solid) {
-                player.position.set(sx + 0.5f, y + 1.1f, sz + 0.5f);
-                break;
-            }
-        }
-
-        if (pendingLevel != null) {
-            player.position.set((float) pendingLevel.px,
-                                (float) pendingLevel.py,
-                                (float) pendingLevel.pz);
-            player.camera.yaw = pendingLevel.yaw;
-            player.camera.pitch = pendingLevel.pitch;
-            gameTime = pendingLevel.timeOfDay;
-            selectedSlot = Math.floorMod(pendingLevel.selectedSlot, 9);
-            System.arraycopy(pendingLevel.inventory, 0, inventory, 0,
-                    Math.min(inventory.length, pendingLevel.inventory.length));
-            lastHeldBlock = currentBlock();
-        }
-
         // Start in menu with the cursor free.
         input.grabCursor(false);
 
@@ -244,7 +189,7 @@ public class Game {
                 case MENU -> updateMenu(dt);
                 case LOADING -> updateLoading(dt);
                 case PLAYING -> updatePlaying(dt);
-                case PAUSED -> updatePaused();
+                case PAUSED -> updatePaused(dt);
                 case CREATIVE_MENU -> updateCreativeMenu(dt);
                 case DEAD -> updateDead(dt);
             }
@@ -255,8 +200,10 @@ public class Game {
             sound.tick();
             window.update();
         }
-        saveAll();
-        save.flushAndAwait();
+        if (world != null) {
+            saveAll();
+            save.flushAndAwait();
+        }
         cleanup();
     }
 
@@ -284,6 +231,106 @@ public class Game {
         state = State.LOADING;
         input.grabCursor(false);
         swallowMouseUntilUp = true;
+    }
+
+    private void startWorld(String id) {
+        this.worldId = id;
+        com.mineclone.save.LevelData lvl = save.loadLevel(id);
+        long seed = (lvl != null) ? lvl.seed : new java.util.Random().nextLong();
+        this.world = new World(seed);
+        this.mesher = new ChunkMesher(world);
+        this.loader = new ChunkLoader(world, mesher, save, id);
+
+        // Preload spawn 3x3 so the player has ground under their feet immediately.
+        for (int dx = -1; dx <= 1; dx++)
+            for (int dz = -1; dz <= 1; dz++)
+                loader.applySnapshot(world.getChunk(dx, dz));
+        loader.drainLightFlood(9);
+
+        // Default spawn: find solid surface at (8, ?, 8).
+        int sx = 8, sz = 8;
+        for (int y = Chunk.SIZE_Y - 1; y > 0; y--) {
+            if (world.getBlock(sx, y, sz).solid) {
+                player.position.set(sx + 0.5f, y + 1.1f, sz + 0.5f);
+                break;
+            }
+        }
+        worldSpawn.set(player.position.x, player.position.y, player.position.z);
+        gameTime = (float) (Math.PI / 6.0);
+        selectedSlot = 0;
+        System.arraycopy(com.mineclone.save.LevelData.defaultInventory(), 0,
+                inventory, 0, inventory.length);
+
+        if (lvl != null) {
+            worldDisplayName = lvl.name.isEmpty() ? "World" : lvl.name;
+            worldSpawn.set((float) lvl.spawnX, (float) lvl.spawnY, (float) lvl.spawnZ);
+            player.position.set((float) lvl.px, (float) lvl.py, (float) lvl.pz);
+            player.camera.yaw = lvl.yaw;
+            player.camera.pitch = lvl.pitch;
+            gameTime = lvl.timeOfDay;
+            selectedSlot = Math.floorMod(lvl.selectedSlot, 9);
+            System.arraycopy(lvl.inventory, 0, inventory, 0,
+                    Math.min(inventory.length, lvl.inventory.length));
+        } else {
+            worldDisplayName = "World";
+        }
+
+        lastHeldBlock = currentBlock();
+        cursorItem = BlockType.AIR;
+        player.flying = false;
+        player.flySpeed = Player.FLY_SPEED;
+
+        WaterSimulator.reset();
+        beginLoadingToPlay();
+    }
+
+    private void createWorld() {
+        String id = com.mineclone.save.SaveFormat.newWorldId();
+
+        // Find lowest free N for display name "World N".
+        java.util.List<com.mineclone.save.SaveManager.WorldInfo> existing = save.listWorlds();
+        java.util.Set<Integer> usedNums = new java.util.HashSet<>();
+        for (com.mineclone.save.SaveManager.WorldInfo wi : existing) {
+            int n = trailingWorldN(wi.displayName);
+            if (n > 0) usedNums.add(n);
+        }
+        int n = 1;
+        while (usedNums.contains(n)) n++;
+        String displayName = "World " + n;
+
+        long seed = new java.util.Random().nextLong();
+        Vector3f spawn = findDefaultSpawn(seed);
+        com.mineclone.save.LevelData fresh = new com.mineclone.save.LevelData(
+                displayName, seed,
+                spawn.x, spawn.y, spawn.z,
+                spawn.x, spawn.y, spawn.z,
+                0f, 0f, (float) (Math.PI / 6.0), 0,
+                com.mineclone.save.LevelData.defaultInventory());
+        save.saveLevel(id, fresh);
+        startWorld(id);
+    }
+
+    private static int trailingWorldN(String displayName) {
+        if (!displayName.startsWith("World ")) return -1;
+        try { return Integer.parseInt(displayName.substring(6)); }
+        catch (NumberFormatException e) { return -1; }
+    }
+
+    /** Save, flush, stop loader threads, destroy GL meshes, null world refs.
+     *  Must be called from the main (GL) thread only. */
+    private void unloadWorld() {
+        if (world == null) return;
+        saveAll();
+        save.flushAndAwait();
+        loader.shutdown();
+        for (Mesh m : chunkMeshes.values()) m.destroy();
+        for (Mesh m : waterMeshes.values()) m.destroy();
+        chunkMeshes.clear();
+        waterMeshes.clear();
+        WaterSimulator.reset();
+        world = null;
+        mesher = null;
+        loader = null;
     }
 
     private void updateLoading(float dt) {
@@ -355,7 +402,10 @@ public class Game {
                 consoleLine.setLength(0);
                 input.grabCursor(true);
             }
+            updateHeldItem(dt);
             player.update(dt, world, input, false);
+            wasInWater = player.inWater;
+            updateFootsteps();
             updateActiveWorld(dt);
             return; // keep the world ticking, but don't move the player while typing
         }
@@ -383,6 +433,8 @@ public class Game {
             input.grabCursor(false);
             consoleLine.setLength(0);
             input.pollChars(); // discard 't'
+            player.update(dt, world, input, false);
+            updateActiveWorld(dt);
             return;
         }
 
@@ -466,9 +518,9 @@ public class Game {
         updateDirtyMeshes();
     }
 
-    private void updatePaused() {
-        if (saveToastTimer > 0f) saveToastTimer -= 1f / 60f; // paused: assume 60Hz UI ticks
-        updateCommandToast(1f / 60f);
+    private void updatePaused(float dt) {
+        if (saveToastTimer > 0f) saveToastTimer -= dt;
+        updateCommandToast(dt);
         if (input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
             if (inSettings) {
                 inSettings = false;
@@ -481,8 +533,11 @@ public class Game {
             }
             return;
         }
-        ensureChunksLoaded();
-        updateDirtyMeshes();
+        updateHeldItem(dt);
+        player.update(dt, world, input, false);
+        wasInWater = player.inWater;
+        updateFootsteps();
+        updateActiveWorld(dt);
     }
 
     private void updateCreativeMenu(float dt) {
@@ -492,8 +547,11 @@ public class Game {
             input.grabCursor(true);
             return;
         }
-        ensureChunksLoaded();
-        updateDirtyMeshes();
+        updateHeldItem(dt);
+        player.update(dt, world, input, false);
+        wasInWater = player.inWater;
+        updateFootsteps();
+        updateActiveWorld(dt);
     }
 
     private void updateDead(float dt) {
@@ -752,11 +810,12 @@ public class Game {
                 case "/help", "/commands" -> showCommandHelp();
                 case "/speed" -> {
                     if (parts.length >= 2) {
-                        float s = Float.parseFloat(parts[1]);
+                        float s = Math.max(0.5f, Float.parseFloat(parts[1]));
                         player.flying = true;
-                        // speed is applied through Player constants — temporarily override via meta-speed factor
-                        // Store in a dedicated field
-                        customFlySpeed = s;
+                        player.flySpeed = s;
+                        showCommandToast(String.format("Fly speed: %.1f", s));
+                    } else {
+                        showCommandToast("Usage: /speed <value>");
                     }
                 }
                 case "/tp" -> {
@@ -905,8 +964,6 @@ public class Game {
         commandHelpTimer = 6.0f;
         showCommandToast("Showing command help");
     }
-
-    private float customFlySpeed = -1f;
 
     private byte stairFacingFromCamera() {
         Vector3f fwd = player.camera.forward();
@@ -1166,7 +1223,7 @@ public class Game {
         particles.render(proj, view, camRight, camUp, atlas,
                 daylight, 0.04f + 0.18f * daylight, brightness);
 
-        if (state == State.PLAYING) {
+        if (state == State.PLAYING || state == State.PAUSED || state == State.CREATIVE_MENU) {
             int ex = (int) Math.floor(player.position.x);
             int ey = (int) Math.floor(player.position.y + 0.6f); // eye level
             int ez = (int) Math.floor(player.position.z);
@@ -1206,19 +1263,6 @@ public class Game {
                         && input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 double mx = input.getCursorX(), my = input.getCursorY();
 
-                if (showNewWorldConfirm) {
-                    Hud.MenuAction a = hud.drawConfirm(w, h,
-                            "Delete current world and start a new one?",
-                            "New World", mx, my, clicked, Hud.MenuAction.NEW_WORLD_CONFIRM);
-                    if (input.keyPressed(GLFW.GLFW_KEY_ESCAPE) || a == Hud.MenuAction.CANCEL) {
-                        showNewWorldConfirm = false;
-                    } else if (a == Hud.MenuAction.NEW_WORLD_CONFIRM) {
-                        startNewWorld();
-                        showNewWorldConfirm = false;
-                    }
-                    break;
-                }
-
                 if (inSettings) {
                     float[] sv = { renderRadius, fovDegrees, brightness, volume };
                     Hud.MenuAction a = hud.drawSettings(w, h, mx, my, down, clicked, sv);
@@ -1239,15 +1283,14 @@ public class Game {
                     break;
                 }
 
-                boolean hasSave = save.hasSave(worldId);
-                Hud.MenuAction a = hud.drawMainMenu(w, h, mx, my, clicked, hasSave);
+                Hud.MenuAction a = hud.drawMainMenu(w, h, mx, my, clicked, false);
                 if (a != Hud.MenuAction.NONE)
                     sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
                 switch (a) {
                     case CONTINUE -> {
-                        beginLoadingToPlay();
+                        createWorld();
                     }
-                    case NEW_WORLD -> { showNewWorldConfirm = true; swallowMouseUntilUp = true; }
+                    case NEW_WORLD -> { createWorld(); swallowMouseUntilUp = true; }
                     case SETTINGS  -> { inSettings = true; swallowMouseUntilUp = true; }
                     case QUIT      -> GLFW.glfwSetWindowShouldClose(window.getHandle(), true);
                     default -> { }
@@ -1280,6 +1323,7 @@ public class Game {
             }
             case PAUSED -> {
                 hud.drawHotbar(w, h, inventory, selectedSlot);
+                hud.drawHearts(w, h, player.health);
                 boolean clicked = !swallowMouseUntilUp
                         && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 boolean down = !swallowMouseUntilUp
@@ -1332,6 +1376,7 @@ public class Game {
             }
             case CREATIVE_MENU -> {
                 hud.drawHotbar(w, h, inventory, selectedSlot);
+                hud.drawHearts(w, h, player.health);
                 boolean clicked = input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 boolean rightClicked = input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
                 double mx = input.getCursorX(), my = input.getCursorY();
