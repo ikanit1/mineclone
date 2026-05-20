@@ -11,12 +11,14 @@ import org.joml.Vector3f;
 public class Hud {
     public enum MenuAction {
         NONE,
-        CONTINUE,           // main menu: load saves/<DEFAULT_WORLD_ID>
-        NEW_WORLD,          // main menu: open New World confirm
-        NEW_WORLD_CONFIRM,  // confirm dialog: Yes
-        CANCEL,             // confirm dialog: No / explicit dismiss
-        SAVE,               // pause menu: trigger saveAll() + toast
-        MAIN_MENU,          // pause menu: save and return to main menu
+        SINGLEPLAYER, // main menu: open world select screen
+        CONTINUE, // (legacy, no longer emitted)
+        NEW_WORLD, // (legacy, no longer emitted)
+        NEW_WORLD_CONFIRM, // (legacy, no longer emitted)
+        DELETE_WORLD_CONFIRM, // world select delete confirm: Yes
+        CANCEL,
+        SAVE,
+        MAIN_MENU,
         RESUME, SETTINGS, SETTINGS_BACK, QUIT,
         RESPAWN
     }
@@ -37,10 +39,56 @@ public class Hud {
             this.clearCursor = clearCursor;
         }
 
-        public static InventoryAction none() { return new InventoryAction(-1, null, false); }
-        public static InventoryAction slot(int slot) { return new InventoryAction(slot, null, false); }
-        public static InventoryAction palette(BlockType item) { return new InventoryAction(-1, item, false); }
-        public static InventoryAction clearCursor() { return new InventoryAction(-1, null, true); }
+        public static InventoryAction none() {
+            return new InventoryAction(-1, null, false);
+        }
+
+        public static InventoryAction slot(int slot) {
+            return new InventoryAction(slot, null, false);
+        }
+
+        public static InventoryAction palette(BlockType item) {
+            return new InventoryAction(-1, item, false);
+        }
+
+        public static InventoryAction clearCursor() {
+            return new InventoryAction(-1, null, true);
+        }
+    }
+
+    public static final class WorldSelectAction {
+        public final String playId; // non-null: user clicked a world row
+        public final String deleteId; // non-null: user clicked Delete on a row
+        public final boolean newWorld;
+        public final boolean back;
+
+        private WorldSelectAction(String playId, String deleteId,
+                boolean newWorld, boolean back) {
+            this.playId = playId;
+            this.deleteId = deleteId;
+            this.newWorld = newWorld;
+            this.back = back;
+        }
+
+        public static WorldSelectAction none() {
+            return new WorldSelectAction(null, null, false, false);
+        }
+
+        public static WorldSelectAction play(String id) {
+            return new WorldSelectAction(id, null, false, false);
+        }
+
+        public static WorldSelectAction delete(String id) {
+            return new WorldSelectAction(null, id, false, false);
+        }
+
+        public static WorldSelectAction newWorld() {
+            return new WorldSelectAction(null, null, true, false);
+        }
+
+        public static WorldSelectAction back() {
+            return new WorldSelectAction(null, null, false, true);
+        }
     }
 
     public Hud(Font font, TextRenderer text, UiRenderer ui, TextureAtlas atlas) {
@@ -194,20 +242,20 @@ public class Hud {
     // ---------------- health hearts ----------------
 
     private static final int HEART_EMPTY_TILE = 34;
-    private static final int HEART_FULL_TILE  = 35;
-    private static final int HEART_HALF_TILE  = 36;
+    private static final int HEART_FULL_TILE = 35;
+    private static final int HEART_HALF_TILE = 36;
 
     public void drawHearts(int screenW, int screenH, float health) {
         // Mirror hotbar geometry so hearts sit flush above its left edge
         float slot = 52f, pad = 4f;
-        float totalW = 9 * slot + 8 * pad;   // 9 hotbar slots
+        float totalW = 9 * slot + 8 * pad; // 9 hotbar slots
         float hotbarX = screenW / 2f - totalW / 2f;
         float hotbarY = screenH - slot - 16f;
 
-        float hs  = 14f;  // heart sprite display size (px)
-        float gap = 2f;   // gap between hearts
-        float x0  = hotbarX;
-        float y0  = hotbarY - 6f - hs - 5f;  // just above hotbar backing quad
+        float hs = 14f; // heart sprite display size (px)
+        float gap = 2f; // gap between hearts
+        float x0 = hotbarX;
+        float y0 = hotbarY - 6f - hs - 5f; // just above hotbar backing quad
 
         float[] uvE = TextureAtlas.uv(HEART_EMPTY_TILE);
         float[] uvF = TextureAtlas.uv(HEART_FULL_TILE);
@@ -232,7 +280,7 @@ public class Hud {
     // ---------------- death screen ----------------
 
     public MenuAction drawDeathScreen(int screenW, int screenH,
-                                      double mx, double my, boolean clicked) {
+            double mx, double my, boolean clicked) {
         float panelW = Math.min(460f, screenW - 48f);
         float panelH = 230f;
         float panelX = screenW / 2f - panelW / 2f;
@@ -274,34 +322,110 @@ public class Hud {
         text.drawShadowed(font, respawn, bx + (bw - respawnW) / 2f,
                 by + bh / 2f + font.getPixelHeight() * 0.34f,
                 screenW, screenH, 1f, 1f, 1f);
-        if (clicked && hover) return MenuAction.RESPAWN;
+        if (clicked && hover)
+            return MenuAction.RESPAWN;
         return MenuAction.NONE;
     }
 
     // ---------------- menus ----------------
 
-    /**
-     * @param hasSave  if false, the Continue button is greyed out and unclickable.
-     */
-    public MenuAction drawMainMenu(int screenW, int screenH, double mx, double my,
-                                   boolean clicked, boolean hasSave) {
+    public MenuAction drawMainMenu(int screenW, int screenH,
+            double mx, double my, boolean clicked) {
         drawTitle(screenW, screenH, "MINECLONE", 80f);
-        String[] labels   = { "Continue", "New World", "Settings", "Quit" };
-        MenuAction[] acts = { MenuAction.CONTINUE, MenuAction.NEW_WORLD,
-                              MenuAction.SETTINGS, MenuAction.QUIT };
-        boolean[] enabled = { hasSave, true, true, true };
+        String[] labels = { "Singleplayer", "Settings", "Quit" };
+        MenuAction[] acts = { MenuAction.SINGLEPLAYER, MenuAction.SETTINGS, MenuAction.QUIT };
+        boolean[] enabled = { true, true, true };
         return stoneMenu(screenW, screenH, labels, acts, enabled,
-                mx, my, clicked, /*dimWorld=*/false, /*titleArt=*/true);
+                mx, my, clicked, /* dimWorld= */false, /* titleArt= */true);
+    }
+
+    /**
+     * World selection screen. Renders a scrollable list of worlds with a
+     * Delete button per row, plus New World and Back at the bottom.
+     *
+     * @param scrollOffset first visible row index (caller clamps to valid range)
+     * @return action taken this frame, or {@link WorldSelectAction#none()}
+     */
+    public WorldSelectAction drawWorldSelect(int sw, int sh,
+            double mx, double my, boolean clicked,
+            java.util.List<com.mineclone.save.SaveManager.WorldInfo> worlds,
+            int scrollOffset) {
+
+        final float ROW_H = 64f;
+        final float ROW_PAD = 6f;
+        final float LIST_X = sw / 2f - 310f;
+        final float LIST_W = 620f;
+        final float LIST_TOP = 140f;
+        final float LIST_BOT = sh - 110f;
+        final int VIS_ROWS = Math.max(1, (int) ((LIST_BOT - LIST_TOP) / (ROW_H + ROW_PAD)));
+        final float DEL_W = 72f, DEL_H = 30f;
+
+        WorldSelectAction result = WorldSelectAction.none();
+
+        // ── quads ─────────────────────────────────────────────────────────────
+        ui.begin(sw, sh);
+        // dim panel behind the list
+        ui.quad(LIST_X - 10f, LIST_TOP - 10f,
+                LIST_W + 20f, LIST_BOT - LIST_TOP + 20f,
+                0f, 0f, 0f, 0.45f);
+
+        int end = Math.min(worlds.size(), scrollOffset + VIS_ROWS);
+        for (int i = scrollOffset; i < end; i++) {
+            com.mineclone.save.SaveManager.WorldInfo wi = worlds.get(i);
+            float ry = LIST_TOP + (i - scrollOffset) * (ROW_H + ROW_PAD);
+            float rowW = LIST_W - DEL_W - 10f;
+
+            // Row background
+            boolean rowHov = !wi.corrupted && hov(mx, my, LIST_X, ry, rowW, ROW_H);
+            float rc = rowHov ? 0.30f : 0.17f;
+            ui.quad(LIST_X, ry, rowW, ROW_H, rc, rc, rc + 0.04f, 0.88f);
+
+            // Play button logic
+            if (rowHov && clicked)
+                result = WorldSelectAction.play(wi.id);
+
+            // Delete button
+            boolean delHov = stoneButton(LIST_X + LIST_W - DEL_W, ry + (ROW_H - DEL_H) / 2f,
+                    DEL_W, DEL_H, "Delete", sw, sh, mx, my, true, true);
+            if (delHov && clicked)
+                result = WorldSelectAction.delete(wi.id);
+        }
+        ui.end();
+
+        // ── text ──────────────────────────────────────────────────────────────
+        drawTitle(sw, sh, "Select World", 40f);
+
+        for (int i = scrollOffset; i < end; i++) {
+            com.mineclone.save.SaveManager.WorldInfo wi = worlds.get(i);
+            float ry = LIST_TOP + (i - scrollOffset) * (ROW_H + ROW_PAD);
+            String title = wi.displayName;
+            String sub = "Seed: " + wi.seed + " (" + wi.id + ")";
+            if (wi.corrupted) {
+                title = "(!) Corrupted World";
+                sub = "ID: " + wi.id;
+            }
+            text.drawShadowed(font, title, LIST_X + 10, ry + 10, sw, sh, 1f, 1f, 1f);
+            text.drawShadowed(font, sub, LIST_X + 10, ry + 36, sw, sh, 0.6f, 0.6f, 0.6f);
+        }
+
+        // Bottom buttons
+        float btnW = 200f, btnH = 40f;
+        float btnY = sh - 70f;
+        if (stoneButton(sw / 2f - btnW - 10f, btnY, btnW, btnH, "New World", sw, sh, mx, my, true, true) && clicked)
+            result = WorldSelectAction.newWorld();
+        if (stoneButton(sw / 2f + 10f, btnY, btnW, btnH, "Back", sw, sh, mx, my, true, true) && clicked)
+            result = WorldSelectAction.back();
+
+        return result;
     }
 
     public MenuAction drawPauseMenu(int screenW, int screenH, double mx, double my, boolean clicked) {
-        String[] labels   = { "Back to Game", "Save", "Settings", "Main Menu", "Quit" };
+        String[] labels = { "Back to Game", "Save", "Settings", "Main Menu", "Quit" };
         MenuAction[] acts = { MenuAction.RESUME, MenuAction.SAVE,
-                              MenuAction.SETTINGS, MenuAction.MAIN_MENU,
-                              MenuAction.QUIT };
+                MenuAction.SETTINGS, MenuAction.MAIN_MENU, MenuAction.QUIT };
         boolean[] enabled = { true, true, true, true, true };
         return stoneMenu(screenW, screenH, labels, acts, enabled,
-                mx, my, clicked, /*dimWorld=*/true, /*titleArt=*/false);
+                mx, my, clicked, /* dimWorld= */true, /* titleArt= */false);
     }
 
     public void drawLoading(int screenW, int screenH, float progress, float time) {
@@ -471,8 +595,8 @@ public class Hud {
 
     /** Stone-tiled beveled button. Returns true if hovered. */
     private boolean stoneButton(float x, float y, float w, float h, String label,
-                                int sw, int sh, double mx, double my,
-                                boolean enabled, boolean drawText) {
+            int sw, int sh, double mx, double my,
+            boolean enabled, boolean drawText) {
         boolean hover = enabled && hov(mx, my, x, y, w, h);
 
         // Stone background — tile the atlas STONE sprite across the button.
@@ -493,10 +617,10 @@ public class Hud {
         // Bevel: 2-px light top/left, 2-px dark bottom/right.
         float lt = enabled ? 1f : 0.5f;
         float dk = enabled ? 0.10f : 0.18f;
-        ui.quad(x, y, w, 2f, lt, lt, lt, 0.50f);              // top highlight
-        ui.quad(x, y, 2f, h, lt, lt, lt, 0.40f);              // left highlight
-        ui.quad(x, y + h - 2f, w, 2f, dk, dk, dk, 0.55f);     // bottom shadow
-        ui.quad(x + w - 2f, y, 2f, h, dk, dk, dk, 0.45f);     // right shadow
+        ui.quad(x, y, w, 2f, lt, lt, lt, 0.50f); // top highlight
+        ui.quad(x, y, 2f, h, lt, lt, lt, 0.40f); // left highlight
+        ui.quad(x, y + h - 2f, w, 2f, dk, dk, dk, 0.55f); // bottom shadow
+        ui.quad(x + w - 2f, y, 2f, h, dk, dk, dk, 0.45f); // right shadow
 
         if (drawText) {
             float lw = font.textWidth(label);
@@ -517,8 +641,8 @@ public class Hud {
         float y = topY + font.getPixelHeight();
 
         // Dark outline — 8 offsets
-        float[] dx = { -2,  2,  0,  0, -2, -2,  2,  2 };
-        float[] dy = {  0,  0, -2,  2, -2,  2, -2,  2 };
+        float[] dx = { -2, 2, 0, 0, -2, -2, 2, 2 };
+        float[] dy = { 0, 0, -2, 2, -2, 2, -2, 2 };
         for (int i = 0; i < dx.length; i++)
             text.draw(font, title, x + dx[i], y + dy[i], sw, sh, 0f, 0f, 0f, 0.95f);
 
@@ -533,24 +657,26 @@ public class Hud {
     }
 
     private MenuAction stoneMenu(int w, int h, String[] labels, MenuAction[] actions,
-                                 boolean[] enabled,
-                                 double mx, double my, boolean clicked,
-                                 boolean dimWorld, boolean titleArt) {
+            boolean[] enabled,
+            double mx, double my, boolean clicked,
+            boolean dimWorld, boolean titleArt) {
         float bw = 300, bh = 50, gap = 12;
-        float topInset = titleArt ? 200f : 80f;   // leave room for the title
+        float topInset = titleArt ? 200f : 80f; // leave room for the title
         float totalH = labels.length * (bh + gap) - gap;
         float startY = Math.max(topInset, h / 2f - totalH / 2f + 20);
         MenuAction result = MenuAction.NONE;
 
         ui.begin(w, h);
-        if (dimWorld) ui.quad(0, 0, w, h, 0f, 0f, 0f, 0.6f);
+        if (dimWorld)
+            ui.quad(0, 0, w, h, 0f, 0f, 0f, 0.6f);
 
         // Buttons + click handling. Each button's hit area is its own quad,
         // so the disabled-Continue grey state simply ignores clicks.
         for (int i = 0; i < labels.length; i++) {
             float x = w / 2f - bw / 2f, y = startY + i * (bh + gap);
             boolean hover = stoneButton(x, y, bw, bh, labels[i], w, h, mx, my, enabled[i], true);
-            if (hover && clicked) result = actions[i];
+            if (hover && clicked)
+                result = actions[i];
         }
         ui.end();
         return result;
@@ -562,29 +688,31 @@ public class Hud {
      * for dismissing the dialog after a confirm.
      */
     public MenuAction drawConfirm(int sw, int sh, String message, String confirmLabel,
-                                  double mx, double my, boolean clicked,
-                                  MenuAction confirmAction) {
+            double mx, double my, boolean clicked,
+            MenuAction confirmAction) {
         float pw = 460f, ph = 200f;
         float px = sw / 2f - pw / 2f, py = sh / 2f - ph / 2f;
         float bw = 180f, bh = 50f, gap = 20f;
         float by = py + ph - bh - 24f;
         float yesX = sw / 2f - bw - gap / 2f;
-        float noX  = sw / 2f + gap / 2f;
+        float noX = sw / 2f + gap / 2f;
 
         ui.begin(sw, sh);
-        ui.quad(0, 0, sw, sh, 0f, 0f, 0f, 0.72f);                  // full dim
-        ui.quad(px, py, pw, ph, 0.11f, 0.11f, 0.14f, 0.97f);       // panel
-        ui.quad(px, py, pw, 2f, 1f, 1f, 1f, 0.18f);                // top highlight
+        ui.quad(0, 0, sw, sh, 0f, 0f, 0f, 0.72f); // full dim
+        ui.quad(px, py, pw, ph, 0.11f, 0.11f, 0.14f, 0.97f); // panel
+        ui.quad(px, py, pw, 2f, 1f, 1f, 1f, 0.18f); // top highlight
         boolean hYes = stoneButton(yesX, by, bw, bh, confirmLabel, sw, sh, mx, my, true, true);
-        boolean hNo  = stoneButton(noX,  by, bw, bh, "Cancel",     sw, sh, mx, my, true, true);
+        boolean hNo = stoneButton(noX, by, bw, bh, "Cancel", sw, sh, mx, my, true, true);
         ui.end();
 
         float mw = font.textWidth(message);
         text.drawShadowed(font, message, sw / 2f - mw / 2f,
                 py + 56f + font.getPixelHeight(), sw, sh, 1f, 0.95f, 0.55f);
 
-        if (clicked && hYes) return confirmAction;
-        if (clicked && hNo)  return MenuAction.CANCEL;
+        if (clicked && hYes)
+            return confirmAction;
+        if (clicked && hNo)
+            return MenuAction.CANCEL;
         return MenuAction.NONE;
     }
 
