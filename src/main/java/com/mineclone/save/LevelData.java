@@ -14,6 +14,8 @@ public final class LevelData {
     public final float timeOfDay;
     public final int selectedSlot;
     public final BlockType[] inventory;
+    /** Unix-millisecond timestamp of the last save; 0 for pre-v5 saves. */
+    public final long lastPlayed;
 
     public LevelData(long seed, double px, double py, double pz,
                      float yaw, float pitch, float timeOfDay, int selectedSlot) {
@@ -39,6 +41,14 @@ public final class LevelData {
                      double spawnX, double spawnY, double spawnZ,
                      float yaw, float pitch, float timeOfDay, int selectedSlot,
                      BlockType[] inventory) {
+        this(name, seed, px, py, pz, spawnX, spawnY, spawnZ,
+             yaw, pitch, timeOfDay, selectedSlot, inventory, System.currentTimeMillis());
+    }
+
+    public LevelData(String name, long seed, double px, double py, double pz,
+                     double spawnX, double spawnY, double spawnZ,
+                     float yaw, float pitch, float timeOfDay, int selectedSlot,
+                     BlockType[] inventory, long lastPlayed) {
         this.name = name != null ? name : "";
         this.seed = seed;
         this.px = px; this.py = py; this.pz = pz;
@@ -47,6 +57,7 @@ public final class LevelData {
         this.timeOfDay = timeOfDay;
         this.selectedSlot = selectedSlot;
         this.inventory = normalizeInventory(inventory);
+        this.lastPlayed = lastPlayed;
     }
 
     public static BlockType[] defaultInventory() {

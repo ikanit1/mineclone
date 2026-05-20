@@ -27,12 +27,14 @@ public final class SaveManager {
         public final String id;
         public final String displayName;
         public final long seed;
+        public final long lastPlayed;
         public final boolean corrupted;
 
-        WorldInfo(String id, String displayName, long seed, boolean corrupted) {
+        WorldInfo(String id, String displayName, long seed, long lastPlayed, boolean corrupted) {
             this.id = id;
             this.displayName = displayName;
             this.seed = seed;
+            this.lastPlayed = lastPlayed;
             this.corrupted = corrupted;
         }
     }
@@ -73,19 +75,20 @@ public final class SaveManager {
      */
     public WorldInfo loadWorldInfo(String id) {
         File f = levelFile(id);
-        if (!f.isFile()) return new WorldInfo(id, "World", 0L, true);
+        if (!f.isFile()) return new WorldInfo(id, "World", 0L, 0L, true);
         try (DataInputStream in = new DataInputStream(new GZIPInputStream(
                 new BufferedInputStream(new FileInputStream(f))))) {
-            if (in.readInt() != SaveFormat.MAGIC) return new WorldInfo(id, "World", 0L, true);
+            if (in.readInt() != SaveFormat.MAGIC) return new WorldInfo(id, "World", 0L, 0L, true);
             int version = in.readInt();
             if (version < 1 || version > SaveFormat.LEVEL_VERSION)
-                return new WorldInfo(id, "World", 0L, true);
+                return new WorldInfo(id, "World", 0L, 0L, true);
             String name = (version >= 4) ? in.readUTF() : "";
             long seed = in.readLong();
+            long lastPlayed = (version >= 5) ? in.readLong() : 0L;
             if (name.isEmpty()) name = "World";
-            return new WorldInfo(id, name, seed, false);
+            return new WorldInfo(id, name, seed, lastPlayed, false);
         } catch (IOException e) {
-            return new WorldInfo(id, "World", 0L, true);
+            return new WorldInfo(id, "World", 0L, 0L, true);
         }
     }
 
@@ -104,7 +107,7 @@ public final class SaveManager {
             try {
                 list.add(loadWorldInfo(d.getName()));
             } catch (Exception e) {
-                list.add(new WorldInfo(d.getName(), "World", 0L, true));
+                list.add(new WorldInfo(d.getName(), "World", 0L, 0L, true));
             }
         }
         list.sort((a, b) -> {
@@ -133,8 +136,9 @@ public final class SaveManager {
                 new BufferedOutputStream(new FileOutputStream(f))))) {
             o.writeInt(SaveFormat.MAGIC);
             o.writeInt(SaveFormat.LEVEL_VERSION);
-            o.writeUTF(d.name);   // v4: display name before seed
+            o.writeUTF(d.name);            // v4: display name before seed
             o.writeLong(d.seed);
+            o.writeLong(d.lastPlayed);     // v5: last-played timestamp
             o.writeDouble(d.px); o.writeDouble(d.py); o.writeDouble(d.pz);
             o.writeDouble(d.spawnX); o.writeDouble(d.spawnY); o.writeDouble(d.spawnZ);
             o.writeFloat(d.yaw); o.writeFloat(d.pitch);
@@ -160,6 +164,7 @@ public final class SaveManager {
             if (version < 1 || version > SaveFormat.LEVEL_VERSION) return null;
             String name = (version >= 4) ? in.readUTF() : "";
             long seed = in.readLong();
+            long lastPlayed = (version >= 5) ? in.readLong() : 0L;
             double px = in.readDouble(), py = in.readDouble(), pz = in.readDouble();
             double spawnX = 8.5, spawnY = 80.0, spawnZ = 8.5;
             if (version >= 2) {
@@ -181,7 +186,7 @@ public final class SaveManager {
                             : BlockType.AIR;
                 }
             }
-            return new LevelData(name, seed, px, py, pz, spawnX, spawnY, spawnZ, yaw, pitch, tod, slot, inventory);
+            return new LevelData(name, seed, px, py, pz, spawnX, spawnY, spawnZ, yaw, pitch, tod, slot, inventory, lastPlayed);
         } catch (IOException e) {
             System.err.println("loadLevel failed: " + e.getMessage());
             return null;
@@ -230,6 +235,15 @@ public final class SaveManager {
 
     public void deleteWorld(String id) {
         deleteRecursive(worldDir(id));
+    }
+
+    /** Renames a world's display name in its level.dat without touching any chunk files. */
+    public void renameWorld(String id, String newName) {
+        LevelData d = loadLevel(id);
+        if (d == null) return;
+        saveLevel(id, new LevelData(newName, d.seed,
+                d.px, d.py, d.pz, d.spawnX, d.spawnY, d.spawnZ,
+                d.yaw, d.pitch, d.timeOfDay, d.selectedSlot, d.inventory, d.lastPlayed));
     }
 
     // ---- options.dat (global, not per-world) ----

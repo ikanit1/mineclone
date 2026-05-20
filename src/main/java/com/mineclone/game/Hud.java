@@ -57,38 +57,30 @@ public class Hud {
     }
 
     public static final class WorldSelectAction {
-        public final String playId; // non-null: user clicked a world row
-        public final String deleteId; // non-null: user clicked Delete on a row
+        public final String playId;    // non-null: play this world (from Play button)
+        public final String selectId;  // non-null: select this world row (highlight)
+        public final String deleteId;  // non-null: delete button clicked
+        public final String renameId;  // non-null: edit/rename button clicked
         public final boolean newWorld;
         public final boolean back;
 
-        private WorldSelectAction(String playId, String deleteId,
-                boolean newWorld, boolean back) {
-            this.playId = playId;
+        private WorldSelectAction(String playId, String selectId, String deleteId,
+                String renameId, boolean newWorld, boolean back) {
+            this.playId   = playId;
+            this.selectId = selectId;
             this.deleteId = deleteId;
+            this.renameId = renameId;
             this.newWorld = newWorld;
-            this.back = back;
+            this.back     = back;
         }
 
-        public static WorldSelectAction none() {
-            return new WorldSelectAction(null, null, false, false);
-        }
-
-        public static WorldSelectAction play(String id) {
-            return new WorldSelectAction(id, null, false, false);
-        }
-
-        public static WorldSelectAction delete(String id) {
-            return new WorldSelectAction(null, id, false, false);
-        }
-
-        public static WorldSelectAction newWorld() {
-            return new WorldSelectAction(null, null, true, false);
-        }
-
-        public static WorldSelectAction back() {
-            return new WorldSelectAction(null, null, false, true);
-        }
+        public static WorldSelectAction none()            { return new WorldSelectAction(null, null, null, null, false, false); }
+        public static WorldSelectAction play(String id)   { return new WorldSelectAction(id,   null, null, null, false, false); }
+        public static WorldSelectAction select(String id) { return new WorldSelectAction(null, id,   null, null, false, false); }
+        public static WorldSelectAction delete(String id) { return new WorldSelectAction(null, null, id,   null, false, false); }
+        public static WorldSelectAction rename(String id) { return new WorldSelectAction(null, null, null, id,   false, false); }
+        public static WorldSelectAction newWorld()        { return new WorldSelectAction(null, null, null, null, true,  false); }
+        public static WorldSelectAction back()            { return new WorldSelectAction(null, null, null, null, false, true);  }
     }
 
     public Hud(Font font, TextRenderer text, UiRenderer ui, TextureAtlas atlas) {
@@ -349,88 +341,174 @@ public class Hud {
     public WorldSelectAction drawWorldSelect(int sw, int sh,
             double mx, double my, boolean clicked,
             java.util.List<com.mineclone.save.SaveManager.WorldInfo> worlds,
-            int scrollOffset) {
+            int scrollOffset, String selectedWorldId) {
 
-        final float ROW_H = 64f;
-        final float ROW_PAD = 6f;
-        final float LIST_X = sw / 2f - 310f;
-        final float LIST_W = 620f;
-        final float LIST_TOP = 140f;
-        final float LIST_BOT = sh - 110f;
-        final int VIS_ROWS = Math.max(1, (int) ((LIST_BOT - LIST_TOP) / (ROW_H + ROW_PAD)));
-        final float DEL_W = 72f, DEL_H = 30f;
+        final float ROW_H     = 76f;
+        final float ROW_PAD   = 6f;
+        final float LIST_X    = sw * 0.06f;
+        final float LIST_W    = sw * 0.88f;
+        final float LIST_TOP  = 88f;
+        final float LIST_BOT  = sh - 96f;
+        final int   VIS_ROWS  = Math.max(1, (int) ((LIST_BOT - LIST_TOP) / (ROW_H + ROW_PAD)));
+        final float BTN_W     = 68f;
+        final float BTN_H     = 32f;
+        final float BTN_GAP   = 6f;
 
         WorldSelectAction result = WorldSelectAction.none();
 
-        // ── quads ─────────────────────────────────────────────────────────────
+        // ── background panel ─────────────────────────────────────────────────
         ui.begin(sw, sh);
-        // dim panel behind the list
-        ui.quad(LIST_X - 10f, LIST_TOP - 10f,
-                LIST_W + 20f, LIST_BOT - LIST_TOP + 20f,
-                0f, 0f, 0f, 0.45f);
+        ui.quad(0, 0, sw, sh, 0f, 0f, 0f, 0.55f);
+        ui.quad(LIST_X - 8f, LIST_TOP - 8f,
+                LIST_W + 16f, LIST_BOT - LIST_TOP + 16f,
+                0.06f, 0.06f, 0.08f, 0.82f);
 
         int end = Math.min(worlds.size(), scrollOffset + VIS_ROWS);
         for (int i = scrollOffset; i < end; i++) {
             com.mineclone.save.SaveManager.WorldInfo wi = worlds.get(i);
-            float ry = LIST_TOP + (i - scrollOffset) * (ROW_H + ROW_PAD);
-            float rowW = LIST_W - DEL_W - 10f;
+            float ry     = LIST_TOP + (i - scrollOffset) * (ROW_H + ROW_PAD);
+            float bodyW  = LIST_W - (BTN_W + BTN_GAP) * 2 - BTN_GAP;
 
-            // Row background
-            boolean rowHov = !wi.corrupted && hov(mx, my, LIST_X, ry, rowW, ROW_H);
-            float rc = rowHov ? 0.30f : 0.17f;
-            ui.quad(LIST_X, ry, rowW, ROW_H, rc, rc, rc + 0.04f, 0.88f);
+            boolean selected = wi.id.equals(selectedWorldId);
+            boolean rowHov   = !wi.corrupted && hov(mx, my, LIST_X, ry, bodyW, ROW_H);
 
-            // Play button logic
-            if (rowHov && clicked)
-                result = WorldSelectAction.play(wi.id);
+            // Row body — blue tint when selected
+            float rb = selected ? 0.30f : (rowHov ? 0.26f : 0.14f);
+            float rg = selected ? 0.38f : (rowHov ? 0.26f : 0.14f);
+            float rr = selected ? 0.18f : (rowHov ? 0.26f : 0.14f);
+            ui.quad(LIST_X, ry, bodyW, ROW_H, rr, rg, rb, 0.92f);
+            if (selected)
+                ui.quad(LIST_X, ry, 4f, ROW_H, 0.35f, 0.65f, 1.0f, 1.0f);  // left accent bar
+
+            if (!wi.corrupted && rowHov && clicked)
+                result = WorldSelectAction.select(wi.id);
+
+            // Edit button
+            float editX = LIST_X + bodyW + BTN_GAP;
+            boolean editHov = stoneButton(editX, ry + (ROW_H - BTN_H) / 2f,
+                    BTN_W, BTN_H, "Edit", sw, sh, mx, my, !wi.corrupted, true);
+            if (editHov && clicked && !wi.corrupted)
+                result = WorldSelectAction.rename(wi.id);
 
             // Delete button
-            boolean delHov = stoneButton(LIST_X + LIST_W - DEL_W, ry + (ROW_H - DEL_H) / 2f,
-                    DEL_W, DEL_H, "Delete", sw, sh, mx, my, true, true);
+            float delX = editX + BTN_W + BTN_GAP;
+            boolean delHov = stoneButton(delX, ry + (ROW_H - BTN_H) / 2f,
+                    BTN_W, BTN_H, "Delete", sw, sh, mx, my, true, true);
             if (delHov && clicked)
                 result = WorldSelectAction.delete(wi.id);
         }
+
+        // Bottom button row
+        float botY    = sh - 76f;
+        float bBig    = 220f;
+        float bSmall  = 160f;
+        float bH      = 46f;
+        float totalW  = bBig + bSmall + bSmall + 16f;
+        float bStartX = sw / 2f - totalW / 2f;
+
+        boolean canPlay = selectedWorldId != null;
+        stoneButton(bStartX,              botY, bBig,   bH, "Play World", sw, sh, mx, my, canPlay, true);
+        stoneButton(bStartX + bBig + 8f,  botY, bSmall, bH, "New World",  sw, sh, mx, my, true,    true);
+        stoneButton(bStartX + bBig + bSmall + 16f, botY, bSmall, bH, "Back", sw, sh, mx, my, true, true);
+
+        if (canPlay && clicked && hov(mx, my, bStartX, botY, bBig, bH))
+            result = WorldSelectAction.play(selectedWorldId);
+        if (clicked && hov(mx, my, bStartX + bBig + 8f, botY, bSmall, bH))
+            result = WorldSelectAction.newWorld();
+        if (clicked && hov(mx, my, bStartX + bBig + bSmall + 16f, botY, bSmall, bH))
+            result = WorldSelectAction.back();
+
         ui.end();
 
-        // ── text ──────────────────────────────────────────────────────────────
-        drawTitle(sw, sh, "Select World", 40f);
+        // ── text overlays ─────────────────────────────────────────────────────
+        drawTitle(sw, sh, "Select World", 38f);
 
+        float lh = font.getPixelHeight();
         for (int i = scrollOffset; i < end; i++) {
             com.mineclone.save.SaveManager.WorldInfo wi = worlds.get(i);
-            float ry = LIST_TOP + (i - scrollOffset) * (ROW_H + ROW_PAD);
-            String title = wi.displayName;
-            String sub = "Seed: " + wi.seed + " (" + wi.id + ")";
+            float ry    = LIST_TOP + (i - scrollOffset) * (ROW_H + ROW_PAD);
+            float tx    = LIST_X + 14f;
+
             if (wi.corrupted) {
-                title = "(!) Corrupted World";
-                sub = "ID: " + wi.id;
+                text.drawShadowed(font, "(!) Corrupted save",
+                        tx, ry + ROW_H / 2f + lh * 0.35f, sw, sh, 0.9f, 0.3f, 0.3f);
+            } else {
+                text.drawShadowed(font, wi.displayName,
+                        tx, ry + 22f, sw, sh, 1f, 1f, 1f);
+                String sub = "Seed: " + wi.seed
+                        + "   Last: " + fmtDate(wi.lastPlayed);
+                text.drawShadowed(font, sub,
+                        tx, ry + 22f + lh + 4f, sw, sh, 0.55f, 0.55f, 0.55f);
             }
-            text.drawShadowed(font, title, LIST_X + 10, ry + 10, sw, sh, 1f, 1f, 1f);
-            text.drawShadowed(font, sub, LIST_X + 10, ry + 36, sw, sh, 0.6f, 0.6f, 0.6f);
         }
 
         if (worlds.isEmpty()) {
-            String msg = "No worlds yet. Click New World to start!";
+            String msg = "No worlds yet — click New World to start!";
             float mw = font.textWidth(msg);
-            text.drawShadowed(font, msg, sw / 2f - mw / 2f, LIST_TOP + 50f,
+            text.drawShadowed(font, msg, sw / 2f - mw / 2f, LIST_TOP + 60f,
                     sw, sh, 0.7f, 0.7f, 0.7f);
         }
 
         if (worlds.size() > VIS_ROWS) {
-            String hint = "Scroll to see more (" + worlds.size() + " worlds)";
+            String hint = "↑↓ Scroll  (" + worlds.size() + " worlds)";
             float hw = font.textWidth(hint);
-            text.drawShadowed(font, hint, sw / 2f - hw / 2f, LIST_BOT + 8f,
+            text.drawShadowed(font, hint, sw / 2f - hw / 2f, LIST_BOT + 6f,
                     sw, sh, 0.5f, 0.5f, 0.5f);
         }
 
-        // Bottom buttons
-        float btnW = 200f, btnH = 40f;
-        float btnY = sh - 70f;
-        if (stoneButton(sw / 2f - btnW - 10f, btnY, btnW, btnH, "New World", sw, sh, mx, my, true, true) && clicked)
-            result = WorldSelectAction.newWorld();
-        if (stoneButton(sw / 2f + 10f, btnY, btnW, btnH, "Back", sw, sh, mx, my, true, true) && clicked)
-            result = WorldSelectAction.back();
-
         return result;
+    }
+
+    /** Rename dialog drawn over the world-select screen. Returns SAVE (OK clicked),
+     *  CANCEL (Cancel clicked), or NONE (still editing). */
+    public MenuAction drawRenameDialog(int sw, int sh,
+            String worldName, String buffer, double mx, double my, boolean clicked) {
+        float panelW = Math.min(500f, sw - 80f);
+        float panelH = 170f;
+        float panelX = sw / 2f - panelW / 2f;
+        float panelY = sh / 2f - panelH / 2f;
+
+        ui.begin(sw, sh);
+        ui.quad(0, 0, sw, sh, 0f, 0f, 0f, 0.55f);
+        ui.quad(panelX, panelY, panelW, panelH, 0.07f, 0.07f, 0.09f, 0.96f);
+        ui.quad(panelX, panelY, panelW, 2f, 0.35f, 0.65f, 1.0f, 0.8f);
+
+        float fieldX = panelX + 16f;
+        float fieldW = panelW - 32f;
+        float fieldY = panelY + 62f;
+        float fieldH = 38f;
+        ui.quad(fieldX, fieldY, fieldW, fieldH, 0.04f, 0.04f, 0.06f, 1f);
+        ui.quad(fieldX, fieldY, fieldW, 2f, 0.3f, 0.3f, 0.4f, 0.8f);
+
+        float bW = 130f, bH = 38f, bGap = 12f;
+        float bY = panelY + panelH - bH - 14f;
+        float bRenX = sw / 2f - bW - bGap / 2f;
+        float bCanX = sw / 2f + bGap / 2f;
+        stoneButton(bRenX, bY, bW, bH, "Rename", sw, sh, mx, my, !buffer.isEmpty(), true);
+        stoneButton(bCanX, bY, bW, bH, "Cancel", sw, sh, mx, my, true, true);
+        ui.end();
+
+        // Text
+        String title = "Rename: " + worldName;
+        text.drawShadowed(font, title, panelX + 14f, panelY + 28f, sw, sh, 0.85f, 0.85f, 0.85f);
+
+        String display = buffer + "|";
+        text.drawShadowed(font, display, fieldX + 8f, fieldY + fieldH / 2f + font.getPixelHeight() * 0.35f,
+                sw, sh, 1f, 1f, 1f);
+
+        if (clicked && hov(mx, my, bRenX, bY, bW, bH) && !buffer.isEmpty())
+            return MenuAction.SAVE;
+        if (clicked && hov(mx, my, bCanX, bY, bW, bH))
+            return MenuAction.CANCEL;
+        return MenuAction.NONE;
+    }
+
+    private static String fmtDate(long millis) {
+        if (millis == 0L) return "Never";
+        java.time.LocalDateTime dt = java.time.LocalDateTime.ofInstant(
+                java.time.Instant.ofEpochMilli(millis),
+                java.time.ZoneId.systemDefault());
+        return dt.format(java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm"));
     }
 
     public MenuAction drawPauseMenu(int screenW, int screenH, double mx, double my, boolean clicked) {

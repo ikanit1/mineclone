@@ -89,6 +89,9 @@ public class Game {
     private String worldDisplayName = "";
     private boolean inWorldSelect = false;
     private String pendingDeleteId = null;
+    private String selectedWorldId = null;
+    private String renamingWorldId = null;
+    private final StringBuilder renameBuffer = new StringBuilder();
     private int worldSelectScroll = 0;
     private java.util.List<com.mineclone.save.SaveManager.WorldInfo> worldList = java.util.List.of();
     private static final float AUTOSAVE_INTERVAL = 120f; // seconds
@@ -217,11 +220,31 @@ public class Game {
             saveToastTimer -= dt;
         updateCommandToast(dt);
 
-        if (inWorldSelect) {
+        if (renamingWorldId != null) {
+            String typed = input.pollChars();
+            for (char c : typed.toCharArray())
+                if (renameBuffer.length() < 32) renameBuffer.append(c);
+            if (input.keyPressed(GLFW.GLFW_KEY_BACKSPACE) && renameBuffer.length() > 0)
+                renameBuffer.deleteCharAt(renameBuffer.length() - 1);
+            if (input.keyPressed(GLFW.GLFW_KEY_ENTER) || input.keyPressed(GLFW.GLFW_KEY_KP_ENTER))
+                applyRename();
+            if (input.keyPressed(GLFW.GLFW_KEY_ESCAPE))
+                renamingWorldId = null;
+        } else if (inWorldSelect) {
             int delta = (int) input.getScroll();
             if (delta != 0)
                 worldSelectScroll = Math.max(0, worldSelectScroll - delta);
         }
+    }
+
+    private void applyRename() {
+        String newName = renameBuffer.toString().trim();
+        if (!newName.isEmpty() && renamingWorldId != null) {
+            save.renameWorld(renamingWorldId, newName);
+            if (renamingWorldId.equals(worldId)) worldDisplayName = newName;
+            worldList = save.listWorlds();
+        }
+        renamingWorldId = null;
     }
 
     private void updateCommandToast(float dt) {
@@ -1311,14 +1334,21 @@ public class Game {
                 double mx = input.getCursorX(), my = input.getCursorY();
 
                 if (inWorldSelect) {
+                    if (renamingWorldId != null) {
+                        String rdn = renamingWorldId;
+                        for (com.mineclone.save.SaveManager.WorldInfo wi : worldList)
+                            if (wi.id.equals(renamingWorldId)) { rdn = wi.displayName; break; }
+                        Hud.MenuAction ra = hud.drawRenameDialog(w, h, rdn,
+                                renameBuffer.toString(), mx, my, clicked);
+                        if (ra == Hud.MenuAction.SAVE)   applyRename();
+                        else if (ra == Hud.MenuAction.CANCEL) renamingWorldId = null;
+                        break;
+                    }
+
                     if (pendingDeleteId != null) {
-                        // Find display name for the confirm message.
                         String dn = pendingDeleteId;
                         for (com.mineclone.save.SaveManager.WorldInfo wi : worldList)
-                            if (wi.id.equals(pendingDeleteId)) {
-                                dn = wi.displayName;
-                                break;
-                            }
+                            if (wi.id.equals(pendingDeleteId)) { dn = wi.displayName; break; }
                         Hud.MenuAction da = hud.drawConfirm(w, h,
                                 "Delete \"" + dn + "\"? This cannot be undone.",
                                 "Delete", mx, my, clicked,
@@ -1326,6 +1356,7 @@ public class Game {
                         if (da == Hud.MenuAction.DELETE_WORLD_CONFIRM) {
                             save.deleteWorld(pendingDeleteId);
                             pendingDeleteId = null;
+                            selectedWorldId = null;
                             worldList = save.listWorlds();
                             worldSelectScroll = 0;
                         } else if (da == Hud.MenuAction.CANCEL
@@ -1336,11 +1367,23 @@ public class Game {
                         int maxScroll = Math.max(0, worldList.size() - 1);
                         worldSelectScroll = Math.max(0, Math.min(worldSelectScroll, maxScroll));
                         Hud.WorldSelectAction wa = hud.drawWorldSelect(
-                                w, h, mx, my, clicked, worldList, worldSelectScroll);
+                                w, h, mx, my, clicked, worldList, worldSelectScroll, selectedWorldId);
                         if (wa.playId != null) {
                             sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
                             inWorldSelect = false;
+                            selectedWorldId = null;
                             startWorld(wa.playId);
+                        } else if (wa.selectId != null) {
+                            selectedWorldId = wa.selectId;
+                            swallowMouseUntilUp = true;
+                        } else if (wa.renameId != null) {
+                            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
+                            renamingWorldId = wa.renameId;
+                            renameBuffer.setLength(0);
+                            for (com.mineclone.save.SaveManager.WorldInfo wi : worldList)
+                                if (wi.id.equals(wa.renameId)) { renameBuffer.append(wi.displayName); break; }
+                            input.pollChars();
+                            swallowMouseUntilUp = true;
                         } else if (wa.deleteId != null) {
                             sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
                             pendingDeleteId = wa.deleteId;
@@ -1348,10 +1391,12 @@ public class Game {
                         } else if (wa.newWorld) {
                             sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
                             inWorldSelect = false;
+                            selectedWorldId = null;
                             createWorld();
                         } else if (wa.back || input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
                             sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
                             inWorldSelect = false;
+                            selectedWorldId = null;
                         }
                     }
                     break;
@@ -1384,6 +1429,7 @@ public class Game {
                     case SINGLEPLAYER -> {
                         worldList = save.listWorlds();
                         worldSelectScroll = 0;
+                        selectedWorldId = null;
                         inWorldSelect = true;
                         swallowMouseUntilUp = true;
                     }
