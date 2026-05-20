@@ -1495,7 +1495,7 @@ public class Game {
     }
 
     private void cleanup() {
-        loader.shutdown();
+        if (loader != null) loader.shutdown();
         menuBackground.destroy();
         sound.destroy();
         for (Mesh m : chunkMeshes.values()) m.destroy();
