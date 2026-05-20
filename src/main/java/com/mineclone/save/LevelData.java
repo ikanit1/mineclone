@@ -6,6 +6,7 @@ import java.util.Arrays;
 
 /** Everything stored in level.dat. Immutable. */
 public final class LevelData {
+    public final String name;
     public final long seed;
     public final double px, py, pz;
     public final double spawnX, spawnY, spawnZ;
@@ -30,6 +31,15 @@ public final class LevelData {
                      double spawnX, double spawnY, double spawnZ,
                      float yaw, float pitch, float timeOfDay, int selectedSlot,
                      BlockType[] inventory) {
+        this("", seed, px, py, pz, spawnX, spawnY, spawnZ,
+             yaw, pitch, timeOfDay, selectedSlot, inventory);
+    }
+
+    public LevelData(String name, long seed, double px, double py, double pz,
+                     double spawnX, double spawnY, double spawnZ,
+                     float yaw, float pitch, float timeOfDay, int selectedSlot,
+                     BlockType[] inventory) {
+        this.name = name != null ? name : "";
         this.seed = seed;
         this.px = px; this.py = py; this.pz = pz;
         this.spawnX = spawnX; this.spawnY = spawnY; this.spawnZ = spawnZ;
