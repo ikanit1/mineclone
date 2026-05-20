@@ -22,6 +22,21 @@ import java.util.zip.GZIPOutputStream;
  * loop never blocks on disk; level writes are tiny and synchronous.
  */
 public final class SaveManager {
+
+    public static final class WorldInfo {
+        public final String id;
+        public final String displayName;
+        public final long seed;
+        public final boolean corrupted;
+
+        WorldInfo(String id, String displayName, long seed, boolean corrupted) {
+            this.id = id;
+            this.displayName = displayName;
+            this.seed = seed;
+            this.corrupted = corrupted;
+        }
+    }
+
     private final File savesRoot;
     private final ExecutorService chunkWriter =
             Executors.newSingleThreadExecutor(r -> {
@@ -52,6 +67,63 @@ public final class SaveManager {
         return levelFile(id).isFile();
     }
 
+    /**
+     * Reads only MAGIC, VERSION, name (v4+), and seed from level.dat.
+     * Returns a WorldInfo with {@code corrupted=true} on any error.
+     */
+    public WorldInfo loadWorldInfo(String id) {
+        File f = levelFile(id);
+        if (!f.isFile()) return new WorldInfo(id, "World", 0L, true);
+        try (DataInputStream in = new DataInputStream(new GZIPInputStream(
+                new BufferedInputStream(new FileInputStream(f))))) {
+            if (in.readInt() != SaveFormat.MAGIC) return new WorldInfo(id, "World", 0L, true);
+            int version = in.readInt();
+            if (version < 1 || version > SaveFormat.LEVEL_VERSION)
+                return new WorldInfo(id, "World", 0L, true);
+            String name = (version >= 4) ? in.readUTF() : "";
+            long seed = in.readLong();
+            if (name.isEmpty()) name = "World";
+            return new WorldInfo(id, name, seed, false);
+        } catch (IOException e) {
+            return new WorldInfo(id, "World", 0L, true);
+        }
+    }
+
+    /**
+     * Lists all worlds in saves/. Each subdirectory containing level.dat is a
+     * world. Corrupted worlds are included with {@code corrupted=true}.
+     * Sorted: valid worlds by display name numeric suffix ("World 2" before
+     * "World 10"), corrupted worlds last.
+     */
+    public java.util.List<WorldInfo> listWorlds() {
+        java.util.List<WorldInfo> list = new java.util.ArrayList<>();
+        File[] dirs = savesRoot.listFiles(File::isDirectory);
+        if (dirs == null) return list;
+        for (File d : dirs) {
+            if (!new File(d, SaveFormat.LEVEL_FILE).isFile()) continue;
+            try {
+                list.add(loadWorldInfo(d.getName()));
+            } catch (Exception e) {
+                list.add(new WorldInfo(d.getName(), "World", 0L, true));
+            }
+        }
+        list.sort((a, b) -> {
+            if (a.corrupted != b.corrupted) return a.corrupted ? 1 : -1;
+            int na = trailingNumber(a.displayName);
+            int nb = trailingNumber(b.displayName);
+            if (na >= 0 && nb >= 0) return Integer.compare(na, nb);
+            return a.displayName.compareToIgnoreCase(b.displayName);
+        });
+        return list;
+    }
+
+    private static int trailingNumber(String s) {
+        int i = s.lastIndexOf(' ');
+        if (i < 0) return -1;
+        try { return Integer.parseInt(s.substring(i + 1)); }
+        catch (NumberFormatException e) { return -1; }
+    }
+
     // ---- level.dat ----
 
     public void saveLevel(String id, LevelData d) {
@@ -61,6 +133,7 @@ public final class SaveManager {
                 new BufferedOutputStream(new FileOutputStream(f))))) {
             o.writeInt(SaveFormat.MAGIC);
             o.writeInt(SaveFormat.LEVEL_VERSION);
+            o.writeUTF(d.name);   // v4: display name before seed
             o.writeLong(d.seed);
             o.writeDouble(d.px); o.writeDouble(d.py); o.writeDouble(d.pz);
             o.writeDouble(d.spawnX); o.writeDouble(d.spawnY); o.writeDouble(d.spawnZ);
@@ -85,6 +158,7 @@ public final class SaveManager {
             if (in.readInt() != SaveFormat.MAGIC) return null;
             int version = in.readInt();
             if (version < 1 || version > SaveFormat.LEVEL_VERSION) return null;
+            String name = (version >= 4) ? in.readUTF() : "";
             long seed = in.readLong();
             double px = in.readDouble(), py = in.readDouble(), pz = in.readDouble();
             double spawnX = 8.5, spawnY = 80.0, spawnZ = 8.5;
@@ -107,7 +181,7 @@ public final class SaveManager {
                             : BlockType.AIR;
                 }
             }
-            return new LevelData(seed, px, py, pz, spawnX, spawnY, spawnZ, yaw, pitch, tod, slot, inventory);
+            return new LevelData(name, seed, px, py, pz, spawnX, spawnY, spawnZ, yaw, pitch, tod, slot, inventory);
         } catch (IOException e) {
             System.err.println("loadLevel failed: " + e.getMessage());
             return null;
