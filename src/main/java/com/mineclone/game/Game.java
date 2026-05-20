@@ -90,23 +90,24 @@ public class Game {
     private boolean inWorldSelect = false;
     private String pendingDeleteId = null;
     private int worldSelectScroll = 0;
-    private java.util.List<com.mineclone.save.SaveManager.WorldInfo> worldList =
-            java.util.List.of();
+    private java.util.List<com.mineclone.save.SaveManager.WorldInfo> worldList = java.util.List.of();
     private static final float AUTOSAVE_INTERVAL = 120f; // seconds
     private static final int RESPAWN_RADIUS = 10;
     private float autosaveTimer = AUTOSAVE_INTERVAL;
     private final Vector3f worldSpawn = new Vector3f(8.5f, 80.0f, 8.5f);
     private final Random respawnRandom = new Random();
     private final MenuBackground menuBackground;
-    private float saveToastTimer = 0f;   // seconds remaining for "Saved" toast
+    private float saveToastTimer = 0f; // seconds remaining for "Saved" toast
     private String commandToast = "";
     private float commandToastTimer = 0f;
     private float commandHelpTimer = 0f;
     private float loadingProgress = 0f;
     private float loadingVisualProgress = 0f;
     private float loadingTimer = 0f;
-    /** Eat mouseDown/mouseClicked until the user releases LMB. Prevents the
-     *  click that opened a panel from immediately grabbing a slider in it. */
+    /**
+     * Eat mouseDown/mouseClicked until the user releases LMB. Prevents the
+     * click that opened a panel from immediately grabbing a slider in it.
+     */
     private boolean swallowMouseUntilUp = false;
     private float handSwing = 0f;
     private float equipProgress = 1f;
@@ -136,7 +137,8 @@ public class Game {
 
     /** Flush level.dat + every loaded chunk whose blocks changed since gen. */
     private void saveAll() {
-        if (world == null) return;
+        if (world == null)
+            return;
         com.mineclone.save.LevelData d = new com.mineclone.save.LevelData(
                 worldDisplayName,
                 world.seed,
@@ -211,8 +213,15 @@ public class Game {
 
     private void updateMenu(float dt) {
         menuBackground.update(dt);
-        if (saveToastTimer > 0f) saveToastTimer -= dt;
+        if (saveToastTimer > 0f)
+            saveToastTimer -= dt;
         updateCommandToast(dt);
+
+        if (inWorldSelect) {
+            int delta = (int) input.getScroll();
+            if (delta != 0)
+                worldSelectScroll = Math.max(0, worldSelectScroll - delta);
+        }
     }
 
     private void updateCommandToast(float dt) {
@@ -295,10 +304,12 @@ public class Game {
         java.util.Set<Integer> usedNums = new java.util.HashSet<>();
         for (com.mineclone.save.SaveManager.WorldInfo wi : existing) {
             int n = trailingWorldN(wi.displayName);
-            if (n > 0) usedNums.add(n);
+            if (n > 0)
+                usedNums.add(n);
         }
         int n = 1;
-        while (usedNums.contains(n)) n++;
+        while (usedNums.contains(n))
+            n++;
         String displayName = "World " + n;
 
         long seed = new java.util.Random().nextLong();
@@ -314,20 +325,29 @@ public class Game {
     }
 
     private static int trailingWorldN(String displayName) {
-        if (!displayName.startsWith("World ")) return -1;
-        try { return Integer.parseInt(displayName.substring(6)); }
-        catch (NumberFormatException e) { return -1; }
+        if (!displayName.startsWith("World "))
+            return -1;
+        try {
+            return Integer.parseInt(displayName.substring(6));
+        } catch (NumberFormatException e) {
+            return -1;
+        }
     }
 
-    /** Save, flush, stop loader threads, destroy GL meshes, null world refs.
-     *  Must be called from the main (GL) thread only. */
+    /**
+     * Save, flush, stop loader threads, destroy GL meshes, null world refs.
+     * Must be called from the main (GL) thread only.
+     */
     private void unloadWorld() {
-        if (world == null) return;
+        if (world == null)
+            return;
         saveAll();
         save.flushAndAwait();
         loader.shutdown();
-        for (Mesh m : chunkMeshes.values()) m.destroy();
-        for (Mesh m : waterMeshes.values()) m.destroy();
+        for (Mesh m : chunkMeshes.values())
+            m.destroy();
+        for (Mesh m : waterMeshes.values())
+            m.destroy();
         chunkMeshes.clear();
         waterMeshes.clear();
         WaterSimulator.reset();
@@ -378,7 +398,8 @@ public class Game {
 
     private void updatePlaying(float dt) {
         gameTime += dt * TIME_SCALE;
-        if (saveToastTimer > 0f) saveToastTimer -= dt;
+        if (saveToastTimer > 0f)
+            saveToastTimer -= dt;
         updateCommandToast(dt);
         autosaveTimer -= dt;
         if (autosaveTimer <= 0f) {
@@ -452,7 +473,8 @@ public class Game {
             if (player.lastFallDamage >= 4f)
                 sound.playOneOfAt(sounds.fallBig(), playerSoundPosition(), 0.9f, 0.95f + 0.1f * (float) Math.random());
             else
-                sound.playOneOfAt(sounds.fallSmall(), playerSoundPosition(), 0.7f, 0.95f + 0.1f * (float) Math.random());
+                sound.playOneOfAt(sounds.fallSmall(), playerSoundPosition(), 0.7f,
+                        0.95f + 0.1f * (float) Math.random());
             player.lastFallDamage = 0f;
         }
         if (landingDistance >= 2f) {
@@ -522,7 +544,8 @@ public class Game {
     }
 
     private void updatePaused(float dt) {
-        if (saveToastTimer > 0f) saveToastTimer -= dt;
+        if (saveToastTimer > 0f)
+            saveToastTimer -= dt;
         updateCommandToast(dt);
         if (input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
             if (inSettings) {
@@ -560,7 +583,8 @@ public class Game {
     private void updateDead(float dt) {
         gameTime += dt * TIME_SCALE;
         daylight = computeDaylight();
-        if (saveToastTimer > 0f) saveToastTimer -= dt;
+        if (saveToastTimer > 0f)
+            saveToastTimer -= dt;
         updateCommandToast(dt);
         updateActiveWorld(dt);
     }
@@ -664,11 +688,15 @@ public class Game {
                 continue;
             }
             Mesh old = chunkMeshes.remove(r.key);
-            if (old != null) old.destroy();
+            if (old != null)
+                old.destroy();
             Mesh oldW = waterMeshes.remove(r.key);
-            if (oldW != null) oldW.destroy();
-            if (!r.data[0].isEmpty()) chunkMeshes.put(r.key, r.data[0].upload());
-            if (!r.data[1].isEmpty()) waterMeshes.put(r.key, r.data[1].upload());
+            if (oldW != null)
+                oldW.destroy();
+            if (!r.data[0].isEmpty())
+                chunkMeshes.put(r.key, r.data[0].upload());
+            if (!r.data[1].isEmpty())
+                waterMeshes.put(r.key, r.data[1].upload());
             WaterSimulator.activateChunkIfWater(world, cx, cz);
         }
         evictDistantChunks(pcx, pcz);
@@ -682,9 +710,11 @@ public class Game {
             saveChunkIfModified(c);
             long key = World.key(c.cx, c.cz);
             Mesh old = chunkMeshes.remove(key);
-            if (old != null) old.destroy();
+            if (old != null)
+                old.destroy();
             Mesh oldW = waterMeshes.remove(key);
-            if (oldW != null) oldW.destroy();
+            if (oldW != null)
+                oldW.destroy();
             loader.forget(key);
             WaterSimulator.forgetChunk(key);
             world.removeChunk(c.cx, c.cz);
@@ -720,7 +750,7 @@ public class Game {
             if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_MIDDLE)) {
                 byte m = world.getBlockMeta(lastHit.x, lastHit.y, lastHit.z);
                 world.setBlock(lastHit.x, lastHit.y, lastHit.z,
-                        world.getBlock(lastHit.x, lastHit.y, lastHit.z), (byte)((m + 1) & 0x0F));
+                        world.getBlock(lastHit.x, lastHit.y, lastHit.z), (byte) ((m + 1) & 0x0F));
             }
             if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
                 startHandSwing();
@@ -805,7 +835,8 @@ public class Game {
     }
 
     private void executeCommand(String cmd) {
-        if (cmd.isEmpty()) return;
+        if (cmd.isEmpty())
+            return;
         String[] parts = cmd.split("\\s+");
         try {
             switch (parts[0]) {
@@ -835,8 +866,11 @@ public class Game {
                     String blockName = parts.length >= 2 ? parts[1].toUpperCase() : "WATER";
                     int radius = parts.length >= 3 ? Integer.parseInt(parts[2]) : 4;
                     BlockType fill;
-                    try { fill = BlockType.valueOf(blockName); }
-                    catch (IllegalArgumentException e) { fill = BlockType.WATER; }
+                    try {
+                        fill = BlockType.valueOf(blockName);
+                    } catch (IllegalArgumentException e) {
+                        fill = BlockType.WATER;
+                    }
                     int cx = (int) Math.floor(player.position.x);
                     int cy = (int) Math.floor(player.position.y);
                     int cz = (int) Math.floor(player.position.z);
@@ -1065,23 +1099,31 @@ public class Game {
     private void updateDirtyMeshes() {
         int rebuilt = 0;
         for (Chunk c : world.getLoadedChunks()) {
-            if (!c.dirty) continue;
+            if (!c.dirty)
+                continue;
             long key = World.key(c.cx, c.cz);
             // Skip chunks whose saved blocks or deferred light flood are still
             // being applied. Meshing during that window bakes stale block/sky
             // light into chunk-shaped patches until a later rebuild catches up.
-            if (loader.isPendingGen(key) || loader.hasPendingLightFlood(key)) continue;
-            if (!loader.neighboursReady(c.cx, c.cz)) continue;
+            if (loader.isPendingGen(key) || loader.hasPendingLightFlood(key))
+                continue;
+            if (!loader.neighboursReady(c.cx, c.cz))
+                continue;
             Mesh old = chunkMeshes.remove(key);
-            if (old != null) old.destroy();
+            if (old != null)
+                old.destroy();
             Mesh oldW = waterMeshes.remove(key);
-            if (oldW != null) oldW.destroy();
+            if (oldW != null)
+                oldW.destroy();
             MeshData[] data = mesher.buildData(c);
-            if (!data[0].isEmpty()) chunkMeshes.put(key, data[0].upload());
-            if (!data[1].isEmpty()) waterMeshes.put(key, data[1].upload());
+            if (!data[0].isEmpty())
+                chunkMeshes.put(key, data[0].upload());
+            if (!data[1].isEmpty())
+                waterMeshes.put(key, data[1].upload());
             loader.markMeshed(key);
             c.dirty = false;
-            if (++rebuilt >= 8) break;
+            if (++rebuilt >= 8)
+                break;
         }
     }
 
@@ -1125,8 +1167,8 @@ public class Game {
         chunkShader.setMat4("uView", view);
         chunkShader.setInt("uAtlas", 0);
         Vector3f fogColor = player.eyeInWater ? new Vector3f(0.04f, 0.14f, 0.55f) : sky;
-        float fogStart = player.eyeInWater ? 3f  : renderRadius * Chunk.SIZE_X * 0.5f;
-        float fogEnd   = player.eyeInWater ? 12f : renderRadius * Chunk.SIZE_X * 1.0f;
+        float fogStart = player.eyeInWater ? 3f : renderRadius * Chunk.SIZE_X * 0.5f;
+        float fogEnd = player.eyeInWater ? 12f : renderRadius * Chunk.SIZE_X * 1.0f;
         chunkShader.setVec3("uFogColor", fogColor);
         chunkShader.setFloat("uFogStart", fogStart);
         chunkShader.setFloat("uFogEnd", fogEnd);
@@ -1147,10 +1189,10 @@ public class Game {
                 Mesh mesh = chunkMeshes.get(World.key(cx, cz));
                 if (mesh == null)
                     continue;
-            Matrix4f model = new Matrix4f().translate(cx * Chunk.SIZE_X, 0, cz * Chunk.SIZE_Z);
-            chunkShader.setMat4("uModel", model);
+                Matrix4f model = new Matrix4f().translate(cx * Chunk.SIZE_X, 0, cz * Chunk.SIZE_Z);
+                chunkShader.setMat4("uModel", model);
                 mesh.render();
-            drawnChunks++;
+                drawnChunks++;
             }
         }
         chunkShader.unbind();
@@ -1182,8 +1224,8 @@ public class Game {
             }
         }
         waterKeys.sort((ka, kb) -> {
-            int cxa = (int)(ka >> 32), cza = (int)(ka & 0xFFFFFFFFL);
-            int cxb = (int)(kb >> 32), czb = (int)(kb & 0xFFFFFFFFL);
+            int cxa = (int) (ka >> 32), cza = (int) (ka & 0xFFFFFFFFL);
+            int cxb = (int) (kb >> 32), czb = (int) (kb & 0xFFFFFFFFL);
             float dxa = cxa * Chunk.SIZE_X + Chunk.SIZE_X * 0.5f - player.position.x;
             float dza = cza * Chunk.SIZE_Z + Chunk.SIZE_Z * 0.5f - player.position.z;
             float dxb = cxb * Chunk.SIZE_X + Chunk.SIZE_X * 0.5f - player.position.x;
@@ -1193,11 +1235,12 @@ public class Game {
             return Float.compare(distB, distA); // far first
         });
         for (Long k : waterKeys) {
-            int cx = (int)(k >> 32), cz = (int)(k & 0xFFFFFFFFL);
+            int cx = (int) (k >> 32), cz = (int) (k & 0xFFFFFFFFL);
             Matrix4f model = new Matrix4f().translate(cx * Chunk.SIZE_X, 0, cz * Chunk.SIZE_Z);
             chunkShader.setMat4("uModel", model);
             Mesh wm = waterMeshes.get(k);
-            if (wm != null) wm.render();
+            if (wm != null)
+                wm.render();
         }
         chunkShader.unbind();
         glDepthMask(true);
@@ -1230,8 +1273,8 @@ public class Game {
             int ex = (int) Math.floor(player.position.x);
             int ey = (int) Math.floor(player.position.y + 0.6f); // eye level
             int ez = (int) Math.floor(player.position.z);
-            float skyFrac   = world.getSkyLight(ex, ey, ez)         / (float) Chunk.MAX_LIGHT;
-            float blockFrac = world.getBlockLightWorld(ex, ey, ez)  / (float) Chunk.MAX_LIGHT;
+            float skyFrac = world.getSkyLight(ex, ey, ez) / (float) Chunk.MAX_LIGHT;
+            float blockFrac = world.getBlockLightWorld(ex, ey, ez) / (float) Chunk.MAX_LIGHT;
             heldItemRenderer.render(atlas, currentBlock(), window.getAspect(), currentFov,
                     equipProgress, handSwing, walkedDistance, player.eyeInWater,
                     daylight, brightness, skyFrac, blockFrac);
@@ -1266,6 +1309,53 @@ public class Game {
                         && input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 double mx = input.getCursorX(), my = input.getCursorY();
 
+                if (inWorldSelect) {
+                    if (pendingDeleteId != null) {
+                        // Find display name for the confirm message.
+                        String dn = pendingDeleteId;
+                        for (com.mineclone.save.SaveManager.WorldInfo wi : worldList)
+                            if (wi.id.equals(pendingDeleteId)) {
+                                dn = wi.displayName;
+                                break;
+                            }
+                        Hud.MenuAction da = hud.drawConfirm(w, h,
+                                "Delete \"" + dn + "\"? This cannot be undone.",
+                                "Delete", mx, my, clicked,
+                                Hud.MenuAction.DELETE_WORLD_CONFIRM);
+                        if (da == Hud.MenuAction.DELETE_WORLD_CONFIRM) {
+                            save.deleteWorld(pendingDeleteId);
+                            pendingDeleteId = null;
+                            worldList = save.listWorlds();
+                            worldSelectScroll = 0;
+                        } else if (da == Hud.MenuAction.CANCEL
+                                || input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
+                            pendingDeleteId = null;
+                        }
+                    } else {
+                        int maxScroll = Math.max(0, worldList.size() - 5);
+                        worldSelectScroll = Math.max(0, Math.min(worldSelectScroll, maxScroll));
+                        Hud.WorldSelectAction wa = hud.drawWorldSelect(
+                                w, h, mx, my, clicked, worldList, worldSelectScroll);
+                        if (wa.playId != null) {
+                            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
+                            inWorldSelect = false;
+                            startWorld(wa.playId);
+                        } else if (wa.deleteId != null) {
+                            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
+                            pendingDeleteId = wa.deleteId;
+                            swallowMouseUntilUp = true;
+                        } else if (wa.newWorld) {
+                            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
+                            inWorldSelect = false;
+                            createWorld();
+                        } else if (wa.back || input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
+                            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
+                            inWorldSelect = false;
+                        }
+                    }
+                    break;
+                }
+
                 if (inSettings) {
                     float[] sv = { renderRadius, fovDegrees, brightness, volume };
                     Hud.MenuAction a = hud.drawSettings(w, h, mx, my, down, clicked, sv);
@@ -1286,17 +1376,23 @@ public class Game {
                     break;
                 }
 
-                Hud.MenuAction a = hud.drawMainMenu(w, h, mx, my, clicked, false);
+                Hud.MenuAction a = hud.drawMainMenu(w, h, mx, my, clicked);
                 if (a != Hud.MenuAction.NONE)
                     sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
                 switch (a) {
-                    case CONTINUE -> {
-                        createWorld();
+                    case SINGLEPLAYER -> {
+                        worldList = save.listWorlds();
+                        worldSelectScroll = 0;
+                        inWorldSelect = true;
+                        swallowMouseUntilUp = true;
                     }
-                    case NEW_WORLD -> { createWorld(); swallowMouseUntilUp = true; }
-                    case SETTINGS  -> { inSettings = true; swallowMouseUntilUp = true; }
-                    case QUIT      -> GLFW.glfwSetWindowShouldClose(window.getHandle(), true);
-                    default -> { }
+                    case SETTINGS -> {
+                        inSettings = true;
+                        swallowMouseUntilUp = true;
+                    }
+                    case QUIT -> GLFW.glfwSetWindowShouldClose(window.getHandle(), true);
+                    default -> {
+                    }
                 }
             }
             case LOADING -> {
@@ -1362,10 +1458,12 @@ public class Game {
                             saveToastTimer = 1.6f;
                             sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
                         }
-                        case SETTINGS -> { inSettings = true; swallowMouseUntilUp = true; }
+                        case SETTINGS -> {
+                            inSettings = true;
+                            swallowMouseUntilUp = true;
+                        }
                         case MAIN_MENU -> {
-                            saveAll();
-                            save.flushAndAwait();
+                            unloadWorld();
                             saveToastTimer = 1.6f;
                             inSettings = false;
                             state = State.MENU;
@@ -1373,7 +1471,8 @@ public class Game {
                             swallowMouseUntilUp = true;
                         }
                         case QUIT -> GLFW.glfwSetWindowShouldClose(window.getHandle(), true);
-                        default -> { }
+                        default -> {
+                        }
                     }
                 }
             }
@@ -1498,12 +1597,15 @@ public class Game {
     }
 
     private void cleanup() {
-        if (loader != null) loader.shutdown();
+        if (loader != null)
+            loader.shutdown();
         menuBackground.destroy();
         sound.destroy();
-        for (Mesh m : chunkMeshes.values()) m.destroy();
+        for (Mesh m : chunkMeshes.values())
+            m.destroy();
         chunkMeshes.clear();
-        for (Mesh m : waterMeshes.values()) m.destroy();
+        for (Mesh m : waterMeshes.values())
+            m.destroy();
         waterMeshes.clear();
         atlas.destroy();
         chunkShader.destroy();
