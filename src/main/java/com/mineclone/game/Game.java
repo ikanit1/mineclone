@@ -243,6 +243,7 @@ public class Game {
     }
 
     private void startWorld(String id) {
+        if (world != null) unloadWorld();
         this.worldId = id;
         com.mineclone.save.LevelData lvl = save.loadLevel(id);
         long seed = (lvl != null) ? lvl.seed : new java.util.Random().nextLong();
@@ -1332,7 +1333,7 @@ public class Game {
                             pendingDeleteId = null;
                         }
                     } else {
-                        int maxScroll = Math.max(0, worldList.size() - 5);
+                        int maxScroll = Math.max(0, worldList.size() - 1);
                         worldSelectScroll = Math.max(0, Math.min(worldSelectScroll, maxScroll));
                         Hud.WorldSelectAction wa = hud.drawWorldSelect(
                                 w, h, mx, my, clicked, worldList, worldSelectScroll);
