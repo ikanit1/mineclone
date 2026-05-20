@@ -275,6 +275,9 @@ public class Game {
             worldDisplayName = "World";
         }
 
+        player.health = Player.MAX_HEALTH;
+        player.velocity.set(0, 0, 0);
+        player.lastFallDistance = 0f;
         lastHeldBlock = currentBlock();
         cursorItem = BlockType.AIR;
         player.flying = false;

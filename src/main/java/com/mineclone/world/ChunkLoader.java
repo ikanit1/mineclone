@@ -222,6 +222,12 @@ public class ChunkLoader {
     public void shutdown() {
         genPool.shutdownNow();
         meshPool.shutdownNow();
+        try {
+            genPool.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS);
+            meshPool.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private static ThreadFactory daemon(String prefix) {
