@@ -408,6 +408,20 @@ public class Hud {
             text.drawShadowed(font, sub, LIST_X + 10, ry + 36, sw, sh, 0.6f, 0.6f, 0.6f);
         }
 
+        if (worlds.isEmpty()) {
+            String msg = "No worlds yet. Click New World to start!";
+            float mw = font.textWidth(msg);
+            text.drawShadowed(font, msg, sw / 2f - mw / 2f, LIST_TOP + 50f,
+                    sw, sh, 0.7f, 0.7f, 0.7f);
+        }
+
+        if (worlds.size() > VIS_ROWS) {
+            String hint = "Scroll to see more (" + worlds.size() + " worlds)";
+            float hw = font.textWidth(hint);
+            text.drawShadowed(font, hint, sw / 2f - hw / 2f, LIST_BOT + 8f,
+                    sw, sh, 0.5f, 0.5f, 0.5f);
+        }
+
         // Bottom buttons
         float btnW = 200f, btnH = 40f;
         float btnY = sh - 70f;
