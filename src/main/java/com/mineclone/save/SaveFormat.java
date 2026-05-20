@@ -9,7 +9,7 @@ public final class SaveFormat {
     /** "MCLD" — first int of every save file. */
     public static final int MAGIC = 0x4D434C44;
 
-    public static final int LEVEL_VERSION = 3;
+    public static final int LEVEL_VERSION = 4;
     public static final int CHUNK_VERSION = 1;
     public static final int OPTIONS_VERSION = 1;
 
@@ -30,5 +30,12 @@ public final class SaveFormat {
 
     public static String chunkFileName(int cx, int cz) {
         return "c." + cx + "." + cz + ".dat";
+    }
+
+    /** Generates a filesystem-safe world folder ID based on current time. */
+    public static String newWorldId() {
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        return "world_" + now.format(
+            java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"));
     }
 }
