@@ -75,6 +75,7 @@ public class BlockBreakOverlay {
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glEnable(GL_POLYGON_OFFSET_FILL);
         glPolygonOffset(-1f, -1f);
+        glDisable(GL_CULL_FACE);
 
         shader.bind();
         shader.setMat4("uProjection", proj);
@@ -86,6 +87,7 @@ public class BlockBreakOverlay {
         glBindVertexArray(0);
         shader.unbind();
 
+        glEnable(GL_CULL_FACE);
         glPolygonOffset(0f, 0f);
         glDisable(GL_POLYGON_OFFSET_FILL);
         glDisable(GL_BLEND);
