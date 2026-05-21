@@ -1009,7 +1009,7 @@ public class Game {
     private void executeBlockBreak(int x, int y, int z, BlockType target) {
         startHandSwing();
         byte targetMeta = world.getBlockMeta(x, y, z);
-        sound.playOneOfAt(sounds.dig(target), blockSoundPosition(x, y, z),
+        sound.playOneOfAt(sounds.breakBlock(target), blockSoundPosition(x, y, z),
                 0.8f, 0.9f + 0.2f * (float) Math.random());
         world.setBlock(x, y, z, BlockType.AIR);
         float pSky = world.getSkyLight(x, y, z) / (float) com.mineclone.world.Chunk.MAX_LIGHT;

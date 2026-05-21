@@ -141,6 +141,18 @@ public final class Sounds {
         return f.exists() ? List.of(f.getAbsolutePath()) : Collections.emptyList();
     }
 
+    /**
+     * Final block-break sound — distinct from the periodic dig sound.
+     * Uses block-specific break files where available, falls back to dig().
+     */
+    public List<String> breakBlock(BlockType b) {
+        if (b == BlockType.LEAVES) {
+            List<String> s = listMatching(ROOT + "/block/azalea_leaves", "break");
+            if (!s.isEmpty()) return s;
+        }
+        return dig(b); // glass already returns glass-shatter via dig(); everything else uses material dig
+    }
+
     public List<String> hurt() {
         return listMatching(ROOT + "/damage", "hit");
     }
