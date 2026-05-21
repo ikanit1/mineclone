@@ -42,21 +42,38 @@ public class Player {
     private static final float WATER_LEDGE_PROBE = 0.22f;
     private static final float WATER_LEDGE_MAX_STEP = 1.45f;
 
+    public static final float SPRINT_SPEED = WALK_SPEED * 1.3f;  // ≈6.24 m/s
+    private static final float DOUBLE_TAP_WINDOW = 0.25f;
+
+    public boolean isSprinting = false;
+    private float wDoubleTapTimer = Float.MAX_VALUE; // MAX_VALUE = "W never pressed"
+
     public final Vector3f position = new Vector3f(8, 90, 8);
 
     public void update(float dt, World world, com.mineclone.core.Input input) {
-        update(dt, world, input, true);
+        update(dt, world, input, true, 1.0f, false);
     }
 
     public void update(float dt, World world, com.mineclone.core.Input input, boolean controlsEnabled) {
-        // mouse look
-        float sens = 0.0025f;
+        update(dt, world, input, controlsEnabled, 1.0f, false);
+    }
+
+    public void update(float dt, World world, com.mineclone.core.Input input,
+            boolean controlsEnabled, float sensitivity, boolean invertY) {
         if (controlsEnabled)
-            camera.rotate((float) (input.getDx() * sens), (float) (input.getDy() * sens));
+            checkSprintActivation(input, dt);
+
+        // mouse look
+        float sens = 0.0025f * sensitivity;
+        if (controlsEnabled)
+            camera.rotate((float) (input.getDx() * sens),
+                    (float) (input.getDy() * (invertY ? -sens : sens)));
 
         // toggle fly
-        if (controlsEnabled && input.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_F))
+        if (controlsEnabled && input.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_F)) {
             flying = !flying;
+            if (flying) isSprinting = false;
+        }
 
         // horizontal input
         Vector3f fwd = camera.forward();
@@ -80,7 +97,7 @@ public class Player {
         if (wish.lengthSquared() > 0.0001)
             wish.normalize();
 
-        float speed = flying ? flySpeed : WALK_SPEED;
+        float speed = flying ? flySpeed : (isSprinting ? SPRINT_SPEED : WALK_SPEED);
         boolean jumpDown = controlsEnabled && input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE);
 
         inWater = !flying && touchingWater(world);
@@ -128,8 +145,8 @@ public class Player {
         } else {
             // MC-подобное движение: экспоненциальное приближение к цели.
             // Сильный разгон/торможение на земле, слабый контроль в воздухе.
-            float targetX = wish.x * WALK_SPEED;
-            float targetZ = wish.z * WALK_SPEED;
+            float targetX = wish.x * speed;
+            float targetZ = wish.z * speed;
             float rate = onGround ? GROUND_ACCEL : AIR_ACCEL;
             float t = 1f - (float) Math.exp(-rate * dt);
             velocity.x += (targetX - velocity.x) * t;
@@ -273,6 +290,29 @@ public class Player {
         return true;
     }
 
+    private void checkSprintActivation(com.mineclone.core.Input input, float dt) {
+        boolean wPressed = input.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_W);
+        boolean wDown    = input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_W);
+        boolean ctrlDown = input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL);
+
+        // Double-tap W: second press within DOUBLE_TAP_WINDOW activates sprint
+        if (wPressed) {
+            if (wDoubleTapTimer < DOUBLE_TAP_WINDOW && !flying && !inWater)
+                isSprinting = true;
+            wDoubleTapTimer = 0f;
+        } else {
+            wDoubleTapTimer = Math.min(wDoubleTapTimer + dt, Float.MAX_VALUE / 2);
+        }
+
+        // Ctrl + W: immediate activation
+        if (ctrlDown && wDown && !flying && !inWater)
+            isSprinting = true;
+
+        // Cancel: W not held, or entered water/fly
+        if (!wDown || flying || inWater)
+            isSprinting = false;
+    }
+
     private void moveAxis(World world, float dx, float dy, float dz) {
         position.x += dx;
         position.y += dy;
@@ -309,9 +349,11 @@ public class Player {
                     if (dx > 0) {
                         position.x = x - hw - 1e-4f;
                         velocity.x = 0;
+                        isSprinting = false;
                     } else if (dx < 0) {
                         position.x = x + 1 + hw + 1e-4f;
                         velocity.x = 0;
+                        isSprinting = false;
                     }
                     if (dy > 0) {
                         position.y = y - HEIGHT - 1e-4f;
@@ -324,9 +366,11 @@ public class Player {
                     if (dz > 0) {
                         position.z = z - hw - 1e-4f;
                         velocity.z = 0;
+                        isSprinting = false;
                     } else if (dz < 0) {
                         position.z = z + 1 + hw + 1e-4f;
                         velocity.z = 0;
+                        isSprinting = false;
                     }
                     // recompute bounds (single resolution is enough for small dt)
                     minX = position.x - hw;
@@ -449,6 +493,8 @@ public class Player {
         inWater = false;
         eyeInWater = false;
         wasOnGround = false;
+        isSprinting = false;
+        wDoubleTapTimer = Float.MAX_VALUE;
         camera.position.set(position.x, position.y + EYE_HEIGHT, position.z);
     }
 

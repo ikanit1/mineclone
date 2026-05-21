@@ -7,6 +7,7 @@ import com.mineclone.core.Input;
 import com.mineclone.core.Window;
 import com.mineclone.render.*;
 import com.mineclone.world.*;
+import org.joml.FrustumIntersection;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.glfw.GLFW;
@@ -26,6 +27,17 @@ public class Game {
     private float lastDt = 0.016f;
     private float brightness;
     private float volume;
+    private int maxFps;
+    private boolean vsync;
+    private boolean fullscreen;
+    private boolean viewBobbing;
+    private float mouseSensitivity;
+    private boolean invertMouseY;
+    private float musicVolume;
+    private float effectsVolume;
+    private int guiScale; // 0=Auto, 1=Small(1×), 2=Normal(2×), 3=Large(3×)
+
+    private enum SettingsTab { HUB, VIDEO, CONTROLS, AUDIO }
 
     private enum State {
         MENU, LOADING, PLAYING, PAUSED, CREATIVE_MENU, DEAD
@@ -54,6 +66,7 @@ public class Game {
     private State state = State.MENU;
     private boolean showDebug = false;
     private boolean inSettings = false;
+    private SettingsTab settingsTab = SettingsTab.HUB;
 
     private static final float TIME_SCALE = 0.005f; // ~21 min real = full day/night cycle (~10.5 min day, ~10.5 min
                                                     // night)
@@ -81,6 +94,8 @@ public class Game {
 
     private final Map<Long, Mesh> chunkMeshes = new HashMap<>();
     private final Map<Long, Mesh> waterMeshes = new HashMap<>();
+    private final FrustumIntersection frustum = new FrustumIntersection();
+    private final Matrix4f scratchModel = new Matrix4f();
     private int selectedSlot = 0;
     private final BlockType[] inventory = com.mineclone.save.LevelData.defaultInventory();
     private BlockType cursorItem = BlockType.AIR;
@@ -120,11 +135,22 @@ public class Game {
         this.window = window;
         this.input = new Input(window.getHandle());
         com.mineclone.save.Options opts = save.loadOptions();
-        this.renderRadius = opts.renderRadius;
-        this.fovDegrees = opts.fovDegrees;
-        this.currentFov = opts.fovDegrees;
-        this.brightness = opts.brightness;
-        this.volume = opts.volume;
+        this.renderRadius    = opts.renderRadius;
+        this.fovDegrees      = opts.fovDegrees;
+        this.currentFov      = opts.fovDegrees;
+        this.brightness      = opts.brightness;
+        this.volume          = opts.masterVolume;
+        this.maxFps          = opts.maxFps;
+        this.vsync           = opts.vsync;
+        this.fullscreen      = opts.fullscreen;
+        this.viewBobbing     = opts.viewBobbing;
+        this.mouseSensitivity = opts.mouseSensitivity;
+        this.invertMouseY    = opts.invertMouseY;
+        this.musicVolume     = opts.musicVolume;
+        this.effectsVolume   = opts.effectsVolume;
+        this.guiScale        = opts.guiScale;
+        window.setVSync(this.vsync);
+        window.setFullscreen(this.fullscreen);
         this.menuBackground = new MenuBackground(save);
         this.atlas = new TextureAtlas(TextureAtlas.DEFAULT_PATH, regenAtlas);
         this.chunkShader = new Shader(Shaders.CHUNK_VERTEX, Shaders.CHUNK_FRAGMENT);
@@ -136,6 +162,74 @@ public class Game {
 
     private BlockType currentBlock() {
         return inventory[selectedSlot];
+    }
+
+    private com.mineclone.save.Options buildOptions() {
+        return new com.mineclone.save.Options(
+                renderRadius, fovDegrees, brightness, volume,
+                maxFps, vsync, fullscreen, viewBobbing,
+                mouseSensitivity, invertMouseY, musicVolume, effectsVolume, guiScale);
+    }
+
+    private int effectiveGuiScale() {
+        if (guiScale >= 1 && guiScale <= 3) return guiScale;
+        // Auto: 1× for ≤1080p, 2× for 1440p, 3× for 4K, capped at 4
+        int h = window.getHeight();
+        return Math.max(1, Math.min(4, h / 720));
+    }
+
+    private void drawActiveSettingsTab(int w, int h, double mx, double my,
+            boolean down, boolean clicked) {
+        Hud.MenuAction a = Hud.MenuAction.NONE;
+        switch (settingsTab) {
+            case HUB -> a = hud.drawSettingsHub(w, h, mx, my, clicked);
+            case VIDEO -> {
+                float[] sv = { renderRadius, fovDegrees, brightness,
+                        maxFps == 0 ? 260f : maxFps, guiScale };
+                boolean[] bt = { vsync, fullscreen, viewBobbing };
+                boolean prevVsync = vsync, prevFull = fullscreen;
+                a = hud.drawVideoSettings(w, h, mx, my, down, clicked, sv, bt);
+                renderRadius = Math.round(sv[0]);
+                fovDegrees   = Math.round(sv[1]);
+                brightness   = sv[2];
+                maxFps       = sv[3] >= 255f ? 0 : Math.round(sv[3]);
+                guiScale     = Math.max(0, Math.min(3, Math.round(sv[4])));
+                vsync        = bt[0]; fullscreen = bt[1]; viewBobbing = bt[2];
+                if (vsync != prevVsync)  window.setVSync(vsync);
+                if (fullscreen != prevFull) window.setFullscreen(fullscreen);
+            }
+            case CONTROLS -> {
+                float[] sv = { mouseSensitivity };
+                boolean[] bt = { invertMouseY };
+                a = hud.drawControlsSettings(w, h, mx, my, down, clicked, sv, bt);
+                mouseSensitivity = sv[0];
+                invertMouseY     = bt[0];
+            }
+            case AUDIO -> {
+                float[] sv = { volume, musicVolume, effectsVolume };
+                a = hud.drawAudioSettings(w, h, mx, my, down, clicked, sv);
+                if (sv[0] != volume)        { volume       = sv[0]; sound.setMasterVolume(volume); }
+                if (sv[1] != musicVolume)   { musicVolume   = sv[1]; sound.setMusicVolume(musicVolume); }
+                if (sv[2] != effectsVolume) { effectsVolume = sv[2]; sound.setEffectsVolume(effectsVolume); }
+            }
+        }
+        switch (a) {
+            case SETTINGS_OPEN_VIDEO    -> { settingsTab = SettingsTab.VIDEO;    swallowMouseUntilUp = true; }
+            case SETTINGS_OPEN_CONTROLS -> { settingsTab = SettingsTab.CONTROLS; swallowMouseUntilUp = true; }
+            case SETTINGS_OPEN_AUDIO    -> { settingsTab = SettingsTab.AUDIO;    swallowMouseUntilUp = true; }
+            case SETTINGS_SUB_BACK -> {
+                settingsTab = SettingsTab.HUB;
+                sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
+                swallowMouseUntilUp = true;
+            }
+            case SETTINGS_BACK -> {
+                inSettings = false;
+                settingsTab = SettingsTab.HUB;
+                save.saveOptions(buildOptions());
+                sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
+            }
+            default -> {}
+        }
     }
 
     /** Flush level.dat + every loaded chunk whose blocks changed since gen. */
@@ -167,6 +261,8 @@ public class Game {
     public void run() {
         sound.init();
         sound.setMasterVolume(volume);
+        sound.setMusicVolume(musicVolume);
+        sound.setEffectsVolume(effectsVolume);
         try {
             font = new Font(AppPaths.path("assets/minecraft.ttf"), 22f);
         } catch (java.io.IOException e) {
@@ -182,13 +278,15 @@ public class Game {
 
         double lastTime = GLFW.glfwGetTime();
         while (!window.shouldClose()) {
-            double now = GLFW.glfwGetTime();
-            float dt = (float) Math.min(0.05, now - lastTime);
-            lastTime = now;
+            double frameStart = GLFW.glfwGetTime();
+            float dt = (float) Math.min(0.05, frameStart - lastTime);
+            lastTime = frameStart;
 
             input.update();
-            if (input.keyPressed(GLFW.GLFW_KEY_F11))
+            if (input.keyPressed(GLFW.GLFW_KEY_F11)) {
                 window.toggleFullscreen();
+                fullscreen = window.isFullscreen();
+            }
 
             switch (state) {
                 case MENU -> updateMenu(dt);
@@ -204,6 +302,18 @@ public class Game {
             render();
             sound.tick();
             window.update();
+
+            if (!vsync && maxFps > 0) {
+                double target = 1.0 / maxFps;
+                double elapsed = GLFW.glfwGetTime() - frameStart;
+                if (elapsed < target) {
+                    long sleepMs = (long) ((target - elapsed) * 1000.0);
+                    if (sleepMs > 0) {
+                        try { Thread.sleep(sleepMs); }
+                        catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                    }
+                }
+            }
         }
         if (world != null) {
             saveAll();
@@ -488,7 +598,7 @@ public class Game {
 
         handleHotbar();
         updateHeldItem(dt);
-        player.update(dt, world, input);
+        player.update(dt, world, input, true, mouseSensitivity, invertMouseY);
         float landingDistance = player.lastFallDistance;
         if (landingDistance > 0.05f && !player.inWater) {
             playLandingStep(landingDistance);
@@ -573,7 +683,12 @@ public class Game {
         updateCommandToast(dt);
         if (input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
             if (inSettings) {
-                inSettings = false;
+                if (settingsTab != SettingsTab.HUB) {
+                    settingsTab = SettingsTab.HUB;
+                } else {
+                    inSettings = false;
+                    save.saveOptions(buildOptions());
+                }
             } else if (player.isDead()) {
                 state = State.DEAD;
                 input.grabCursor(false);
@@ -706,7 +821,7 @@ public class Game {
         loader.drainLightFlood(8);
         for (ChunkLoader.Ready r : loader.drainReady(8)) {
             int cx = (int) (r.key >> 32);
-            int cz = (int) r.key;
+            int cz = (int) (r.key & 0xFFFFFFFFL);
             if (world.getChunkIfExists(cx, cz) == null) {
                 loader.forget(r.key);
                 continue;
@@ -1175,7 +1290,9 @@ public class Game {
         glClearColor(sky.x, sky.y, sky.z, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        float targetFov = player.eyeInWater ? fovDegrees * 0.85f : fovDegrees;
+        float targetFov = player.eyeInWater  ? fovDegrees * 0.85f
+                : player.isSprinting ? fovDegrees + 10f
+                : fovDegrees;
         currentFov += (targetFov - currentFov) * (1f - (float) Math.exp(-lastDt * 8f));
         Matrix4f proj = player.camera.getProjection(window.getAspect(), currentFov, 0.1f, 600f);
         Matrix4f view = player.camera.getView();
@@ -1207,14 +1324,18 @@ public class Game {
 
         glPolygonMode(GL_FRONT_AND_BACK, wireframe ? GL_LINE : GL_FILL);
         glDisable(GL_BLEND);
+        proj.mul(view, scratchModel);
+        frustum.set(scratchModel);
         drawnChunks = 0;
         for (int cx = pcx - renderRadius; cx <= pcx + renderRadius; cx++) {
             for (int cz = pcz - renderRadius; cz <= pcz + renderRadius; cz++) {
+                float wx = cx * Chunk.SIZE_X, wz = cz * Chunk.SIZE_Z;
+                if (!frustum.testAab(wx, 0, wz, wx + Chunk.SIZE_X, Chunk.SIZE_Y, wz + Chunk.SIZE_Z))
+                    continue;
                 Mesh mesh = chunkMeshes.get(World.key(cx, cz));
                 if (mesh == null)
                     continue;
-                Matrix4f model = new Matrix4f().translate(cx * Chunk.SIZE_X, 0, cz * Chunk.SIZE_Z);
-                chunkShader.setMat4("uModel", model);
+                chunkShader.setMat4("uModel", scratchModel.translation(wx, 0, wz));
                 mesh.render();
                 drawnChunks++;
             }
@@ -1242,6 +1363,9 @@ public class Game {
         List<Long> waterKeys = new ArrayList<>();
         for (int cx = pcx - renderRadius; cx <= pcx + renderRadius; cx++) {
             for (int cz = pcz - renderRadius; cz <= pcz + renderRadius; cz++) {
+                float wx = cx * Chunk.SIZE_X, wz = cz * Chunk.SIZE_Z;
+                if (!frustum.testAab(wx, 0, wz, wx + Chunk.SIZE_X, Chunk.SIZE_Y, wz + Chunk.SIZE_Z))
+                    continue;
                 long key = World.key(cx, cz);
                 if (waterMeshes.containsKey(key))
                     waterKeys.add(key);
@@ -1260,8 +1384,7 @@ public class Game {
         });
         for (Long k : waterKeys) {
             int cx = (int) (k >> 32), cz = (int) (k & 0xFFFFFFFFL);
-            Matrix4f model = new Matrix4f().translate(cx * Chunk.SIZE_X, 0, cz * Chunk.SIZE_Z);
-            chunkShader.setMat4("uModel", model);
+            chunkShader.setMat4("uModel", scratchModel.translation(cx * Chunk.SIZE_X, 0, cz * Chunk.SIZE_Z));
             Mesh wm = waterMeshes.get(k);
             if (wm != null)
                 wm.render();
@@ -1300,7 +1423,7 @@ public class Game {
             float skyFrac = world.getSkyLight(ex, ey, ez) / (float) Chunk.MAX_LIGHT;
             float blockFrac = world.getBlockLightWorld(ex, ey, ez) / (float) Chunk.MAX_LIGHT;
             heldItemRenderer.render(atlas, currentBlock(), window.getAspect(), currentFov,
-                    equipProgress, handSwing, walkedDistance, player.eyeInWater,
+                    equipProgress, handSwing, walkedDistance, player.eyeInWater, viewBobbing,
                     daylight, brightness, skyFrac, blockFrac);
         }
 
@@ -1311,6 +1434,8 @@ public class Game {
         if (hud == null)
             return;
         int w = window.getWidth(), h = window.getHeight();
+        int scale = effectiveGuiScale();
+        int vw = w / scale, vh = h / scale;
 
         // fps sampling
         fpsFrames++;
@@ -1331,14 +1456,14 @@ public class Game {
                         && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 boolean down = !swallowMouseUntilUp
                         && input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                double mx = input.getCursorX(), my = input.getCursorY();
+                double mx = input.getCursorX() / scale, my = input.getCursorY() / scale;
 
                 if (inWorldSelect) {
                     if (renamingWorldId != null) {
                         String rdn = renamingWorldId;
                         for (com.mineclone.save.SaveManager.WorldInfo wi : worldList)
                             if (wi.id.equals(renamingWorldId)) { rdn = wi.displayName; break; }
-                        Hud.MenuAction ra = hud.drawRenameDialog(w, h, rdn,
+                        Hud.MenuAction ra = hud.drawRenameDialog(vw, vh, rdn,
                                 renameBuffer.toString(), mx, my, clicked);
                         if (ra == Hud.MenuAction.SAVE)   applyRename();
                         else if (ra == Hud.MenuAction.CANCEL) renamingWorldId = null;
@@ -1349,7 +1474,7 @@ public class Game {
                         String dn = pendingDeleteId;
                         for (com.mineclone.save.SaveManager.WorldInfo wi : worldList)
                             if (wi.id.equals(pendingDeleteId)) { dn = wi.displayName; break; }
-                        Hud.MenuAction da = hud.drawConfirm(w, h,
+                        Hud.MenuAction da = hud.drawConfirm(vw, vh,
                                 "Delete \"" + dn + "\"? This cannot be undone.",
                                 "Delete", mx, my, clicked,
                                 Hud.MenuAction.DELETE_WORLD_CONFIRM);
@@ -1367,7 +1492,7 @@ public class Game {
                         int maxScroll = Math.max(0, worldList.size() - 1);
                         worldSelectScroll = Math.max(0, Math.min(worldSelectScroll, maxScroll));
                         Hud.WorldSelectAction wa = hud.drawWorldSelect(
-                                w, h, mx, my, clicked, worldList, worldSelectScroll, selectedWorldId);
+                                vw, vh, mx, my, clicked, worldList, worldSelectScroll, selectedWorldId);
                         if (wa.playId != null) {
                             sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
                             inWorldSelect = false;
@@ -1403,26 +1528,22 @@ public class Game {
                 }
 
                 if (inSettings) {
-                    float[] sv = { renderRadius, fovDegrees, brightness, volume };
-                    Hud.MenuAction a = hud.drawSettings(w, h, mx, my, down, clicked, sv);
-                    renderRadius = Math.round(sv[0]);
-                    fovDegrees = Math.round(sv[1]);
-                    brightness = sv[2];
-                    if (sv[3] != volume) {
-                        volume = sv[3];
-                        sound.setMasterVolume(volume);
-                    }
-                    boolean escBack = input.keyPressed(GLFW.GLFW_KEY_ESCAPE);
-                    if (a == Hud.MenuAction.SETTINGS_BACK || escBack) {
-                        inSettings = false;
-                        save.saveOptions(new com.mineclone.save.Options(
-                                renderRadius, fovDegrees, brightness, volume));
-                        sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
+                    drawActiveSettingsTab(vw, vh, mx, my, down, clicked);
+                    if (input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
+                        if (settingsTab != SettingsTab.HUB) {
+                            settingsTab = SettingsTab.HUB;
+                            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
+                        } else {
+                            inSettings = false;
+                            settingsTab = SettingsTab.HUB;
+                            save.saveOptions(buildOptions());
+                            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
+                        }
                     }
                     break;
                 }
 
-                Hud.MenuAction a = hud.drawMainMenu(w, h, mx, my, clicked);
+                Hud.MenuAction a = hud.drawMainMenu(vw, vh, mx, my, clicked);
                 if (a != Hud.MenuAction.NONE)
                     sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
                 switch (a) {
@@ -1435,6 +1556,7 @@ public class Game {
                     }
                     case SETTINGS -> {
                         inSettings = true;
+                        settingsTab = SettingsTab.HUB;
                         swallowMouseUntilUp = true;
                     }
                     case QUIT -> GLFW.glfwSetWindowShouldClose(window.getHandle(), true);
@@ -1443,14 +1565,14 @@ public class Game {
                 }
             }
             case LOADING -> {
-                hud.drawLoading(w, h, loadingVisualProgress, loadingTimer);
+                hud.drawLoading(vw, vh, loadingVisualProgress, loadingTimer);
             }
             case PLAYING -> {
                 if (player.eyeInWater && hud != null)
-                    hud.drawWaterOverlay(w, h);
-                crosshair.render(w, h);
-                hud.drawHotbar(w, h, inventory, selectedSlot);
-                hud.drawHearts(w, h, player.health);
+                    hud.drawWaterOverlay(vw, vh);
+                crosshair.render(vw, vh);
+                hud.drawHotbar(vw, vh, inventory, selectedSlot);
+                hud.drawHearts(vw, vh, player.health);
                 if (showDebug) {
                     int pcx = (int) Math.floor(player.position.x / Chunk.SIZE_X);
                     int pcz = (int) Math.floor(player.position.z / Chunk.SIZE_Z);
@@ -1461,38 +1583,24 @@ public class Game {
                     int bz = (int) Math.floor(player.position.z);
                     int skyL = world.getSkyLight(bx, by, bz);
                     int blkL = world.getBlockLightWorld(bx, by, bz);
-                    hud.drawDebug(w, h, fpsCurrent, player.position, pcx, pcz,
+                    hud.drawDebug(vw, vh, fpsCurrent, player.position, pcx, pcz,
                             countLoadedChunks(), drawnChunks, tgt, tgtMeta, wireframe, skyL, blkL);
                 }
                 if (consoleOpen)
-                    hud.drawConsole(w, h, consoleLine.toString());
+                    hud.drawConsole(vw, vh, consoleLine.toString());
             }
             case PAUSED -> {
-                hud.drawHotbar(w, h, inventory, selectedSlot);
-                hud.drawHearts(w, h, player.health);
+                hud.drawHotbar(vw, vh, inventory, selectedSlot);
+                hud.drawHearts(vw, vh, player.health);
                 boolean clicked = !swallowMouseUntilUp
                         && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 boolean down = !swallowMouseUntilUp
                         && input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                double mx = input.getCursorX(), my = input.getCursorY();
+                double mx = input.getCursorX() / scale, my = input.getCursorY() / scale;
                 if (inSettings) {
-                    float[] sv = { renderRadius, fovDegrees, brightness, volume };
-                    Hud.MenuAction a = hud.drawSettings(w, h, mx, my, down, clicked, sv);
-                    renderRadius = Math.round(sv[0]);
-                    fovDegrees = Math.round(sv[1]);
-                    brightness = sv[2];
-                    if (sv[3] != volume) {
-                        volume = sv[3];
-                        sound.setMasterVolume(volume);
-                    }
-                    if (a == Hud.MenuAction.SETTINGS_BACK) {
-                        inSettings = false;
-                        save.saveOptions(new com.mineclone.save.Options(
-                                renderRadius, fovDegrees, brightness, volume));
-                        sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
-                    }
+                    drawActiveSettingsTab(vw, vh, mx, my, down, clicked);
                 } else {
-                    Hud.MenuAction a = hud.drawPauseMenu(w, h, mx, my, clicked);
+                    Hud.MenuAction a = hud.drawPauseMenu(vw, vh, mx, my, clicked);
                     if (a != Hud.MenuAction.NONE)
                         sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
                     switch (a) {
@@ -1524,12 +1632,12 @@ public class Game {
                 }
             }
             case CREATIVE_MENU -> {
-                hud.drawHotbar(w, h, inventory, selectedSlot);
-                hud.drawHearts(w, h, player.health);
+                hud.drawHotbar(vw, vh, inventory, selectedSlot);
+                hud.drawHearts(vw, vh, player.health);
                 boolean clicked = input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 boolean rightClicked = input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
-                double mx = input.getCursorX(), my = input.getCursorY();
-                Hud.InventoryAction action = hud.drawInventory(w, h, mx, my, clicked, rightClicked,
+                double mx = input.getCursorX() / scale, my = input.getCursorY() / scale;
+                Hud.InventoryAction action = hud.drawInventory(vw, vh, mx, my, clicked, rightClicked,
                         inventory, selectedSlot, cursorItem);
                 if (action.paletteItem != null) {
                     cursorItem = action.paletteItem;
@@ -1547,11 +1655,11 @@ public class Game {
                 }
             }
             case DEAD -> {
-                hud.drawHearts(w, h, player.health);
+                hud.drawHearts(vw, vh, player.health);
                 boolean clicked = !swallowMouseUntilUp
                         && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                double mx = input.getCursorX(), my = input.getCursorY();
-                Hud.MenuAction a = hud.drawDeathScreen(w, h, mx, my, clicked);
+                double mx = input.getCursorX() / scale, my = input.getCursorY() / scale;
+                Hud.MenuAction a = hud.drawDeathScreen(vw, vh, mx, my, clicked);
                 if (a == Hud.MenuAction.RESPAWN) {
                     respawnPlayer();
                     state = State.PLAYING;
@@ -1565,33 +1673,33 @@ public class Game {
             String msg = "Saved";
             float mw = font.textWidth(msg);
             float a = Math.min(1f, saveToastTimer / 0.4f);
-            ui.begin(w, h);
-            ui.quad(w / 2f - mw / 2f - 12f, 32f, mw + 24f, font.getPixelHeight() + 16f,
+            ui.begin(vw, vh);
+            ui.quad(vw / 2f - mw / 2f - 12f, 32f, mw + 24f, font.getPixelHeight() + 16f,
                     0f, 0f, 0f, 0.55f * a);
             ui.end();
-            text.draw(font, msg, w / 2f - mw / 2f, 50f + font.getPixelHeight() * 0.5f,
-                    w, h, 0.55f, 1f, 0.55f, a);
+            text.draw(font, msg, vw / 2f - mw / 2f, 50f + font.getPixelHeight() * 0.5f,
+                    vw, vh, 0.55f, 1f, 0.55f, a);
         }
 
         if (commandToastTimer > 0f && font != null && !commandToast.isEmpty()) {
             float mw = font.textWidth(commandToast);
             float a = Math.min(1f, commandToastTimer / 0.35f);
             float y = saveToastTimer > 0f ? 82f : 32f;
-            ui.begin(w, h);
-            ui.quad(w / 2f - mw / 2f - 12f, y, mw + 24f, font.getPixelHeight() + 16f,
+            ui.begin(vw, vh);
+            ui.quad(vw / 2f - mw / 2f - 12f, y, mw + 24f, font.getPixelHeight() + 16f,
                     0f, 0f, 0f, 0.55f * a);
             ui.end();
-            text.draw(font, commandToast, w / 2f - mw / 2f,
+            text.draw(font, commandToast, vw / 2f - mw / 2f,
                     y + 18f + font.getPixelHeight() * 0.5f,
-                    w, h, 0.85f, 0.95f, 1f, a);
+                    vw, vh, 0.85f, 0.95f, 1f, a);
         }
 
         if (commandHelpTimer > 0f && font != null) {
-            drawCommandHelp(w, h);
+            drawCommandHelp(vw, vh);
         }
 
         // always show version label
-        hud.drawVersionLabel(w, h);
+        hud.drawVersionLabel(vw, vh);
     }
 
     private void drawCommandHelp(int w, int h) {
