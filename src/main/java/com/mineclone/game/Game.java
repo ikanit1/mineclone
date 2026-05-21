@@ -88,6 +88,7 @@ public class Game {
     private boolean wasInWater = false;
     private float waterFlowSoundTimer = 0f;
     private boolean wireframe = false;
+    private boolean instantBreak = false;
     private boolean consoleOpen = false;
     private final StringBuilder consoleLine = new StringBuilder();
     private static final int CHUNK_UNLOAD_MARGIN = 3;
@@ -920,8 +921,17 @@ public class Game {
                     world.getBlock(lastHit.x, lastHit.y, lastHit.z), (byte) ((m + 1) & 0x0F));
         }
 
-        // --- Left mouse: hold-to-break ---
-        if (input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
+        // --- Left mouse: break ---
+        if (instantBreak) {
+            if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
+                BlockType target = world.getBlock(lastHit.x, lastHit.y, lastHit.z);
+                if (target.hardness > 0f && target.hardness < Float.MAX_VALUE) {
+                    startHandSwing();
+                    executeBlockBreak(lastHit.x, lastHit.y, lastHit.z, target);
+                }
+            }
+            resetBreakState();
+        } else if (input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
             BlockType target = world.getBlock(lastHit.x, lastHit.y, lastHit.z);
             if (target.hardness > 0f && target.hardness < Float.MAX_VALUE) {
                 if (breakX == lastHit.x && breakY == lastHit.y && breakZ == lastHit.z) {
@@ -1077,6 +1087,11 @@ public class Game {
                             world.setBlock(cx + dx, cy, cz + dz, fill);
                 }
                 case "/debug" -> showDebug = !showDebug;
+                case "/instamine" -> {
+                    instantBreak = !instantBreak;
+                    resetBreakState();
+                    showCommandToast(instantBreak ? "Instamine ON" : "Instamine OFF");
+                }
             }
         } catch (NumberFormatException e) {
             showCommandToast("Invalid number");
@@ -1778,6 +1793,7 @@ public class Game {
                 "/fly",
                 "/speed <value>",
                 "/fill <block> [radius]",
+                "/instamine",
                 "/debug"
         };
         float lineH = font.getPixelHeight() + 5f;
