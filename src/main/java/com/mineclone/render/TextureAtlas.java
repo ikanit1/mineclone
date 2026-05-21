@@ -77,11 +77,16 @@ public class TextureAtlas {
             "heart_empty",    // 34
             "heart_full",     // 35
             "heart_half",     // 36
+            // Crack overlay stages 0-9 (mining progress)
+            "crack_0", "crack_1", "crack_2", "crack_3", "crack_4",
+            "crack_5", "crack_6", "crack_7", "crack_8", "crack_9",
     };
 
     /** First tile index of the water_flow animation strip (16 frames). */
     public static final int WATER_FLOW_FRAME0 = 17;
     public static final int WATER_FLOW_FRAMES = 16;
+    /** First tile index of the crack overlay animation strip (10 stages). */
+    public static final int CRACK_TILE_0 = 37;
 
     private final int textureId;
 

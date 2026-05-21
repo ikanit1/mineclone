@@ -157,6 +157,7 @@ public class Game {
         this.heldItemRenderer = new HeldItemRenderer();
         this.crosshair = new Crosshair();
         this.outline = new BlockOutline();
+        this.breakOverlay = new BlockBreakOverlay();
         this.skyRenderer = new SkyRenderer();
     }
 
@@ -485,6 +486,7 @@ public class Game {
         chunkMeshes.clear();
         waterMeshes.clear();
         WaterSimulator.reset();
+        resetBreakState();
         world = null;
         mesher = null;
         loader = null;
@@ -656,7 +658,7 @@ public class Game {
         }
         updateFootsteps();
         ensureChunksLoaded();
-        handleInteraction();
+        handleInteraction(dt);
         updateActiveWorld(dt);
     }
 
@@ -878,89 +880,129 @@ public class Game {
     }
 
     private Raycaster.Hit lastHit = null;
+    private static final int NO_BREAK = Integer.MIN_VALUE;
+    private int breakX = NO_BREAK, breakY = NO_BREAK, breakZ = NO_BREAK;
+    private float breakProgress = 0f;
+    private float breakDigTimer = 0f;
+    private BlockBreakOverlay breakOverlay;
 
-    private void handleInteraction() {
+    private void handleInteraction(float dt) {
         Vector3f origin = new Vector3f(player.camera.position);
         Vector3f dir = player.camera.forward();
         lastHit = Raycaster.cast(world, origin, dir, 6f);
 
-        if (lastHit != null) {
-            // Debug stick: middle click cycles block metadata
-            if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_MIDDLE)) {
-                byte m = world.getBlockMeta(lastHit.x, lastHit.y, lastHit.z);
-                world.setBlock(lastHit.x, lastHit.y, lastHit.z,
-                        world.getBlock(lastHit.x, lastHit.y, lastHit.z), (byte) ((m + 1) & 0x0F));
-            }
-            if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
-                startHandSwing();
-                BlockType target = world.getBlock(lastHit.x, lastHit.y, lastHit.z);
-                if (target != BlockType.BEDROCK) {
-                    byte targetMeta = world.getBlockMeta(lastHit.x, lastHit.y, lastHit.z);
-                    sound.playOneOfAt(sounds.dig(target), blockSoundPosition(lastHit.x, lastHit.y, lastHit.z),
-                            0.8f, 0.9f + 0.2f * (float) Math.random());
-                    world.setBlock(lastHit.x, lastHit.y, lastHit.z, BlockType.AIR);
-                    // Sample light in the now-air cell so debris is shaded
-                    // like the surrounding world, not statically bright.
-                    float pSky = world.getSkyLight(lastHit.x, lastHit.y, lastHit.z)
-                            / (float) Chunk.MAX_LIGHT;
-                    float pBlk = world.getBlockLightWorld(lastHit.x, lastHit.y, lastHit.z)
-                            / (float) Chunk.MAX_LIGHT;
-                    particles.emitBlockBreak(lastHit.x, lastHit.y, lastHit.z,
-                            target.particleColor, target.sideTile, pSky, pBlk);
-                    // Remove the other half of a 2-block door
-                    if (target == BlockType.DOOR_CLOSED || target == BlockType.DOOR_OPEN) {
-                        int otherY = ((targetMeta & 0x4) != 0) ? lastHit.y - 1 : lastHit.y + 1;
-                        BlockType other = world.getBlock(lastHit.x, otherY, lastHit.z);
-                        if (other == BlockType.DOOR_CLOSED || other == BlockType.DOOR_OPEN)
-                            world.setBlock(lastHit.x, otherY, lastHit.z, BlockType.AIR);
+        if (lastHit == null) {
+            resetBreakState();
+            return;
+        }
+
+        // Debug stick: middle click cycles block metadata
+        if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_MIDDLE)) {
+            byte m = world.getBlockMeta(lastHit.x, lastHit.y, lastHit.z);
+            world.setBlock(lastHit.x, lastHit.y, lastHit.z,
+                    world.getBlock(lastHit.x, lastHit.y, lastHit.z), (byte) ((m + 1) & 0x0F));
+        }
+
+        // --- Left mouse: hold-to-break ---
+        if (input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
+            BlockType target = world.getBlock(lastHit.x, lastHit.y, lastHit.z);
+            if (target.hardness > 0f && target.hardness < Float.MAX_VALUE) {
+                if (breakX == lastHit.x && breakY == lastHit.y && breakZ == lastHit.z) {
+                    // Accumulate progress on the same block
+                    breakProgress += dt / target.hardness;
+                    breakDigTimer -= dt;
+                    if (breakDigTimer <= 0f) {
+                        startHandSwing();
+                        sound.playOneOfAt(sounds.dig(target),
+                                blockSoundPosition(lastHit.x, lastHit.y, lastHit.z),
+                                0.8f, 0.9f + 0.2f * (float) Math.random());
+                        breakDigTimer = 0.4f;
                     }
-                }
-            }
-            if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT)) {
-                startHandSwing();
-                BlockType target = world.getBlock(lastHit.x, lastHit.y, lastHit.z);
-                if (target == BlockType.DOOR_CLOSED || target == BlockType.DOOR_OPEN) {
-                    byte m = world.getBlockMeta(lastHit.x, lastHit.y, lastHit.z);
-                    BlockType next = (target == BlockType.DOOR_CLOSED) ? BlockType.DOOR_OPEN : BlockType.DOOR_CLOSED;
-                    world.setBlock(lastHit.x, lastHit.y, lastHit.z, next, m);
-                    // Toggle the other half too
-                    int otherY = ((m & 0x4) != 0) ? lastHit.y - 1 : lastHit.y + 1;
-                    BlockType other = world.getBlock(lastHit.x, otherY, lastHit.z);
-                    if (other == BlockType.DOOR_CLOSED || other == BlockType.DOOR_OPEN) {
-                        byte om = world.getBlockMeta(lastHit.x, otherY, lastHit.z);
-                        world.setBlock(lastHit.x, otherY, lastHit.z, next, om);
+                    if (breakProgress >= 1f) {
+                        executeBlockBreak(lastHit.x, lastHit.y, lastHit.z, target);
+                        resetBreakState();
                     }
-                    sound.playOneOfAt(sounds.doorToggle(), blockSoundPosition(lastHit.x, lastHit.y, lastHit.z),
-                            0.8f, 0.95f + 0.1f * (float) Math.random());
                 } else {
-                    int px = lastHit.x + lastHit.nx;
-                    int py = lastHit.y + lastHit.ny;
-                    int pz = lastHit.z + lastHit.nz;
-                    if (!playerOccupies(px, py, pz)) {
-                        BlockType placing = currentBlock();
-                        if (placing == null || placing == BlockType.AIR)
-                            return;
-                        byte meta = 0;
-                        if (placing == BlockType.DOOR_CLOSED) {
-                            meta = facingFromCamera();
-                            // Place 2-block door: bottom + top
-                            if (world.getBlock(px, py + 1, pz) == BlockType.AIR
-                                    && !playerOccupies(px, py + 1, pz)) {
-                                sound.playOneOfAt(sounds.place(placing), blockSoundPosition(px, py, pz),
-                                        0.8f, 0.85f + 0.2f * (float) Math.random());
-                                world.setBlock(px, py, pz, BlockType.DOOR_CLOSED, meta);
-                                world.setBlock(px, py + 1, pz, BlockType.DOOR_CLOSED, (byte) (meta | 0x4));
-                            }
-                        } else {
-                            if (placing == BlockType.STAIRS)
-                                meta = stairFacingFromCamera();
+                    // New target block
+                    breakX = lastHit.x; breakY = lastHit.y; breakZ = lastHit.z;
+                    breakProgress = 0f;
+                    breakDigTimer = 0f;
+                }
+            } else {
+                resetBreakState();
+            }
+        } else {
+            resetBreakState();
+        }
+
+        // --- Right mouse: place / interact (unchanged) ---
+        if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT)) {
+            startHandSwing();
+            BlockType target = world.getBlock(lastHit.x, lastHit.y, lastHit.z);
+            if (target == BlockType.DOOR_CLOSED || target == BlockType.DOOR_OPEN) {
+                byte m = world.getBlockMeta(lastHit.x, lastHit.y, lastHit.z);
+                BlockType next = (target == BlockType.DOOR_CLOSED) ? BlockType.DOOR_OPEN : BlockType.DOOR_CLOSED;
+                world.setBlock(lastHit.x, lastHit.y, lastHit.z, next, m);
+                // Toggle the other half too
+                int otherY = ((m & 0x4) != 0) ? lastHit.y - 1 : lastHit.y + 1;
+                BlockType other = world.getBlock(lastHit.x, otherY, lastHit.z);
+                if (other == BlockType.DOOR_CLOSED || other == BlockType.DOOR_OPEN) {
+                    byte om = world.getBlockMeta(lastHit.x, otherY, lastHit.z);
+                    world.setBlock(lastHit.x, otherY, lastHit.z, next, om);
+                }
+                sound.playOneOfAt(sounds.doorToggle(), blockSoundPosition(lastHit.x, lastHit.y, lastHit.z),
+                        0.8f, 0.95f + 0.1f * (float) Math.random());
+            } else {
+                int px = lastHit.x + lastHit.nx;
+                int py = lastHit.y + lastHit.ny;
+                int pz = lastHit.z + lastHit.nz;
+                if (!playerOccupies(px, py, pz)) {
+                    BlockType placing = currentBlock();
+                    if (placing == null || placing == BlockType.AIR)
+                        return;
+                    byte meta = 0;
+                    if (placing == BlockType.DOOR_CLOSED) {
+                        meta = facingFromCamera();
+                        // Place 2-block door: bottom + top
+                        if (world.getBlock(px, py + 1, pz) == BlockType.AIR
+                                && !playerOccupies(px, py + 1, pz)) {
                             sound.playOneOfAt(sounds.place(placing), blockSoundPosition(px, py, pz),
                                     0.8f, 0.85f + 0.2f * (float) Math.random());
-                            world.setBlock(px, py, pz, placing, meta);
+                            world.setBlock(px, py, pz, BlockType.DOOR_CLOSED, meta);
+                            world.setBlock(px, py + 1, pz, BlockType.DOOR_CLOSED, (byte) (meta | 0x4));
                         }
+                    } else {
+                        if (placing == BlockType.STAIRS)
+                            meta = stairFacingFromCamera();
+                        sound.playOneOfAt(sounds.place(placing), blockSoundPosition(px, py, pz),
+                                0.8f, 0.85f + 0.2f * (float) Math.random());
+                        world.setBlock(px, py, pz, placing, meta);
                     }
                 }
             }
+        }
+    }
+
+    private void resetBreakState() {
+        breakX = NO_BREAK; breakY = NO_BREAK; breakZ = NO_BREAK;
+        breakProgress = 0f;
+        breakDigTimer = 0f;
+    }
+
+    private void executeBlockBreak(int x, int y, int z, BlockType target) {
+        startHandSwing();
+        byte targetMeta = world.getBlockMeta(x, y, z);
+        sound.playOneOfAt(sounds.dig(target), blockSoundPosition(x, y, z),
+                0.8f, 0.9f + 0.2f * (float) Math.random());
+        world.setBlock(x, y, z, BlockType.AIR);
+        float pSky = world.getSkyLight(x, y, z) / (float) com.mineclone.world.Chunk.MAX_LIGHT;
+        float pBlk = world.getBlockLightWorld(x, y, z) / (float) com.mineclone.world.Chunk.MAX_LIGHT;
+        particles.emitBlockBreak(x, y, z, target.particleColor, target.sideTile, pSky, pBlk);
+        if (target == BlockType.DOOR_CLOSED || target == BlockType.DOOR_OPEN) {
+            int otherY = ((targetMeta & 0x4) != 0) ? y - 1 : y + 1;
+            BlockType other = world.getBlock(x, otherY, z);
+            if (other == BlockType.DOOR_CLOSED || other == BlockType.DOOR_OPEN)
+                world.setBlock(x, otherY, z, BlockType.AIR);
         }
     }
 
@@ -1411,6 +1453,11 @@ public class Game {
             }
         }
 
+        if (state == State.PLAYING && breakX != NO_BREAK && breakProgress > 0f) {
+            int stage = Math.min(9, (int) (breakProgress * 10f));
+            breakOverlay.render(proj, view, breakX, breakY, breakZ, stage, atlas);
+        }
+
         Vector3f camRight = player.camera.right();
         Vector3f camUp = new Vector3f(camRight).cross(player.camera.forward()).normalize();
         particles.render(proj, view, camRight, camUp, atlas,
@@ -1767,6 +1814,7 @@ public class Game {
         heldItemRenderer.destroy();
         crosshair.destroy();
         outline.destroy();
+        breakOverlay.destroy();
         skyRenderer.destroy();
         particles.destroy();
         if (ui != null)

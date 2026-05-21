@@ -250,4 +250,29 @@ public final class Shaders {
             FragColor = vec4(t.rgb * uColor.rgb, t.a * uColor.a);
         }
         """;
+
+    public static final String CRACK_VERTEX = """
+        #version 330 core
+        layout (location = 0) in vec3 aPos;
+        layout (location = 1) in vec2 aUv;
+        uniform mat4 uProjection;
+        uniform mat4 uView;
+        out vec2 vUv;
+        void main() {
+            gl_Position = uProjection * uView * vec4(aPos, 1.0);
+            vUv = aUv;
+        }
+        """;
+
+    public static final String CRACK_FRAGMENT = """
+        #version 330 core
+        in vec2 vUv;
+        uniform sampler2D uAtlas;
+        out vec4 FragColor;
+        void main() {
+            vec4 col = texture(uAtlas, vUv);
+            if (col.a < 0.01) discard;
+            FragColor = col;
+        }
+        """;
 }
