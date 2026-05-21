@@ -141,6 +141,15 @@ public final class Sounds {
         return f.exists() ? List.of(f.getAbsolutePath()) : Collections.emptyList();
     }
 
+    public List<String> hurt() {
+        return listMatching(ROOT + "/damage", "hit");
+    }
+
+    public List<String> playerDeath() {
+        File f = AppPaths.file(ROOT + "/random/classic_hurt.ogg");
+        return f.exists() ? List.of(f.getAbsolutePath()) : Collections.emptyList();
+    }
+
     public List<String> doorToggle() {
         List<String> out = new ArrayList<>();
         File open = AppPaths.file(ROOT + "/random/door_open.ogg");

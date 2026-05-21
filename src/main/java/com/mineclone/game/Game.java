@@ -571,11 +571,13 @@ public class Game {
         }
 
         if (input.keyPressed(GLFW.GLFW_KEY_E)) {
+            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
             state = State.CREATIVE_MENU;
             input.grabCursor(false);
             return;
         }
         if (input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
+            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
             state = State.PAUSED;
             saveAll();
             input.grabCursor(false);
@@ -601,11 +603,21 @@ public class Game {
         handleHotbar();
         updateHeldItem(dt);
         player.update(dt, world, input, true, mouseSensitivity, invertMouseY);
+        if (player.justJumped) {
+            int jbx = (int) Math.floor(player.position.x);
+            int jby = (int) Math.floor(player.position.y - 0.1f);
+            int jbz = (int) Math.floor(player.position.z);
+            BlockType jumpUnder = world.getBlock(jbx, jby, jbz);
+            java.util.List<String> jumpSnd = sounds.step(jumpUnder);
+            if (!jumpSnd.isEmpty())
+                sound.playOneOfAt(jumpSnd, playerSoundPosition(), 0.35f, 1.05f + 0.1f * (float) Math.random());
+        }
         float landingDistance = player.lastFallDistance;
         if (landingDistance > 0.05f && !player.inWater) {
             playLandingStep(landingDistance);
         }
         if (player.lastFallDamage > 0f) {
+            sound.playOneOfAt(sounds.hurt(), playerSoundPosition(), 0.8f, 0.9f + 0.1f * (float) Math.random());
             if (player.lastFallDamage >= 4f)
                 sound.playOneOfAt(sounds.fallBig(), playerSoundPosition(), 0.9f, 0.95f + 0.1f * (float) Math.random());
             else
@@ -627,6 +639,7 @@ public class Game {
         }
         player.lastFallDistance = 0f;
         if (player.isDead()) {
+            sound.playOneOf(sounds.playerDeath(), 0.9f, 0.95f + 0.1f * (float) Math.random());
             state = State.DEAD;
             input.grabCursor(false);
             return;
@@ -644,6 +657,9 @@ public class Game {
             float skyF = world.getSkyLight(bx, by, bz) / (float) Chunk.MAX_LIGHT;
             float blkF = world.getBlockLightWorld(bx, by, bz) / (float) Chunk.MAX_LIGHT;
             particles.emitWaterSplash(player.position.x, player.position.y + 0.5f, player.position.z, skyF, blkF);
+        }
+        if (!player.inWater && wasInWater) {
+            sound.playOneOfAt(sounds.waterSplash(), playerSoundPosition(), 0.5f, 0.9f + 0.1f * (float) Math.random());
         }
         wasInWater = player.inWater;
         waterFlowSoundTimer -= dt;
@@ -710,6 +726,7 @@ public class Game {
     private void updateCreativeMenu(float dt) {
         updateCommandToast(dt);
         if (input.keyPressed(GLFW.GLFW_KEY_E) || input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
+            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
             state = State.PLAYING;
             input.grabCursor(true);
             return;

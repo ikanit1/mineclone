@@ -47,6 +47,7 @@ public class Player {
 
     public boolean isSprinting = false;
     private float wDoubleTapTimer = Float.MAX_VALUE; // MAX_VALUE = "W never pressed"
+    public boolean justJumped = false;
 
     public final Vector3f position = new Vector3f(8, 90, 8);
 
@@ -60,6 +61,7 @@ public class Player {
 
     public void update(float dt, World world, com.mineclone.core.Input input,
             boolean controlsEnabled, float sensitivity, boolean invertY) {
+        justJumped = false;
         if (controlsEnabled)
             checkSprintActivation(input, dt);
 
@@ -155,6 +157,7 @@ public class Player {
             if (jumpDown && onGround) {
                 velocity.y = JUMP_VELOCITY;
                 onGround = false;
+                justJumped = true;
             }
         }
 
