@@ -108,6 +108,10 @@ public class Game {
     private float equipProgress = 1f;
     private BlockType lastHeldBlock = inventory[0];
 
+    private int miningX, miningY, miningZ;
+    private float miningProgress = 0f;
+    private float miningSoundTimer = 0f;
+
     public Game(Window window, boolean regenAtlas) {
         this.window = window;
         this.input = new Input(window.getHandle());
@@ -661,30 +665,51 @@ public class Game {
                 world.setBlock(lastHit.x, lastHit.y, lastHit.z,
                         world.getBlock(lastHit.x, lastHit.y, lastHit.z), (byte)((m + 1) & 0x0F));
             }
-            if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
-                startHandSwing();
+            if (input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
+                if (lastHit.x != miningX || lastHit.y != miningY || lastHit.z != miningZ) {
+                    miningX = lastHit.x;
+                    miningY = lastHit.y;
+                    miningZ = lastHit.z;
+                    miningProgress = 0f;
+                    miningSoundTimer = 0f;
+                }
+
                 BlockType target = world.getBlock(lastHit.x, lastHit.y, lastHit.z);
-                if (target != BlockType.BEDROCK) {
-                    byte targetMeta = world.getBlockMeta(lastHit.x, lastHit.y, lastHit.z);
-                    sound.playOneOfAt(sounds.dig(target), blockSoundPosition(lastHit.x, lastHit.y, lastHit.z),
-                            0.8f, 0.9f + 0.2f * (float) Math.random());
-                    world.setBlock(lastHit.x, lastHit.y, lastHit.z, BlockType.AIR);
-                    // Sample light in the now-air cell so debris is shaded
-                    // like the surrounding world, not statically bright.
-                    float pSky = world.getSkyLight(lastHit.x, lastHit.y, lastHit.z)
-                            / (float) Chunk.MAX_LIGHT;
-                    float pBlk = world.getBlockLightWorld(lastHit.x, lastHit.y, lastHit.z)
-                            / (float) Chunk.MAX_LIGHT;
-                    particles.emitBlockBreak(lastHit.x, lastHit.y, lastHit.z,
-                            target.particleColor, target.sideTile, pSky, pBlk);
-                    // Remove the other half of a 2-block door
-                    if (target == BlockType.DOOR_CLOSED || target == BlockType.DOOR_OPEN) {
-                        int otherY = ((targetMeta & 0x4) != 0) ? lastHit.y - 1 : lastHit.y + 1;
-                        BlockType other = world.getBlock(lastHit.x, otherY, lastHit.z);
-                        if (other == BlockType.DOOR_CLOSED || other == BlockType.DOOR_OPEN)
-                            world.setBlock(lastHit.x, otherY, lastHit.z, BlockType.AIR);
+                if (target != BlockType.AIR && target.hardness >= 0) {
+                    startHandSwing();
+                    miningProgress += lastDt;
+                    miningSoundTimer -= lastDt;
+
+                    if (miningSoundTimer <= 0f) {
+                        sound.playOneOfAt(sounds.dig(target), blockSoundPosition(lastHit.x, lastHit.y, lastHit.z),
+                                0.5f, 0.9f + 0.2f * (float) Math.random());
+                        float pSky = world.getSkyLight(lastHit.x, lastHit.y, lastHit.z) / (float) Chunk.MAX_LIGHT;
+                        float pBlk = world.getBlockLightWorld(lastHit.x, lastHit.y, lastHit.z) / (float) Chunk.MAX_LIGHT;
+                        particles.emitBlockBreak(lastHit.x, lastHit.y, lastHit.z, target.particleColor, target.sideTile, pSky, pBlk);
+                        miningSoundTimer = 0.22f;
+                    }
+
+                    if (miningProgress >= target.hardness) {
+                        byte targetMeta = world.getBlockMeta(lastHit.x, lastHit.y, lastHit.z);
+                        sound.playOneOfAt(sounds.dig(target), blockSoundPosition(lastHit.x, lastHit.y, lastHit.z),
+                                0.8f, 0.9f + 0.2f * (float) Math.random());
+                        world.setBlock(lastHit.x, lastHit.y, lastHit.z, BlockType.AIR);
+                        float pSky = world.getSkyLight(lastHit.x, lastHit.y, lastHit.z) / (float) Chunk.MAX_LIGHT;
+                        float pBlk = world.getBlockLightWorld(lastHit.x, lastHit.y, lastHit.z) / (float) Chunk.MAX_LIGHT;
+                        particles.emitBlockBreak(lastHit.x, lastHit.y, lastHit.z, target.particleColor, target.sideTile, pSky, pBlk);
+
+                        if (target == BlockType.DOOR_CLOSED || target == BlockType.DOOR_OPEN) {
+                            int otherY = ((targetMeta & 0x4) != 0) ? lastHit.y - 1 : lastHit.y + 1;
+                            BlockType other = world.getBlock(lastHit.x, otherY, lastHit.z);
+                            if (other == BlockType.DOOR_CLOSED || other == BlockType.DOOR_OPEN)
+                                world.setBlock(lastHit.x, otherY, lastHit.z, BlockType.AIR);
+                        }
+                        miningProgress = 0f;
                     }
                 }
+            } else {
+                miningProgress = 0f;
+                miningX = miningY = miningZ = -1;
             }
             if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT)) {
                 startHandSwing();
