@@ -44,6 +44,9 @@ public enum BlockType {
     public static final BlockType[] VALUES = values();
 
     public static BlockType byId(byte id) {
-        return VALUES[id & 0xFF];
+        int i = id & 0xFF;
+        // Out-of-range ids only occur from a corrupt/foreign/truncated chunk file.
+        // Treat unknown blocks as AIR instead of throwing AIOOBE mid-mesh.
+        return i < VALUES.length ? VALUES[i] : AIR;
     }
 }

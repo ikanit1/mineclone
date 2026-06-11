@@ -293,7 +293,14 @@ public class World {
             return;
         int cx = Math.floorDiv(wx, Chunk.SIZE_X);
         int cz = Math.floorDiv(wz, Chunk.SIZE_Z);
-        Chunk c = getChunk(cx, cz);
+        // Never force-generate here: chunk generation is heavy (terrain + trees +
+        // sky-light BFS) and would stall the game thread mid-frame. Edits only ever
+        // target already-loaded chunks (player raycast hits / fills around the
+        // player), so a null means "not loaded" — silently ignore rather than
+        // synchronously generating on the loop.
+        Chunk c = getChunkIfExists(cx, cz);
+        if (c == null)
+            return;
         int lx = Math.floorMod(wx, Chunk.SIZE_X);
         int lz = Math.floorMod(wz, Chunk.SIZE_Z);
         BlockType old = c.get(lx, wy, lz);

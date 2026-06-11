@@ -31,8 +31,12 @@ public class SoundEngine {
     private final List<Integer> activeSources = new ArrayList<>();
     private final Random rng = new Random();
     private float masterVolume = 1.0f;
+    private float effectsVolume = 1.0f;
+    private float musicVolume = 1.0f;
 
     public void setMasterVolume(float v) { masterVolume = Math.max(0f, Math.min(1f, v)); }
+    public void setEffectsVolume(float v) { effectsVolume = Math.max(0f, Math.min(1f, v)); }
+    public void setMusicVolume(float v) { musicVolume = Math.max(0f, Math.min(1f, v)); }
 
     public void init() {
         try {
@@ -139,7 +143,7 @@ public class SoundEngine {
         AL10.alSourcei(src, AL10.AL_BUFFER, buffer);
         AL10.alSourcei(src, AL10.AL_SOURCE_RELATIVE, AL10.AL_TRUE);
         AL10.alSource3f(src, AL10.AL_POSITION, 0f, 0f, 0f);
-        AL10.alSourcef(src, AL10.AL_GAIN, volume * masterVolume);
+        AL10.alSourcef(src, AL10.AL_GAIN, volume * masterVolume * effectsVolume);
         AL10.alSourcef(src, AL10.AL_PITCH, pitch);
         AL10.alSourcePlay(src);
         activeSources.add(src);
@@ -164,7 +168,7 @@ public class SoundEngine {
         AL10.alSourcef(src, AL10.AL_REFERENCE_DISTANCE, 1.25f);
         AL10.alSourcef(src, AL10.AL_MAX_DISTANCE, 24f);
         AL10.alSourcef(src, AL10.AL_ROLLOFF_FACTOR, 0.9f);
-        AL10.alSourcef(src, AL10.AL_GAIN, volume * masterVolume);
+        AL10.alSourcef(src, AL10.AL_GAIN, volume * masterVolume * effectsVolume);
         AL10.alSourcef(src, AL10.AL_PITCH, pitch);
         AL10.alSourcePlay(src);
         activeSources.add(src);

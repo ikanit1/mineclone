@@ -11,7 +11,7 @@ public final class SaveFormat {
 
     public static final int LEVEL_VERSION = 5;
     public static final int CHUNK_VERSION = 1;
-    public static final int OPTIONS_VERSION = 1;
+    public static final int OPTIONS_VERSION = 3;
 
     /** Blocks per chunk = SIZE_X*SIZE_Y*SIZE_Z (16*128*16 = 32768). */
     public static final int CHUNK_VOLUME = Chunk.SIZE_X * Chunk.SIZE_Y * Chunk.SIZE_Z;

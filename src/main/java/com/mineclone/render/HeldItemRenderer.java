@@ -25,7 +25,7 @@ public final class HeldItemRenderer {
 
     public void render(TextureAtlas atlas, BlockType held, float aspect,
             float fovDegrees, float equipProgress, float swingProgress,
-            float walkDistance, boolean underwater,
+            float walkDistance, boolean underwater, boolean viewBobbing,
             float daylight, float brightness, float skyFrac, float blockFrac) {
         float equip = clamp01(equipProgress);
         float swing = 1f - clamp01(swingProgress); // 0 → 1 over the swing
@@ -39,8 +39,8 @@ public final class HeldItemRenderer {
         //   X = cos(t)   · Ax  → one side-to-side cycle
         //   Y = sin(2·t) · Ay  → two up-down cycles per one left-right (the "×2" is the secret)
         float bobPhase = walkDistance * (float) Math.PI;
-        float bobX = (float) Math.cos(bobPhase) * 0.022f;
-        float bobY = (float) Math.sin(bobPhase * 2f) * 0.016f;
+        float bobX = viewBobbing ? (float) Math.cos(bobPhase) * 0.022f : 0f;
+        float bobY = viewBobbing ? (float) Math.sin(bobPhase * 2f) * 0.016f : 0f;
 
         // Single source of truth for held-item lighting — mirrors the chunk shader exactly.
         // effectiveLight = max(sky * daylight, blockLight) incorporates both sources.

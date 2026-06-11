@@ -77,7 +77,7 @@ public final class WaterSimulator {
 
         for (long key : scan) {
             int cx = (int) (key >> 32);
-            int cz = (int) key;
+            int cz = (int) (key & 0xFFFFFFFFL);
             Chunk chunk = world.getChunkIfExists(cx, cz);
             if (chunk == null)
                 continue;

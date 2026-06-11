@@ -9,6 +9,18 @@ assets/atlas.png
 .gradle/
 build/
 out/
+out-test/
+
+# IDE compiled output
+bin/
+*.class
+
+# graphify AST cache embedded in source tree (not the root graphify-out/)
+src/**/graphify-out/
+
+# Intermediate asset generation artifacts
+door_bottom_tile.png
+door_top_tile.png
 
 # Local runtime state
 saves/

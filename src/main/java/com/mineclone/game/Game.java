@@ -268,12 +268,15 @@ public class Game {
         try {
             font = new Font(AppPaths.path("assets/minecraft.ttf"), 22f);
         } catch (java.io.IOException e) {
-            System.err.println("Failed to load font: " + e.getMessage());
+            // The font is a required bundled asset; without it there is no HUD and
+            // no menu, so the window would just render blank. Fail loudly and
+            // immediately instead of limping along in a half-initialized state.
+            throw new IllegalStateException(
+                    "Failed to load required font assets/minecraft.ttf: " + e.getMessage(), e);
         }
         text = new TextRenderer();
         ui = new UiRenderer();
-        if (font != null)
-            hud = new Hud(font, text, ui, atlas);
+        hud = new Hud(font, text, ui, atlas);
 
         // Start in menu with the cursor free.
         input.grabCursor(false);
@@ -491,6 +494,10 @@ public class Game {
         world = null;
         mesher = null;
         loader = null;
+        // Full GC while we're at the menu: collects the dropped world (tens of MB
+        // of chunk arrays) immediately and lets G1 uncommit heap back to the OS,
+        // instead of holding it until the next allocation spike.
+        System.gc();
     }
 
     private void updateLoading(float dt) {

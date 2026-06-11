@@ -19,7 +19,9 @@ public class Hud {
         CANCEL,
         SAVE,
         MAIN_MENU,
-        RESUME, SETTINGS, SETTINGS_BACK, QUIT,
+        RESUME, SETTINGS, SETTINGS_BACK,
+        SETTINGS_OPEN_VIDEO, SETTINGS_OPEN_CONTROLS, SETTINGS_OPEN_AUDIO, SETTINGS_SUB_BACK,
+        QUIT,
         RESPAWN
     }
 
@@ -566,118 +568,233 @@ public class Hud {
                 barY + barH + 30f, screenW, screenH, 0.82f, 0.95f, 0.75f);
     }
 
-    // ---- Minecraft-style slider settings ----------------------------------------
-    // values[] layout: [0]=renderDist(2-16), [1]=fov(50-120),
-    // [2]=brightness(0-2), [3]=volume(0-1)
+    // ---- Settings screens ----------------------------------------------------------------
 
-    private static final float KNOB_W = 10f;
-    private static final float[] RANGE_MIN = { 2f, 50f, 0f, 0f };
-    private static final float[] RANGE_MAX = { 16f, 120f, 2f, 1f };
+    private static final float KNOB_W  = 10f;
+    private static final float SL_H    = 20f;
+    private static final float ROW_STEP = SL_H + 24f;
+
+    private static final float[] VIDEO_RANGE_MIN  = { 2f,  50f, 0f, 30f,  0f };
+    private static final float[] VIDEO_RANGE_MAX  = { 16f, 120f, 2f, 260f, 3f };
+    private static final String[] GUI_SCALE_LABELS = { "Auto", "Small", "Normal", "Large" };
+    private static final float[] CTRL_RANGE_MIN   = { 0.5f };
+    private static final float[] CTRL_RANGE_MAX   = { 2.0f };
+    private static final float[] AUDIO_RANGE_MIN  = { 0f, 0f, 0f };
+    private static final float[] AUDIO_RANGE_MAX  = { 1f, 1f, 1f };
 
     private int draggingSlider = -1;
 
-    /**
-     * @param mouseDown  LMB currently held (for dragging)
-     * @param mouseClick LMB just pressed this frame (for Done button)
-     * @param values     in/out: renderDist, fov, brightness, volume
-     */
-    public MenuAction drawSettings(int sw, int sh, double mx, double my,
-            boolean mouseDown, boolean mouseClick,
-            float[] values) {
-        float pw = 460f, ph = 360f;
-        float px = sw / 2f - pw / 2f, py = sh / 2f - ph / 2f;
+    // ---- shared drawing helpers ----
 
-        float slW = pw - 60f; // slider track width
-        float slX = px + 30f;
-        float slH = 20f;
-        float rowStep = slH + 24f; // vertical gap between sliders
-        float sl0Y = py + 90f;
-
-        float[] slY = new float[4];
-        for (int i = 0; i < 4; i++)
-            slY[i] = sl0Y + i * rowStep;
-
-        // ── drag logic ────────────────────────────────────────────────────────
-        if (!mouseDown && draggingSlider >= 0)
-            draggingSlider = -1;
-        for (int i = 0; i < 4; i++) {
-            if (mouseDown && draggingSlider < 0 && hov(mx, my, slX, slY[i], slW, slH))
+    private void updateSliders(float[] values, float[] rangeMin, float[] rangeMax,
+            float slX, float slW, float[] slY, int count, double mx, double my, boolean mouseDown) {
+        if (!mouseDown && draggingSlider >= 0) draggingSlider = -1;
+        for (int i = 0; i < count; i++) {
+            if (mouseDown && draggingSlider < 0 && hov(mx, my, slX, slY[i], slW, SL_H))
                 draggingSlider = i;
             if (draggingSlider == i && mouseDown) {
                 float t = (float) Math.max(0.0, Math.min(1.0,
                         (mx - slX - KNOB_W / 2f) / (slW - KNOB_W)));
-                values[i] = RANGE_MIN[i] + t * (RANGE_MAX[i] - RANGE_MIN[i]);
+                values[i] = rangeMin[i] + t * (rangeMax[i] - rangeMin[i]);
             }
         }
+    }
 
-        // ── Done button ───────────────────────────────────────────────────────
-        float bW = 200f, bH = 40f;
-        float bX = sw / 2f - bW / 2f, bY = py + ph - 52f;
-        boolean hBack = hov(mx, my, bX, bY, bW, bH);
-
-        // ── knob positions ────────────────────────────────────────────────────
-        float[] kx = new float[4];
-        for (int i = 0; i < 4; i++) {
-            float t = Math.max(0f, Math.min(1f,
-                    (values[i] - RANGE_MIN[i]) / (RANGE_MAX[i] - RANGE_MIN[i])));
-            kx[i] = slX + t * (slW - KNOB_W);
-        }
-
-        // ── render quads ──────────────────────────────────────────────────────
-        ui.begin(sw, sh);
-        ui.quad(0, 0, sw, sh, 0f, 0f, 0f, 0.60f); // dim
-        ui.quad(px, py, pw, ph, 0.11f, 0.11f, 0.14f, 0.96f); // panel
-
-        for (int i = 0; i < 4; i++) {
+    private void drawSliderTracks(float slX, float slW, float[] slY,
+            float[] values, float[] rangeMin, float[] rangeMax, int count, double mx, double my) {
+        for (int i = 0; i < count; i++) {
             boolean active = draggingSlider == i;
-            boolean hover = hov(mx, my, slX, slY[i], slW, slH);
+            boolean hover  = hov(mx, my, slX, slY[i], slW, SL_H);
+            float t  = Math.max(0f, Math.min(1f,
+                    (values[i] - rangeMin[i]) / (rangeMax[i] - rangeMin[i])));
+            float kx = slX + t * (slW - KNOB_W);
 
-            // Track — sunken dark groove
-            ui.quad(slX, slY[i], slW, slH, 0.19f, 0.19f, 0.19f, 1f);
-            ui.quad(slX, slY[i], slW, 1f, 0.10f, 0.10f, 0.10f, 1f); // top shadow
-            ui.quad(slX, slY[i] + slH - 1, slW, 1f, 0.35f, 0.35f, 0.35f, 1f); // bottom shine
+            ui.quad(slX, slY[i], slW, SL_H, 0.19f, 0.19f, 0.19f, 1f);
+            ui.quad(slX, slY[i], slW, 1f,   0.10f, 0.10f, 0.10f, 1f);
+            ui.quad(slX, slY[i] + SL_H - 1, slW, 1f, 0.35f, 0.35f, 0.35f, 1f);
 
-            // Knob — raised Minecraft button style
             float kc = (active || hover) ? 0.78f : 0.67f;
-            ui.quad(kx[i], slY[i], KNOB_W, slH, kc, kc, kc, 1f);
-            ui.quad(kx[i], slY[i], KNOB_W, 2f, kc + 0.18f, kc + 0.18f, kc + 0.18f, 1f); // top shine
-            ui.quad(kx[i], slY[i] + slH - 2, KNOB_W, 2f, kc - 0.22f, kc - 0.22f, kc - 0.22f, 1f); // bottom shadow
+            ui.quad(kx, slY[i], KNOB_W, SL_H, kc, kc, kc, 1f);
+            ui.quad(kx, slY[i], KNOB_W, 2f, kc + 0.18f, kc + 0.18f, kc + 0.18f, 1f);
+            ui.quad(kx, slY[i] + SL_H - 2, KNOB_W, 2f, kc - 0.22f, kc - 0.22f, kc - 0.22f, 1f);
         }
+    }
 
-        // Done button
-        float bc = hBack ? 0.52f : 0.28f;
-        ui.quad(bX, bY, bW, bH, bc, bc, bc + 0.06f, 0.95f);
-        ui.quad(bX, bY, bW, 2, 1f, 1f, 1f, 0.22f);
-        ui.end();
-
-        // ── render text ───────────────────────────────────────────────────────
+    private void drawSliderLabels(float slX, float slW, float[] slY,
+            String[] labels, String[] valStrs, int count, int sw, int sh) {
         float lhOff = font.getPixelHeight() * 0.34f;
-
-        String titleStr = "Settings";
-        float titleW = font.textWidth(titleStr);
-        text.drawShadowed(font, titleStr, sw / 2f - titleW / 2f, py + 28f, sw, sh, 1f, 0.95f, 0.55f);
-
-        String[] labels = { "Render Distance", "FOV", "Brightness", "Sound Volume" };
-        String[] valStrs = {
-                String.valueOf(Math.round(values[0])),
-                Math.round(values[1]) + "°",
-                Math.round(values[2] * 100f) + "%",
-                Math.round(values[3] * 100f) + "%"
-        };
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < count; i++) {
             String s = labels[i] + ": " + valStrs[i];
             float sW = font.textWidth(s);
             text.drawShadowed(font, s, slX + (slW - sW) / 2f,
-                    slY[i] + slH / 2f + lhOff, sw, sh, 1f, 1f, 1f);
+                    slY[i] + SL_H / 2f + lhOff, sw, sh, 1f, 1f, 1f);
         }
+    }
 
-        String doneStr = "Done";
-        float doneW = font.textWidth(doneStr);
-        text.drawShadowed(font, doneStr, sw / 2f - doneW / 2f,
-                bY + bH / 2f + lhOff, sw, sh, 1f, 1f, 1f);
+    private void drawPanelBg(int sw, int sh, float px, float py, float pw, float ph) {
+        ui.quad(0, 0, sw, sh, 0f, 0f, 0f, 0.60f);
+        ui.quad(px, py, pw, ph, 0.11f, 0.11f, 0.14f, 0.96f);
+        ui.quad(px, py, pw, 2f, 1f, 1f, 1f, 0.15f);
+    }
 
-        if (mouseClick && hBack)
-            return MenuAction.SETTINGS_BACK;
+    private void drawPanelTitle(String title, float py, int sw, int sh) {
+        float tw = font.textWidth(title);
+        text.drawShadowed(font, title, sw / 2f - tw / 2f, py + 28f, sw, sh, 1f, 0.95f, 0.55f);
+    }
+
+    // ---- Settings Hub ----
+
+    public MenuAction drawSettingsHub(int sw, int sh, double mx, double my, boolean mouseClick) {
+        float pw = 340f, ph = 310f;
+        float px = sw / 2f - pw / 2f, py = sh / 2f - ph / 2f;
+        float bw = 280f, bh = 46f, gap = 12f;
+        float bx = sw / 2f - bw / 2f, by0 = py + 80f;
+
+        ui.begin(sw, sh);
+        drawPanelBg(sw, sh, px, py, pw, ph);
+        boolean hVideo = stoneButton(bx, by0,               bw, bh, "Video Settings", sw, sh, mx, my, true, true);
+        boolean hCtrl  = stoneButton(bx, by0 + bh + gap,    bw, bh, "Controls",       sw, sh, mx, my, true, true);
+        boolean hAudio = stoneButton(bx, by0 + (bh+gap)*2f, bw, bh, "Audio",          sw, sh, mx, my, true, true);
+        boolean hDone  = stoneButton(sw/2f - 100f, py + ph - 52f, 200f, 40f, "Done",  sw, sh, mx, my, true, true);
+        ui.end();
+        drawPanelTitle("Settings", py, sw, sh);
+
+        if (mouseClick) {
+            if (hVideo)  return MenuAction.SETTINGS_OPEN_VIDEO;
+            if (hCtrl)   return MenuAction.SETTINGS_OPEN_CONTROLS;
+            if (hAudio)  return MenuAction.SETTINGS_OPEN_AUDIO;
+            if (hDone)   return MenuAction.SETTINGS_BACK;
+        }
+        return MenuAction.NONE;
+    }
+
+    // ---- Video Settings ----
+
+    /**
+     * @param values  in/out: [renderDist, fov, brightness, maxFps(30-260; &ge;255=unlimited), guiScale(0-3)]
+     * @param toggles in/out: [vsync, fullscreen, viewBobbing]
+     */
+    public MenuAction drawVideoSettings(int sw, int sh, double mx, double my,
+            boolean mouseDown, boolean mouseClick, float[] values, boolean[] toggles) {
+        float pw = 480f, ph = 470f;
+        float px = sw / 2f - pw / 2f, py = sh / 2f - ph / 2f;
+        float slW = pw - 60f, slX = px + 30f;
+
+        float[] slY = new float[5];
+        for (int i = 0; i < 5; i++) slY[i] = py + 74f + i * ROW_STEP;
+
+        updateSliders(values, VIDEO_RANGE_MIN, VIDEO_RANGE_MAX, slX, slW, slY, 5, mx, my, mouseDown);
+        // Clamp guiScale to integer steps
+        values[4] = Math.round(values[4]);
+
+        float tgW = (slW - 10f) / 2f, tgH = 40f;
+        float tg0Y = slY[4] + SL_H + 36f;
+        float tg1Y = tg0Y + tgH + 10f;
+
+        ui.begin(sw, sh);
+        drawPanelBg(sw, sh, px, py, pw, ph);
+        drawSliderTracks(slX, slW, slY, values, VIDEO_RANGE_MIN, VIDEO_RANGE_MAX, 5, mx, my);
+        boolean hVsync = stoneButton(slX,              tg0Y, tgW, tgH,
+                "VSync: "        + (toggles[0] ? "ON" : "OFF"), sw, sh, mx, my, true, true);
+        boolean hFull  = stoneButton(slX + tgW + 10f,  tg0Y, tgW, tgH,
+                "Fullscreen: "   + (toggles[1] ? "ON" : "OFF"), sw, sh, mx, my, true, true);
+        boolean hBob   = stoneButton(slX,              tg1Y, tgW, tgH,
+                "View Bobbing: " + (toggles[2] ? "ON" : "OFF"), sw, sh, mx, my, true, true);
+        boolean hDone  = stoneButton(sw/2f - 100f, py + ph - 52f, 200f, 40f, "Done", sw, sh, mx, my, true, true);
+        ui.end();
+
+        drawPanelTitle("Video Settings", py, sw, sh);
+        int gsIdx = Math.max(0, Math.min(3, Math.round(values[4])));
+        drawSliderLabels(slX, slW, slY,
+                new String[]{ "Render Distance", "FOV", "Brightness", "Max FPS", "GUI Scale" },
+                new String[]{
+                        String.valueOf(Math.round(values[0])),
+                        Math.round(values[1]) + "°",
+                        Math.round(values[2] * 100f) + "%",
+                        values[3] >= 255f ? "Unlimited" : String.valueOf(Math.round(values[3])),
+                        GUI_SCALE_LABELS[gsIdx]
+                }, 5, sw, sh);
+
+        if (mouseClick) {
+            if (hVsync) toggles[0] = !toggles[0];
+            if (hFull)  toggles[1] = !toggles[1];
+            if (hBob)   toggles[2] = !toggles[2];
+            if (hDone)  return MenuAction.SETTINGS_SUB_BACK;
+        }
+        return MenuAction.NONE;
+    }
+
+    // ---- Controls Settings ----
+
+    /**
+     * @param values  in/out: [mouseSensitivity (0.5-2.0)]
+     * @param toggles in/out: [invertMouseY]
+     */
+    public MenuAction drawControlsSettings(int sw, int sh, double mx, double my,
+            boolean mouseDown, boolean mouseClick, float[] values, boolean[] toggles) {
+        float pw = 460f, ph = 260f;
+        float px = sw / 2f - pw / 2f, py = sh / 2f - ph / 2f;
+        float slW = pw - 60f, slX = px + 30f;
+
+        float[] slY = { py + 84f };
+
+        updateSliders(values, CTRL_RANGE_MIN, CTRL_RANGE_MAX, slX, slW, slY, 1, mx, my, mouseDown);
+
+        float tgY = slY[0] + SL_H + 36f;
+
+        ui.begin(sw, sh);
+        drawPanelBg(sw, sh, px, py, pw, ph);
+        drawSliderTracks(slX, slW, slY, values, CTRL_RANGE_MIN, CTRL_RANGE_MAX, 1, mx, my);
+        boolean hInvert = stoneButton(slX, tgY, 210f, 40f,
+                "Invert Mouse Y: " + (toggles[0] ? "ON" : "OFF"), sw, sh, mx, my, true, true);
+        boolean hDone = stoneButton(sw/2f - 100f, py + ph - 52f, 200f, 40f, "Done", sw, sh, mx, my, true, true);
+        ui.end();
+
+        drawPanelTitle("Controls", py, sw, sh);
+        drawSliderLabels(slX, slW, slY,
+                new String[]{ "Mouse Sensitivity" },
+                new String[]{ String.format("%.1f×", values[0]) },
+                1, sw, sh);
+
+        if (mouseClick) {
+            if (hInvert) toggles[0] = !toggles[0];
+            if (hDone)   return MenuAction.SETTINGS_SUB_BACK;
+        }
+        return MenuAction.NONE;
+    }
+
+    // ---- Audio Settings ----
+
+    /**
+     * @param values in/out: [masterVolume, musicVolume, effectsVolume]
+     */
+    public MenuAction drawAudioSettings(int sw, int sh, double mx, double my,
+            boolean mouseDown, boolean mouseClick, float[] values) {
+        float pw = 460f, ph = 300f;
+        float px = sw / 2f - pw / 2f, py = sh / 2f - ph / 2f;
+        float slW = pw - 60f, slX = px + 30f;
+
+        float[] slY = new float[3];
+        for (int i = 0; i < 3; i++) slY[i] = py + 80f + i * ROW_STEP;
+
+        updateSliders(values, AUDIO_RANGE_MIN, AUDIO_RANGE_MAX, slX, slW, slY, 3, mx, my, mouseDown);
+
+        ui.begin(sw, sh);
+        drawPanelBg(sw, sh, px, py, pw, ph);
+        drawSliderTracks(slX, slW, slY, values, AUDIO_RANGE_MIN, AUDIO_RANGE_MAX, 3, mx, my);
+        boolean hDone = stoneButton(sw/2f - 100f, py + ph - 52f, 200f, 40f, "Done", sw, sh, mx, my, true, true);
+        ui.end();
+
+        drawPanelTitle("Audio", py, sw, sh);
+        drawSliderLabels(slX, slW, slY,
+                new String[]{ "Master Volume", "Music Volume", "Effects Volume" },
+                new String[]{
+                        Math.round(values[0] * 100f) + "%",
+                        Math.round(values[1] * 100f) + "%",
+                        Math.round(values[2] * 100f) + "%"
+                }, 3, sw, sh);
+
+        if (mouseClick && hDone) return MenuAction.SETTINGS_SUB_BACK;
         return MenuAction.NONE;
     }
 

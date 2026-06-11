@@ -11,6 +11,10 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.zip.GZIPInputStream;
@@ -130,24 +134,23 @@ public final class SaveManager {
     // ---- level.dat ----
 
     public void saveLevel(String id, LevelData d) {
-        File f = levelFile(id);
-        f.getParentFile().mkdirs();
-        try (DataOutputStream o = new DataOutputStream(new GZIPOutputStream(
-                new BufferedOutputStream(new FileOutputStream(f))))) {
-            o.writeInt(SaveFormat.MAGIC);
-            o.writeInt(SaveFormat.LEVEL_VERSION);
-            o.writeUTF(d.name);            // v4: display name before seed
-            o.writeLong(d.seed);
-            o.writeLong(d.lastPlayed);     // v5: last-played timestamp
-            o.writeDouble(d.px); o.writeDouble(d.py); o.writeDouble(d.pz);
-            o.writeDouble(d.spawnX); o.writeDouble(d.spawnY); o.writeDouble(d.spawnZ);
-            o.writeFloat(d.yaw); o.writeFloat(d.pitch);
-            o.writeFloat(d.timeOfDay);
-            o.writeInt(d.selectedSlot);
-            o.writeInt(d.inventory.length);
-            for (BlockType b : d.inventory) {
-                o.writeByte(b == null ? BlockType.AIR.ordinal() : b.ordinal());
-            }
+        try {
+            writeGzipAtomic(levelFile(id), o -> {
+                o.writeInt(SaveFormat.MAGIC);
+                o.writeInt(SaveFormat.LEVEL_VERSION);
+                o.writeUTF(d.name);            // v4: display name before seed
+                o.writeLong(d.seed);
+                o.writeLong(d.lastPlayed);     // v5: last-played timestamp
+                o.writeDouble(d.px); o.writeDouble(d.py); o.writeDouble(d.pz);
+                o.writeDouble(d.spawnX); o.writeDouble(d.spawnY); o.writeDouble(d.spawnZ);
+                o.writeFloat(d.yaw); o.writeFloat(d.pitch);
+                o.writeFloat(d.timeOfDay);
+                o.writeInt(d.selectedSlot);
+                o.writeInt(d.inventory.length);
+                for (BlockType b : d.inventory) {
+                    o.writeByte(b == null ? BlockType.AIR.ordinal() : b.ordinal());
+                }
+            });
         } catch (IOException e) {
             System.err.println("saveLevel failed: " + e.getMessage());
         }
@@ -179,6 +182,7 @@ public final class SaveManager {
             if (version >= 3) {
                 int n = Math.max(0, Math.min(128, in.readInt()));
                 inventory = new BlockType[Math.max(36, n)];
+                Arrays.fill(inventory, BlockType.AIR);
                 for (int i = 0; i < n; i++) {
                     int blockId = in.readUnsignedByte();
                     inventory[i] = blockId >= 0 && blockId < BlockType.VALUES.length
@@ -201,14 +205,13 @@ public final class SaveManager {
     }
 
     void saveChunkBlocking(String id, ChunkSnapshot s) {
-        File f = chunkFile(id, s.cx, s.cz);
-        f.getParentFile().mkdirs();
-        try (DataOutputStream o = new DataOutputStream(new GZIPOutputStream(
-                new BufferedOutputStream(new FileOutputStream(f))))) {
-            o.writeInt(SaveFormat.MAGIC);
-            o.writeInt(SaveFormat.CHUNK_VERSION);
-            o.write(s.blocks, 0, SaveFormat.CHUNK_VOLUME);
-            o.write(s.meta, 0, SaveFormat.CHUNK_VOLUME);
+        try {
+            writeGzipAtomic(chunkFile(id, s.cx, s.cz), o -> {
+                o.writeInt(SaveFormat.MAGIC);
+                o.writeInt(SaveFormat.CHUNK_VERSION);
+                o.write(s.blocks, 0, SaveFormat.CHUNK_VOLUME);
+                o.write(s.meta, 0, SaveFormat.CHUNK_VOLUME);
+            });
         } catch (IOException e) {
             System.err.println("saveChunk failed: " + e.getMessage());
         }
@@ -255,12 +258,32 @@ public final class SaveManager {
         try (DataInputStream in = new DataInputStream(new GZIPInputStream(
                 new BufferedInputStream(new FileInputStream(f))))) {
             if (in.readInt() != SaveFormat.MAGIC) return Options.defaults();
-            if (in.readInt() != SaveFormat.OPTIONS_VERSION) return Options.defaults();
+            int version = in.readInt();
+            if (version < 1 || version > SaveFormat.OPTIONS_VERSION) return Options.defaults();
             int rr = in.readInt();
             int fov = in.readInt();
             float br = in.readFloat();
             float vol = in.readFloat();
-            return new Options(rr, fov, br, vol);
+            if (version == 1) {
+                return new Options(rr, fov, br, vol, 0, true, false, true, 1.0f, false, 1.0f, 1.0f, 0);
+            }
+            // v2+
+            int maxFps = in.readInt();
+            boolean vsync = in.readBoolean();
+            boolean fullscreen = in.readBoolean();
+            boolean viewBobbing = in.readBoolean();
+            float sensitivity = in.readFloat();
+            boolean invertY = in.readBoolean();
+            float musicVol = in.readFloat();
+            float effectsVol = in.readFloat();
+            if (version == 2) {
+                return new Options(rr, fov, br, vol, maxFps, vsync, fullscreen, viewBobbing,
+                        sensitivity, invertY, musicVol, effectsVol, 0);
+            }
+            // v3
+            int guiScale = in.readInt();
+            return new Options(rr, fov, br, vol, maxFps, vsync, fullscreen, viewBobbing,
+                    sensitivity, invertY, musicVol, effectsVol, guiScale);
         } catch (IOException e) {
             System.err.println("loadOptions failed: " + e.getMessage());
             return Options.defaults();
@@ -268,16 +291,24 @@ public final class SaveManager {
     }
 
     public void saveOptions(Options o) {
-        File f = optionsFile();
-        if (f.getParentFile() != null) f.getParentFile().mkdirs();
-        try (DataOutputStream out = new DataOutputStream(new GZIPOutputStream(
-                new BufferedOutputStream(new FileOutputStream(f))))) {
-            out.writeInt(SaveFormat.MAGIC);
-            out.writeInt(SaveFormat.OPTIONS_VERSION);
-            out.writeInt(o.renderRadius);
-            out.writeInt(o.fovDegrees);
-            out.writeFloat(o.brightness);
-            out.writeFloat(o.volume);
+        try {
+            writeGzipAtomic(optionsFile(), out -> {
+                out.writeInt(SaveFormat.MAGIC);
+                out.writeInt(SaveFormat.OPTIONS_VERSION);
+                out.writeInt(o.renderRadius);
+                out.writeInt(o.fovDegrees);
+                out.writeFloat(o.brightness);
+                out.writeFloat(o.masterVolume);
+                out.writeInt(o.maxFps);
+                out.writeBoolean(o.vsync);
+                out.writeBoolean(o.fullscreen);
+                out.writeBoolean(o.viewBobbing);
+                out.writeFloat(o.mouseSensitivity);
+                out.writeBoolean(o.invertMouseY);
+                out.writeFloat(o.musicVolume);
+                out.writeFloat(o.effectsVolume);
+                out.writeInt(o.guiScale);
+            });
         } catch (IOException e) {
             System.err.println("saveOptions failed: " + e.getMessage());
         }
@@ -286,7 +317,39 @@ public final class SaveManager {
     private static void deleteRecursive(File f) {
         File[] kids = f.listFiles();
         if (kids != null) for (File k : kids) deleteRecursive(k);
-        f.delete();
+        if (!f.delete() && f.exists())
+            System.err.println("deleteWorld: failed to delete " + f.getPath());
+    }
+
+    /** Body that writes the gzip-compressed payload of a save file. */
+    private interface Writer { void write(DataOutputStream o) throws IOException; }
+
+    /**
+     * Crash-safe write: stream the payload into a sibling {@code *.tmp} file,
+     * then atomically rename it over {@code target}. A crash or power loss
+     * mid-write leaves the old file intact instead of a half-written, corrupt
+     * one. Falls back to a plain replace where the filesystem can't do an
+     * atomic move (e.g. across volumes).
+     */
+    private static void writeGzipAtomic(File target, Writer body) throws IOException {
+        File dir = target.getParentFile();
+        if (dir != null) dir.mkdirs();
+        File tmp = File.createTempFile(target.getName() + "-", ".tmp", dir);
+        try {
+            try (DataOutputStream o = new DataOutputStream(new GZIPOutputStream(
+                    new BufferedOutputStream(new FileOutputStream(tmp))))) {
+                body.write(o);
+            }
+            try {
+                Files.move(tmp.toPath(), target.toPath(),
+                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            if (tmp.exists() && !tmp.delete())
+                tmp.deleteOnExit();
+        }
     }
 
     /** Block until queued chunk writes finish. Safe to call multiple times. */

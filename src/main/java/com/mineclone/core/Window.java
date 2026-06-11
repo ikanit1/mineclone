@@ -74,6 +74,15 @@ public class Window {
     public float getAspect() { return (float) width / Math.max(1, height); }
     public boolean isResized() { return resized; }
     public void setResized(boolean r) { resized = r; }
+    public boolean isFullscreen() { return fullscreen; }
+
+    public void setVSync(boolean enable) {
+        glfwSwapInterval(enable ? 1 : 0);
+    }
+
+    public void setFullscreen(boolean wantFullscreen) {
+        if (wantFullscreen != fullscreen) toggleFullscreen();
+    }
 
     public void toggleFullscreen() {
         long monitor = glfwGetPrimaryMonitor();
