@@ -33,6 +33,7 @@ public final class TestMain {
         run("options.dat save/load round-trip", TestMain::testOptionsRoundTrip);
         run("atomic save leaves no .tmp files", TestMain::testNoTempLeftovers);
         run("save overwrite keeps old data on rewrite", TestMain::testOverwriteRoundTrip);
+        run("new biome blocks registered", TestMain::testBiomeBlocks);
 
         System.out.println();
         System.out.println("==== " + passed + " passed, " + failed + " failed ====");
@@ -53,6 +54,17 @@ public final class TestMain {
         }
         // Distinct chunks must not collide on the same key.
         assertTrue("(1,0) != (0,1)", World.key(1, 0) != World.key(0, 1));
+    }
+
+    private static void testBiomeBlocks() {
+        // Новые блоки добавлены В КОНЕЦ enum — старые ordinal не сдвинуты (иначе ломаются сейвы).
+        assertEq("WATER_FLOW ordinal stays 16", 16, BlockType.WATER_FLOW.ordinal());
+        BlockType sg = BlockType.valueOf("SNOWY_GRASS");
+        BlockType ca = BlockType.valueOf("CACTUS");
+        assertTrue("SNOWY_GRASS solid", sg.solid);
+        assertTrue("CACTUS solid", ca.solid);
+        assertTrue("SNOWY_GRASS byId round-trip", BlockType.byId((byte) sg.ordinal()) == sg);
+        assertTrue("CACTUS byId round-trip", BlockType.byId((byte) ca.ordinal()) == ca);
     }
 
     private static void testByIdGuard() {

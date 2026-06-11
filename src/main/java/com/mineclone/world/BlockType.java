@@ -17,7 +17,9 @@ public enum BlockType {
     DOOR_CLOSED (true,  false, true,  15, 15, 15, 0.60f, 0.45f, 0.27f, 0,  1.5f),
     DOOR_OPEN   (false, true,  false, 15, 15, 15, 0.60f, 0.45f, 0.27f, 0,  1.5f),
     STAIRS      (true,  false, true,  11, 11, 11, 0.60f, 0.45f, 0.27f, 0,  1.5f),
-    WATER_FLOW  (false, true,  false,  8,  8,  8, 0.16f, 0.35f, 0.78f, 0,  0f);
+    WATER_FLOW  (false, true,  false,  8,  8,  8, 0.16f, 0.35f, 0.78f, 0,  0f),
+    SNOWY_GRASS (true,  false, false, 48, 47,  2, 0.92f, 0.94f, 0.96f, 0,  0.6f),
+    CACTUS      (true,  false, false, 49, 50, 50, 0.20f, 0.55f, 0.25f, 0,  0.4f);
 
     public final boolean solid;
     public final boolean transparent;

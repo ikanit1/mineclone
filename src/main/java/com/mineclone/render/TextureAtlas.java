@@ -80,6 +80,10 @@ public class TextureAtlas {
             // Crack overlay stages 0-9 (mining progress)
             "crack_0", "crack_1", "crack_2", "crack_3", "crack_4",
             "crack_5", "crack_6", "crack_7", "crack_8", "crack_9",
+            "snowy_grass_top",  // 47
+            "snowy_grass_side", // 48
+            "cactus_side",      // 49
+            "cactus_top",       // 50
     };
 
     /** First tile index of the water_flow animation strip (16 frames). */
