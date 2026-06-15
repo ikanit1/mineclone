@@ -10,6 +10,7 @@ import com.mineclone.world.Biome;
 import com.mineclone.world.BiomeProvider;
 import com.mineclone.world.BlockType;
 import com.mineclone.world.Chunk;
+import com.mineclone.world.ItemStack;
 import com.mineclone.world.World;
 
 import java.util.EnumSet;
@@ -34,6 +35,7 @@ public final class TestMain {
     public static void main(String[] args) {
         run("World.key round-trips through (cx,cz)", TestMain::testWorldKeyRoundTrip);
         run("BlockType.byId guards out-of-range ids", TestMain::testByIdGuard);
+        run("ItemStack clamps and stacks", TestMain::testItemStack);
         run("new biome blocks registered", TestMain::testBiomeBlocks);
         run("level.dat save/load round-trip", TestMain::testLevelRoundTrip);
         run("chunk save/load round-trip", TestMain::testChunkRoundTrip);
@@ -293,6 +295,27 @@ public final class TestMain {
                 s.materialOf(BlockType.SNOWY_GRASS));
         assertEq("cactus -> CLOTH", Sounds.Material.valueOf("CLOTH"),
                 s.materialOf(BlockType.CACTUS));
+    }
+
+    private static void testItemStack() {
+        ItemStack s = new ItemStack(BlockType.STONE, 1);
+        assertEq("type", BlockType.STONE, s.type);
+        assertEq("count", 1, s.count);
+        assertTrue("isFull false at 1", !s.isFull());
+
+        s.count = ItemStack.MAX_STACK;
+        assertTrue("isFull true at MAX", s.isFull());
+
+        // add returns leftover that didn't fit
+        ItemStack t = new ItemStack(BlockType.DIRT, 60);
+        int left = t.addUpTo(10); // 60 + 10 = 70 -> capped 64, leftover 6
+        assertEq("count capped", ItemStack.MAX_STACK, t.count);
+        assertEq("leftover", 6, left);
+
+        ItemStack copy = t.copy();
+        assertTrue("copy distinct", copy != t);
+        assertEq("copy type", BlockType.DIRT, copy.type);
+        assertEq("copy count", t.count, copy.count);
     }
 
     // ---- harness ----
