@@ -620,6 +620,8 @@ public class Game {
 
         handleHotbar();
         updateHeldItem(dt);
+        if (gameMode == com.mineclone.world.GameMode.SURVIVAL && player.flying)
+            player.flying = false;
         player.update(dt, world, input, true, mouseSensitivity, invertMouseY);
         if (player.justJumped) {
             int jbx = (int) Math.floor(player.position.x);
@@ -1120,6 +1122,23 @@ public class Game {
                     instantBreak = !instantBreak;
                     resetBreakState();
                     showCommandToast(instantBreak ? "Instamine ON" : "Instamine OFF");
+                }
+                case "/gamemode", "/gm" -> {
+                    if (parts.length >= 2) {
+                        String m = parts[1].toLowerCase();
+                        if (m.startsWith("c")) {
+                            gameMode = com.mineclone.world.GameMode.CREATIVE;
+                            showCommandToast("Gamemode: Creative");
+                        } else if (m.startsWith("s")) {
+                            gameMode = com.mineclone.world.GameMode.SURVIVAL;
+                            player.flying = false;
+                            showCommandToast("Gamemode: Survival");
+                        } else {
+                            showCommandToast("Usage: /gamemode <creative|survival>");
+                        }
+                    } else {
+                        showCommandToast("Usage: /gamemode <creative|survival>");
+                    }
                 }
             }
         } catch (NumberFormatException e) {
@@ -1824,7 +1843,8 @@ public class Game {
                 "/speed <value>",
                 "/fill <block> [radius]",
                 "/instamine",
-                "/debug"
+                "/debug",
+                "/gamemode <creative|survival> - Switch game mode"
         };
         float lineH = font.getPixelHeight() + 5f;
         float panelW = 0f;
