@@ -51,4 +51,14 @@ public enum BlockType {
         // Treat unknown blocks as AIR instead of throwing AIOOBE mid-mesh.
         return i < VALUES.length ? VALUES[i] : AIR;
     }
+
+    /** What this block yields when broken in survival. AIR = no drop. */
+    public BlockType getDrop() {
+        return switch (this) {
+            case STONE -> COBBLE;
+            case GRASS, SNOWY_GRASS -> DIRT;
+            case LEAVES, WATER, WATER_FLOW, AIR, DOOR_OPEN, TORCH -> AIR;
+            default -> this;
+        };
+    }
 }

@@ -54,6 +54,7 @@ public final class TestMain {
         run("biome borders have no cliffs", TestMain::testHeightSmoothness);
         run("vegetation matches biome rules", TestMain::testVegetationInvariants);
         run("sound materials for biome blocks", TestMain::testBiomeSoundMaterials);
+        run("BlockType drop table", TestMain::testDropTable);
 
         System.out.println();
         System.out.println("==== " + passed + " passed, " + failed + " failed ====");
@@ -299,6 +300,16 @@ public final class TestMain {
                 s.materialOf(BlockType.SNOWY_GRASS));
         assertEq("cactus -> CLOTH", Sounds.Material.valueOf("CLOTH"),
                 s.materialOf(BlockType.CACTUS));
+    }
+
+    private static void testDropTable() {
+        assertEq("stone drops cobble", BlockType.COBBLE, BlockType.STONE.getDrop());
+        assertEq("grass drops dirt", BlockType.DIRT, BlockType.GRASS.getDrop());
+        assertEq("snowy grass drops dirt", BlockType.DIRT, BlockType.SNOWY_GRASS.getDrop());
+        assertEq("leaves drop nothing", BlockType.AIR, BlockType.LEAVES.getDrop());
+        assertEq("water drops nothing", BlockType.AIR, BlockType.WATER.getDrop());
+        assertEq("dirt drops itself", BlockType.DIRT, BlockType.DIRT.getDrop());
+        assertEq("wood drops itself", BlockType.WOOD, BlockType.WOOD.getDrop());
     }
 
     private static void testItemStack() {
