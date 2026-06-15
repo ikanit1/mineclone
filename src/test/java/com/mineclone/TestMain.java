@@ -6,8 +6,11 @@ import com.mineclone.save.Options;
 import com.mineclone.save.SaveFormat;
 import com.mineclone.save.SaveManager;
 import com.mineclone.world.Biome;
+import com.mineclone.world.BiomeProvider;
 import com.mineclone.world.BlockType;
 import com.mineclone.world.World;
+
+import java.util.EnumSet;
 
 import java.io.File;
 import java.util.Arrays;
@@ -36,6 +39,9 @@ public final class TestMain {
         run("atomic save leaves no .tmp files", TestMain::testNoTempLeftovers);
         run("save overwrite keeps old data on rewrite", TestMain::testOverwriteRoundTrip);
         run("biome params sane", TestMain::testBiomeParams);
+        run("biome climate table", TestMain::testBiomeClassify);
+        run("biome provider deterministic", TestMain::testBiomeDeterminism);
+        run("biome provider covers all biomes", TestMain::testBiomeCoverage);
 
         System.out.println();
         System.out.println("==== " + passed + " passed, " + failed + " failed ====");
@@ -158,6 +164,45 @@ public final class TestMain {
         LevelData out = sm.loadLevel("w1");
         assertTrue("reload non-null", out != null);
         assertEq("seed after overwrite", 2L, out.seed);
+    }
+
+    private static void testBiomeClassify() {
+        assertTrue("deep negative cont -> OCEAN",
+                BiomeProvider.classify(-0.9, 0, 0) == Biome.OCEAN);
+        assertTrue("ocean wins over cold",
+                BiomeProvider.classify(-0.9, -0.9, 0) == Biome.OCEAN);
+        assertTrue("cold -> TUNDRA",
+                BiomeProvider.classify(0.5, -0.9, 0) == Biome.TUNDRA);
+        assertTrue("hot+dry -> DESERT",
+                BiomeProvider.classify(0.5, 0.9, -0.9) == Biome.DESERT);
+        assertTrue("wet -> FOREST",
+                BiomeProvider.classify(0.5, 0.0, 0.9) == Biome.FOREST);
+        assertTrue("temperate default -> PLAINS",
+                BiomeProvider.classify(0.5, 0.0, 0.0) == Biome.PLAINS);
+    }
+
+    private static void testBiomeDeterminism() {
+        BiomeProvider a = new BiomeProvider(777L);
+        BiomeProvider b = new BiomeProvider(777L);
+        BiomeProvider c = new BiomeProvider(778L);
+        boolean anyDiff = false;
+        for (int x = -1000; x <= 1000; x += 67)
+            for (int z = -1000; z <= 1000; z += 67) {
+                assertTrue("same seed same biome @" + x + "," + z,
+                        a.biomeAt(x, z) == b.biomeAt(x, z));
+                if (a.biomeAt(x, z) != c.biomeAt(x, z))
+                    anyDiff = true;
+            }
+        assertTrue("different seeds differ somewhere", anyDiff);
+    }
+
+    private static void testBiomeCoverage() {
+        BiomeProvider p = new BiomeProvider(12345L);
+        EnumSet<Biome> seen = EnumSet.noneOf(Biome.class);
+        for (int x = -4000; x <= 4000; x += 32)
+            for (int z = -4000; z <= 4000; z += 32)
+                seen.add(p.biomeAt(x, z));
+        assertEq("all five biomes occur within 4000 blocks", 5, seen.size());
     }
 
     // ---- harness ----
