@@ -316,6 +316,14 @@ public final class TestMain {
         assertTrue("copy distinct", copy != t);
         assertEq("copy type", BlockType.DIRT, copy.type);
         assertEq("copy count", t.count, copy.count);
+
+        // constructor clamping edges
+        assertEq("clamp 0->1", 1, new ItemStack(BlockType.STONE, 0).count);
+        assertEq("clamp 100->64", 64, new ItemStack(BlockType.STONE, 100).count);
+        // addUpTo negative input
+        ItemStack u = new ItemStack(BlockType.DIRT, 5);
+        assertEq("addUpTo negative is 0", 0, u.addUpTo(-3));
+        assertEq("count unchanged after addUpTo(negative)", 5, u.count);
     }
 
     // ---- harness ----

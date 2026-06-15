@@ -9,6 +9,7 @@ public final class ItemStack {
     public int count;
 
     public ItemStack(BlockType type, int count) {
+        if (type == null) throw new IllegalArgumentException("ItemStack type must not be null");
         this.type = type;
         this.count = Math.max(1, Math.min(MAX_STACK, count));
     }
@@ -20,8 +21,9 @@ public final class ItemStack {
     /** Adds up to {@code amount} items, capped at MAX_STACK.
      *  @return the leftover that did not fit. */
     public int addUpTo(int amount) {
+        if (amount <= 0) return 0;
         int space = MAX_STACK - count;
-        int added = Math.max(0, Math.min(space, amount));
+        int added = Math.min(space, amount);
         count += added;
         return amount - added;
     }
