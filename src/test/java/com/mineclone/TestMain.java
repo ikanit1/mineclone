@@ -5,6 +5,7 @@ import com.mineclone.save.LevelData;
 import com.mineclone.save.Options;
 import com.mineclone.save.SaveFormat;
 import com.mineclone.save.SaveManager;
+import com.mineclone.world.Biome;
 import com.mineclone.world.BlockType;
 import com.mineclone.world.World;
 
@@ -28,12 +29,13 @@ public final class TestMain {
     public static void main(String[] args) {
         run("World.key round-trips through (cx,cz)", TestMain::testWorldKeyRoundTrip);
         run("BlockType.byId guards out-of-range ids", TestMain::testByIdGuard);
+        run("new biome blocks registered", TestMain::testBiomeBlocks);
         run("level.dat save/load round-trip", TestMain::testLevelRoundTrip);
         run("chunk save/load round-trip", TestMain::testChunkRoundTrip);
         run("options.dat save/load round-trip", TestMain::testOptionsRoundTrip);
         run("atomic save leaves no .tmp files", TestMain::testNoTempLeftovers);
         run("save overwrite keeps old data on rewrite", TestMain::testOverwriteRoundTrip);
-        run("new biome blocks registered", TestMain::testBiomeBlocks);
+        run("biome params sane", TestMain::testBiomeParams);
 
         System.out.println();
         System.out.println("==== " + passed + " passed, " + failed + " failed ====");
@@ -65,6 +67,17 @@ public final class TestMain {
         assertTrue("CACTUS solid", ca.solid);
         assertTrue("SNOWY_GRASS byId round-trip", BlockType.byId((byte) sg.ordinal()) == sg);
         assertTrue("CACTUS byId round-trip", BlockType.byId((byte) ca.ordinal()) == ca);
+    }
+
+    private static void testBiomeParams() {
+        assertEq("5 biomes", 5, Biome.values().length);
+        assertTrue("ocean floor below sea level", Biome.OCEAN.baseHeight < World.SEA_LEVEL);
+        assertTrue("tundra surface is snowy grass", Biome.TUNDRA.surfaceBlock == BlockType.SNOWY_GRASS);
+        assertTrue("desert surface is sand", Biome.DESERT.surfaceBlock == BlockType.SAND);
+        assertTrue("forest denser than plains", Biome.FOREST.treesPer128 > Biome.PLAINS.treesPer128);
+        assertTrue("ocean has no trees", Biome.OCEAN.treeType == Biome.TreeType.NONE);
+        for (Biome b : Biome.values())
+            assertTrue(b + " amplitude in (0,1]", b.amplitude > 0 && b.amplitude <= 1.0);
     }
 
     private static void testByIdGuard() {
