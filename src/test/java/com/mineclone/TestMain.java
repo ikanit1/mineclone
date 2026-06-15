@@ -1,5 +1,6 @@
 package com.mineclone;
 
+import com.mineclone.audio.Sounds;
 import com.mineclone.save.ChunkSnapshot;
 import com.mineclone.save.LevelData;
 import com.mineclone.save.Options;
@@ -46,6 +47,7 @@ public final class TestMain {
         run("chunk surface matches biome", TestMain::testChunkSurfaceMatchesBiome);
         run("biome borders have no cliffs", TestMain::testHeightSmoothness);
         run("vegetation matches biome rules", TestMain::testVegetationInvariants);
+        run("sound materials for biome blocks", TestMain::testBiomeSoundMaterials);
 
         System.out.println();
         System.out.println("==== " + passed + " passed, " + failed + " failed ====");
@@ -283,6 +285,14 @@ public final class TestMain {
             }
         assertTrue("saw at least one trunk", sawTrunk);
         assertTrue("saw at least one cactus", sawCactus);
+    }
+
+    private static void testBiomeSoundMaterials() {
+        Sounds s = new Sounds();
+        assertEq("snowy grass -> SNOW", Sounds.Material.valueOf("SNOW"),
+                s.materialOf(BlockType.SNOWY_GRASS));
+        assertEq("cactus -> CLOTH", Sounds.Material.valueOf("CLOTH"),
+                s.materialOf(BlockType.CACTUS));
     }
 
     // ---- harness ----

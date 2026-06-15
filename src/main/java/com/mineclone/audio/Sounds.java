@@ -16,7 +16,7 @@ import java.util.Map;
 public final class Sounds {
 
     public enum Material {
-        GRASS, STONE, SAND, WOOD, GRAVEL, GLASS, NONE
+        GRASS, STONE, SAND, WOOD, GRAVEL, GLASS, SNOW, CLOTH, NONE
     }
 
     private static final String ROOT = "assets/sounds";
@@ -71,6 +71,8 @@ public final class Sounds {
             case WOOD, PLANKS, TORCH -> Material.WOOD;
             case GLASS -> Material.GLASS;
             case STAIRS, DOOR_CLOSED, DOOR_OPEN -> Material.WOOD;
+            case SNOWY_GRASS -> Material.SNOW;
+            case CACTUS -> Material.CLOTH;
             default -> Material.NONE;
         };
     }
