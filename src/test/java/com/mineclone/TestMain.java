@@ -8,6 +8,7 @@ import com.mineclone.save.SaveManager;
 import com.mineclone.world.Biome;
 import com.mineclone.world.BiomeProvider;
 import com.mineclone.world.BlockType;
+import com.mineclone.world.Chunk;
 import com.mineclone.world.World;
 
 import java.util.EnumSet;
@@ -42,6 +43,8 @@ public final class TestMain {
         run("biome climate table", TestMain::testBiomeClassify);
         run("biome provider deterministic", TestMain::testBiomeDeterminism);
         run("biome provider covers all biomes", TestMain::testBiomeCoverage);
+        run("chunk surface matches biome", TestMain::testChunkSurfaceMatchesBiome);
+        run("biome borders have no cliffs", TestMain::testHeightSmoothness);
 
         System.out.println();
         System.out.println("==== " + passed + " passed, " + failed + " failed ====");
@@ -203,6 +206,53 @@ public final class TestMain {
             for (int z = -4000; z <= 4000; z += 32)
                 seen.add(p.biomeAt(x, z));
         assertEq("all five biomes occur within 4000 blocks", 5, seen.size());
+    }
+
+    private static int surfaceY(Chunk c, int x, int z) {
+        for (int y = Chunk.SIZE_Y - 1; y > 0; y--) {
+            BlockType t = c.get(x, y, z);
+            if (t == BlockType.AIR || t == BlockType.WATER || t == BlockType.WATER_FLOW
+                    || t == BlockType.LEAVES || t == BlockType.WOOD || t == BlockType.CACTUS)
+                continue;
+            return y;
+        }
+        return 0;
+    }
+
+    private static void testChunkSurfaceMatchesBiome() {
+        long seed = 4242L;
+        World w = new World(seed);
+        BiomeProvider bp = new BiomeProvider(seed);
+        for (int cx = -2; cx <= 2; cx++)
+            for (int cz = -2; cz <= 2; cz++) {
+                Chunk c = w.getChunk(cx, cz);
+                for (int x = 0; x < Chunk.SIZE_X; x++)
+                    for (int z = 0; z < Chunk.SIZE_Z; z++) {
+                        int wx = cx * Chunk.SIZE_X + x, wz = cz * Chunk.SIZE_Z + z;
+                        int y = surfaceY(c, x, z);
+                        Biome b = bp.biomeAtGrid(Math.floorDiv(wx, BiomeProvider.GRID_STEP),
+                                Math.floorDiv(wz, BiomeProvider.GRID_STEP));
+                        BlockType expected = (y <= World.SEA_LEVEL + 1) ? BlockType.SAND : b.surfaceBlock;
+                        BlockType actual = c.get(x, y, z);
+                        assertTrue("surface @" + wx + "," + wz + " biome=" + b
+                                + " expected=" + expected + " got=" + actual, actual == expected);
+                    }
+            }
+    }
+
+    private static void testHeightSmoothness() {
+        long seed = 991L;
+        World w = new World(seed);
+        int prev = Integer.MIN_VALUE;
+        for (int wx = -160; wx < 160; wx++) {
+            int cx = Math.floorDiv(wx, Chunk.SIZE_X);
+            Chunk c = w.getChunk(cx, 0);
+            int y = surfaceY(c, Math.floorMod(wx, Chunk.SIZE_X), 7);
+            if (prev != Integer.MIN_VALUE)
+                assertTrue("step at wx=" + wx + ": " + prev + " -> " + y,
+                        Math.abs(y - prev) <= 4);
+            prev = y;
+        }
     }
 
     // ---- harness ----

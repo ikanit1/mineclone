@@ -13,12 +13,14 @@ public class World {
     private final Map<Long, Chunk> chunks = new ConcurrentHashMap<>();
     private final PerlinNoise heightNoise;
     private final PerlinNoise detailNoise;
+    public final BiomeProvider biomes;
     public final long seed;
 
     public World(long seed) {
         this.seed = seed;
         this.heightNoise = new PerlinNoise(seed);
         this.detailNoise = new PerlinNoise(seed ^ 0x9E3779B97F4A7C15L);
+        this.biomes = new BiomeProvider(seed);
     }
 
     public static long key(int cx, int cz) {
@@ -45,6 +47,16 @@ public class World {
         Chunk c = new Chunk(cx, cz);
         int[][] heights = new int[Chunk.SIZE_X][Chunk.SIZE_Z];
 
+        // Biome grid: 8x8 array covering the chunk (16 cols / 4 = 4 cells) plus
+        // a 2-cell margin on each side for the 5x5 smoothing window.
+        // gx0 = first grid index this chunk needs (2 margin cells to the left).
+        final int G = 8;
+        int gx0 = cx * 4 - 2, gz0 = cz * 4 - 2;
+        Biome[][] grid = new Biome[G][G];
+        for (int gx = 0; gx < G; gx++)
+            for (int gz = 0; gz < G; gz++)
+                grid[gx][gz] = biomes.biomeAtGrid(gx0 + gx, gz0 + gz);
+
         // Pass 1: terrain only — no trees yet so leaves are never overwritten by later
         // columns.
         for (int x = 0; x < Chunk.SIZE_X; x++) {
@@ -52,11 +64,31 @@ public class World {
                 int wx = cx * Chunk.SIZE_X + x;
                 int wz = cz * Chunk.SIZE_Z + z;
 
+                // Smooth base height/amplitude over a 5x5 grid window so biome
+                // borders slope instead of forming cliffs.
+                int gi = x / 4 + 2, gj = z / 4 + 2;
+                double base = 0, amp = 0;
+                for (int ox = -2; ox <= 2; ox++)
+                    for (int oz = -2; oz <= 2; oz++) {
+                        Biome b = grid[gi + ox][gj + oz];
+                        base += b.baseHeight;
+                        amp  += b.amplitude;
+                    }
+                base /= 25.0;
+                amp  /= 25.0;
+
                 double n = heightNoise.fbm(wx * 0.012, wz * 0.012, 5, 2.0, 0.5);
-                double d = detailNoise.fbm(wx * 0.05, wz * 0.05, 3, 2.0, 0.5);
-                int height = (int) (SEA_LEVEL + 6 + n * 22 + d * 4);
+                double d = detailNoise.fbm(wx * 0.05,  wz * 0.05,  3, 2.0, 0.5);
+                int height = (int) (base + n * 22 * amp + d * 4);
                 height = Math.max(2, Math.min(Chunk.SIZE_Y - 4, height));
                 heights[x][z] = height;
+
+                // Point biome (4x4 quantised) picks the surface blocks; the
+                // beach rule overrides every biome at the waterline.
+                Biome biome = grid[gi][gj];
+                boolean beach = height <= SEA_LEVEL + 1;
+                BlockType surface = beach ? BlockType.SAND : biome.surfaceBlock;
+                BlockType filler  = beach ? BlockType.SAND : biome.fillerBlock;
 
                 for (int y = 0; y < Chunk.SIZE_Y; y++) {
                     BlockType t;
@@ -65,13 +97,10 @@ public class World {
                     else if (y < height - 4)
                         t = BlockType.STONE;
                     else if (y < height)
-                        t = (height <= SEA_LEVEL + 1) ? BlockType.SAND : BlockType.DIRT;
-                    else if (y == height) {
-                        if (height <= SEA_LEVEL + 1)
-                            t = BlockType.SAND;
-                        else
-                            t = BlockType.GRASS;
-                    } else if (y <= SEA_LEVEL)
+                        t = filler;
+                    else if (y == height)
+                        t = surface;
+                    else if (y <= SEA_LEVEL)
                         t = BlockType.WATER;
                     else
                         t = BlockType.AIR;
