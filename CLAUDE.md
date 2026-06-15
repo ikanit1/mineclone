@@ -22,7 +22,7 @@ $srcList = Join-Path $out 'sources.txt'
 javac -encoding UTF-8 -d $out -cp $jars "@$srcList"
 ```
 
-No tests exist. The game has no test suite.
+Tests run via `.\run-tests.ps1` (no JUnit — plain main + asserts in `src/test/java/com/mineclone/TestMain.java`). Exit code is non-zero if any test fails.
 
 ## Architecture
 
