@@ -58,6 +58,19 @@ public class Hud {
         }
     }
 
+    /** Outcome of an inventory click: which slot and which button, or none. */
+    public static final class SlotClick {
+        public final int slot;      // -1 = not a slot
+        public final boolean right;
+        public final boolean trash; // clicked the trash box
+        private SlotClick(int slot, boolean right, boolean trash) {
+            this.slot = slot; this.right = right; this.trash = trash;
+        }
+        public static SlotClick none()  { return new SlotClick(-1, false, false); }
+        public static SlotClick at(int slot, boolean right) { return new SlotClick(slot, right, false); }
+        public static SlotClick trash() { return new SlotClick(-1, false, true); }
+    }
+
     public static final class WorldSelectAction {
         public final String playId;    // non-null: play this world (from Play button)
         public final String selectId;  // non-null: select this world row (highlight)
@@ -193,7 +206,9 @@ public class Hud {
 
         for (int i = 0; i < n; i++) {
             float x = x0 + i * (slot + pad);
-            text.drawShadowed(font, String.valueOf(i + 1), x + 4, y0 + 16, screenW, screenH, 1f, 1f, 1f);
+            com.mineclone.world.ItemStack s = hotbar.get(i);
+            if (s != null && s.count > 1)
+                drawCount(screenW, screenH, s.count, x, y0, slot);
         }
     }
 
@@ -928,36 +943,27 @@ public class Hud {
         return MenuAction.NONE;
     }
 
-    public InventoryAction drawInventory(int w, int h, double mx, double my,
+    public SlotClick drawInventory(int w, int h, double mx, double my,
             boolean clicked, boolean rightClicked,
-            com.mineclone.world.Inventory inventory, int selectedSlot,
-            com.mineclone.world.ItemStack cursorItem) {
-        BlockType[] palette = BlockType.values();
-        float slot = 42f;
-        float gap = 5f;
+            com.mineclone.world.Inventory inv, int selectedSlot,
+            com.mineclone.world.ItemStack cursor) {
+        float slot = 42f, gap = 5f;
         float panelW = 9 * slot + 8 * gap + 52f;
-        float panelH = 470f;
+        float panelH = 360f;
         float panelX = w / 2f - panelW / 2f;
         float panelY = h / 2f - panelH / 2f;
         float invX = panelX + 22f;
         float titleY = panelY + 34f;
-        float paletteLabelY = panelY + 78f;
-        float paletteY = panelY + 96f;
-        float invLabelY = panelY + 166f;
-        float invY = panelY + 186f;
-        float hotbarLabelY = panelY + 356f;
-        float hotbarY = panelY + 376f;
+        float mainLabelY = panelY + 60f;
+        float mainY = panelY + 78f;
+        float hotbarLabelY = panelY + 250f;
+        float hotbarY = panelY + 268f;
         float trashX = panelX + panelW - 70f;
-        float trashY = panelY + 24f;
+        float trashY = panelY + 18f;
 
-        InventoryAction action = InventoryAction.none();
-        BlockType hovered = null;
+        SlotClick action = SlotClick.none();
+        com.mineclone.world.ItemStack hovered = null;
         float hoverX = 0, hoverY = 0;
-        // helper: extract BlockType from a slot (null-safe)
-        java.util.function.IntFunction<BlockType> slotType = (i) -> {
-            com.mineclone.world.ItemStack s = inventory.get(i);
-            return s == null ? null : s.type;
-        };
 
         ui.begin(w, h);
         ui.quad(0, 0, w, h, 0f, 0f, 0f, 0.65f);
@@ -968,51 +974,36 @@ public class Hud {
         ui.quad(trashX + 10f, trashY + 12f, 24f, 4f, 0.95f, 0.95f, 0.95f, 0.85f);
         ui.quad(trashX + 13f, trashY + 18f, 18f, 16f, 0.80f, 0.80f, 0.80f, 0.85f);
 
-        int paletteCols = 9;
-        float pSlot = 34f;
-        float pGap = 5f;
-        for (int i = 1; i < palette.length; i++) {
-            BlockType b = palette[i];
-            int c = (i - 1) % paletteCols;
-            int r = (i - 1) / paletteCols;
-            float x = invX + c * (pSlot + pGap);
-            float y = paletteY + r * (pSlot + pGap);
-            boolean hov = hov(mx, my, x, y, pSlot, pSlot);
-            drawSlotBack(x, y, pSlot, hov);
-            drawItemIcon(b, x + 4f, y + 4f, pSlot - 8f, 1f);
-            if (hov) {
-                hovered = b;
-                hoverX = x;
-                hoverY = y;
-                if (clicked)
-                    action = InventoryAction.palette(b);
-            }
-        }
-
+        // main 27 slots (indices 9..35)
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 9; col++) {
                 int slotIndex = 9 + row * 9 + col;
                 float x = invX + col * (slot + gap);
-                float y = invY + row * (slot + gap);
+                float y = mainY + row * (slot + gap);
                 boolean hov = hov(mx, my, x, y, slot, slot);
                 drawSlotBack(x, y, slot, hov);
-                drawItemIcon(slotType.apply(slotIndex), x + 6f, y + 6f, slot - 12f, 1f);
+                com.mineclone.world.ItemStack s = inv.get(slotIndex);
+                if (s != null) {
+                    drawItemIcon(s.type, x + 6f, y + 6f, slot - 12f, 1f);
+                }
                 if (hov) {
-                    hovered = slotType.apply(slotIndex);
-                    hoverX = x;
-                    hoverY = y;
-                    if (clicked)
-                        action = InventoryAction.slot(slotIndex);
+                    hovered = s; hoverX = x; hoverY = y;
+                    if (clicked)           action = SlotClick.at(slotIndex, false);
+                    else if (rightClicked) action = SlotClick.at(slotIndex, true);
                 }
             }
         }
 
+        // hotbar 9 slots (indices 0..8)
         for (int col = 0; col < 9; col++) {
             float x = invX + col * (slot + gap);
             float y = hotbarY;
             boolean hov = hov(mx, my, x, y, slot, slot);
             drawSlotBack(x, y, slot, hov);
-            drawItemIcon(slotType.apply(col), x + 6f, y + 6f, slot - 12f, 1f);
+            com.mineclone.world.ItemStack s = inv.get(col);
+            if (s != null) {
+                drawItemIcon(s.type, x + 6f, y + 6f, slot - 12f, 1f);
+            }
             if (col == selectedSlot) {
                 ui.quad(x - 3f, y - 3f, slot + 6f, 3f, 1f, 1f, 1f, 0.95f);
                 ui.quad(x - 3f, y + slot, slot + 6f, 3f, 1f, 1f, 1f, 0.95f);
@@ -1020,38 +1011,50 @@ public class Hud {
                 ui.quad(x + slot, y, 3f, slot, 1f, 1f, 1f, 0.95f);
             }
             if (hov) {
-                hovered = slotType.apply(col);
-                hoverX = x;
-                hoverY = y;
-                if (clicked)
-                    action = InventoryAction.slot(col);
+                hovered = s; hoverX = x; hoverY = y;
+                if (clicked)           action = SlotClick.at(col, false);
+                else if (rightClicked) action = SlotClick.at(col, true);
             }
         }
 
         boolean trashHover = hov(mx, my, trashX, trashY, 44f, 44f);
-        if ((clicked || rightClicked) && trashHover && cursorItem != null)
-            action = InventoryAction.clearCursor();
+        if ((clicked || rightClicked) && trashHover)
+            action = SlotClick.trash();
 
-        if (cursorItem != null) {
-            drawItemIcon(cursorItem.type, (float) mx - 18f, (float) my - 18f, 36f, 1f);
+        if (cursor != null) {
+            drawItemIcon(cursor.type, (float) mx - 18f, (float) my - 18f, 36f, 1f);
         }
         ui.end();
 
-        String title = "Inventory";
-        text.drawShadowed(font, title, panelX + 22f, titleY, w, h, 0.20f, 0.20f, 0.20f);
-        String creative = "Blocks";
-        text.drawShadowed(font, creative, invX, paletteLabelY, w, h, 0.20f, 0.20f, 0.20f);
-        String main = "Inventory";
-        text.drawShadowed(font, main, invX, invLabelY, w, h, 0.20f, 0.20f, 0.20f);
-        String hotbarText = "Hotbar";
-        text.drawShadowed(font, hotbarText, invX, hotbarLabelY, w, h, 0.20f, 0.20f, 0.20f);
+        text.drawShadowed(font, "Inventory", panelX + 22f, titleY, w, h, 0.20f, 0.20f, 0.20f);
+        text.drawShadowed(font, "Inventory", invX, mainLabelY, w, h, 0.20f, 0.20f, 0.20f);
+        text.drawShadowed(font, "Hotbar", invX, hotbarLabelY, w, h, 0.20f, 0.20f, 0.20f);
 
-        if (hovered != null && hovered != BlockType.AIR) {
-            String name = displayName(hovered);
+        if (hovered != null) {
+            String name = displayName(hovered.type);
             float twd = font.textWidth(name);
             float tx = Math.min(w - twd - 12f, Math.max(8f, hoverX + 4f));
             text.drawShadowed(font, name, tx, hoverY - 8f, w, h, 1f, 1f, 1f);
         }
+
+        // draw stack counts (after ui.end so text renders on top)
+        for (int row = 0; row < 3; row++) {
+            for (int col = 0; col < 9; col++) {
+                int slotIndex = 9 + row * 9 + col;
+                float x = invX + col * (slot + gap);
+                float y = mainY + row * (slot + gap);
+                com.mineclone.world.ItemStack s = inv.get(slotIndex);
+                if (s != null) drawCount(w, h, s.count, x + 6f, y + 6f, slot - 12f);
+            }
+        }
+        for (int col = 0; col < 9; col++) {
+            float x = invX + col * (slot + gap);
+            float y = hotbarY;
+            com.mineclone.world.ItemStack s = inv.get(col);
+            if (s != null) drawCount(w, h, s.count, x + 6f, y + 6f, slot - 12f);
+        }
+        if (cursor != null && cursor.count > 1)
+            drawCount(w, h, cursor.count, (float) mx - 18f, (float) my - 18f, 36f);
 
         return action;
     }
@@ -1063,6 +1066,16 @@ public class Hud {
         ui.quad(x, y, 2f, size, 0.18f, 0.18f, 0.18f, 1f);
         ui.quad(x + size - 2f, y, 2f, size, 0.88f, 0.88f, 0.88f, 1f);
         ui.quad(x, y + size - 2f, size, 2f, 0.88f, 0.88f, 0.88f, 1f);
+    }
+
+    /** Draws a stack-count number at the bottom-right of a slot, when count > 1. */
+    private void drawCount(int sw, int sh, int count, float slotX, float slotY, float slotSize) {
+        if (count <= 1) return;
+        String s = Integer.toString(count);
+        float cw = font.textWidth(s);
+        float tx = slotX + slotSize - cw - 2f;
+        float ty = slotY + slotSize - 2f;
+        text.drawShadowed(font, s, tx, ty, sw, sh, 1f, 1f, 1f);
     }
 
     private void drawItemIcon(BlockType b, float x, float y, float size, float alpha) {
@@ -1092,8 +1105,8 @@ public class Hud {
         return sb.toString();
     }
 
-    public BlockType drawCreativeMenu(int w, int h, double mx, double my, boolean clicked, BlockType[] hotbar,
-            int selectedSlot) {
+    public BlockType drawCreativeMenu(int w, int h, double mx, double my, boolean clicked,
+            com.mineclone.world.Inventory inv, int selectedSlot) {
         BlockType[] all = BlockType.values();
         int cols = 9;
         int rows = (int) Math.ceil((double) all.length / cols);

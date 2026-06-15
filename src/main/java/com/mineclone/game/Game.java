@@ -1765,21 +1765,26 @@ public class Game {
                 boolean clicked = input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
                 boolean rightClicked = input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
                 double mx = input.getCursorX() / scale, my = input.getCursorY() / scale;
-                Hud.InventoryAction action = hud.drawInventory(vw, vh, mx, my, clicked, rightClicked,
-                        inventory, selectedSlot, cursorItem);
-                if (action.paletteItem != null) {
-                    cursorItem = new com.mineclone.world.ItemStack(action.paletteItem, 1);
-                    equipProgress = 0f;
-                    sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
-                } else if (action.slot >= 0) {
-                    com.mineclone.world.ItemStack slotItem = inventory.get(action.slot);
-                    inventory.set(action.slot, cursorItem);
-                    cursorItem = slotItem;
-                    equipProgress = 0f;
-                    sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
-                } else if (action.clearCursor) {
-                    cursorItem = null;
-                    sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
+                if (gameMode == com.mineclone.world.GameMode.CREATIVE) {
+                    BlockType picked = hud.drawCreativeMenu(vw, vh, mx, my, clicked, inventory, selectedSlot);
+                    if (picked != null && picked != BlockType.AIR) {
+                        inventory.set(selectedSlot, new com.mineclone.world.ItemStack(picked, com.mineclone.world.ItemStack.MAX_STACK));
+                        equipProgress = 0f;
+                        sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
+                    }
+                } else {
+                    Hud.SlotClick sc = hud.drawInventory(vw, vh, mx, my, clicked, rightClicked,
+                            inventory, selectedSlot, cursorItem);
+                    if (sc.trash) {
+                        cursorItem = null;
+                        sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
+                    } else if (sc.slot >= 0) {
+                        cursorItem = sc.right
+                                ? inventory.rightClick(sc.slot, cursorItem)
+                                : inventory.leftClick(sc.slot, cursorItem);
+                        equipProgress = 0f;
+                        sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
+                    }
                 }
             }
             case DEAD -> {
