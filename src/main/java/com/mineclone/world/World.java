@@ -109,40 +109,86 @@ public class World {
             }
         }
 
-        // Pass 2: trees — all terrain exists so leaves land correctly.
+        // Pass 2: vegetation — all terrain exists so leaves land correctly.
         for (int x = 0; x < Chunk.SIZE_X; x++) {
             for (int z = 0; z < Chunk.SIZE_Z; z++) {
+                Biome biome = grid[x / 4 + 2][z / 4 + 2];
+                if (biome.treeType == Biome.TreeType.NONE)
+                    continue;
                 int height = heights[x][z];
-                if (c.get(x, height, z) != BlockType.GRASS)
+                if (height <= SEA_LEVEL + 1)
+                    continue;
+                if (c.get(x, height, z) != biome.surfaceBlock)
                     continue;
                 int wx = cx * Chunk.SIZE_X + x;
                 int wz = cz * Chunk.SIZE_Z + z;
                 long h = mix(wx, wz, seed);
-                if ((h & 0x7F) >= 2 || x < 2 || x >= Chunk.SIZE_X - 2 || z < 2 || z >= Chunk.SIZE_Z - 2)
+                if ((h & 0x7F) >= biome.treesPer128 || x < 2 || x >= Chunk.SIZE_X - 2
+                        || z < 2 || z >= Chunk.SIZE_Z - 2)
                     continue;
-                int th = 4 + (int) ((h >>> 7) & 0x3);
-                int top = height + th;
-                if (top + 2 >= Chunk.SIZE_Y)
-                    continue;
-                for (int i = 1; i <= th; i++)
-                    c.set(x, height + i, z, BlockType.WOOD);
-                for (int dx = -2; dx <= 2; dx++)
-                    for (int dz = -2; dz <= 2; dz++)
-                        for (int dy = 0; dy <= 2; dy++) {
-                            int lx = x + dx, ly = top - 2 + dy, lz = z + dz;
-                            int rad = (dy == 2) ? 1 : 2;
-                            if (Math.abs(dx) + Math.abs(dz) <= rad + 1
-                                    && c.inBounds(lx, ly, lz)
-                                    && c.get(lx, ly, lz) == BlockType.AIR) {
-                                c.set(lx, ly, lz, BlockType.LEAVES);
-                            }
-                        }
+                switch (biome.treeType) {
+                    case OAK    -> placeOak(c, x, height, z, h);
+                    case SPRUCE -> placeSpruce(c, x, height, z, h);
+                    case CACTUS -> placeCactus(c, x, height, z, h);
+                    case NONE   -> { }
+                }
             }
         }
 
         c.computeSkyLight();
         c.dirty = true;
         return c;
+    }
+
+    private static void placeOak(Chunk c, int x, int height, int z, long h) {
+        int th = 4 + (int) ((h >>> 7) & 0x3);
+        int top = height + th;
+        if (top + 2 >= Chunk.SIZE_Y)
+            return;
+        for (int i = 1; i <= th; i++)
+            c.set(x, height + i, z, BlockType.WOOD);
+        for (int dx = -2; dx <= 2; dx++)
+            for (int dz = -2; dz <= 2; dz++)
+                for (int dy = 0; dy <= 2; dy++) {
+                    int lx = x + dx, ly = top - 2 + dy, lz = z + dz;
+                    int rad = (dy == 2) ? 1 : 2;
+                    if (Math.abs(dx) + Math.abs(dz) <= rad + 1
+                            && c.inBounds(lx, ly, lz)
+                            && c.get(lx, ly, lz) == BlockType.AIR) {
+                        c.set(lx, ly, lz, BlockType.LEAVES);
+                    }
+                }
+    }
+
+    private static void placeSpruce(Chunk c, int x, int height, int z, long h) {
+        int th = 5 + (int) ((h >>> 7) & 0x3);
+        int top = height + th;
+        if (top + 2 >= Chunk.SIZE_Y)
+            return;
+        for (int i = 1; i <= th; i++)
+            c.set(x, height + i, z, BlockType.WOOD);
+        int[] radii = { 2, 1, 2, 1, 1 };
+        for (int level = 0; level < radii.length; level++) {
+            int ly = top - (radii.length - 1) + level;
+            int rad = radii[level];
+            for (int dx = -rad; dx <= rad; dx++)
+                for (int dz = -rad; dz <= rad; dz++) {
+                    if (Math.abs(dx) + Math.abs(dz) > rad)
+                        continue;
+                    int lx = x + dx, lz2 = z + dz;
+                    if (c.inBounds(lx, ly, lz2) && c.get(lx, ly, lz2) == BlockType.AIR)
+                        c.set(lx, ly, lz2, BlockType.LEAVES);
+                }
+        }
+        c.set(x, top + 1, z, BlockType.LEAVES);
+    }
+
+    private static void placeCactus(Chunk c, int x, int height, int z, long h) {
+        int ch = 1 + (int) ((h >>> 7) % 3);
+        if (height + ch + 1 >= Chunk.SIZE_Y)
+            return;
+        for (int i = 1; i <= ch; i++)
+            c.set(x, height + i, z, BlockType.CACTUS);
     }
 
     public int getSkyLight(int wx, int wy, int wz) {

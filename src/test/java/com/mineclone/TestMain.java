@@ -45,6 +45,7 @@ public final class TestMain {
         run("biome provider covers all biomes", TestMain::testBiomeCoverage);
         run("chunk surface matches biome", TestMain::testChunkSurfaceMatchesBiome);
         run("biome borders have no cliffs", TestMain::testHeightSmoothness);
+        run("vegetation matches biome rules", TestMain::testVegetationInvariants);
 
         System.out.println();
         System.out.println("==== " + passed + " passed, " + failed + " failed ====");
@@ -253,6 +254,35 @@ public final class TestMain {
                         Math.abs(y - prev) <= 4);
             prev = y;
         }
+    }
+
+    private static void testVegetationInvariants() {
+        long seed = 1001L;
+        World w = new World(seed);
+        boolean sawCactus = false, sawTrunk = false;
+        for (int cx = -6; cx <= 6; cx++)
+            for (int cz = -6; cz <= 6; cz++) {
+                Chunk c = w.getChunk(cx, cz);
+                for (int x = 0; x < Chunk.SIZE_X; x++)
+                    for (int z = 0; z < Chunk.SIZE_Z; z++)
+                        for (int y = 1; y < Chunk.SIZE_Y; y++) {
+                            BlockType t = c.get(x, y, z);
+                            BlockType below = c.get(x, y - 1, z);
+                            if (t == BlockType.CACTUS) {
+                                sawCactus = true;
+                                assertTrue("cactus on sand/cactus @" + x + "," + y + "," + z,
+                                        below == BlockType.SAND || below == BlockType.CACTUS);
+                                assertTrue("cactus above water line", y > World.SEA_LEVEL + 1);
+                            }
+                            if (t == BlockType.WOOD && below != BlockType.WOOD) {
+                                sawTrunk = true;
+                                assertTrue("trunk base on grass/snowy grass, got " + below,
+                                        below == BlockType.GRASS || below == BlockType.SNOWY_GRASS);
+                            }
+                        }
+            }
+        assertTrue("saw at least one trunk", sawTrunk);
+        assertTrue("saw at least one cactus", sawCactus);
     }
 
     // ---- harness ----
