@@ -1004,7 +1004,10 @@ public class Game {
                     BlockType placing = currentBlock();
                     if (placing == null || placing == BlockType.AIR)
                         return;
+                    if (gameMode == com.mineclone.world.GameMode.SURVIVAL && !inventory.hasItem(selectedSlot))
+                        return;
                     byte meta = 0;
+                    boolean placed = false;
                     if (placing == BlockType.DOOR_CLOSED) {
                         meta = facingFromCamera();
                         // Place 2-block door: bottom + top
@@ -1014,6 +1017,7 @@ public class Game {
                                     0.8f, 0.85f + 0.2f * (float) Math.random());
                             world.setBlock(px, py, pz, BlockType.DOOR_CLOSED, meta);
                             world.setBlock(px, py + 1, pz, BlockType.DOOR_CLOSED, (byte) (meta | 0x4));
+                            placed = true;
                         }
                     } else {
                         if (placing == BlockType.STAIRS)
@@ -1021,7 +1025,10 @@ public class Game {
                         sound.playOneOfAt(sounds.place(placing), blockSoundPosition(px, py, pz),
                                 0.8f, 0.85f + 0.2f * (float) Math.random());
                         world.setBlock(px, py, pz, placing, meta);
+                        placed = true;
                     }
+                    if (placed && gameMode == com.mineclone.world.GameMode.SURVIVAL)
+                        inventory.removeOne(selectedSlot);
                 }
             }
         }
@@ -1039,6 +1046,11 @@ public class Game {
         sound.playOneOfAt(sounds.breakBlock(target), blockSoundPosition(x, y, z),
                 0.8f, 0.9f + 0.2f * (float) Math.random());
         world.setBlock(x, y, z, BlockType.AIR);
+        if (gameMode == com.mineclone.world.GameMode.SURVIVAL) {
+            BlockType drop = target.getDrop();
+            if (drop != BlockType.AIR)
+                inventory.add(drop, 1);
+        }
         float pSky = world.getSkyLight(x, y, z) / (float) com.mineclone.world.Chunk.MAX_LIGHT;
         float pBlk = world.getBlockLightWorld(x, y, z) / (float) com.mineclone.world.Chunk.MAX_LIGHT;
         particles.emitBlockBreak(x, y, z, target.particleColor, target.sideTile, pSky, pBlk);
