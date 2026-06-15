@@ -10,6 +10,7 @@ import com.mineclone.world.Biome;
 import com.mineclone.world.BiomeProvider;
 import com.mineclone.world.BlockType;
 import com.mineclone.world.Chunk;
+import com.mineclone.world.Inventory;
 import com.mineclone.world.ItemStack;
 import com.mineclone.world.World;
 
@@ -36,6 +37,9 @@ public final class TestMain {
         run("World.key round-trips through (cx,cz)", TestMain::testWorldKeyRoundTrip);
         run("BlockType.byId guards out-of-range ids", TestMain::testByIdGuard);
         run("ItemStack clamps and stacks", TestMain::testItemStack);
+        run("Inventory add merges then fills", TestMain::testInventoryAdd);
+        run("Inventory removeOne empties slot", TestMain::testInventoryRemoveOne);
+        run("Inventory left/right click stack ops", TestMain::testInventoryClick);
         run("new biome blocks registered", TestMain::testBiomeBlocks);
         run("level.dat save/load round-trip", TestMain::testLevelRoundTrip);
         run("chunk save/load round-trip", TestMain::testChunkRoundTrip);
@@ -324,6 +328,77 @@ public final class TestMain {
         ItemStack u = new ItemStack(BlockType.DIRT, 5);
         assertEq("addUpTo negative is 0", 0, u.addUpTo(-3));
         assertEq("count unchanged after addUpTo(negative)", 5, u.count);
+    }
+
+    private static void testInventoryAdd() {
+        Inventory inv = new Inventory();
+        int left = inv.add(BlockType.STONE, 10);
+        assertEq("no leftover", 0, left);
+        assertEq("slot0 count", 10, inv.get(0).count);
+
+        // merges into the same existing stack first
+        inv.add(BlockType.STONE, 5);
+        assertEq("merged into slot0", 15, inv.get(0).count);
+        assertTrue("slot1 still empty", inv.get(1) == null);
+
+        // overflow spills into the next free slot
+        inv.add(BlockType.STONE, 60); // 15 + 60 = 75 -> 64 in slot0, 11 in next free
+        assertEq("slot0 full", 64, inv.get(0).count);
+        assertEq("spill slot count", 11, inv.get(1).count);
+
+        // full inventory returns leftover
+        Inventory full = new Inventory();
+        for (int i = 0; i < 36; i++) full.set(i, new ItemStack(BlockType.DIRT, 64));
+        int rem = full.add(BlockType.DIRT, 5);
+        assertEq("leftover when full", 5, rem);
+    }
+
+    private static void testInventoryRemoveOne() {
+        Inventory inv = new Inventory();
+        inv.set(3, new ItemStack(BlockType.WOOD, 2));
+        inv.removeOne(3);
+        assertEq("count decremented", 1, inv.get(3).count);
+        inv.removeOne(3);
+        assertTrue("slot emptied at 0", inv.get(3) == null);
+    }
+
+    private static void testInventoryClick() {
+        Inventory inv = new Inventory();
+        inv.set(0, new ItemStack(BlockType.STONE, 10));
+
+        // Left-click empty cursor on a stack: pick it all up
+        ItemStack cursor = inv.leftClick(0, null);
+        assertEq("cursor took all", 10, cursor.count);
+        assertTrue("slot now empty", inv.get(0) == null);
+
+        // Left-click full cursor on empty slot: drop it all
+        cursor = inv.leftClick(0, cursor);
+        assertTrue("cursor cleared", cursor == null);
+        assertEq("slot got 10", 10, inv.get(0).count);
+
+        // Right-click empty cursor on a stack: take half (ceil)
+        cursor = inv.rightClick(0, null); // 10 -> cursor 5, slot 5
+        assertEq("cursor half", 5, cursor.count);
+        assertEq("slot half", 5, inv.get(0).count);
+
+        // Right-click holding same type on same type: deposit one
+        cursor = inv.rightClick(0, cursor); // slot 5 -> 6, cursor 5 -> 4
+        assertEq("slot +1", 6, inv.get(0).count);
+        assertEq("cursor -1", 4, cursor.count);
+
+        // Left-click same type merges up to max with remainder on cursor
+        inv.set(0, new ItemStack(BlockType.STONE, 60));
+        cursor = new ItemStack(BlockType.STONE, 10);
+        cursor = inv.leftClick(0, cursor); // 60+10 -> slot 64, cursor 6
+        assertEq("slot merged to max", 64, inv.get(0).count);
+        assertEq("cursor remainder", 6, cursor.count);
+
+        // Left-click different type swaps
+        inv.set(1, new ItemStack(BlockType.DIRT, 3));
+        cursor = new ItemStack(BlockType.WOOD, 2);
+        cursor = inv.leftClick(1, cursor);
+        assertEq("slot took wood", BlockType.WOOD, inv.get(1).type);
+        assertEq("cursor took dirt", BlockType.DIRT, cursor.type);
     }
 
     // ---- harness ----
