@@ -32,6 +32,7 @@ No tests exist. The game has no test suite.
 ### World & chunks
 - `World` owns a `ConcurrentHashMap<Long, Chunk>`. Chunks are 16×128×16 (`Chunk.SIZE_*`).
 - `World.generate()` is **two-pass**: terrain first (stores heights in `int[][]`), then trees. This matters — single-pass overwrites leaves.
+- Biomes: `BiomeProvider` (3 climate noises → Whittaker table, 4×4-block quantisation, 5×5 height-param smoothing). Biomes are never persisted — recomputed from the seed.
 - `ChunkLoader` streams chunk generation onto a background thread pool; results drip back as `Ready` records which `Game` uploads to GPU.
 - `Chunk.computeSkyLight()` runs a column-flood BFS then one self-weighted blur pass to soften gradients.
 - `World.setBlock()` calls `computeSkyLight()` on the modified chunk and marks edge-adjacent neighbours dirty.
@@ -115,3 +116,6 @@ claude --add-dir "E:\mineclone\knowledge" --add-dir "E:\mineclone\graphify-out"
 | `Game.render()` | `uAmbient = 0.22f` | Shadow floor |
 | `Shaders.CHUNK_FRAGMENT` | `pow(l, 0.75)` | Gamma/tone curve |
 | `World` | `SEA_LEVEL = 50` | Water/sand threshold |
+| `BiomeProvider` | `CONT/TEMP/HUM_FREQ` | Biome region size |
+| `BiomeProvider` | `C_OCEAN, T_COLD, T_HOT, H_DRY, H_WET` | Biome rarity thresholds |
+| `Biome` | `baseHeight / amplitude / treesPer128` | Per-biome terrain & vegetation |
