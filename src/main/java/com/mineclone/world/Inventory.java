@@ -8,14 +8,20 @@ public final class Inventory {
 
     private final ItemStack[] slots = new ItemStack[SIZE];
 
-    public ItemStack get(int i) { return slots[i]; }
-    public void set(int i, ItemStack s) { slots[i] = s; }
+    public ItemStack get(int i) {
+        if (i < 0 || i >= SIZE) return null;
+        return slots[i];
+    }
+    public void set(int i, ItemStack s) {
+        if (i < 0 || i >= SIZE) return;
+        slots[i] = s;
+    }
     public int size() { return SIZE; }
 
     /** Adds items, merging into matching stacks first, then into empty slots.
      *  @return leftover that did not fit. */
     public int add(BlockType type, int amount) {
-        if (type == null || type == BlockType.AIR || amount <= 0) return amount;
+        if (type == null || type == BlockType.AIR || amount <= 0) return 0;
         // pass 1: top up existing stacks of this type
         for (int i = 0; i < SIZE && amount > 0; i++) {
             ItemStack s = slots[i];
@@ -35,6 +41,7 @@ public final class Inventory {
 
     /** Decrements the stack in {@code slot} by one; clears the slot at zero. */
     public void removeOne(int slot) {
+        if (slot < 0 || slot >= SIZE) return;
         ItemStack s = slots[slot];
         if (s == null) return;
         if (--s.count <= 0) slots[slot] = null;
@@ -42,6 +49,7 @@ public final class Inventory {
 
     /** Left-click interaction. Returns the new cursor stack (may be null). */
     public ItemStack leftClick(int slot, ItemStack cursor) {
+        if (slot < 0 || slot >= SIZE) return cursor;
         ItemStack s = slots[slot];
         if (cursor == null) {        // pick up the whole slot
             slots[slot] = null;
@@ -64,6 +72,7 @@ public final class Inventory {
 
     /** Right-click interaction. Returns the new cursor stack (may be null). */
     public ItemStack rightClick(int slot, ItemStack cursor) {
+        if (slot < 0 || slot >= SIZE) return cursor;
         ItemStack s = slots[slot];
         if (cursor == null) {        // take half (ceil) onto cursor
             if (s == null) return null;
@@ -92,6 +101,7 @@ public final class Inventory {
 
     /** True when the selected slot has something placeable. */
     public boolean hasItem(int slot) {
+        if (slot < 0 || slot >= SIZE) return false;
         return slots[slot] != null;
     }
 }

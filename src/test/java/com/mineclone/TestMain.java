@@ -351,6 +351,12 @@ public final class TestMain {
         for (int i = 0; i < 36; i++) full.set(i, new ItemStack(BlockType.DIRT, 64));
         int rem = full.add(BlockType.DIRT, 5);
         assertEq("leftover when full", 5, rem);
+
+        // add with amount <= 0 returns 0
+        Inventory inv2 = new Inventory();
+        assertEq("add(0) returns 0", 0, inv2.add(BlockType.STONE, 0));
+        assertEq("add(-1) returns 0", 0, inv2.add(BlockType.STONE, -1));
+        assertTrue("no slot filled", inv2.get(0) == null);
     }
 
     private static void testInventoryRemoveOne() {
