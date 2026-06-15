@@ -1670,7 +1670,8 @@ public class Game {
                     int skyL = world.getSkyLight(bx, by, bz);
                     int blkL = world.getBlockLightWorld(bx, by, bz);
                     hud.drawDebug(vw, vh, fpsCurrent, player.position, pcx, pcz,
-                            countLoadedChunks(), drawnChunks, tgt, tgtMeta, wireframe, skyL, blkL);
+                            countLoadedChunks(), drawnChunks, tgt, tgtMeta, wireframe, skyL, blkL,
+                            world.biomes.biomeAt(bx, bz).name());
                 }
                 if (consoleOpen)
                     hud.drawConsole(vw, vh, consoleLine.toString());
