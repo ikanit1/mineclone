@@ -98,8 +98,9 @@ public class Game {
     private final FrustumIntersection frustum = new FrustumIntersection();
     private final Matrix4f scratchModel = new Matrix4f();
     private int selectedSlot = 0;
-    private final BlockType[] inventory = com.mineclone.save.LevelData.defaultInventory();
-    private BlockType cursorItem = BlockType.AIR;
+    private com.mineclone.world.Inventory inventory = new com.mineclone.world.Inventory();
+    private com.mineclone.world.GameMode gameMode = com.mineclone.world.GameMode.SURVIVAL;
+    private com.mineclone.world.ItemStack cursorItem = null;
     private final com.mineclone.save.SaveManager save = new com.mineclone.save.SaveManager();
     private String worldId;
     private String worldDisplayName = "";
@@ -130,7 +131,7 @@ public class Game {
     private boolean swallowMouseUntilUp = false;
     private float handSwing = 0f;
     private float equipProgress = 1f;
-    private BlockType lastHeldBlock = inventory[0];
+    private BlockType lastHeldBlock = BlockType.AIR;
 
     public Game(Window window, boolean regenAtlas) {
         this.window = window;
@@ -163,7 +164,8 @@ public class Game {
     }
 
     private BlockType currentBlock() {
-        return inventory[selectedSlot];
+        com.mineclone.world.ItemStack s = inventory.get(selectedSlot);
+        return s == null ? BlockType.AIR : s.type;
     }
 
     private com.mineclone.save.Options buildOptions() {
@@ -238,13 +240,19 @@ public class Game {
     private void saveAll() {
         if (world == null)
             return;
+        com.mineclone.world.ItemStack[] invSnapshot =
+                new com.mineclone.world.ItemStack[com.mineclone.world.Inventory.SIZE];
+        for (int i = 0; i < invSnapshot.length; i++) {
+            com.mineclone.world.ItemStack s = inventory.get(i);
+            invSnapshot[i] = s == null ? null : s.copy();
+        }
         com.mineclone.save.LevelData d = new com.mineclone.save.LevelData(
                 worldDisplayName,
                 world.seed,
                 player.position.x, player.position.y, player.position.z,
                 worldSpawn.x, worldSpawn.y, worldSpawn.z,
                 player.camera.yaw, player.camera.pitch,
-                gameTime, selectedSlot, inventory);
+                gameTime, selectedSlot, invSnapshot, gameMode, System.currentTimeMillis());
         save.saveLevel(worldId, d);
         for (com.mineclone.world.Chunk c : world.getLoadedChunks()) {
             saveChunkIfModified(c);
@@ -406,8 +414,8 @@ public class Game {
         worldSpawn.set(player.position.x, player.position.y, player.position.z);
         gameTime = (float) (Math.PI / 6.0);
         selectedSlot = 0;
-        System.arraycopy(com.mineclone.save.LevelData.defaultInventory(), 0,
-                inventory, 0, inventory.length);
+        gameMode = com.mineclone.world.GameMode.SURVIVAL;
+        inventory = new com.mineclone.world.Inventory();
 
         if (lvl != null) {
             worldDisplayName = lvl.name.isEmpty() ? "World" : lvl.name;
@@ -417,8 +425,10 @@ public class Game {
             player.camera.pitch = lvl.pitch;
             gameTime = lvl.timeOfDay;
             selectedSlot = Math.floorMod(lvl.selectedSlot, 9);
-            System.arraycopy(lvl.inventory, 0, inventory, 0,
-                    Math.min(inventory.length, lvl.inventory.length));
+            gameMode = lvl.gameMode;
+            inventory = new com.mineclone.world.Inventory();
+            for (int i = 0; i < com.mineclone.world.Inventory.SIZE && i < lvl.inventory.length; i++)
+                inventory.set(i, lvl.inventory[i]);
         } else {
             worldDisplayName = "World";
         }
@@ -427,7 +437,7 @@ public class Game {
         player.velocity.set(0, 0, 0);
         player.lastFallDistance = 0f;
         lastHeldBlock = currentBlock();
-        cursorItem = BlockType.AIR;
+        cursorItem = null;
         player.flying = false;
         player.flySpeed = Player.FLY_SPEED;
 
@@ -458,7 +468,7 @@ public class Game {
                 spawn.x, spawn.y, spawn.z,
                 spawn.x, spawn.y, spawn.z,
                 0f, 0f, (float) (Math.PI / 6.0), 0,
-                com.mineclone.save.LevelData.defaultInventory());
+                com.mineclone.save.LevelData.emptyInventory(), com.mineclone.world.GameMode.SURVIVAL, System.currentTimeMillis());
         save.saveLevel(id, fresh);
         startWorld(id);
     }
@@ -1727,17 +1737,17 @@ public class Game {
                 Hud.InventoryAction action = hud.drawInventory(vw, vh, mx, my, clicked, rightClicked,
                         inventory, selectedSlot, cursorItem);
                 if (action.paletteItem != null) {
-                    cursorItem = action.paletteItem;
+                    cursorItem = new com.mineclone.world.ItemStack(action.paletteItem, 1);
                     equipProgress = 0f;
                     sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
                 } else if (action.slot >= 0) {
-                    BlockType slotItem = inventory[action.slot];
-                    inventory[action.slot] = cursorItem == null ? BlockType.AIR : cursorItem;
-                    cursorItem = slotItem == null ? BlockType.AIR : slotItem;
+                    com.mineclone.world.ItemStack slotItem = inventory.get(action.slot);
+                    inventory.set(action.slot, cursorItem);
+                    cursorItem = slotItem;
                     equipProgress = 0f;
                     sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
                 } else if (action.clearCursor) {
-                    cursorItem = BlockType.AIR;
+                    cursorItem = null;
                     sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
                 }
             }

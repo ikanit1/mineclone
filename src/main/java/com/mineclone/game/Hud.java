@@ -160,8 +160,8 @@ public class Hud {
 
     // ---------------- hotbar ----------------
 
-    public void drawHotbar(int screenW, int screenH, BlockType[] hotbar, int selected) {
-        int n = Math.min(9, hotbar.length);
+    public void drawHotbar(int screenW, int screenH, com.mineclone.world.Inventory hotbar, int selected) {
+        int n = Math.min(9, hotbar.size());
         float slot = 52, pad = 4;
         float totalW = n * slot + (n - 1) * pad;
         float x0 = screenW / 2f - totalW / 2f;
@@ -172,7 +172,8 @@ public class Hud {
         for (int i = 0; i < n; i++) {
             float x = x0 + i * (slot + pad);
             ui.quad(x, y0, slot, slot, 0.15f, 0.15f, 0.18f, 0.7f);
-            BlockType b = hotbar[i];
+            com.mineclone.world.ItemStack stack = hotbar.get(i);
+            BlockType b = stack == null ? null : stack.type;
             if (b != null && b != BlockType.AIR) {
                 int tile = (b == BlockType.GRASS) ? b.topTile : b.sideTile;
                 float[] uv = TextureAtlas.uv(tile);
@@ -929,7 +930,8 @@ public class Hud {
 
     public InventoryAction drawInventory(int w, int h, double mx, double my,
             boolean clicked, boolean rightClicked,
-            BlockType[] inventory, int selectedSlot, BlockType cursorItem) {
+            com.mineclone.world.Inventory inventory, int selectedSlot,
+            com.mineclone.world.ItemStack cursorItem) {
         BlockType[] palette = BlockType.values();
         float slot = 42f;
         float gap = 5f;
@@ -951,6 +953,11 @@ public class Hud {
         InventoryAction action = InventoryAction.none();
         BlockType hovered = null;
         float hoverX = 0, hoverY = 0;
+        // helper: extract BlockType from a slot (null-safe)
+        java.util.function.IntFunction<BlockType> slotType = (i) -> {
+            com.mineclone.world.ItemStack s = inventory.get(i);
+            return s == null ? null : s.type;
+        };
 
         ui.begin(w, h);
         ui.quad(0, 0, w, h, 0f, 0f, 0f, 0.65f);
@@ -989,9 +996,9 @@ public class Hud {
                 float y = invY + row * (slot + gap);
                 boolean hov = hov(mx, my, x, y, slot, slot);
                 drawSlotBack(x, y, slot, hov);
-                drawItemIcon(inventory[slotIndex], x + 6f, y + 6f, slot - 12f, 1f);
+                drawItemIcon(slotType.apply(slotIndex), x + 6f, y + 6f, slot - 12f, 1f);
                 if (hov) {
-                    hovered = inventory[slotIndex];
+                    hovered = slotType.apply(slotIndex);
                     hoverX = x;
                     hoverY = y;
                     if (clicked)
@@ -1005,7 +1012,7 @@ public class Hud {
             float y = hotbarY;
             boolean hov = hov(mx, my, x, y, slot, slot);
             drawSlotBack(x, y, slot, hov);
-            drawItemIcon(inventory[col], x + 6f, y + 6f, slot - 12f, 1f);
+            drawItemIcon(slotType.apply(col), x + 6f, y + 6f, slot - 12f, 1f);
             if (col == selectedSlot) {
                 ui.quad(x - 3f, y - 3f, slot + 6f, 3f, 1f, 1f, 1f, 0.95f);
                 ui.quad(x - 3f, y + slot, slot + 6f, 3f, 1f, 1f, 1f, 0.95f);
@@ -1013,7 +1020,7 @@ public class Hud {
                 ui.quad(x + slot, y, 3f, slot, 1f, 1f, 1f, 0.95f);
             }
             if (hov) {
-                hovered = inventory[col];
+                hovered = slotType.apply(col);
                 hoverX = x;
                 hoverY = y;
                 if (clicked)
@@ -1022,11 +1029,11 @@ public class Hud {
         }
 
         boolean trashHover = hov(mx, my, trashX, trashY, 44f, 44f);
-        if ((clicked || rightClicked) && trashHover && cursorItem != null && cursorItem != BlockType.AIR)
+        if ((clicked || rightClicked) && trashHover && cursorItem != null)
             action = InventoryAction.clearCursor();
 
-        if (cursorItem != null && cursorItem != BlockType.AIR) {
-            drawItemIcon(cursorItem, (float) mx - 18f, (float) my - 18f, 36f, 1f);
+        if (cursorItem != null) {
+            drawItemIcon(cursorItem.type, (float) mx - 18f, (float) my - 18f, 36f, 1f);
         }
         ui.end();
 

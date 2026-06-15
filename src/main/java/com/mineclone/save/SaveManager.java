@@ -14,7 +14,6 @@ import java.io.IOException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
-import java.util.Arrays;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.zip.GZIPInputStream;
@@ -138,17 +137,24 @@ public final class SaveManager {
             writeGzipAtomic(levelFile(id), o -> {
                 o.writeInt(SaveFormat.MAGIC);
                 o.writeInt(SaveFormat.LEVEL_VERSION);
-                o.writeUTF(d.name);            // v4: display name before seed
+                o.writeUTF(d.name);
                 o.writeLong(d.seed);
-                o.writeLong(d.lastPlayed);     // v5: last-played timestamp
+                o.writeLong(d.lastPlayed);
                 o.writeDouble(d.px); o.writeDouble(d.py); o.writeDouble(d.pz);
                 o.writeDouble(d.spawnX); o.writeDouble(d.spawnY); o.writeDouble(d.spawnZ);
                 o.writeFloat(d.yaw); o.writeFloat(d.pitch);
                 o.writeFloat(d.timeOfDay);
                 o.writeInt(d.selectedSlot);
+                o.writeInt(d.gameMode.ordinal());            // v6
                 o.writeInt(d.inventory.length);
-                for (BlockType b : d.inventory) {
-                    o.writeByte(b == null ? BlockType.AIR.ordinal() : b.ordinal());
+                for (com.mineclone.world.ItemStack s : d.inventory) {   // v6: type + count
+                    if (s == null) {
+                        o.writeByte(com.mineclone.world.BlockType.AIR.ordinal());
+                        o.writeShort(0);
+                    } else {
+                        o.writeByte(s.type.ordinal());
+                        o.writeShort(s.count);
+                    }
                 }
             });
         } catch (IOException e) {
@@ -178,19 +184,38 @@ public final class SaveManager {
             float yaw = in.readFloat(), pitch = in.readFloat();
             float tod = in.readFloat();
             int slot = in.readInt();
-            BlockType[] inventory = LevelData.defaultInventory();
-            if (version >= 3) {
-                int n = Math.max(0, Math.min(128, in.readInt()));
-                inventory = new BlockType[Math.max(36, n)];
-                Arrays.fill(inventory, BlockType.AIR);
+
+            com.mineclone.world.GameMode gameMode =
+                    (version >= 6) ? com.mineclone.world.GameMode.byOrdinalSafe(in.readInt())
+                                   : com.mineclone.world.GameMode.CREATIVE;
+
+            com.mineclone.world.ItemStack[] inventory = LevelData.emptyInventory();
+            if (version >= 6) {
+                int n = Math.max(0, Math.min(256, in.readInt()));
+                com.mineclone.world.ItemStack[] tmp =
+                        new com.mineclone.world.ItemStack[Math.max(com.mineclone.world.Inventory.SIZE, n)];
                 for (int i = 0; i < n; i++) {
                     int blockId = in.readUnsignedByte();
-                    inventory[i] = blockId >= 0 && blockId < BlockType.VALUES.length
-                            ? BlockType.VALUES[blockId]
-                            : BlockType.AIR;
+                    int count = in.readShort();
+                    if (count > 0 && blockId > 0 && blockId < BlockType.VALUES.length)
+                        tmp[i] = new com.mineclone.world.ItemStack(BlockType.VALUES[blockId], count);
                 }
+                inventory = tmp;
+            } else if (version >= 3) {
+                // old format: BlockType[] with implicit count = 1
+                int n = Math.max(0, Math.min(128, in.readInt()));
+                com.mineclone.world.ItemStack[] tmp =
+                        new com.mineclone.world.ItemStack[Math.max(com.mineclone.world.Inventory.SIZE, n)];
+                for (int i = 0; i < n; i++) {
+                    int blockId = in.readUnsignedByte();
+                    if (blockId > 0 && blockId < BlockType.VALUES.length)
+                        tmp[i] = new com.mineclone.world.ItemStack(BlockType.VALUES[blockId], 1);
+                }
+                inventory = tmp;
             }
-            return new LevelData(name, seed, px, py, pz, spawnX, spawnY, spawnZ, yaw, pitch, tod, slot, inventory, lastPlayed);
+
+            return new LevelData(name, seed, px, py, pz, spawnX, spawnY, spawnZ,
+                    yaw, pitch, tod, slot, inventory, gameMode, lastPlayed);
         } catch (IOException e) {
             System.err.println("loadLevel failed: " + e.getMessage());
             return null;
@@ -246,7 +271,8 @@ public final class SaveManager {
         if (d == null) return;
         saveLevel(id, new LevelData(newName, d.seed,
                 d.px, d.py, d.pz, d.spawnX, d.spawnY, d.spawnZ,
-                d.yaw, d.pitch, d.timeOfDay, d.selectedSlot, d.inventory, d.lastPlayed));
+                d.yaw, d.pitch, d.timeOfDay, d.selectedSlot,
+                d.inventory, d.gameMode, d.lastPlayed));
     }
 
     // ---- options.dat (global, not per-world) ----

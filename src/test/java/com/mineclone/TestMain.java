@@ -10,6 +10,7 @@ import com.mineclone.world.Biome;
 import com.mineclone.world.BiomeProvider;
 import com.mineclone.world.BlockType;
 import com.mineclone.world.Chunk;
+import com.mineclone.world.GameMode;
 import com.mineclone.world.Inventory;
 import com.mineclone.world.ItemStack;
 import com.mineclone.world.World;
@@ -110,10 +111,11 @@ public final class TestMain {
 
     private static void testLevelRoundTrip() throws Exception {
         SaveManager sm = freshManager();
-        BlockType[] inv = LevelData.defaultInventory();
-        inv[0] = BlockType.COBBLE;
+        ItemStack[] inv = LevelData.creativeInventory();
+        inv[0] = new ItemStack(BlockType.COBBLE, 17);
         LevelData in = new LevelData("Test World", 42L, 1.5, 2.5, 3.5,
-                10.0, 20.0, 30.0, 0.1f, 0.2f, 0.3f, 4, inv, 999L);
+                10.0, 20.0, 30.0, 0.1f, 0.2f, 0.3f, 4, inv,
+                GameMode.SURVIVAL, 999L);
         sm.saveLevel("w1", in);
         LevelData out = sm.loadLevel("w1");
         assertTrue("loadLevel non-null", out != null);
@@ -123,7 +125,9 @@ public final class TestMain {
         assertEq("spawnY", 20.0, out.spawnY);
         assertEq("selectedSlot", 4, out.selectedSlot);
         assertEq("lastPlayed", 999L, out.lastPlayed);
-        assertTrue("inventory[0] preserved", out.inventory[0] == BlockType.COBBLE);
+        assertEq("gameMode", GameMode.SURVIVAL, out.gameMode);
+        assertEq("inv[0] type", BlockType.COBBLE, out.inventory[0].type);
+        assertEq("inv[0] count", 17, out.inventory[0].count);
     }
 
     private static void testChunkRoundTrip() throws Exception {
