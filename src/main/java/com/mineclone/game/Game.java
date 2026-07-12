@@ -746,6 +746,11 @@ public class Game {
     private void updateCreativeMenu(float dt) {
         updateCommandToast(dt);
         if (input.keyPressed(GLFW.GLFW_KEY_E) || input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
+            if (cursorItem != null) {
+                // return the held stack to the inventory so items are not lost on close
+                inventory.add(cursorItem.type, cursorItem.count);
+                cursorItem = null;
+            }
             sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
             state = State.PLAYING;
             input.grabCursor(true);
