@@ -30,34 +30,6 @@ public class Hud {
     private final UiRenderer ui;
     private final TextureAtlas atlas;
 
-    public static final class InventoryAction {
-        public final int slot;
-        public final BlockType paletteItem;
-        public final boolean clearCursor;
-
-        private InventoryAction(int slot, BlockType paletteItem, boolean clearCursor) {
-            this.slot = slot;
-            this.paletteItem = paletteItem;
-            this.clearCursor = clearCursor;
-        }
-
-        public static InventoryAction none() {
-            return new InventoryAction(-1, null, false);
-        }
-
-        public static InventoryAction slot(int slot) {
-            return new InventoryAction(slot, null, false);
-        }
-
-        public static InventoryAction palette(BlockType item) {
-            return new InventoryAction(-1, item, false);
-        }
-
-        public static InventoryAction clearCursor() {
-            return new InventoryAction(-1, null, true);
-        }
-    }
-
     /** Outcome of an inventory click: which slot and which button, or none. */
     public static final class SlotClick {
         public final int slot;      // -1 = not a slot
