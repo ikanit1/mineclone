@@ -323,6 +323,7 @@ public final class TestMain {
             assertTrue(t + " height > 0", t.height > 0f);
             assertTrue(t + " maxHealth > 0", t.maxHealth > 0f);
             assertTrue(t + " walkSpeed > 0", t.walkSpeed > 0f);
+            assertTrue(t + " fall speed negative", t.maxFallSpeed < 0f);
             assertTrue(t + " soundDir set", t.soundDir != null && !t.soundDir.isBlank());
             assertEq(t + " particleColor rgb", 3, t.particleColor.length);
         }
@@ -340,6 +341,12 @@ public final class TestMain {
         assertEq("4 peaceful types", 4, com.mineclone.world.entity.MobType.PEACEFUL.length);
         for (com.mineclone.world.entity.MobType t : com.mineclone.world.entity.MobType.PEACEFUL)
             assertTrue(t + " not hostile", !t.hostile);
+        EnumSet<com.mineclone.world.entity.MobType> peacefulSet =
+                EnumSet.noneOf(com.mineclone.world.entity.MobType.class);
+        for (com.mineclone.world.entity.MobType t : com.mineclone.world.entity.MobType.PEACEFUL)
+            peacefulSet.add(t);
+        assertEq("PEACEFUL entries are distinct",
+                com.mineclone.world.entity.MobType.PEACEFUL.length, peacefulSet.size());
         // Курица падает медленнее остальных.
         assertTrue("chicken slow fall",
                 com.mineclone.world.entity.MobType.CHICKEN.maxFallSpeed
