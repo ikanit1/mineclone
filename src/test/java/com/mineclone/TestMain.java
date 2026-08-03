@@ -56,6 +56,7 @@ public final class TestMain {
         run("vegetation matches biome rules", TestMain::testVegetationInvariants);
         run("sound materials for biome blocks", TestMain::testBiomeSoundMaterials);
         run("BlockType drop table", TestMain::testDropTable);
+        run("MobType params sane", TestMain::testMobTypeParams);
 
         System.out.println();
         System.out.println("==== " + passed + " passed, " + failed + " failed ====");
@@ -314,6 +315,35 @@ public final class TestMain {
         assertEq("water drops nothing", BlockType.AIR, BlockType.WATER.getDrop());
         assertEq("dirt drops itself", BlockType.DIRT, BlockType.DIRT.getDrop());
         assertEq("wood drops itself", BlockType.WOOD, BlockType.WOOD.getDrop());
+    }
+
+    private static void testMobTypeParams() {
+        for (com.mineclone.world.entity.MobType t : com.mineclone.world.entity.MobType.values()) {
+            assertTrue(t + " width > 0", t.width > 0f);
+            assertTrue(t + " height > 0", t.height > 0f);
+            assertTrue(t + " maxHealth > 0", t.maxHealth > 0f);
+            assertTrue(t + " walkSpeed > 0", t.walkSpeed > 0f);
+            assertTrue(t + " soundDir set", t.soundDir != null && !t.soundDir.isBlank());
+            assertEq(t + " particleColor rgb", 3, t.particleColor.length);
+        }
+        // Ровно один враждебный тип в E1, и только он горит на солнце.
+        int hostile = 0;
+        for (com.mineclone.world.entity.MobType t : com.mineclone.world.entity.MobType.values()) {
+            if (t.hostile) hostile++;
+            assertTrue(t + " burns only if hostile", !t.burnsInSunlight || t.hostile);
+        }
+        assertEq("one hostile type", 1, hostile);
+        assertTrue("zombie chases faster than it walks",
+                com.mineclone.world.entity.MobType.ZOMBIE.chaseSpeed
+                        > com.mineclone.world.entity.MobType.ZOMBIE.walkSpeed);
+        // PEACEFUL — список для спавнера: враждебных в нём быть не должно.
+        assertEq("4 peaceful types", 4, com.mineclone.world.entity.MobType.PEACEFUL.length);
+        for (com.mineclone.world.entity.MobType t : com.mineclone.world.entity.MobType.PEACEFUL)
+            assertTrue(t + " not hostile", !t.hostile);
+        // Курица падает медленнее остальных.
+        assertTrue("chicken slow fall",
+                com.mineclone.world.entity.MobType.CHICKEN.maxFallSpeed
+                        > com.mineclone.world.entity.MobType.COW.maxFallSpeed);
     }
 
     private static void testItemStack() {
