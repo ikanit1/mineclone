@@ -57,6 +57,9 @@ public final class TestMain {
         run("sound materials for biome blocks", TestMain::testBiomeSoundMaterials);
         run("BlockType drop table", TestMain::testDropTable);
         run("MobType params sane", TestMain::testMobTypeParams);
+        run("EntityPhysics lands on ground", TestMain::testEntityPhysicsFall);
+        run("EntityPhysics stops at wall", TestMain::testEntityPhysicsWall);
+        run("EntityPhysics ray vs AABB", TestMain::testRayAabb);
 
         System.out.println();
         System.out.println("==== " + passed + " passed, " + failed + " failed ====");
@@ -351,6 +354,69 @@ public final class TestMain {
         assertTrue("chicken slow fall",
                 com.mineclone.world.entity.MobType.CHICKEN.maxFallSpeed
                         > com.mineclone.world.entity.MobType.COW.maxFallSpeed);
+    }
+
+    /**
+     * Каменная платформа на y=10 в 3×3 чанках вокруг (0,0), остальное — воздух.
+     * Три чанка в ширину, а не один: мобы в тестах гуляют по 10+ метров, и с
+     * платформой 16×16 они успевали свалиться с края — тест мигал.
+     */
+    private static World flatTestWorld() {
+        World w = new World(1234L);
+        for (int cx = -1; cx <= 1; cx++)
+            for (int cz = -1; cz <= 1; cz++) {
+                Chunk c = w.getChunk(cx, cz);
+                for (int x = 0; x < Chunk.SIZE_X; x++)
+                    for (int z = 0; z < Chunk.SIZE_Z; z++)
+                        for (int y = 0; y < Chunk.SIZE_Y; y++)
+                            c.set(x, y, z, y == 10 ? BlockType.STONE : BlockType.AIR);
+            }
+        return w;
+    }
+
+    private static void testEntityPhysicsFall() {
+        World w = flatTestWorld();
+        org.joml.Vector3f pos = new org.joml.Vector3f(8.5f, 14f, 8.5f);
+        org.joml.Vector3f vel = new org.joml.Vector3f();
+        com.mineclone.world.entity.EntityPhysics.Contact c = null;
+        for (int i = 0; i < 120; i++)  // 2 c по 1/60
+            c = com.mineclone.world.entity.EntityPhysics.step(w, pos, vel, 0.6f, 1.8f, 1f / 60f, -55f);
+        assertTrue("onGround after falling", c.onGround());
+        assertTrue("vertical velocity zeroed, was " + vel.y, Math.abs(vel.y) < 1e-3f);
+        assertTrue("stands on top of the block, y=" + pos.y, Math.abs(pos.y - 11f) < 0.01f);
+    }
+
+    private static void testEntityPhysicsWall() {
+        World w = flatTestWorld();
+        // Стена на x=10, во всю высоту тела.
+        for (int y = 11; y <= 13; y++)
+            w.getChunk(0, 0).set(10, y, 8, BlockType.STONE);
+        org.joml.Vector3f pos = new org.joml.Vector3f(8.5f, 11f, 8.5f);
+        org.joml.Vector3f vel = new org.joml.Vector3f(4f, 0f, 0f);
+        boolean sawWall = false;
+        for (int i = 0; i < 60; i++) {
+            vel.x = 4f; // ИИ каждый тик заново задаёт горизонтальную скорость
+            com.mineclone.world.entity.EntityPhysics.Contact c =
+                    com.mineclone.world.entity.EntityPhysics.step(w, pos, vel, 0.6f, 1.8f, 1f / 60f, -55f);
+            if (c.hitWall()) sawWall = true;
+        }
+        assertTrue("hitWall reported", sawWall);
+        assertTrue("did not tunnel through the wall, x=" + pos.x, pos.x < 10f);
+    }
+
+    private static void testRayAabb() {
+        // Луч из (0,0,0) в +X сквозь куб 5..6 — попадание на дистанции 5.
+        float t = com.mineclone.world.entity.EntityPhysics.rayAabbDistance(
+                0f, 0.5f, 0.5f, 1f, 0f, 0f, 5f, 0f, 0f, 6f, 1f, 1f);
+        assertTrue("hit at ~5, got " + t, t > 4.99f && t < 5.01f);
+        // Мимо: тот же куб, луч уходит в +Z.
+        float miss = com.mineclone.world.entity.EntityPhysics.rayAabbDistance(
+                0f, 0.5f, 0.5f, 0f, 0f, 1f, 5f, 0f, 0f, 6f, 1f, 1f);
+        assertTrue("miss returns negative, got " + miss, miss < 0f);
+        // Луч в противоположную сторону тоже мимо.
+        float behind = com.mineclone.world.entity.EntityPhysics.rayAabbDistance(
+                0f, 0.5f, 0.5f, -1f, 0f, 0f, 5f, 0f, 0f, 6f, 1f, 1f);
+        assertTrue("behind returns negative, got " + behind, behind < 0f);
     }
 
     private static void testItemStack() {
