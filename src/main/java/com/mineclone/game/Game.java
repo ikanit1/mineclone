@@ -1014,9 +1014,17 @@ public class Game {
         Vector3f dir = player.camera.forward();
         lastHit = Raycaster.cast(world, origin, dir, 6f);
 
-        // Удар по мобу проверяется ДО работы с блоками: если моб ближе, чем блок
-        // под прицелом, ломание не начинается вовсе.
-        boolean hitMob = tryHitMob(origin, dir);
+        // Моб под прицелом проверяется ДО работы с блоками: пока он на линии
+        // взгляда и ближе блока, ломание не идёт вообще — не только в кадре
+        // нажатия. Иначе, удерживая ЛКМ на мобе, игрок докапывался бы до блока
+        // за ним.
+        com.mineclone.world.entity.Mob aimedMob = pickAimedMob(origin, dir);
+        if (aimedMob != null && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
+            startHandSwing();
+            aimedMob.hurt(HAND_DAMAGE, player.position.x, player.position.z);
+            sound.playOneOfAt(sounds.mobHurt(aimedMob.type), aimedMob.soundPosition(),
+                    0.8f, 0.9f + 0.2f * (float) Math.random());
+        }
 
         if (lastHit == null) {
             resetBreakState();
@@ -1031,7 +1039,7 @@ public class Game {
         }
 
         // --- Left mouse: break ---
-        if (hitMob) {
+        if (aimedMob != null) {
             resetBreakState();
         } else if (instantBreak) {
             if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
@@ -1129,15 +1137,13 @@ public class Game {
     }
 
     /**
-     * ЛКМ по мобу: параметрический ray-vs-AABB по всем мобам в радиусе
-     * MOB_REACH. Если ближайший моб дальше блока под прицелом — бьём блок,
-     * а не моба.
-     *
-     * @return true, если удар пришёлся по мобу (тогда блок не ломается)
+     * Ближайший моб под прицелом: параметрический ray-vs-AABB по всем мобам в
+     * радиусе MOB_REACH. Возвращает null, если мобов на линии взгляда нет или
+     * блок под прицелом ближе — тогда работают обычные блочные механики.
      */
-    private boolean tryHitMob(Vector3f origin, Vector3f dir) {
-        if (mobs.isEmpty() || !input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT))
-            return false;
+    private com.mineclone.world.entity.Mob pickAimedMob(Vector3f origin, Vector3f dir) {
+        if (mobs.isEmpty())
+            return null;
 
         float blockDist = Float.MAX_VALUE;
         if (lastHit != null) {
@@ -1158,14 +1164,7 @@ public class Game {
                 best = m;
             }
         }
-        if (best == null || bestT >= blockDist)
-            return false;
-
-        startHandSwing();
-        best.hurt(HAND_DAMAGE, player.position.x, player.position.z);
-        sound.playOneOfAt(sounds.mobHurt(best.type), best.soundPosition(),
-                0.8f, 0.9f + 0.2f * (float) Math.random());
-        return true;
+        return (best != null && bestT < blockDist) ? best : null;
     }
 
     private void resetBreakState() {
