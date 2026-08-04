@@ -82,7 +82,7 @@ public class Hud {
     public void drawDebug(int screenW, int screenH, int fps, Vector3f pos,
             int chunkX, int chunkZ, int loadedChunks, int drawnChunks,
             BlockType target, byte targetMeta, boolean wireframe, int skyLight, int blockLight,
-            String biome) {
+            String biome, int mobCount) {
         float lineH = font.getPixelHeight() + 2;
         float y = lineH;
         long used = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024);
@@ -96,6 +96,7 @@ public class Hud {
                 "Biome: " + biome,
                 "Target: " + targetStr,
                 "Light  sky=" + skyLight + "  block=" + blockLight,
+                "Mobs: " + mobCount,
                 "Memory: " + used + " MB / " + total + " MB",
         };
         for (String s : lines) {

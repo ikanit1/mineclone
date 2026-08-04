@@ -56,6 +56,10 @@ public class Game {
     private final BlockOutline outline;
     private final SkyRenderer skyRenderer;
     private final ParticleSystem particles = new ParticleSystem();
+    private final java.util.List<com.mineclone.world.entity.Mob> mobs = new java.util.ArrayList<>();
+    private com.mineclone.world.entity.MobSpawner mobSpawner;
+    private float mobSpawnTimer = 0f;
+    private com.mineclone.render.MobRenderer mobRenderer;
     private final SoundEngine sound = new SoundEngine();
     private final Sounds sounds = new Sounds();
     private Font font;
@@ -160,6 +164,7 @@ public class Game {
         this.crosshair = new Crosshair();
         this.outline = new BlockOutline();
         this.breakOverlay = new BlockBreakOverlay();
+        this.mobRenderer = new com.mineclone.render.MobRenderer();
         this.skyRenderer = new SkyRenderer();
     }
 
@@ -441,6 +446,10 @@ public class Game {
         player.flying = false;
         player.flySpeed = Player.FLY_SPEED;
 
+        mobs.clear();
+        mobSpawner = new com.mineclone.world.entity.MobSpawner(world.seed ^ 0x51E7B0BL);
+        mobSpawnTimer = 0f;
+
         WaterSimulator.reset();
         beginLoadingToPlay();
     }
@@ -500,6 +509,8 @@ public class Game {
         chunkMeshes.clear();
         waterMeshes.clear();
         WaterSimulator.reset();
+        mobs.clear();
+        mobSpawner = null;
         resetBreakState();
         world = null;
         mesher = null;
@@ -696,6 +707,7 @@ public class Game {
         ensureChunksLoaded();
         handleInteraction(dt);
         updateActiveWorld(dt);
+        updateMobs(dt);
     }
 
     private void updateActiveWorld(float dt) {
@@ -713,6 +725,71 @@ public class Game {
             WaterSimulator.tick(world);
         }
         updateDirtyMeshes();
+    }
+
+    /**
+     * Тик мобов: ИИ + физика, события в звуки/частицы/урон, затем спавн-деспавн.
+     *
+     * Зовётся только из updatePlaying — в PAUSED / CREATIVE_MENU / DEAD мобы
+     * замирают (иначе зомби добивал бы игрока в меню паузы).
+     *
+     * Смерть игрока от зомби ловится проверкой player.isDead() в начале
+     * следующего кадра — задержка в один кадр, специально не усложняем.
+     */
+    private void updateMobs(float dt) {
+        if (world == null || mobSpawner == null)
+            return;
+        boolean hostileEnabled = gameMode == com.mineclone.world.GameMode.SURVIVAL;
+
+        java.util.Iterator<com.mineclone.world.entity.Mob> it = mobs.iterator();
+        while (it.hasNext()) {
+            com.mineclone.world.entity.Mob m = it.next();
+            m.update(world, player.position, dt, daylight, hostileEnabled);
+
+            if (m.justIdleSound)
+                sound.playOneOfAt(sounds.mobSay(m.type), m.soundPosition(),
+                        0.7f, 0.9f + 0.2f * (float) Math.random());
+
+            if (m.justAttacked) {
+                player.takeDamage(com.mineclone.world.entity.Mob.ATTACK_DAMAGE);
+                applyMobKnockback(m);
+                sound.playOneOfAt(sounds.hurt(), playerSoundPosition(),
+                        0.8f, 0.9f + 0.1f * (float) Math.random());
+            }
+
+            if (m.burning && Math.random() < 0.35)
+                particles.emitMobSmoke(m.position.x, m.position.y + m.type.height * 0.6f,
+                        m.position.z);
+
+            if (m.dead) {
+                sound.playOneOfAt(sounds.mobDeath(m.type), m.soundPosition(),
+                        0.8f, 0.95f + 0.1f * (float) Math.random());
+                particles.emitMobDeath(m.position.x, m.position.y + m.type.height * 0.5f,
+                        m.position.z, m.type.particleColor);
+                it.remove();
+            }
+        }
+
+        mobSpawner.despawnFar(mobs, player.position);
+
+        mobSpawnTimer -= dt;
+        if (mobSpawnTimer <= 0f) {
+            mobSpawnTimer = com.mineclone.world.entity.MobSpawner.TICK_INTERVAL;
+            mobSpawner.trySpawn(world, mobs, player.position, daylight);
+        }
+    }
+
+    /** Горизонтальное отбрасывание игрока от моба + небольшой подброс. */
+    private void applyMobKnockback(com.mineclone.world.entity.Mob m) {
+        float dx = player.position.x - m.position.x;
+        float dz = player.position.z - m.position.z;
+        float len = (float) Math.sqrt(dx * dx + dz * dz);
+        if (len < 1e-4f)
+            return;
+        player.velocity.x += dx / len * 4f;
+        player.velocity.z += dz / len * 4f;
+        if (player.onGround)
+            player.velocity.y = 3f;
     }
 
     private void updatePaused(float dt) {
@@ -927,11 +1004,19 @@ public class Game {
     private float breakProgress = 0f;
     private float breakDigTimer = 0f;
     private BlockBreakOverlay breakOverlay;
+    /** Дальность удара рукой по мобу. */
+    private static final float MOB_REACH = 4.5f;
+    /** Урон рукой — 1 сердце. */
+    private static final float HAND_DAMAGE = 2f;
 
     private void handleInteraction(float dt) {
         Vector3f origin = new Vector3f(player.camera.position);
         Vector3f dir = player.camera.forward();
         lastHit = Raycaster.cast(world, origin, dir, 6f);
+
+        // Удар по мобу проверяется ДО работы с блоками: если моб ближе, чем блок
+        // под прицелом, ломание не начинается вовсе.
+        boolean hitMob = tryHitMob(origin, dir);
 
         if (lastHit == null) {
             resetBreakState();
@@ -946,7 +1031,9 @@ public class Game {
         }
 
         // --- Left mouse: break ---
-        if (instantBreak) {
+        if (hitMob) {
+            resetBreakState();
+        } else if (instantBreak) {
             if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
                 BlockType target = world.getBlock(lastHit.x, lastHit.y, lastHit.z);
                 if (target.hardness > 0f && target.hardness < Float.MAX_VALUE) {
@@ -1039,6 +1126,46 @@ public class Game {
                 }
             }
         }
+    }
+
+    /**
+     * ЛКМ по мобу: параметрический ray-vs-AABB по всем мобам в радиусе
+     * MOB_REACH. Если ближайший моб дальше блока под прицелом — бьём блок,
+     * а не моба.
+     *
+     * @return true, если удар пришёлся по мобу (тогда блок не ломается)
+     */
+    private boolean tryHitMob(Vector3f origin, Vector3f dir) {
+        if (mobs.isEmpty() || !input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT))
+            return false;
+
+        float blockDist = Float.MAX_VALUE;
+        if (lastHit != null) {
+            float t = com.mineclone.world.entity.EntityPhysics.rayAabbDistance(
+                    origin.x, origin.y, origin.z, dir.x, dir.y, dir.z,
+                    lastHit.x, lastHit.y, lastHit.z,
+                    lastHit.x + 1f, lastHit.y + 1f, lastHit.z + 1f);
+            if (t >= 0f)
+                blockDist = t;
+        }
+
+        com.mineclone.world.entity.Mob best = null;
+        float bestT = MOB_REACH;
+        for (com.mineclone.world.entity.Mob m : mobs) {
+            float t = m.rayHitDistance(origin, dir);
+            if (t >= 0f && t < bestT) {
+                bestT = t;
+                best = m;
+            }
+        }
+        if (best == null || bestT >= blockDist)
+            return false;
+
+        startHandSwing();
+        best.hurt(HAND_DAMAGE, player.position.x, player.position.z);
+        sound.playOneOfAt(sounds.mobHurt(best.type), best.soundPosition(),
+                0.8f, 0.9f + 0.2f * (float) Math.random());
+        return true;
     }
 
     private void resetBreakState() {
@@ -1469,6 +1596,12 @@ public class Game {
         }
         chunkShader.unbind();
 
+        // Мобы — после непрозрачных чанков и до воды: вода должна блендиться
+        // поверх них, а не наоборот.
+        if (world != null)
+            mobRenderer.render(proj, view, mobs, world, daylight,
+                    0.04f + 0.18f * daylight, brightness, fogColor, fogStart, fogEnd);
+
         // --- Transparent (water) pass ---
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -1717,7 +1850,7 @@ public class Game {
                     int blkL = world.getBlockLightWorld(bx, by, bz);
                     hud.drawDebug(vw, vh, fpsCurrent, player.position, pcx, pcz,
                             countLoadedChunks(), drawnChunks, tgt, tgtMeta, wireframe, skyL, blkL,
-                            world.biomes.biomeAt(bx, bz).name());
+                            world.biomes.biomeAt(bx, bz).name(), mobs.size());
                 }
                 if (consoleOpen)
                     hud.drawConsole(vw, vh, consoleLine.toString());
@@ -1908,6 +2041,7 @@ public class Game {
         crosshair.destroy();
         outline.destroy();
         breakOverlay.destroy();
+        mobRenderer.destroy();
         skyRenderer.destroy();
         particles.destroy();
         if (ui != null)
