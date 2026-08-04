@@ -1,0 +1,196 @@
+package com.mineclone.world.entity;
+
+import com.mineclone.world.Chunk;
+import com.mineclone.world.World;
+import org.joml.Vector3f;
+
+import java.util.Random;
+
+/**
+ * One mob: state plus AI state machine. The class stays independent from GL
+ * and Player; Game translates tick flags into sounds, particles and damage.
+ */
+public class Mob {
+    public enum State { IDLE, WANDER, FLEE, CHASE, ATTACK }
+
+    private static final float IDLE_MIN = 2f, IDLE_MAX = 6f;
+    private static final float WANDER_MIN = 2f, WANDER_MAX = 5f;
+    private static final float FLEE_TIME = 5f;
+    private static final float FLEE_SPEED_MUL = 1.5f;
+    private static final float IDLE_SOUND_MIN = 5f, IDLE_SOUND_MAX = 15f;
+
+    public static final float HURT_FLASH_TIME = 0.4f;
+    private static final float KNOCKBACK = 5f;
+    private static final float KNOCKBACK_UP = 4f;
+
+    public final MobType type;
+    public final Vector3f position = new Vector3f();
+    public final Vector3f velocity = new Vector3f();
+    /** Facing direction: (-sin yaw, 0, -cos yaw). */
+    public float yaw;
+    public float health;
+    public State state = State.IDLE;
+
+    public boolean onGround;
+    public boolean hitWall;
+    public boolean inWater;
+    public boolean dead;
+    public boolean burning;
+    public float hurtFlash;
+    public float walkedDistance;
+
+    public boolean justAttacked;
+    public boolean justIdleSound;
+
+    protected final Random rnd;
+    private float stateTimer;
+    private float idleSoundTimer;
+    private float moveX, moveZ;
+    private float knockX, knockZ;
+
+    public Mob(MobType type, float x, float y, float z, Random rnd) {
+        this.type = type;
+        this.rnd = rnd;
+        this.position.set(x, y, z);
+        this.health = type.maxHealth;
+        this.yaw = rnd.nextFloat() * (float) (Math.PI * 2);
+        this.idleSoundTimer = IDLE_SOUND_MIN + rnd.nextFloat() * (IDLE_SOUND_MAX - IDLE_SOUND_MIN);
+        enterIdle();
+    }
+
+    public void update(World world, Vector3f playerPos, float dt, float daylight,
+                       boolean hostileEnabled) {
+        justAttacked = false;
+        justIdleSound = false;
+        if (dead)
+            return;
+        if (hurtFlash > 0f)
+            hurtFlash = Math.max(0f, hurtFlash - dt);
+
+        idleSoundTimer -= dt;
+        if (idleSoundTimer <= 0f) {
+            idleSoundTimer = IDLE_SOUND_MIN + rnd.nextFloat() * (IDLE_SOUND_MAX - IDLE_SOUND_MIN);
+            justIdleSound = true;
+        }
+
+        updatePeaceful(dt);
+
+        float speed = currentSpeed();
+        velocity.x = moveX * speed + knockX;
+        velocity.z = moveZ * speed + knockZ;
+        float decay = (float) Math.pow(0.02, dt);
+        knockX *= decay;
+        knockZ *= decay;
+
+        EntityPhysics.Contact c = EntityPhysics.step(world, position, velocity,
+                type.width, type.height, dt, type.maxFallSpeed);
+        onGround = c.onGround();
+        hitWall = c.hitWall();
+        inWater = c.inWater();
+
+        if (hitWall && onGround)
+            velocity.y = EntityPhysics.JUMP_VELOCITY;
+
+        float hSpeed = (float) Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+        walkedDistance += hSpeed * dt;
+        if (moveX != 0f || moveZ != 0f)
+            yaw = (float) Math.atan2(-moveX, -moveZ);
+
+        applySunBurn(world, dt, daylight);
+        if (health <= 0f)
+            dead = true;
+    }
+
+    protected void updatePeaceful(float dt) {
+        stateTimer -= dt;
+        if (stateTimer > 0f)
+            return;
+        switch (state) {
+            case IDLE -> enterWander();
+            default -> enterIdle();
+        }
+    }
+
+    protected void enterIdle() {
+        state = State.IDLE;
+        stateTimer = IDLE_MIN + rnd.nextFloat() * (IDLE_MAX - IDLE_MIN);
+        moveX = 0f;
+        moveZ = 0f;
+    }
+
+    protected void enterWander() {
+        state = State.WANDER;
+        stateTimer = WANDER_MIN + rnd.nextFloat() * (WANDER_MAX - WANDER_MIN);
+        float angle = rnd.nextFloat() * (float) (Math.PI * 2);
+        moveX = (float) Math.sin(angle);
+        moveZ = (float) Math.cos(angle);
+    }
+
+    protected void setMoveDirection(float dx, float dz) {
+        float len = (float) Math.sqrt(dx * dx + dz * dz);
+        if (len < 1e-4f)
+            return;
+        moveX = dx / len;
+        moveZ = dz / len;
+    }
+
+    protected void stopMoving() {
+        moveX = 0f;
+        moveZ = 0f;
+    }
+
+    protected float currentSpeed() {
+        return switch (state) {
+            case IDLE -> 0f;
+            case FLEE -> type.walkSpeed * FLEE_SPEED_MUL;
+            case CHASE, ATTACK -> type.chaseSpeed;
+            case WANDER -> type.walkSpeed;
+        };
+    }
+
+    private void applySunBurn(World world, float dt, float daylight) {
+        burning = false;
+        if (!type.burnsInSunlight || daylight <= 0.7f)
+            return;
+        int bx = (int) Math.floor(position.x);
+        int bz = (int) Math.floor(position.z);
+        int startY = (int) Math.floor(position.y + type.height);
+        for (int y = startY; y < Chunk.SIZE_Y; y++)
+            if (world.getBlock(bx, y, bz).solid)
+                return;
+        burning = true;
+        health -= 2f * dt;
+    }
+
+    public void hurt(float amount, float fromX, float fromZ) {
+        health -= amount;
+        hurtFlash = HURT_FLASH_TIME;
+        float dx = position.x - fromX;
+        float dz = position.z - fromZ;
+        float len = (float) Math.sqrt(dx * dx + dz * dz);
+        if (len > 1e-4f) {
+            knockX = dx / len * KNOCKBACK;
+            knockZ = dz / len * KNOCKBACK;
+            if (onGround)
+                velocity.y = KNOCKBACK_UP;
+            if (!type.hostile) {
+                setMoveDirection(dx, dz);
+                state = State.FLEE;
+                stateTimer = FLEE_TIME;
+            }
+        }
+        if (health <= 0f)
+            dead = true;
+    }
+
+    public float rayHitDistance(Vector3f origin, Vector3f dir) {
+        float hw = type.width / 2f;
+        return EntityPhysics.rayAabbDistance(origin.x, origin.y, origin.z, dir.x, dir.y, dir.z,
+                position.x - hw, position.y, position.z - hw,
+                position.x + hw, position.y + type.height, position.z + hw);
+    }
+
+    public Vector3f soundPosition() {
+        return new Vector3f(position.x, position.y + type.height * 0.6f, position.z);
+    }
+}

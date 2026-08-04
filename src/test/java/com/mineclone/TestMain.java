@@ -60,6 +60,9 @@ public final class TestMain {
         run("EntityPhysics lands on ground", TestMain::testEntityPhysicsFall);
         run("EntityPhysics stops at wall", TestMain::testEntityPhysicsWall);
         run("EntityPhysics ray vs AABB", TestMain::testRayAabb);
+        run("Mob peaceful wanders and idles", TestMain::testMobPeacefulStates);
+        run("Mob flees when hurt", TestMain::testMobFlee);
+        run("Mob dies at zero health", TestMain::testMobDeath);
 
         System.out.println();
         System.out.println("==== " + passed + " passed, " + failed + " failed ====");
@@ -417,6 +420,59 @@ public final class TestMain {
         float behind = com.mineclone.world.entity.EntityPhysics.rayAabbDistance(
                 0f, 0.5f, 0.5f, -1f, 0f, 0f, 5f, 0f, 0f, 6f, 1f, 1f);
         assertTrue("behind returns negative, got " + behind, behind < 0f);
+    }
+
+    private static com.mineclone.world.entity.Mob spawnAt(
+            com.mineclone.world.entity.MobType t, float x, float y, float z, long seed) {
+        return new com.mineclone.world.entity.Mob(t, x, y, z, new java.util.Random(seed));
+    }
+
+    private static void testMobPeacefulStates() {
+        World w = flatTestWorld();
+        com.mineclone.world.entity.Mob cow =
+                spawnAt(com.mineclone.world.entity.MobType.COW, 8.5f, 11f, 8.5f, 42L);
+        org.joml.Vector3f far = new org.joml.Vector3f(8.5f, 11f, 100f);
+        java.util.EnumSet<com.mineclone.world.entity.Mob.State> seen =
+                java.util.EnumSet.noneOf(com.mineclone.world.entity.Mob.State.class);
+        for (int i = 0; i < 1200; i++) {
+            cow.update(w, far, 1f / 60f, 1.0f, true);
+            seen.add(cow.state);
+        }
+        assertTrue("cow reaches WANDER", seen.contains(com.mineclone.world.entity.Mob.State.WANDER));
+        assertTrue("cow reaches IDLE", seen.contains(com.mineclone.world.entity.Mob.State.IDLE));
+        assertTrue("cow never chases", !seen.contains(com.mineclone.world.entity.Mob.State.CHASE));
+        assertTrue("cow stays alive", !cow.dead);
+        assertTrue("cow stays on the platform, y=" + cow.position.y,
+                Math.abs(cow.position.y - 11f) < 0.2f);
+    }
+
+    private static void testMobFlee() {
+        World w = flatTestWorld();
+        com.mineclone.world.entity.Mob pig =
+                spawnAt(com.mineclone.world.entity.MobType.PIG, 8.5f, 11f, 8.5f, 7L);
+        org.joml.Vector3f player = new org.joml.Vector3f(6.5f, 11f, 8.5f);
+        pig.hurt(2f, player.x, player.z);
+        assertEq("pig flees", com.mineclone.world.entity.Mob.State.FLEE, pig.state);
+        assertTrue("hurt flash on", pig.hurtFlash > 0f);
+        assertTrue("health reduced", pig.health < com.mineclone.world.entity.MobType.PIG.maxHealth);
+        float startX = pig.position.x;
+        for (int i = 0; i < 30; i++)
+            pig.update(w, player, 1f / 60f, 1.0f, true);
+        assertTrue("pig ran away from the player, dx=" + (pig.position.x - startX),
+                pig.position.x > startX);
+        for (int i = 0; i < 400; i++)
+            pig.update(w, player, 1f / 60f, 1.0f, true);
+        assertTrue("flee ends", pig.state != com.mineclone.world.entity.Mob.State.FLEE);
+    }
+
+    private static void testMobDeath() {
+        com.mineclone.world.entity.Mob chicken =
+                spawnAt(com.mineclone.world.entity.MobType.CHICKEN, 8.5f, 11f, 8.5f, 3L);
+        assertTrue("alive on spawn", !chicken.dead);
+        chicken.hurt(2f, 0f, 0f);
+        assertTrue("still alive after 2 damage", !chicken.dead);
+        chicken.hurt(2f, 0f, 0f);
+        assertTrue("dead after 4 damage total", chicken.dead);
     }
 
     private static void testItemStack() {
