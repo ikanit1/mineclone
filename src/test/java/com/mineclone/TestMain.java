@@ -67,6 +67,10 @@ public final class TestMain {
         run("Zombie attack respects cooldown", TestMain::testZombieAttackCooldown);
         run("Zombie is passive in creative", TestMain::testZombieCreativePassive);
         run("Zombie burns under open sky", TestMain::testZombieSunBurn);
+        run("MobSpawner rules and caps", TestMain::testMobSpawnerRules);
+        run("MobSpawner needs loaded chunks", TestMain::testMobSpawnerNeedsChunks);
+        run("MobSpawner despawns distant mobs", TestMain::testMobSpawnerDespawn);
+        run("MobSkins generates distinct skins", TestMain::testMobSkins);
 
         System.out.println();
         System.out.println("==== " + passed + " passed, " + failed + " failed ====");
@@ -564,6 +568,81 @@ public final class TestMain {
         for (int i = 0; i < 60; i++)
             night.update(w, far, 1f / 60f, 0f, true);
         assertTrue("not burning at night", !night.burning);
+    }
+
+    private static void testMobSpawnerRules() {
+        // Правила поверхности и времени — чистые предикаты, миру не нужны.
+        assertTrue("grass ok for peaceful",
+                com.mineclone.world.entity.MobSpawner.peacefulSurfaceOk(BlockType.GRASS));
+        assertTrue("stone not ok for peaceful",
+                !com.mineclone.world.entity.MobSpawner.peacefulSurfaceOk(BlockType.STONE));
+        assertTrue("sand not ok for peaceful",
+                !com.mineclone.world.entity.MobSpawner.peacefulSurfaceOk(BlockType.SAND));
+        assertTrue("zombies spawn at night",
+                com.mineclone.world.entity.MobSpawner.zombieTimeOk(0.0f));
+        assertTrue("zombies do not spawn at noon",
+                !com.mineclone.world.entity.MobSpawner.zombieTimeOk(1.0f));
+
+        // Капы: список забит до отказа — trySpawn ничего не добавляет.
+        World w = flatTestWorld();
+        com.mineclone.world.entity.MobSpawner sp = new com.mineclone.world.entity.MobSpawner(1L);
+        java.util.List<com.mineclone.world.entity.Mob> mobs = new java.util.ArrayList<>();
+        for (int i = 0; i < com.mineclone.world.entity.MobSpawner.PEACEFUL_CAP; i++)
+            mobs.add(spawnAt(com.mineclone.world.entity.MobType.COW, 8.5f, 11f, 8.5f, i));
+        for (int i = 0; i < com.mineclone.world.entity.MobSpawner.HOSTILE_CAP; i++)
+            mobs.add(spawnAt(com.mineclone.world.entity.MobType.ZOMBIE, 8.5f, 11f, 8.5f, 100 + i));
+        int before = mobs.size();
+        for (int i = 0; i < 20; i++)
+            sp.trySpawn(w, mobs, new org.joml.Vector3f(8.5f, 11f, 8.5f), 0f);
+        assertEq("caps respected", before, mobs.size());
+    }
+
+    private static void testMobSpawnerNeedsChunks() {
+        // Мир без единого загруженного чанка: спавнить некуда.
+        World w = new World(99L);
+        com.mineclone.world.entity.MobSpawner sp = new com.mineclone.world.entity.MobSpawner(2L);
+        java.util.List<com.mineclone.world.entity.Mob> mobs = new java.util.ArrayList<>();
+        for (int i = 0; i < 40; i++)
+            sp.trySpawn(w, mobs, new org.joml.Vector3f(8.5f, 70f, 8.5f), 0f);
+        assertEq("nothing spawns in unloaded chunks", 0, mobs.size());
+    }
+
+    private static void testMobSpawnerDespawn() {
+        com.mineclone.world.entity.MobSpawner sp = new com.mineclone.world.entity.MobSpawner(3L);
+        java.util.List<com.mineclone.world.entity.Mob> mobs = new java.util.ArrayList<>();
+        com.mineclone.world.entity.Mob near =
+                spawnAt(com.mineclone.world.entity.MobType.COW, 8.5f, 11f, 8.5f, 1L);
+        com.mineclone.world.entity.Mob far =
+                spawnAt(com.mineclone.world.entity.MobType.COW, 8.5f, 11f, 900f, 2L);
+        mobs.add(near);
+        mobs.add(far);
+        sp.despawnFar(mobs, new org.joml.Vector3f(8.5f, 11f, 8.5f));
+        assertEq("only the distant mob is removed", 1, mobs.size());
+        assertTrue("the near mob survived", mobs.get(0) == near);
+    }
+
+    private static void testMobSkins() {
+        java.util.List<int[]> pixelSets = new java.util.ArrayList<>();
+        for (com.mineclone.world.entity.MobType t : com.mineclone.world.entity.MobType.values()) {
+            java.awt.image.BufferedImage img = com.mineclone.render.MobSkins.generate(t);
+            assertEq(t + " skin width", com.mineclone.render.MobSkins.WIDTH, img.getWidth());
+            assertEq(t + " skin height", com.mineclone.render.MobSkins.HEIGHT, img.getHeight());
+            int opaque = 0;
+            int[] px = new int[img.getWidth() * img.getHeight()];
+            for (int y = 0; y < img.getHeight(); y++)
+                for (int x = 0; x < img.getWidth(); x++) {
+                    int argb = img.getRGB(x, y);
+                    px[y * img.getWidth() + x] = argb;
+                    if (((argb >>> 24) & 0xFF) > 0) opaque++;
+                }
+            assertTrue(t + " skin is not blank (opaque=" + opaque + ")", opaque > px.length / 4);
+            pixelSets.add(px);
+        }
+        // Разные виды выглядят по-разному.
+        for (int a = 0; a < pixelSets.size(); a++)
+            for (int b = a + 1; b < pixelSets.size(); b++)
+                assertTrue("skins " + a + " and " + b + " differ",
+                        !Arrays.equals(pixelSets.get(a), pixelSets.get(b)));
     }
 
     private static void testItemStack() {
