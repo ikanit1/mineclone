@@ -215,6 +215,66 @@ public class ParticleSystem {
         }
     }
 
+    /**
+     * Струйка серого дыма от горящего на солнце моба.
+     * Зовётся выборочно (не каждый кадр) — иначе дым забивает буфер частиц.
+     */
+    public void emitMobSmoke(float x, float y, float z) {
+        if (particles.size() >= MAX)
+            return;
+        float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
+        P p = new P();
+        p.x = x + (rnd.nextFloat() - 0.5f) * 0.5f;
+        p.y = y + rnd.nextFloat() * 0.5f;
+        p.z = z + (rnd.nextFloat() - 0.5f) * 0.5f;
+        p.vx = (rnd.nextFloat() - 0.5f) * 0.2f;
+        p.vy = 0.5f + rnd.nextFloat() * 0.4f;
+        p.vz = (rnd.nextFloat() - 0.5f) * 0.2f;
+        p.life = p.maxLife = 0.6f + rnd.nextFloat() * 0.4f;
+        p.size = 0.07f + rnd.nextFloat() * 0.05f;
+        p.gravityScale = 0f;
+        p.growRate = 0.06f;
+        float grey = 0.18f + rnd.nextFloat() * 0.1f;
+        p.cr = grey;
+        p.cg = grey;
+        p.cb = grey;
+        p.baseAlpha = 0.55f;
+        p.u0 = uvP[0];
+        p.v0 = uvP[1];
+        p.u1 = uvP[2];
+        p.v1 = uvP[3];
+        particles.add(p);
+    }
+
+    /** Облако частиц цвета моба в момент смерти. */
+    public void emitMobDeath(float x, float y, float z, float[] color) {
+        float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
+        int count = 14 + rnd.nextInt(8);
+        for (int i = 0; i < count && particles.size() < MAX; i++) {
+            P p = new P();
+            float angle = rnd.nextFloat() * (float) (Math.PI * 2);
+            float horiz = 0.8f + rnd.nextFloat() * 1.8f;
+            p.x = x + (rnd.nextFloat() - 0.5f) * 0.6f;
+            p.y = y + (rnd.nextFloat() - 0.5f) * 0.6f;
+            p.z = z + (rnd.nextFloat() - 0.5f) * 0.6f;
+            p.vx = (float) Math.cos(angle) * horiz;
+            p.vy = 1.2f + rnd.nextFloat() * 1.6f;
+            p.vz = (float) Math.sin(angle) * horiz;
+            p.life = p.maxLife = 0.45f + rnd.nextFloat() * 0.35f;
+            p.size = 0.07f + rnd.nextFloat() * 0.06f;
+            p.gravityScale = 0.6f;
+            p.cr = color[0];
+            p.cg = color[1];
+            p.cb = color[2];
+            p.baseAlpha = 1f;
+            p.u0 = uvP[0];
+            p.v0 = uvP[1];
+            p.u1 = uvP[2];
+            p.v1 = uvP[3];
+            particles.add(p);
+        }
+    }
+
     // -------------------------------------------------------------------------
     //  Update & render
     // -------------------------------------------------------------------------

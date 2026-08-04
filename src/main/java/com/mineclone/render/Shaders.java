@@ -275,4 +275,48 @@ public final class Shaders {
             FragColor = col;
         }
         """;
+
+    public static final String MOB_VERTEX = """
+        #version 330 core
+        layout (location = 0) in vec3 aPos;      // единичный куб, -0.5..0.5
+        layout (location = 1) in float aFace;    // 0=front(-Z), 1=side(±X,+Z), 2=top/bottom
+        layout (location = 2) in vec2 aCorner;   // 0..1 внутри грани
+        uniform mat4 uProjection;
+        uniform mat4 uView;
+        uniform mat4 uModel;
+        uniform vec2 uUvFront;
+        uniform vec2 uUvSide;
+        uniform vec2 uUvTop;
+        uniform vec2 uTileSize;
+        out vec2 vUv;
+        out float vFogDist;
+        void main() {
+            vec4 worldPos = uModel * vec4(aPos, 1.0);
+            vec4 viewPos = uView * worldPos;
+            gl_Position = uProjection * viewPos;
+            vec2 base = aFace < 0.5 ? uUvFront : (aFace < 1.5 ? uUvSide : uUvTop);
+            vUv = base + aCorner * uTileSize;
+            vFogDist = length(viewPos.xyz);
+        }
+        """;
+
+    public static final String MOB_FRAGMENT = """
+        #version 330 core
+        in vec2 vUv;
+        in float vFogDist;
+        uniform sampler2D uSkin;
+        uniform float uLight;
+        uniform vec3 uTint;
+        uniform vec3 uFogColor;
+        uniform float uFogStart;
+        uniform float uFogEnd;
+        out vec4 FragColor;
+        void main() {
+            vec4 tex = texture(uSkin, vUv);
+            if (tex.a < 0.1) discard;
+            vec3 lit = tex.rgb * uLight * uTint;
+            float f = clamp((vFogDist - uFogStart) / (uFogEnd - uFogStart), 0.0, 1.0);
+            FragColor = vec4(mix(lit, uFogColor, f), 1.0);
+        }
+        """;
 }

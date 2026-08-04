@@ -71,6 +71,7 @@ public final class TestMain {
         run("MobSpawner needs loaded chunks", TestMain::testMobSpawnerNeedsChunks);
         run("MobSpawner despawns distant mobs", TestMain::testMobSpawnerDespawn);
         run("MobSkins generates distinct skins", TestMain::testMobSkins);
+        run("mob sounds resolve for every type", TestMain::testMobSounds);
 
         System.out.println();
         System.out.println("==== " + passed + " passed, " + failed + " failed ====");
@@ -643,6 +644,30 @@ public final class TestMain {
             for (int b = a + 1; b < pixelSets.size(); b++)
                 assertTrue("skins " + a + " and " + b + " differ",
                         !Arrays.equals(pixelSets.get(a), pixelSets.get(b)));
+    }
+
+    private static void testMobSounds() {
+        Sounds s = new Sounds();
+        for (com.mineclone.world.entity.MobType t : com.mineclone.world.entity.MobType.values()) {
+            assertTrue(t + " has idle (say) samples", !s.mobSay(t).isEmpty());
+            // hurt и death в ассетах есть не у всех — цепочка фолбэков обязана
+            // вернуть хоть что-то, иначе моб умирает молча.
+            assertTrue(t + " has hurt samples (with fallback)", !s.mobHurt(t).isEmpty());
+            assertTrue(t + " has death samples (with fallback)", !s.mobDeath(t).isEmpty());
+        }
+        // Точечные проверки фолбэков на реальных ассетах:
+        // у овцы нет ни hurt*, ни death* — оба съезжают на say*.
+        assertEq("sheep hurt falls back to say",
+                s.mobSay(com.mineclone.world.entity.MobType.SHEEP),
+                s.mobHurt(com.mineclone.world.entity.MobType.SHEEP));
+        // у коровы hurt есть, а death нет — death съезжает на hurt.
+        assertEq("cow death falls back to hurt",
+                s.mobHurt(com.mineclone.world.entity.MobType.COW),
+                s.mobDeath(com.mineclone.world.entity.MobType.COW));
+        // у зомби есть всё — фолбэки не срабатывают.
+        assertTrue("zombie death is its own sample",
+                !s.mobDeath(com.mineclone.world.entity.MobType.ZOMBIE)
+                        .equals(s.mobHurt(com.mineclone.world.entity.MobType.ZOMBIE)));
     }
 
     private static void testItemStack() {

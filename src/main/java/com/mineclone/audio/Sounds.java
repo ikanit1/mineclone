@@ -2,6 +2,7 @@ package com.mineclone.audio;
 
 import com.mineclone.core.AppPaths;
 import com.mineclone.world.BlockType;
+import com.mineclone.world.entity.MobType;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -173,5 +174,28 @@ public final class Sounds {
         if (close.exists())
             out.add(close.getAbsolutePath());
         return out;
+    }
+
+    // ---- Мобы ----
+    //
+    // Файлы лежат в MC-нейминге: assets/sounds/mob/<dir>/{say,hurt,death,step}*.ogg.
+    // Покрытие неполное (у овцы нет hurt/death, у коровы нет death, у свиньи нет
+    // hurt), поэтому hurt → say, death → hurt → say. Иначе часть мобов молчит.
+
+    /** Периодический «холостой» голос моба (MC-шный say*.ogg). */
+    public List<String> mobSay(MobType t) {
+        return listMatching(ROOT + "/mob/" + t.soundDir, "say");
+    }
+
+    /** Звук боли; при отсутствии файлов — голос. */
+    public List<String> mobHurt(MobType t) {
+        List<String> s = listMatching(ROOT + "/mob/" + t.soundDir, "hurt");
+        return s.isEmpty() ? mobSay(t) : s;
+    }
+
+    /** Звук смерти; при отсутствии файлов — боль, затем голос. */
+    public List<String> mobDeath(MobType t) {
+        List<String> s = listMatching(ROOT + "/mob/" + t.soundDir, "death");
+        return s.isEmpty() ? mobHurt(t) : s;
     }
 }
