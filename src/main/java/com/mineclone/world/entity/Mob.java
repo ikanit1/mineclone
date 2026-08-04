@@ -19,6 +19,15 @@ public class Mob {
     private static final float FLEE_SPEED_MUL = 1.5f;
     private static final float IDLE_SOUND_MIN = 5f, IDLE_SOUND_MAX = 15f;
 
+    // --- ИИ, зомби ---
+    private static final float AGGRO_RANGE = 16f;
+    private static final float LOSE_RANGE = 24f;
+    private static final float ATTACK_RANGE = 1.5f;
+    private static final float ATTACK_RELEASE = 2f;
+    private static final float ATTACK_COOLDOWN = 1f;
+    /** Урон зомби игроку — 1.5 сердца. */
+    public static final float ATTACK_DAMAGE = 3f;
+
     public static final float HURT_FLASH_TIME = 0.4f;
     private static final float KNOCKBACK = 5f;
     private static final float KNOCKBACK_UP = 4f;
@@ -47,6 +56,7 @@ public class Mob {
     private float idleSoundTimer;
     private float moveX, moveZ;
     private float knockX, knockZ;
+    private float attackCooldown;
 
     public Mob(MobType type, float x, float y, float z, Random rnd) {
         this.type = type;
@@ -73,7 +83,18 @@ public class Mob {
             justIdleSound = true;
         }
 
-        updatePeaceful(dt);
+        if (attackCooldown > 0f)
+            attackCooldown -= dt;
+
+        float pdx = playerPos.x - position.x;
+        float pdy = playerPos.y - position.y;
+        float pdz = playerPos.z - position.z;
+        float playerDist = (float) Math.sqrt(pdx * pdx + pdy * pdy + pdz * pdz);
+
+        if (type.hostile && hostileEnabled)
+            updateHostile(dt, pdx, pdz, playerDist);
+        else
+            updatePeaceful(dt);
 
         float speed = currentSpeed();
         velocity.x = moveX * speed + knockX;
@@ -108,6 +129,38 @@ public class Mob {
         switch (state) {
             case IDLE -> enterWander();
             default -> enterIdle();
+        }
+    }
+
+    /**
+     * Зомби: агрится в 16 блоках (без проверки прямой видимости — MVP), бьёт
+     * ближе 1.5, отпускает цель за 24. Пока игрок далеко — ведёт себя как мирный.
+     */
+    private void updateHostile(float dt, float dx, float dz, float dist) {
+        boolean chasing = state == State.CHASE || state == State.ATTACK;
+        if (chasing) {
+            if (dist > LOSE_RANGE) {
+                enterIdle();
+                return;
+            }
+        } else if (dist <= AGGRO_RANGE) {
+            state = State.CHASE;
+        } else {
+            updatePeaceful(dt);
+            return;
+        }
+
+        setMoveDirection(dx, dz);
+        if (dist <= ATTACK_RANGE) {
+            state = State.ATTACK;
+            stopMoving();
+            yaw = (float) Math.atan2(-dx, -dz);   // moveX/Z обнулены — держим лицо к игроку
+            if (attackCooldown <= 0f) {
+                justAttacked = true;
+                attackCooldown = ATTACK_COOLDOWN;
+            }
+        } else if (state == State.ATTACK && dist > ATTACK_RELEASE) {
+            state = State.CHASE;
         }
     }
 

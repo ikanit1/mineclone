@@ -63,6 +63,10 @@ public final class TestMain {
         run("Mob peaceful wanders and idles", TestMain::testMobPeacefulStates);
         run("Mob flees when hurt", TestMain::testMobFlee);
         run("Mob dies at zero health", TestMain::testMobDeath);
+        run("Zombie chases nearby player", TestMain::testZombieChase);
+        run("Zombie attack respects cooldown", TestMain::testZombieAttackCooldown);
+        run("Zombie is passive in creative", TestMain::testZombieCreativePassive);
+        run("Zombie burns under open sky", TestMain::testZombieSunBurn);
 
         System.out.println();
         System.out.println("==== " + passed + " passed, " + failed + " failed ====");
@@ -473,6 +477,93 @@ public final class TestMain {
         assertTrue("still alive after 2 damage", !chicken.dead);
         chicken.hurt(2f, 0f, 0f);
         assertTrue("dead after 4 damage total", chicken.dead);
+    }
+
+    private static void testZombieChase() {
+        World w = flatTestWorld();
+        com.mineclone.world.entity.Mob z =
+                spawnAt(com.mineclone.world.entity.MobType.ZOMBIE, 8.5f, 11f, 8.5f, 11L);
+        // Игрок в 10 блоках — в радиусе агра (16).
+        org.joml.Vector3f near = new org.joml.Vector3f(8.5f, 11f, -1.5f);
+        z.update(w, near, 1f / 60f, 0f, true);
+        assertEq("chases at 10 blocks", com.mineclone.world.entity.Mob.State.CHASE, z.state);
+        float startZ = z.position.z;
+        for (int i = 0; i < 60; i++)
+            z.update(w, near, 1f / 60f, 0f, true);
+        assertTrue("moved toward the player, dz=" + (z.position.z - startZ), z.position.z < startZ);
+
+        // Игрок ушёл за 30 блоков — цель потеряна.
+        org.joml.Vector3f far = new org.joml.Vector3f(8.5f, 11f, 41.5f);
+        z.update(w, far, 1f / 60f, 0f, true);
+        assertTrue("loses target beyond 24 blocks, state=" + z.state,
+                z.state != com.mineclone.world.entity.Mob.State.CHASE
+                        && z.state != com.mineclone.world.entity.Mob.State.ATTACK);
+    }
+
+    private static void testZombieAttackCooldown() {
+        World w = flatTestWorld();
+        com.mineclone.world.entity.Mob z =
+                spawnAt(com.mineclone.world.entity.MobType.ZOMBIE, 8.5f, 11f, 8.5f, 5L);
+        org.joml.Vector3f player = new org.joml.Vector3f(9.3f, 11f, 8.5f); // < 1.5 блока
+        int hits = 0;
+        for (int i = 0; i < 60; i++) {  // ровно 1 секунда
+            z.update(w, player, 1f / 60f, 0f, true);
+            if (z.justAttacked) hits++;
+        }
+        assertEq("one hit per second", 1, hits);
+        assertEq("in ATTACK state", com.mineclone.world.entity.Mob.State.ATTACK, z.state);
+        for (int i = 0; i < 60; i++) {
+            z.update(w, player, 1f / 60f, 0f, true);
+            if (z.justAttacked) hits++;
+        }
+        assertEq("two hits over two seconds", 2, hits);
+    }
+
+    private static void testZombieCreativePassive() {
+        World w = flatTestWorld();
+        com.mineclone.world.entity.Mob z =
+                spawnAt(com.mineclone.world.entity.MobType.ZOMBIE, 8.5f, 11f, 8.5f, 5L);
+        org.joml.Vector3f player = new org.joml.Vector3f(9.3f, 11f, 8.5f);
+        for (int i = 0; i < 180; i++) {
+            z.update(w, player, 1f / 60f, 0f, false);   // hostileEnabled = false
+            assertTrue("never attacks in creative", !z.justAttacked);
+        }
+        assertTrue("stays peaceful, state=" + z.state,
+                z.state != com.mineclone.world.entity.Mob.State.CHASE
+                        && z.state != com.mineclone.world.entity.Mob.State.ATTACK);
+    }
+
+    private static void testZombieSunBurn() {
+        World w = flatTestWorld();
+        org.joml.Vector3f far = new org.joml.Vector3f(8.5f, 11f, 200f);
+
+        com.mineclone.world.entity.Mob open =
+                spawnAt(com.mineclone.world.entity.MobType.ZOMBIE, 8.5f, 11f, 8.5f, 9L);
+        for (int i = 0; i < 60; i++)
+            open.update(w, far, 1f / 60f, 1.0f, true);   // полдень
+        assertTrue("burning under open sky", open.burning);
+        assertTrue("lost ~2 HP in one second, hp=" + open.health,
+                open.health < com.mineclone.world.entity.MobType.ZOMBIE.maxHealth - 1.5f);
+
+        // Крыша над головой — не горит. Навес 6×6 блоков, а не один: зомби в
+        // WANDER успевает отойти на ~0.7 м и вылез бы из-под точечной крыши.
+        com.mineclone.world.entity.Mob shaded =
+                spawnAt(com.mineclone.world.entity.MobType.ZOMBIE, 4.5f, 11f, 4.5f, 9L);
+        for (int x = 2; x <= 7; x++)
+            for (int z = 2; z <= 7; z++)
+                w.getChunk(0, 0).set(x, 14, z, BlockType.STONE);
+        for (int i = 0; i < 60; i++)
+            shaded.update(w, far, 1f / 60f, 1.0f, true);
+        assertTrue("not burning under a roof", !shaded.burning);
+        assertEq("full health under a roof",
+                com.mineclone.world.entity.MobType.ZOMBIE.maxHealth, shaded.health);
+
+        // Ночью не горит даже под открытым небом.
+        com.mineclone.world.entity.Mob night =
+                spawnAt(com.mineclone.world.entity.MobType.ZOMBIE, 12.5f, 11f, 12.5f, 9L);
+        for (int i = 0; i < 60; i++)
+            night.update(w, far, 1f / 60f, 0f, true);
+        assertTrue("not burning at night", !night.burning);
     }
 
     private static void testItemStack() {
