@@ -755,8 +755,10 @@ public class Game {
                         new Vector3f(m.position.x, m.position.y + 0.1f, m.position.z),
                         0.22f, 0.9f + 0.2f * (float) Math.random());
 
-            if (m.justAttacked) {
-                player.takeDamage(com.mineclone.world.entity.Mob.ATTACK_DAMAGE);
+            // Урон игроку — через окно неуязвимости: иначе стая зомби снимает
+            // здоровье втрое быстрее одного, у каждого ведь свой кулдаун.
+            if (m.justAttacked
+                    && player.takeAttackDamage(com.mineclone.world.entity.Mob.ATTACK_DAMAGE)) {
                 applyMobKnockback(m);
                 sound.playOneOfAt(sounds.hurt(), playerSoundPosition(),
                         0.8f, 0.9f + 0.1f * (float) Math.random());
@@ -1028,6 +1030,17 @@ public class Game {
     private static final float MOB_REACH = 4.5f;
     /** Урон рукой — 1 сердце. */
     private static final float HAND_DAMAGE = 2f;
+    /**
+     * Кулдаун удара игрока. Вместе с окном неуязвимости моба
+     * ({@code Mob.INVULN_TIME}) это и есть защита от закликивания: без них урон
+     * определялся тем, как быстро игрок щёлкает мышью.
+     */
+    private static final float ATTACK_COOLDOWN = 0.5f;
+    /** Множитель урона при ударе в падении (MC-крит). */
+    private static final float CRIT_MULTIPLIER = 1.5f;
+    /** Во сколько раз сильнее отброс при ударе в спринте. */
+    private static final float SPRINT_KNOCKBACK = 1.6f;
+    private float attackCooldown = 0f;
 
     private void handleInteraction(float dt) {
         Vector3f origin = new Vector3f(player.camera.position);
@@ -1038,12 +1051,22 @@ public class Game {
         // взгляда и ближе блока, ломание не идёт вообще — не только в кадре
         // нажатия. Иначе, удерживая ЛКМ на мобе, игрок докапывался бы до блока
         // за ним.
+        if (attackCooldown > 0f)
+            attackCooldown -= dt;
+
         com.mineclone.world.entity.Mob aimedMob = pickAimedMob(origin, dir);
-        if (aimedMob != null && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
+        if (aimedMob != null && attackCooldown <= 0f
+                && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
+            attackCooldown = ATTACK_COOLDOWN;
             startHandSwing();
-            aimedMob.hurt(HAND_DAMAGE, player.position.x, player.position.z);
-            sound.playOneOfAt(sounds.mobHurt(aimedMob.type), aimedMob.soundPosition(),
-                    0.8f, 0.9f + 0.2f * (float) Math.random());
+            // Крит — как в MC: удар в падении бьёт сильнее. Спринт-удар не
+            // добавляет урона, но отбрасывает заметно дальше.
+            boolean crit = !player.onGround && player.velocity.y < -0.1f;
+            float damage = crit ? HAND_DAMAGE * CRIT_MULTIPLIER : HAND_DAMAGE;
+            float knockback = player.isSprinting ? SPRINT_KNOCKBACK : 1f;
+            if (aimedMob.hurt(damage, player.position.x, player.position.z, knockback))
+                sound.playOneOfAt(sounds.mobHurt(aimedMob.type), aimedMob.soundPosition(),
+                        0.8f, (crit ? 1.1f : 0.9f) + 0.2f * (float) Math.random());
         }
 
         if (lastHit == null) {

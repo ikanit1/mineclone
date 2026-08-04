@@ -76,6 +76,9 @@ public final class TestMain {
         run("Mob emits step sounds while walking", TestMain::testMobStepSounds);
         run("EntityPhysics separates overlapping bodies", TestMain::testSeparate);
         run("Mob sidesteps a wall instead of butting it", TestMain::testMobSidestep);
+        run("Mob ignores hits inside the invulnerability window", TestMain::testMobInvulnWindow);
+        run("Player ignores mob hits inside its window", TestMain::testPlayerInvulnWindow);
+        run("Zombie burns at /time set day, not only at noon", TestMain::testZombieBurnsAtDay);
 
         System.out.println();
         System.out.println("==== " + passed + " passed, " + failed + " failed ====");
@@ -479,12 +482,18 @@ public final class TestMain {
     }
 
     private static void testMobDeath() {
+        World w = flatTestWorld();
+        org.joml.Vector3f far = new org.joml.Vector3f(8.5f, 11f, 300f);
         com.mineclone.world.entity.Mob chicken =
                 spawnAt(com.mineclone.world.entity.MobType.CHICKEN, 8.5f, 11f, 8.5f, 3L);
         assertTrue("alive on spawn", !chicken.dead);
-        chicken.hurt(2f, 0f, 0f);
+        assertTrue("first hit lands", chicken.hurt(2f, 0f, 0f));
         assertTrue("still alive after 2 damage", !chicken.dead);
-        chicken.hurt(2f, 0f, 0f);
+        // Второй удар нужно ждать: окно неуязвимости 0.5 с.
+        for (int i = 0; i < 40; i++)
+            chicken.update(w, far, 1f / 60f, 0f, true);
+        assertTrue("second hit lands after the invulnerability window",
+                chicken.hurt(2f, 0f, 0f));
         assertTrue("dead after 4 damage total", chicken.dead);
     }
 
@@ -779,6 +788,73 @@ public final class TestMain {
         assertTrue("did not pass through the wall, x=" + z.position.x, z.position.x < 12f);
         assertTrue("moved along the wall instead of butting it, maxDrift=" + maxDrift,
                 maxDrift > 0.5f);
+    }
+
+    private static void testMobInvulnWindow() {
+        World w = flatTestWorld();
+        org.joml.Vector3f far = new org.joml.Vector3f(8.5f, 11f, 300f);
+        com.mineclone.world.entity.Mob cow =
+                spawnAt(com.mineclone.world.entity.MobType.COW, 8.5f, 11f, 8.5f, 5L);
+        float max = com.mineclone.world.entity.MobType.COW.maxHealth;
+
+        // Закликивание: 50 ударов в один кадр должны дать урон ровно одного.
+        int landed = 0;
+        for (int i = 0; i < 50; i++)
+            if (cow.hurt(2f, 6f, 8.5f)) landed++;
+        assertEq("only the first of 50 spam hits lands", 1, landed);
+        assertEq("damage of exactly one hit", max - 2f, cow.health);
+        assertTrue("cow survived the spam", !cow.dead);
+
+        // После окна неуязвимости удар снова проходит.
+        for (int i = 0; i < 40; i++)   // 0.67 с > INVULN_TIME
+            cow.update(w, far, 1f / 60f, 0f, true);
+        assertTrue("hit lands again after the window", cow.hurt(2f, 6f, 8.5f));
+        assertEq("two hits total", max - 4f, cow.health);
+
+        // Крит-множитель проходит как обычный урон, просто больше.
+        for (int i = 0; i < 40; i++)
+            cow.update(w, far, 1f / 60f, 0f, true);
+        assertTrue("crit lands", cow.hurt(2f * 1.5f, 6f, 8.5f));
+        assertEq("crit dealt 3 damage", max - 7f, cow.health);
+    }
+
+    private static void testPlayerInvulnWindow() {
+        com.mineclone.game.Player p = new com.mineclone.game.Player();
+        float max = com.mineclone.game.Player.MAX_HEALTH;
+        int landed = 0;
+        for (int i = 0; i < 10; i++)   // стая зомби бьёт в один кадр
+            if (p.takeAttackDamage(3f)) landed++;
+        assertEq("only one of 10 simultaneous mob hits lands", 1, landed);
+        assertEq("player lost exactly one hit worth", max - 3f, p.health);
+
+        // Урон от падения окно не уважает — он идёт другим путём.
+        p.takeDamage(2f);
+        assertEq("fall damage still applies during invulnerability", max - 5f, p.health);
+    }
+
+    private static void testZombieBurnsAtDay() {
+        // Регрессия на реальный баг: /time set day даёт daylight = sin(PI/6) = 0.5,
+        // а порог горения стоял на 0.7 — зомби горели только около полудня.
+        World w = flatTestWorld();
+        org.joml.Vector3f far = new org.joml.Vector3f(8.5f, 11f, 300f);
+        com.mineclone.world.entity.Mob z =
+                spawnAt(com.mineclone.world.entity.MobType.ZOMBIE, 8.5f, 11f, 8.5f, 31L);
+        float dayLight = (float) Math.sin(Math.PI / 6.0);
+        assertTrue("preset 'day' really is 0.5", Math.abs(dayLight - 0.5f) < 1e-4f);
+        for (int i = 0; i < 60; i++)
+            z.update(w, far, 1f / 60f, dayLight, true);
+        assertTrue("burning at /time set day", z.burning);
+        assertTrue("lost health at /time set day, hp=" + z.health,
+                z.health < com.mineclone.world.entity.MobType.ZOMBIE.maxHealth - 1.5f);
+
+        // Сумерки (0.2) всё ещё безопасны — иначе зомби сгорит в момент спавна.
+        com.mineclone.world.entity.Mob dusk =
+                spawnAt(com.mineclone.world.entity.MobType.ZOMBIE, 12.5f, 11f, 12.5f, 32L);
+        for (int i = 0; i < 60; i++)
+            dusk.update(w, far, 1f / 60f, 0.2f, true);
+        assertTrue("not burning at dusk", !dusk.burning);
+        assertEq("full health at dusk",
+                com.mineclone.world.entity.MobType.ZOMBIE.maxHealth, dusk.health);
     }
 
     private static void testItemStack() {

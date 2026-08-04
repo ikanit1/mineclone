@@ -127,5 +127,9 @@ claude --add-dir "E:\mineclone\knowledge" --add-dir "E:\mineclone\graphify-out"
 | `Mob` | `STUCK_TIME / SIDESTEP_TIME` | Через сколько упора в стену идти вбок и как долго |
 | `Mob` | `SAFE_FALL / STEP_DISTANCE` | Безопасное падение (3 блока) и путь между шагами |
 | `Game` | `MOB_REACH / HAND_DAMAGE` | Дальность и урон удара рукой по мобу |
+| `Game` | `ATTACK_COOLDOWN / CRIT_MULTIPLIER / SPRINT_KNOCKBACK` | Темп удара, крит в падении, отброс в спринте |
+| `Mob` | `INVULN_TIME` | Окно неуязвимости моба — защита от закликивания |
+| `Player` | `HURT_INVULN_TIME` | То же окно у игрока: стая бьёт не быстрее одного |
+| `Mob` | `BURN_DAYLIGHT` | Порог daylight, выше которого зомби горит (0.35 = «уже день») |
 | `MobRenderer` | `buildModel()` | Таблицы частей тела (габариты моделей) |
 | `MobSkins` | `generate()` | Процедурные скины; override — `assets/mobs/<type>.png` |

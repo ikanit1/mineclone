@@ -16,6 +16,10 @@ public class Player {
 
     public float health = 20f;
     public static final float MAX_HEALTH = 20f;
+    /** Окно неуязвимости после удара моба (MC: 10 тиков). */
+    public static final float HURT_INVULN_TIME = 0.5f;
+    /** >0 — урон от атак не проходит. */
+    public float hurtCooldown = 0f;
     public float fallDistance = 0f;
     public float lastFallDamage = 0f;
     public float lastFallDistance = 0f;
@@ -62,6 +66,8 @@ public class Player {
     public void update(float dt, World world, com.mineclone.core.Input input,
             boolean controlsEnabled, float sensitivity, boolean invertY) {
         justJumped = false;
+        if (hurtCooldown > 0f)
+            hurtCooldown = Math.max(0f, hurtCooldown - dt);
         if (controlsEnabled)
             checkSprintActivation(input, dt);
 
@@ -484,8 +490,27 @@ public class Player {
         health = Math.max(0f, health - amount);
     }
 
+    /**
+     * Урон от атаки моба. В отличие от {@link #takeDamage} уважает окно
+     * неуязвимости: без него стая зомби снимает здоровье втрое быстрее одного,
+     * потому что у каждого свой кулдаун удара.
+     *
+     * Урон от падения продолжает идти через takeDamage — там окно не нужно,
+     * иначе падения станут дешевле, чем задумано.
+     *
+     * @return true, если урон прошёл
+     */
+    public boolean takeAttackDamage(float amount) {
+        if (hurtCooldown > 0f)
+            return false;
+        hurtCooldown = HURT_INVULN_TIME;
+        takeDamage(amount);
+        return true;
+    }
+
     public void respawn(float x, float y, float z) {
         health = MAX_HEALTH;
+        hurtCooldown = 0f;
         fallDistance = 0f;
         regenTimer = 0f;
         lastFallDamage = 0f;

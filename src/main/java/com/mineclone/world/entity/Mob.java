@@ -32,8 +32,16 @@ public class Mob {
     public static final float ATTACK_SWING_TIME = 0.35f;
 
     public static final float HURT_FLASH_TIME = 0.4f;
+    /**
+     * Окно неуязвимости после попадания (MC: hurtResistantTime, 10 тиков).
+     * Без него урон определяется скоростью мыши: закликать моба можно за кадр.
+     */
+    public static final float INVULN_TIME = 0.5f;
     private static final float KNOCKBACK = 5f;
     private static final float KNOCKBACK_UP = 4f;
+
+    /** Порог daylight, выше которого светло «как днём» — зомби горит. */
+    private static final float BURN_DAYLIGHT = 0.35f;
 
     /** Пройденный путь между звуками шагов, метры. */
     private static final float STEP_DISTANCE = 1.4f;
@@ -74,6 +82,7 @@ public class Mob {
     private float knockX, knockZ;
     private float attackCooldown;
     private float stepDistance;
+    private float invulnTime;
     private boolean wasOnGround;
     /** Сколько уже упирается в стену — накопитель для бокового обхода. */
     private float blockedTimer;
@@ -100,6 +109,8 @@ public class Mob {
             return;
         if (hurtFlash > 0f)
             hurtFlash = Math.max(0f, hurtFlash - dt);
+        if (invulnTime > 0f)
+            invulnTime = Math.max(0f, invulnTime - dt);
 
         idleSoundTimer -= dt;
         if (idleSoundTimer <= 0f) {
@@ -275,7 +286,7 @@ public class Mob {
 
     private void applySunBurn(World world, float dt, float daylight) {
         burning = false;
-        if (!type.burnsInSunlight || daylight <= 0.7f)
+        if (!type.burnsInSunlight || daylight <= BURN_DAYLIGHT)
             return;
         int bx = (int) Math.floor(position.x);
         int bz = (int) Math.floor(position.z);
@@ -287,15 +298,33 @@ public class Mob {
         health -= 2f * dt;
     }
 
-    public void hurt(float amount, float fromX, float fromZ) {
+    /** Удар с обычным отбросом. */
+    public boolean hurt(float amount, float fromX, float fromZ) {
+        return hurt(amount, fromX, fromZ, 1f);
+    }
+
+    /**
+     * Получить урон от точки (fromX, fromZ): отбрасывание, вспышка, а мирный
+     * моб убегает.
+     *
+     * Попадание в окне неуязвимости игнорируется целиком — иначе урон
+     * определяется тем, как быстро игрок щёлкает мышью.
+     *
+     * @param knockbackMul множитель отброса (спринт-удар бьёт сильнее)
+     * @return true, если урон прошёл
+     */
+    public boolean hurt(float amount, float fromX, float fromZ, float knockbackMul) {
+        if (invulnTime > 0f)
+            return false;
+        invulnTime = INVULN_TIME;
         health -= amount;
         hurtFlash = HURT_FLASH_TIME;
         float dx = position.x - fromX;
         float dz = position.z - fromZ;
         float len = (float) Math.sqrt(dx * dx + dz * dz);
         if (len > 1e-4f) {
-            knockX = dx / len * KNOCKBACK;
-            knockZ = dz / len * KNOCKBACK;
+            knockX = dx / len * KNOCKBACK * knockbackMul;
+            knockZ = dz / len * KNOCKBACK * knockbackMul;
             if (onGround)
                 velocity.y = KNOCKBACK_UP;
             if (!type.hostile) {
@@ -306,6 +335,7 @@ public class Mob {
         }
         if (health <= 0f)
             dead = true;
+        return true;
     }
 
     public float rayHitDistance(Vector3f origin, Vector3f dir) {
