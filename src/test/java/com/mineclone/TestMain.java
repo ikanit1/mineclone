@@ -72,6 +72,10 @@ public final class TestMain {
         run("MobSpawner despawns distant mobs", TestMain::testMobSpawnerDespawn);
         run("MobSkins generates distinct skins", TestMain::testMobSkins);
         run("mob sounds resolve for every type", TestMain::testMobSounds);
+        run("Mob takes fall damage by impact speed", TestMain::testMobFallDamage);
+        run("Mob emits step sounds while walking", TestMain::testMobStepSounds);
+        run("EntityPhysics separates overlapping bodies", TestMain::testSeparate);
+        run("Mob sidesteps a wall instead of butting it", TestMain::testMobSidestep);
 
         System.out.println();
         System.out.println("==== " + passed + " passed, " + failed + " failed ====");
@@ -668,6 +672,113 @@ public final class TestMain {
         assertTrue("zombie death is its own sample",
                 !s.mobDeath(com.mineclone.world.entity.MobType.ZOMBIE)
                         .equals(s.mobHurt(com.mineclone.world.entity.MobType.ZOMBIE)));
+        // Шаги есть у всех пяти видов — фолбэк не нужен, но пустой список
+        // означал бы, что ассеты не нашлись.
+        for (com.mineclone.world.entity.MobType t : com.mineclone.world.entity.MobType.values())
+            assertTrue(t + " has step samples", !s.mobStep(t).isEmpty());
+    }
+
+    private static void testMobFallDamage() {
+        World w = flatTestWorld();
+        org.joml.Vector3f far = new org.joml.Vector3f(8.5f, 11f, 300f);
+
+        // Корова с 19 блоков (спавн y=30, площадка y=11) должна пострадать.
+        com.mineclone.world.entity.Mob cow =
+                spawnAt(com.mineclone.world.entity.MobType.COW, 8.5f, 30f, 8.5f, 21L);
+        for (int i = 0; i < 600; i++)
+            cow.update(w, far, 1f / 60f, 0f, true);
+        assertTrue("cow landed, y=" + cow.position.y, Math.abs(cow.position.y - 11f) < 0.2f);
+        assertTrue("cow hurt by the fall, hp=" + cow.health,
+                cow.health < com.mineclone.world.entity.MobType.COW.maxHealth);
+
+        // Курица планирует (терминальная скорость -3 м/с) — урона быть не должно.
+        com.mineclone.world.entity.Mob chicken =
+                spawnAt(com.mineclone.world.entity.MobType.CHICKEN, 12.5f, 30f, 12.5f, 22L);
+        for (int i = 0; i < 900; i++)
+            chicken.update(w, far, 1f / 60f, 0f, true);
+        assertTrue("chicken landed, y=" + chicken.position.y,
+                Math.abs(chicken.position.y - 11f) < 0.2f);
+        assertEq("chicken unharmed by gliding down",
+                com.mineclone.world.entity.MobType.CHICKEN.maxHealth, chicken.health);
+    }
+
+    private static void testMobStepSounds() {
+        World w = flatTestWorld();
+        org.joml.Vector3f far = new org.joml.Vector3f(8.5f, 11f, 300f);
+        com.mineclone.world.entity.Mob cow =
+                spawnAt(com.mineclone.world.entity.MobType.COW, 8.5f, 11f, 8.5f, 42L);
+        int steps = 0;
+        for (int i = 0; i < 1200; i++) {   // 20 с — заведомо больше одного WANDER
+            cow.update(w, far, 1f / 60f, 0f, true);
+            if (cow.justStepSound) steps++;
+        }
+        assertTrue("walking cow emits step events, got " + steps, steps > 0);
+
+        // Стоящий на месте моб шагов не издаёт: IDLE обнуляет направление.
+        com.mineclone.world.entity.Mob idle =
+                spawnAt(com.mineclone.world.entity.MobType.COW, 4.5f, 11f, 4.5f, 42L);
+        int idleSteps = 0;
+        for (int i = 0; i < 60; i++) {      // первую секунду моб ещё в IDLE
+            idle.update(w, far, 1f / 60f, 0f, true);
+            if (idle.justStepSound) idleSteps++;
+        }
+        assertEq("standing mob is silent", 0, idleSteps);
+    }
+
+    private static void testSeparate() {
+        // Два тела в одной точке разводятся в стороны.
+        org.joml.Vector3f a = new org.joml.Vector3f(8.5f, 11f, 8.5f);
+        org.joml.Vector3f b = new org.joml.Vector3f(8.5f, 11f, 8.5f);
+        assertTrue("overlap detected",
+                com.mineclone.world.entity.EntityPhysics.separate(a, 0.9f, 1.4f, 0.25f,
+                        b, 0.9f, 1.4f, 0.25f));
+        float dx = b.x - a.x, dz = b.z - a.z;
+        assertTrue("bodies moved apart, d=" + Math.sqrt(dx * dx + dz * dz),
+                dx * dx + dz * dz > 1e-6f);
+
+        // Доля 0 означает «не двигать»: так игрока не таскает своими же мобами.
+        org.joml.Vector3f fixed = new org.joml.Vector3f(0f, 11f, 0f);
+        org.joml.Vector3f mob = new org.joml.Vector3f(0.2f, 11f, 0f);
+        com.mineclone.world.entity.EntityPhysics.separate(fixed, 0.6f, 1.8f, 0f,
+                mob, 0.9f, 1.4f, 0.5f);
+        assertEq("fixed body stays put (x)", 0f, fixed.x);
+        assertEq("fixed body stays put (z)", 0f, fixed.z);
+        assertTrue("mob pushed away, x=" + mob.x, mob.x > 0.2f);
+
+        // Разнесённые по вертикали не расталкиваются — один стоит на другом.
+        org.joml.Vector3f low = new org.joml.Vector3f(8.5f, 11f, 8.5f);
+        org.joml.Vector3f high = new org.joml.Vector3f(8.5f, 12.4f, 8.5f);
+        assertTrue("stacked bodies are left alone",
+                !com.mineclone.world.entity.EntityPhysics.separate(low, 0.9f, 1.4f, 0.25f,
+                        high, 0.9f, 1.4f, 0.25f));
+    }
+
+    private static void testMobSidestep() {
+        World w = flatTestWorld();
+        // Стена по x=12 от z=-5 до z=25: обойти её концы за время теста нельзя.
+        // Пишем напрямую в чанк, чтобы не гонять пересчёт освещения на 90 блоков.
+        for (int z = -5; z <= 25; z++) {
+            Chunk c = w.getChunk(0, Math.floorDiv(z, Chunk.SIZE_Z));
+            for (int y = 11; y <= 13; y++)
+                c.set(12, y, Math.floorMod(z, Chunk.SIZE_Z), BlockType.STONE);
+        }
+        com.mineclone.world.entity.Mob z = spawnAt(
+                com.mineclone.world.entity.MobType.ZOMBIE, 10.5f, 11f, 8.5f, 77L);
+        // Игрок за стеной — зомби прёт в +X и упирается.
+        org.joml.Vector3f player = new org.joml.Vector3f(20.5f, 11f, 8.5f);
+        float startZ = z.position.z;
+        // Меряем максимальное отклонение за прогон, а не конечную точку: после
+        // истечения обхода зомби законно возвращается по z к игроку, и endpoint
+        // снова оказывается около старта.
+        float maxDrift = 0f;
+        for (int i = 0; i < 240; i++) {   // 4 с: ~1 с подхода + 0.8 с упора + обход
+            z.update(w, player, 1f / 60f, 0f, true);
+            maxDrift = Math.max(maxDrift, Math.abs(z.position.z - startZ));
+        }
+        assertEq("still chasing", com.mineclone.world.entity.Mob.State.CHASE, z.state);
+        assertTrue("did not pass through the wall, x=" + z.position.x, z.position.x < 12f);
+        assertTrue("moved along the wall instead of butting it, maxDrift=" + maxDrift,
+                maxDrift > 0.5f);
     }
 
     private static void testItemStack() {

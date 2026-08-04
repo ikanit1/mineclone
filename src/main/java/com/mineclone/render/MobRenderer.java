@@ -196,7 +196,15 @@ public class MobRenderer {
                     case LEG_A -> model.rotateX((float) Math.sin(phase) * LEG_SWING);
                     case LEG_B -> model.rotateX((float) -Math.sin(phase) * LEG_SWING);
                     // Руки зомби вытянуты вперёд (в −Z) + лёгкое покачивание.
-                    case ARM -> model.rotateX(1.5708f + (float) Math.sin(phase * 0.5f) * 0.1f);
+                    // В момент удара замахивается: руки поднимаются и опускаются
+                    // за ATTACK_SWING_TIME — иначе атака визуально не читается.
+                    case ARM -> {
+                        float arm = 1.5708f + (float) Math.sin(phase * 0.5f) * 0.1f;
+                        if (m.attackSwing > 0f)
+                            arm -= 1.2f * (float) Math.sin(
+                                    Math.PI * (m.attackSwing / Mob.ATTACK_SWING_TIME));
+                        model.rotateX(arm);
+                    }
                     case WING -> model.rotateZ((float) Math.sin(phase * 2f) * 0.35f);
                     case NONE -> { }
                 }

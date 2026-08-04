@@ -131,6 +131,41 @@ public final class EntityPhysics {
     }
 
     /**
+     * Мягко расталкивает два AABB по горизонтали, если они пересекаются: каждый
+     * сдвигается на свою долю перекрытия. Доля 0 означает «не двигать» — так
+     * игрок остаётся хозяином своей физики, а отходит только моб.
+     *
+     * Полное перекрытие за один тик не устраняется специально: доли по 0.25
+     * разводят тела за несколько кадров без дёрганья.
+     *
+     * @return true, если было перекрытие
+     */
+    public static boolean separate(Vector3f a, float widthA, float heightA, float shareA,
+                                   Vector3f b, float widthB, float heightB, float shareB) {
+        // По вертикали не пересекаются — один стоит на другом, не расталкиваем.
+        if (a.y + heightA <= b.y || b.y + heightB <= a.y)
+            return false;
+        float dx = b.x - a.x, dz = b.z - a.z;
+        float minDist = (widthA + widthB) * 0.5f;
+        float d2 = dx * dx + dz * dz;
+        if (d2 >= minDist * minDist)
+            return false;
+        float d = (float) Math.sqrt(d2);
+        if (d < 1e-4f) {   // центры совпали — разводим по произвольной оси
+            dx = 1f;
+            dz = 0f;
+            d = 1f;
+        }
+        float overlap = minDist - d;
+        float nx = dx / d, nz = dz / d;
+        a.x -= nx * overlap * shareA;
+        a.z -= nz * overlap * shareA;
+        b.x += nx * overlap * shareB;
+        b.z += nz * overlap * shareB;
+        return true;
+    }
+
+    /**
      * Параметрическое пересечение луча с AABB (метод слэбов).
      * Используется и для выбора моба под прицелом, и для дистанции до блока.
      *

@@ -193,6 +193,11 @@ public final class Sounds {
         return s.isEmpty() ? mobSay(t) : s;
     }
 
+    /** Шаги моба (step*.ogg) — тихие, играются по пройденному пути. */
+    public List<String> mobStep(MobType t) {
+        return listMatching(ROOT + "/mob/" + t.soundDir, "step");
+    }
+
     /** Звук смерти; при отсутствии файлов — боль, затем голос. */
     public List<String> mobDeath(MobType t) {
         List<String> s = listMatching(ROOT + "/mob/" + t.soundDir, "death");

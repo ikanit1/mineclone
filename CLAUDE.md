@@ -124,6 +124,8 @@ claude --add-dir "E:\mineclone\knowledge" --add-dir "E:\mineclone\graphify-out"
 | `MobSpawner` | `MIN_RADIUS / MAX_RADIUS / DESPAWN_RADIUS` | Кольцо спавна 20–48 и деспавн на 72 |
 | `Mob` | `AGGRO_RANGE / LOSE_RANGE / ATTACK_RANGE` | Дистанции агра зомби (16 / 24 / 1.5) |
 | `Mob` | `ATTACK_DAMAGE` | Урон зомби игроку (3 = 1.5 сердца) |
+| `Mob` | `STUCK_TIME / SIDESTEP_TIME` | Через сколько упора в стену идти вбок и как долго |
+| `Mob` | `SAFE_FALL / STEP_DISTANCE` | Безопасное падение (3 блока) и путь между шагами |
 | `Game` | `MOB_REACH / HAND_DAMAGE` | Дальность и урон удара рукой по мобу |
 | `MobRenderer` | `buildModel()` | Таблицы частей тела (габариты моделей) |
 | `MobSkins` | `generate()` | Процедурные скины; override — `assets/mobs/<type>.png` |

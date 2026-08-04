@@ -750,6 +750,11 @@ public class Game {
                 sound.playOneOfAt(sounds.mobSay(m.type), m.soundPosition(),
                         0.7f, 0.9f + 0.2f * (float) Math.random());
 
+            if (m.justStepSound)
+                sound.playOneOfAt(sounds.mobStep(m.type),
+                        new Vector3f(m.position.x, m.position.y + 0.1f, m.position.z),
+                        0.22f, 0.9f + 0.2f * (float) Math.random());
+
             if (m.justAttacked) {
                 player.takeDamage(com.mineclone.world.entity.Mob.ATTACK_DAMAGE);
                 applyMobKnockback(m);
@@ -768,6 +773,21 @@ public class Game {
                         m.position.z, m.type.particleColor);
                 it.remove();
             }
+        }
+
+        // Расталкивание: без него стадо слипается в одну точку, а моб спокойно
+        // стоит внутри игрока. Игрока не двигаем — свою физику он считает сам.
+        for (int i = 0; i < mobs.size(); i++) {
+            com.mineclone.world.entity.Mob a = mobs.get(i);
+            for (int j = i + 1; j < mobs.size(); j++) {
+                com.mineclone.world.entity.Mob b = mobs.get(j);
+                com.mineclone.world.entity.EntityPhysics.separate(
+                        a.position, a.type.width, a.type.height, 0.25f,
+                        b.position, b.type.width, b.type.height, 0.25f);
+            }
+            com.mineclone.world.entity.EntityPhysics.separate(
+                    player.position, Player.WIDTH, Player.HEIGHT, 0f,
+                    a.position, a.type.width, a.type.height, 0.5f);
         }
 
         mobSpawner.despawnFar(mobs, player.position);
