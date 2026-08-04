@@ -764,17 +764,25 @@ public class Game {
                         0.8f, 0.9f + 0.1f * (float) Math.random());
             }
 
-            if (m.burning && Math.random() < 0.35)
-                particles.emitMobSmoke(m.position.x, m.position.y + m.type.height * 0.6f,
+            if (m.burning) {
+                particles.emitMobFlame(m.position.x, m.position.y + m.type.height * 0.5f,
                         m.position.z);
+                if (Math.random() < 0.35)
+                    particles.emitMobSmoke(m.position.x, m.position.y + m.type.height * 0.9f,
+                            m.position.z);
+            }
 
-            if (m.dead) {
+            // Звук и облако — один раз в момент смерти; сам моб ещё полсекунды
+            // валится набок, и только потом уходит из списка.
+            if (m.dead && !m.deathEffectsDone) {
+                m.deathEffectsDone = true;
                 sound.playOneOfAt(sounds.mobDeath(m.type), m.soundPosition(),
                         0.8f, 0.95f + 0.1f * (float) Math.random());
                 particles.emitMobDeath(m.position.x, m.position.y + m.type.height * 0.5f,
                         m.position.z, m.type.particleColor);
-                it.remove();
             }
+            if (m.dead && m.deathTimer <= 0f)
+                it.remove();
         }
 
         // Расталкивание: без него стадо слипается в одну точку, а моб спокойно

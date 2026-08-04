@@ -79,6 +79,9 @@ public final class TestMain {
         run("Mob ignores hits inside the invulnerability window", TestMain::testMobInvulnWindow);
         run("Player ignores mob hits inside its window", TestMain::testPlayerInvulnWindow);
         run("Zombie burns at /time set day, not only at noon", TestMain::testZombieBurnsAtDay);
+        run("Zombie needs line of sight to aggro", TestMain::testZombieLineOfSight);
+        run("Dead mob lingers for the fall-over animation", TestMain::testMobDeathLinger);
+        run("Player regen pauses after a hit", TestMain::testRegenPause);
 
         System.out.println();
         System.out.println("==== " + passed + " passed, " + failed + " failed ====");
@@ -764,17 +767,24 @@ public final class TestMain {
 
     private static void testMobSidestep() {
         World w = flatTestWorld();
-        // Стена по x=12 от z=-5 до z=25: обойти её концы за время теста нельзя.
-        // Пишем напрямую в чанк, чтобы не гонять пересчёт освещения на 90 блоков.
-        for (int z = -5; z <= 25; z++) {
-            Chunk c = w.getChunk(0, Math.floorDiv(z, Chunk.SIZE_Z));
-            for (int y = 11; y <= 13; y++)
-                c.set(12, y, Math.floorMod(z, Chunk.SIZE_Z), BlockType.STONE);
-        }
         com.mineclone.world.entity.Mob z = spawnAt(
                 com.mineclone.world.entity.MobType.ZOMBIE, 10.5f, 11f, 8.5f, 77L);
-        // Игрок за стеной — зомби прёт в +X и упирается.
         org.joml.Vector3f player = new org.joml.Vector3f(20.5f, 11f, 8.5f);
+
+        // Цель берётся по прямой видимости, поэтому сначала даём зомби увидеть
+        // игрока, и только потом ставим стену — ровно так это и происходит в
+        // игре: моб уже бежит, а путь перекрыт.
+        z.update(w, player, 1f / 60f, 0f, true);
+        assertEq("target acquired before the wall goes up",
+                com.mineclone.world.entity.Mob.State.CHASE, z.state);
+
+        // Стена по x=12 от z=-5 до z=25: обойти её концы за время теста нельзя.
+        // Пишем напрямую в чанк, чтобы не гонять пересчёт освещения на 90 блоков.
+        for (int wz = -5; wz <= 25; wz++) {
+            Chunk c = w.getChunk(0, Math.floorDiv(wz, Chunk.SIZE_Z));
+            for (int y = 11; y <= 13; y++)
+                c.set(12, y, Math.floorMod(wz, Chunk.SIZE_Z), BlockType.STONE);
+        }
         float startZ = z.position.z;
         // Меряем максимальное отклонение за прогон, а не конечную точку: после
         // истечения обхода зомби законно возвращается по z к игроку, и endpoint
@@ -855,6 +865,75 @@ public final class TestMain {
         assertTrue("not burning at dusk", !dusk.burning);
         assertEq("full health at dusk",
                 com.mineclone.world.entity.MobType.ZOMBIE.maxHealth, dusk.health);
+    }
+
+    private static void testZombieLineOfSight() {
+        // Сначала сам предикат: сквозь воздух видно, сквозь камень нет.
+        World w = flatTestWorld();
+        assertTrue("clear line over the platform",
+                com.mineclone.world.entity.EntityPhysics.lineOfSight(w,
+                        4.5f, 12f, 8.5f, 14.5f, 12f, 8.5f));
+        for (int y = 11; y <= 14; y++)
+            for (int zz = 4; zz <= 13; zz++)
+                w.getChunk(0, 0).set(9, y, zz, BlockType.STONE);
+        assertTrue("stone wall blocks the line",
+                !com.mineclone.world.entity.EntityPhysics.lineOfSight(w,
+                        4.5f, 12f, 8.5f, 14.5f, 12f, 8.5f));
+
+        // Зомби за стеной в 8 блоках от игрока агриться не должен.
+        com.mineclone.world.entity.Mob blocked = spawnAt(
+                com.mineclone.world.entity.MobType.ZOMBIE, 5.5f, 11f, 8.5f, 61L);
+        org.joml.Vector3f player = new org.joml.Vector3f(13.5f, 11f, 8.5f);
+        for (int i = 0; i < 120; i++)
+            blocked.update(w, player, 1f / 60f, 0f, true);
+        assertTrue("does not aggro through the wall, state=" + blocked.state,
+                blocked.state != com.mineclone.world.entity.Mob.State.CHASE
+                        && blocked.state != com.mineclone.world.entity.Mob.State.ATTACK);
+
+        // На открытом месте (та же дистанция, стены нет) — агрится сразу.
+        World open = flatTestWorld();
+        com.mineclone.world.entity.Mob seeing = spawnAt(
+                com.mineclone.world.entity.MobType.ZOMBIE, 5.5f, 11f, 8.5f, 61L);
+        seeing.update(open, player, 1f / 60f, 0f, true);
+        assertEq("aggros with a clear line",
+                com.mineclone.world.entity.Mob.State.CHASE, seeing.state);
+    }
+
+    private static void testMobDeathLinger() {
+        World w = flatTestWorld();
+        org.joml.Vector3f far = new org.joml.Vector3f(8.5f, 11f, 300f);
+        com.mineclone.world.entity.Mob cow =
+                spawnAt(com.mineclone.world.entity.MobType.COW, 8.5f, 11f, 8.5f, 8L);
+        cow.hurt(100f, 6f, 8.5f);
+        assertTrue("dead on a lethal hit", cow.dead);
+        assertEq("fall-over timer armed",
+                com.mineclone.world.entity.Mob.DEATH_TIME, cow.deathTimer);
+        assertTrue("effects not fired yet", !cow.deathEffectsDone);
+
+        // Полкадра спустя ещё лежит — Game не имеет права убирать его сразу.
+        cow.update(w, far, 1f / 60f, 0f, true);
+        assertTrue("still lingering, timer=" + cow.deathTimer, cow.deathTimer > 0f);
+
+        for (int i = 0; i < 40; i++)
+            cow.update(w, far, 1f / 60f, 0f, true);
+        assertEq("timer ran out", 0f, cow.deathTimer);
+    }
+
+    private static void testRegenPause() {
+        com.mineclone.game.Player p = new com.mineclone.game.Player();
+        World w = flatTestWorld();
+        com.mineclone.core.Input noInput = null;   // controlsEnabled=false — ввод не читается
+        p.position.set(8.5f, 11f, 8.5f);
+        p.takeAttackDamage(6f);
+        float hurt = p.health;
+        // 4 с после удара регена быть не должно: пауза 5 с.
+        for (int i = 0; i < 240; i++)
+            p.update(1f / 60f, w, noInput, false);
+        assertEq("no regen during the pause", hurt, p.health);
+        // Ещё 8 с — пауза истекла, тик регена прошёл.
+        for (int i = 0; i < 480; i++)
+            p.update(1f / 60f, w, noInput, false);
+        assertTrue("regen resumed, hp=" + p.health, p.health > hurt);
     }
 
     private static void testItemStack() {

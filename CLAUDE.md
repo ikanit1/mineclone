@@ -132,4 +132,7 @@ claude --add-dir "E:\mineclone\knowledge" --add-dir "E:\mineclone\graphify-out"
 | `Player` | `HURT_INVULN_TIME` | То же окно у игрока: стая бьёт не быстрее одного |
 | `Mob` | `BURN_DAYLIGHT` | Порог daylight, выше которого зомби горит (0.35 = «уже день») |
 | `MobRenderer` | `buildModel()` | Таблицы частей тела (габариты моделей) |
+| `MobSkins` | `TILE` | Разрешение тайла скина (32 → текстура 128×64); графика в долях тайла, поднимается без правок |
 | `MobSkins` | `generate()` | Процедурные скины; override — `assets/mobs/<type>.png` |
+| `Mob` | `DEATH_TIME` | Сколько моб валится набок перед исчезновением |
+| `Player` | `REGEN_INTERVAL / REGEN_DELAY_AFTER_HIT` | Темп регена и пауза после удара |

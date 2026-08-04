@@ -190,8 +190,11 @@ public class MobRenderer {
             for (Part p : models.get(m.type)) {
                 model.identity()
                      .translate(m.position.x, m.position.y, m.position.z)
-                     .rotateY(m.yaw)
-                     .translate(p.pivX(), p.pivY(), p.pivZ());
+                     .rotateY(m.yaw);
+                // Смерть: моб валится набок за DEATH_TIME, как в MC.
+                if (m.dead)
+                    model.rotateZ((1f - m.deathTimer / Mob.DEATH_TIME) * 1.5708f);
+                model.translate(p.pivX(), p.pivY(), p.pivZ());
                 switch (p.anim()) {
                     case LEG_A -> model.rotateX((float) Math.sin(phase) * LEG_SWING);
                     case LEG_B -> model.rotateX((float) -Math.sin(phase) * LEG_SWING);

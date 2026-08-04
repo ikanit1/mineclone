@@ -246,6 +246,33 @@ public class ParticleSystem {
         particles.add(p);
     }
 
+    /** Язычок пламени на горящем мобе — тот же рецепт, что у факела. */
+    public void emitMobFlame(float x, float y, float z) {
+        if (particles.size() >= MAX)
+            return;
+        float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
+        P p = new P();
+        p.x = x + (rnd.nextFloat() - 0.5f) * 0.6f;
+        p.y = y + (rnd.nextFloat() - 0.5f) * 0.8f;
+        p.z = z + (rnd.nextFloat() - 0.5f) * 0.6f;
+        p.vx = (rnd.nextFloat() - 0.5f) * 0.3f;
+        p.vy = 0.6f + rnd.nextFloat() * 0.5f;
+        p.vz = (rnd.nextFloat() - 0.5f) * 0.3f;
+        p.life = p.maxLife = 0.25f + rnd.nextFloat() * 0.2f;
+        p.size = 0.07f + rnd.nextFloat() * 0.05f;
+        p.gravityScale = 0f;
+        p.growRate = 0f;
+        p.cr = 0.95f + rnd.nextFloat() * 0.05f;
+        p.cg = 0.45f + rnd.nextFloat() * 0.25f;
+        p.cb = 0.03f + rnd.nextFloat() * 0.08f;
+        p.baseAlpha = 0.9f;
+        p.u0 = uvP[0];
+        p.v0 = uvP[1];
+        p.u1 = uvP[2];
+        p.v1 = uvP[3];
+        particles.add(p);
+    }
+
     /** Облако частиц цвета моба в момент смерти. */
     public void emitMobDeath(float x, float y, float z, float[] color) {
         float[] uvP = TextureAtlas.uv(PARTICLE_TILE);

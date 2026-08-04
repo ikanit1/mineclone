@@ -20,6 +20,11 @@ public class Player {
     public static final float HURT_INVULN_TIME = 0.5f;
     /** >0 — урон от атак не проходит. */
     public float hurtCooldown = 0f;
+    /** Пауза регена после полученного удара, секунды. */
+    public static final float REGEN_DELAY_AFTER_HIT = 5f;
+    /** Сколько ждать между 0.5 HP регена. */
+    public static final float REGEN_INTERVAL = 6f;
+    private float regenDelay = 0f;
     public float fallDistance = 0f;
     public float lastFallDamage = 0f;
     public float lastFallDistance = 0f;
@@ -203,12 +208,19 @@ public class Player {
         }
         wasOnGround = onGround;
 
-        // Slow HP regen (~0.5 HP per 4 s)
-        regenTimer += dt;
-        if (regenTimer >= 4f) {
-            if (health < MAX_HEALTH)
-                health = Math.min(MAX_HEALTH, health + 0.5f);
+        // Медленный реген (~0.5 HP за REGEN_INTERVAL) с паузой после боя.
+        // Полноценной ценой урона станет голод (подсистема F); пока лечение
+        // бесплатное, но хотя бы не мгновенное — иначе бой ничего не стоит.
+        if (regenDelay > 0f) {
+            regenDelay = Math.max(0f, regenDelay - dt);
             regenTimer = 0f;
+        } else {
+            regenTimer += dt;
+            if (regenTimer >= REGEN_INTERVAL) {
+                if (health < MAX_HEALTH)
+                    health = Math.min(MAX_HEALTH, health + 0.5f);
+                regenTimer = 0f;
+            }
         }
 
         camera.position.set(position.x, position.y + EYE_HEIGHT, position.z);
@@ -504,6 +516,7 @@ public class Player {
         if (hurtCooldown > 0f)
             return false;
         hurtCooldown = HURT_INVULN_TIME;
+        regenDelay = REGEN_DELAY_AFTER_HIT;
         takeDamage(amount);
         return true;
     }
@@ -513,6 +526,7 @@ public class Player {
         hurtCooldown = 0f;
         fallDistance = 0f;
         regenTimer = 0f;
+        regenDelay = 0f;
         lastFallDamage = 0f;
         lastFallDistance = 0f;
         position.set(x, y, z);

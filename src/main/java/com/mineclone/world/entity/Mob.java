@@ -43,6 +43,11 @@ public class Mob {
     /** Порог daylight, выше которого светло «как днём» — зомби горит. */
     private static final float BURN_DAYLIGHT = 0.35f;
 
+    /** Уровень глаз игрока — куда целится проверка видимости. */
+    private static final float PLAYER_EYE_HEIGHT = 1.62f;
+    /** Сколько моб лежит после смерти, прежде чем исчезнуть. */
+    public static final float DEATH_TIME = 0.5f;
+
     /** Пройденный путь между звуками шагов, метры. */
     private static final float STEP_DISTANCE = 1.4f;
     /** Сколько секунд упора в стену считается «застрял». */
@@ -64,6 +69,10 @@ public class Mob {
     public boolean hitWall;
     public boolean inWater;
     public boolean dead;
+    /** Обратный отсчёт падения набок; 0 — можно убирать из мира. */
+    public float deathTimer;
+    /** Game ставит true, отыграв звук и частицы смерти ровно один раз. */
+    public boolean deathEffectsDone;
     public boolean burning;
     public float hurtFlash;
     public float walkedDistance;
@@ -105,8 +114,12 @@ public class Mob {
         justAttacked = false;
         justIdleSound = false;
         justStepSound = false;
-        if (dead)
+        if (dead) {
+            // Мёртвый моб не думает и не ходит — только доигрывает падение.
+            if (deathTimer > 0f)
+                deathTimer = Math.max(0f, deathTimer - dt);
             return;
+        }
         if (hurtFlash > 0f)
             hurtFlash = Math.max(0f, hurtFlash - dt);
         if (invulnTime > 0f)
@@ -127,7 +140,7 @@ public class Mob {
         float playerDist = (float) Math.sqrt(pdx * pdx + pdy * pdy + pdz * pdz);
 
         if (type.hostile && hostileEnabled)
-            updateHostile(dt, pdx, pdz, playerDist);
+            updateHostile(world, dt, pdx, pdz, playerDist, playerPos);
         else
             updatePeaceful(dt);
 
@@ -201,7 +214,15 @@ public class Mob {
 
         applySunBurn(world, dt, daylight);
         if (health <= 0f)
-            dead = true;
+            die();
+    }
+
+    /** Переход в смерть: запускает падение набок, Game уберёт моба по таймеру. */
+    private void die() {
+        if (dead)
+            return;
+        dead = true;
+        deathTimer = DEATH_TIME;
     }
 
     protected void updatePeaceful(float dt) {
@@ -218,14 +239,18 @@ public class Mob {
      * Зомби: агрится в 16 блоках (без проверки прямой видимости — MVP), бьёт
      * ближе 1.5, отпускает цель за 24. Пока игрок далеко — ведёт себя как мирный.
      */
-    private void updateHostile(float dt, float dx, float dz, float dist) {
+    private void updateHostile(World world, float dt, float dx, float dz, float dist,
+                               Vector3f playerPos) {
         boolean chasing = state == State.CHASE || state == State.ATTACK;
         if (chasing) {
             if (dist > LOSE_RANGE) {
                 enterIdle();
                 return;
             }
-        } else if (dist <= AGGRO_RANGE) {
+        } else if (dist <= AGGRO_RANGE && canSee(world, playerPos)) {
+            // Цель берётся только при прямой видимости — иначе зомби «чуял»
+            // игрока через каменную стену и приходил ждать с другой стороны.
+            // Уже начатую погоню видимость не обрывает: моб помнит, куда бежал.
             state = State.CHASE;
         } else {
             updatePeaceful(dt);
@@ -334,10 +359,18 @@ public class Mob {
             }
         }
         if (health <= 0f)
-            dead = true;
+            die();
         return true;
     }
 
+    /** Видит ли моб игрока: луч от своих глаз к глазам игрока. */
+    private boolean canSee(World world, Vector3f playerPos) {
+        return EntityPhysics.lineOfSight(world,
+                position.x, position.y + type.height * 0.85f, position.z,
+                playerPos.x, playerPos.y + PLAYER_EYE_HEIGHT, playerPos.z);
+    }
+
+    /** Дистанция до попадания луча в AABB моба, либо -1. */
     public float rayHitDistance(Vector3f origin, Vector3f dir) {
         float hw = type.width / 2f;
         return EntityPhysics.rayAabbDistance(origin.x, origin.y, origin.z, dir.x, dir.y, dir.z,

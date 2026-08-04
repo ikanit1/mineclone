@@ -131,6 +131,29 @@ public final class EntityPhysics {
     }
 
     /**
+     * Есть ли прямая видимость между двумя точками — сэмплирование отрезка с
+     * шагом чуть меньше блока. Не DDA: нужен ответ «да/нет», а не список ячеек,
+     * и такой шаг не пропускает стену толщиной в блок.
+     */
+    public static boolean lineOfSight(World world, float x0, float y0, float z0,
+                                      float x1, float y1, float z1) {
+        float dx = x1 - x0, dy = y1 - y0, dz = z1 - z0;
+        float dist = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (dist < 1e-3f)
+            return true;
+        int steps = (int) Math.ceil(dist / 0.25f);
+        for (int i = 1; i < steps; i++) {
+            float t = i / (float) steps;
+            int bx = (int) Math.floor(x0 + dx * t);
+            int by = (int) Math.floor(y0 + dy * t);
+            int bz = (int) Math.floor(z0 + dz * t);
+            if (world.getBlock(bx, by, bz).solid)
+                return false;
+        }
+        return true;
+    }
+
+    /**
      * Мягко расталкивает два AABB по горизонтали, если они пересекаются: каждый
      * сдвигается на свою долю перекрытия. Доля 0 означает «не двигать» — так
      * игрок остаётся хозяином своей физики, а отходит только моб.
