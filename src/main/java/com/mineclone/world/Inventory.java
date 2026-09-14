@@ -18,6 +18,15 @@ public final class Inventory {
     }
     public int size() { return SIZE; }
 
+    public boolean canAdd(BlockType type, int amount) {
+        for (ItemStack s : slots) {
+            if (s == null) amount -= ItemStack.MAX_STACK;
+            else if (s.type == type) amount -= ItemStack.MAX_STACK - s.count;
+            if (amount <= 0) return true;
+        }
+        return amount <= 0;
+    }
+
     /** Adds items, merging into matching stacks first, then into empty slots.
      *  @return leftover that did not fit. */
     public int add(BlockType type, int amount) {

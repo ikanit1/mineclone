@@ -126,7 +126,7 @@ public class TextureAtlas {
     // Atlas assembly — pure asset loading, no procedural drawing
     // -------------------------------------------------------------------------
 
-    private static BufferedImage assemble() {
+    public static BufferedImage assemble() {
         BufferedImage atlas = new BufferedImage(ATLAS_SIZE, ATLAS_SIZE, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = atlas.createGraphics();
         g.setColor(new Color(0, 0, 0, 0));

@@ -186,21 +186,20 @@ public class Player {
         inWater = !flying && touchingWater(world);
         eyeInWater = !flying && eyeBlockIsWater(world);
 
-        // Fall distance tracking (position-based, not velocity-based — more stable)
-        if (!onGround && !inWater && !flying && position.y < prevY)
-            fallDistance += prevY - position.y;
-
-        // MLG: touching water resets fall damage counter
-        if (inWater)
+        // Flight and water end the current fall. Include the landing frame's
+        // descent, but never carry a previous fall through a flying stop.
+        if (inWater || flying)
             fallDistance = 0f;
+        else if (position.y < prevY)
+            fallDistance += prevY - position.y;
 
         // Landing: apply fall damage (guard !inWater covers same-frame water+ground)
         if (onGround && !wasOnGround) {
-            if (!inWater) {
+            if (!inWater && !flying) {
                 float dmg = Math.max(0f, fallDistance - 3f);
+                lastFallDamage = dmg;
                 if (dmg > 0f) {
                     takeDamage(dmg);
-                    lastFallDamage = dmg;
                 }
                 lastFallDistance = fallDistance;
             }
@@ -214,7 +213,7 @@ public class Player {
         if (regenDelay > 0f) {
             regenDelay = Math.max(0f, regenDelay - dt);
             regenTimer = 0f;
-        } else {
+        } else if (controlsEnabled && health > 0f) {
             regenTimer += dt;
             if (regenTimer >= REGEN_INTERVAL) {
                 if (health < MAX_HEALTH)

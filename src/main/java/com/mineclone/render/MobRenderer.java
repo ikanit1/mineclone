@@ -34,7 +34,7 @@ import static org.lwjgl.opengl.GL30.*;
  */
 public class MobRenderer {
     /** Как анимируется часть тела. */
-    private enum Anim { NONE, LEG_A, LEG_B, ARM, WING }
+    private enum Anim { NONE, HEAD, LEG_A, LEG_B, ARM, WING }
 
     /**
      * Часть тела: пивот (точка вращения, в локальных координатах моба),
@@ -46,16 +46,17 @@ public class MobRenderer {
                         int front, int side, int top,
                         Anim anim) {}
 
-    private static final float LEG_SWING = 0.6f;      // ±34°
-    private static final float PHASE_PER_METRE = 6f;
     private static final Vector3f NO_TINT = new Vector3f(1f, 1f, 1f);
     private static final Vector3f HURT_TINT = new Vector3f(1f, 0.45f, 0.45f);
 
-    private static final float TILE_U = (MobSkins.TILE - 1f) / MobSkins.WIDTH;
-    private static final float TILE_V = (MobSkins.TILE - 1f) / MobSkins.HEIGHT;
+    static final float TILE_U = (MobSkins.TILE - 1f) / MobSkins.WIDTH;
+    static final float TILE_V = (MobSkins.TILE - 1f) / MobSkins.HEIGHT;
 
     // pos(3) + faceId(1) + cornerUv(2) = 6 float на вершину, 36 вершин.
-    private static final float[] CUBE = {
+    // package-private: HeldItemRenderer рисует руку от первого лица тем же
+    // кубом, шейдером и раскладкой скина, что и части тела моба — иначе
+    // рука и мобы разъезжаются по стилю при первой же правке одного из них.
+    static final float[] CUBE = {
         // front (−Z), faceId 0
          0.5f,-0.5f,-0.5f, 0f, 0f,1f,  -0.5f,-0.5f,-0.5f, 0f, 1f,1f,  -0.5f, 0.5f,-0.5f, 0f, 1f,0f,
          0.5f,-0.5f,-0.5f, 0f, 0f,1f,  -0.5f, 0.5f,-0.5f, 0f, 1f,0f,   0.5f, 0.5f,-0.5f, 0f, 0f,0f,
@@ -75,8 +76,8 @@ public class MobRenderer {
         -0.5f,-0.5f, 0.5f, 2f, 0f,0f,  -0.5f,-0.5f,-0.5f, 2f, 0f,1f,   0.5f,-0.5f,-0.5f, 2f, 1f,1f,
         -0.5f,-0.5f, 0.5f, 2f, 0f,0f,   0.5f,-0.5f,-0.5f, 2f, 1f,1f,   0.5f,-0.5f, 0.5f, 2f, 1f,0f,
     };
-    private static final int VERTEX_COUNT = 36;
-    private static final int STRIDE = 6 * Float.BYTES;
+    static final int VERTEX_COUNT = 36;
+    static final int STRIDE = 6 * Float.BYTES;
 
     private final int vao, vbo;
     private final Shader shader;
@@ -86,8 +87,23 @@ public class MobRenderer {
 
     public MobRenderer() {
         shader = new Shader(Shaders.MOB_VERTEX, Shaders.MOB_FRAGMENT);
-        vao = glGenVertexArrays();
-        vbo = glGenBuffers();
+        int[] ids = createCubeVao();
+        vao = ids[0];
+        vbo = ids[1];
+
+        for (MobType t : MobType.values()) {
+            textures.put(t, uploadTexture(MobSkins.load(t)));
+            models.put(t, buildModel(t));
+        }
+    }
+
+    /**
+     * VAO единичного куба со схемой атрибутов MOB_VERTEX: позиция, faceId,
+     * угловые UV. Возвращает {vao, vbo}.
+     */
+    static int[] createCubeVao() {
+        int vao = glGenVertexArrays();
+        int vbo = glGenBuffers();
         glBindVertexArray(vao);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         FloatBuffer fb = MemoryUtil.memAllocFloat(CUBE.length);
@@ -102,11 +118,7 @@ public class MobRenderer {
         glEnableVertexAttribArray(2);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
-
-        for (MobType t : MobType.values()) {
-            textures.put(t, uploadTexture(MobSkins.load(t)));
-            models.put(t, buildModel(t));
-        }
+        return new int[] { vao, vbo };
     }
 
     // -------------------------------------------------------------------------
@@ -115,13 +127,15 @@ public class MobRenderer {
     // -------------------------------------------------------------------------
 
     private static Part[] buildModel(MobType type) {
-        int hf = MobSkins.T_HEAD_FRONT, hs = MobSkins.T_HEAD_SIDE, ht = MobSkins.T_HEAD_TOP;
+        // The generated profile tile contains an eye. Only the front may carry
+        // facial features; use the clean crown material on sides and rear.
+        int hf = MobSkins.T_HEAD_FRONT, hs = MobSkins.T_HEAD_TOP, ht = MobSkins.T_HEAD_TOP;
         int bs = MobSkins.T_BODY_SIDE, bt = MobSkins.T_BODY_TOP;
         int lm = MobSkins.T_LIMB, ac = MobSkins.T_ACCENT;
         return switch (type) {
             case COW -> new Part[] {
                 new Part(0f, 1.0625f, 0f, 0f, 0f, 0f, 0.75f, 0.625f, 1.125f, bs, bs, bt, Anim.NONE),
-                new Part(0f, 1.15f, -0.76f, 0f, 0f, 0f, 0.5f, 0.5f, 0.4f, hf, hs, ht, Anim.NONE),
+                new Part(0f, 1.15f, -0.76f, 0f, 0f, 0f, 0.5f, 0.5f, 0.4f, hf, hs, ht, Anim.HEAD),
                 new Part(-0.22f, 0.75f, -0.38f, 0f, -0.375f, 0f, 0.25f, 0.75f, 0.25f, lm, lm, lm, Anim.LEG_A),
                 new Part( 0.22f, 0.75f, -0.38f, 0f, -0.375f, 0f, 0.25f, 0.75f, 0.25f, lm, lm, lm, Anim.LEG_B),
                 new Part(-0.22f, 0.75f,  0.38f, 0f, -0.375f, 0f, 0.25f, 0.75f, 0.25f, lm, lm, lm, Anim.LEG_B),
@@ -129,7 +143,7 @@ public class MobRenderer {
             };
             case PIG -> new Part[] {
                 new Part(0f, 0.625f, 0f, 0f, 0f, 0f, 0.625f, 0.5f, 1.0f, bs, bs, bt, Anim.NONE),
-                new Part(0f, 0.625f, -0.65f, 0f, 0f, 0f, 0.5f, 0.5f, 0.5f, hf, hs, ht, Anim.NONE),
+                new Part(0f, 0.625f, -0.65f, 0f, 0f, 0f, 0.5f, 0.5f, 0.5f, hf, hs, ht, Anim.HEAD),
                 new Part(-0.2f, 0.375f, -0.35f, 0f, -0.1875f, 0f, 0.25f, 0.375f, 0.25f, lm, lm, lm, Anim.LEG_A),
                 new Part( 0.2f, 0.375f, -0.35f, 0f, -0.1875f, 0f, 0.25f, 0.375f, 0.25f, lm, lm, lm, Anim.LEG_B),
                 new Part(-0.2f, 0.375f,  0.35f, 0f, -0.1875f, 0f, 0.25f, 0.375f, 0.25f, lm, lm, lm, Anim.LEG_B),
@@ -137,7 +151,7 @@ public class MobRenderer {
             };
             case SHEEP -> new Part[] {
                 new Part(0f, 0.925f, 0f, 0f, 0f, 0f, 0.7f, 0.65f, 1.05f, bs, bs, bt, Anim.NONE),
-                new Part(0f, 1.0f, -0.72f, 0f, 0f, 0f, 0.45f, 0.45f, 0.4f, hf, hs, ht, Anim.NONE),
+                new Part(0f, 1.0f, -0.72f, 0f, 0f, 0f, 0.45f, 0.45f, 0.4f, hf, hs, ht, Anim.HEAD),
                 new Part(-0.2f, 0.6f, -0.35f, 0f, -0.3f, 0f, 0.25f, 0.6f, 0.25f, lm, lm, lm, Anim.LEG_A),
                 new Part( 0.2f, 0.6f, -0.35f, 0f, -0.3f, 0f, 0.25f, 0.6f, 0.25f, lm, lm, lm, Anim.LEG_B),
                 new Part(-0.2f, 0.6f,  0.35f, 0f, -0.3f, 0f, 0.25f, 0.6f, 0.25f, lm, lm, lm, Anim.LEG_B),
@@ -145,7 +159,7 @@ public class MobRenderer {
             };
             case CHICKEN -> new Part[] {
                 new Part(0f, 0.425f, 0f, 0f, 0f, 0f, 0.3f, 0.35f, 0.4f, bs, bs, bt, Anim.NONE),
-                new Part(0f, 0.6f, -0.15f, 0f, 0f, 0f, 0.25f, 0.25f, 0.2f, hf, hs, ht, Anim.NONE),
+                new Part(0f, 0.6f, -0.15f, 0f, 0f, 0f, 0.25f, 0.25f, 0.2f, hf, hs, ht, Anim.HEAD),
                 new Part(-0.08f, 0.25f, 0f, 0f, -0.125f, 0f, 0.08f, 0.25f, 0.08f, lm, lm, lm, Anim.LEG_A),
                 new Part( 0.08f, 0.25f, 0f, 0f, -0.125f, 0f, 0.08f, 0.25f, 0.08f, lm, lm, lm, Anim.LEG_B),
                 new Part(-0.16f, 0.55f, 0f, 0f, -0.125f, 0f, 0.06f, 0.25f, 0.3f, ac, ac, ac, Anim.WING),
@@ -153,7 +167,7 @@ public class MobRenderer {
             };
             case ZOMBIE -> new Part[] {
                 new Part(0f, 1.025f, 0f, 0f, 0f, 0f, 0.5f, 0.65f, 0.25f, bs, bs, bt, Anim.NONE),
-                new Part(0f, 1.575f, 0f, 0f, 0f, 0f, 0.45f, 0.45f, 0.45f, hf, hs, ht, Anim.NONE),
+                new Part(0f, 1.575f, 0f, 0f, 0f, 0f, 0.45f, 0.45f, 0.45f, hf, hs, ht, Anim.HEAD),
                 new Part(-0.13f, 0.7f, 0f, 0f, -0.35f, 0f, 0.25f, 0.7f, 0.25f, lm, lm, lm, Anim.LEG_A),
                 new Part( 0.13f, 0.7f, 0f, 0f, -0.35f, 0f, 0.25f, 0.7f, 0.25f, lm, lm, lm, Anim.LEG_B),
                 new Part(-0.36f, 1.3f, 0f, 0f, -0.3f, 0f, 0.22f, 0.6f, 0.22f, ac, ac, ac, Anim.ARM),
@@ -186,7 +200,6 @@ public class MobRenderer {
             shader.setFloat("uLight", lightAt(world, m, daylight, ambient, brightness));
             shader.setVec3("uTint", m.hurtFlash > 0f ? HURT_TINT : NO_TINT);
 
-            float phase = m.walkedDistance * PHASE_PER_METRE;
             for (Part p : models.get(m.type)) {
                 model.identity()
                      .translate(m.position.x, m.position.y, m.position.z)
@@ -194,21 +207,20 @@ public class MobRenderer {
                 // Смерть: моб валится набок за DEATH_TIME, как в MC.
                 if (m.dead)
                     model.rotateZ((1f - m.deathTimer / Mob.DEATH_TIME) * 1.5708f);
+                else
+                    model.translate(0f, MobAnimation.breathe(m), 0f);
                 model.translate(p.pivX(), p.pivY(), p.pivZ());
                 switch (p.anim()) {
-                    case LEG_A -> model.rotateX((float) Math.sin(phase) * LEG_SWING);
-                    case LEG_B -> model.rotateX((float) -Math.sin(phase) * LEG_SWING);
+                    case LEG_A -> model.rotateX(MobAnimation.leg(m));
+                    case LEG_B -> model.rotateX(-MobAnimation.leg(m));
+                    case HEAD -> model.rotateY(MobAnimation.headYaw(m)).rotateX(MobAnimation.headPitch(m));
                     // Руки зомби вытянуты вперёд (в −Z) + лёгкое покачивание.
                     // В момент удара замахивается: руки поднимаются и опускаются
                     // за ATTACK_SWING_TIME — иначе атака визуально не читается.
                     case ARM -> {
-                        float arm = 1.5708f + (float) Math.sin(phase * 0.5f) * 0.1f;
-                        if (m.attackSwing > 0f)
-                            arm -= 1.2f * (float) Math.sin(
-                                    Math.PI * (m.attackSwing / Mob.ATTACK_SWING_TIME));
-                        model.rotateX(arm);
+                        model.rotateX(MobAnimation.arm(m));
                     }
-                    case WING -> model.rotateZ((float) Math.sin(phase * 2f) * 0.35f);
+                    case WING -> model.rotateZ(Math.signum(p.pivX()) * MobAnimation.wing(m));
                     case NONE -> { }
                 }
                 model.translate(p.offX(), p.offY(), p.offZ()).scale(p.sx(), p.sy(), p.sz());
@@ -237,15 +249,15 @@ public class MobRenderer {
         return Math.min(1f, (float) Math.pow(Math.max(ambient, combined), 0.75) * brightness);
     }
 
-    private static float uvX(int tile) {
+    static float uvX(int tile) {
         return ((tile % MobSkins.COLS) * MobSkins.TILE + 0.5f) / MobSkins.WIDTH;
     }
 
-    private static float uvY(int tile) {
+    static float uvY(int tile) {
         return ((tile / MobSkins.COLS) * MobSkins.TILE + 0.5f) / MobSkins.HEIGHT;
     }
 
-    private static int uploadTexture(BufferedImage img) {
+    static int uploadTexture(BufferedImage img) {
         int w = img.getWidth(), h = img.getHeight();
         ByteBuffer buf = BufferUtils.createByteBuffer(w * h * 4);
         for (int y = 0; y < h; y++)

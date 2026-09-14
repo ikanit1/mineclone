@@ -43,6 +43,9 @@ public final class TestMain {
         run("Inventory left/right click stack ops", TestMain::testInventoryClick);
         run("new biome blocks registered", TestMain::testBiomeBlocks);
         run("level.dat save/load round-trip", TestMain::testLevelRoundTrip);
+        run("Mob floats upward in water", TestMain::testMobBuoyancy);
+        run("Flight stop clears previous fall damage", TestMain::testFlightStopsFall);
+        run("Mob animation moves at rest and settles after walking", TestMain::testMobAnimation);
         run("chunk save/load round-trip", TestMain::testChunkRoundTrip);
         run("options.dat save/load round-trip", TestMain::testOptionsRoundTrip);
         run("atomic save leaves no .tmp files", TestMain::testNoTempLeftovers);
@@ -71,6 +74,7 @@ public final class TestMain {
         run("MobSpawner needs loaded chunks", TestMain::testMobSpawnerNeedsChunks);
         run("MobSpawner despawns distant mobs", TestMain::testMobSpawnerDespawn);
         run("MobSkins generates distinct skins", TestMain::testMobSkins);
+        run("first-person hand stays on screen", TestMain::testFirstPersonPoses);
         run("mob sounds resolve for every type", TestMain::testMobSounds);
         run("Mob takes fall damage by impact speed", TestMain::testMobFallDamage);
         run("Mob emits step sounds while walking", TestMain::testMobStepSounds);
@@ -141,7 +145,7 @@ public final class TestMain {
         inv[0] = new ItemStack(BlockType.COBBLE, 17);
         LevelData in = new LevelData("Test World", 42L, 1.5, 2.5, 3.5,
                 10.0, 20.0, 30.0, 0.1f, 0.2f, 0.3f, 4, inv,
-                GameMode.SURVIVAL, 999L);
+                GameMode.SURVIVAL, 999L, 7.5f);
         sm.saveLevel("w1", in);
         LevelData out = sm.loadLevel("w1");
         assertTrue("loadLevel non-null", out != null);
@@ -151,6 +155,9 @@ public final class TestMain {
         assertEq("spawnY", 20.0, out.spawnY);
         assertEq("selectedSlot", 4, out.selectedSlot);
         assertEq("lastPlayed", 999L, out.lastPlayed);
+        assertEq("health", 7.5f, out.health);
+        sm.renameWorld("w1", "Renamed");
+        assertEq("rename keeps health", 7.5f, sm.loadLevel("w1").health);
         assertEq("gameMode", GameMode.SURVIVAL, out.gameMode);
         assertEq("inv[0] type", BlockType.COBBLE, out.inventory[0].type);
         assertEq("inv[0] count", 17, out.inventory[0].count);
@@ -394,6 +401,59 @@ public final class TestMain {
                             c.set(x, y, z, y == 10 ? BlockType.STONE : BlockType.AIR);
             }
         return w;
+    }
+
+    private static void testMobAnimation() {
+        World w = flatTestWorld();
+        var m = spawnAt(com.mineclone.world.entity.MobType.COW, 8.5f, 11f, 8.5f, 4);
+        var far = new org.joml.Vector3f(100, 11, 100);
+        float before = com.mineclone.render.MobAnimation.headYaw(m);
+        m.update(w, far, 0.05f, 0f, false);
+        assertTrue("idle head moves without walking", before != com.mineclone.render.MobAnimation.headYaw(m));
+        m.walkAmount = 1f;
+        for (int i = 0; i < 20; i++) m.update(w, far, 0.05f, 0f, false);
+        assertTrue("legs settle at rest", m.walkAmount < 0.01f);
+        for (var type : com.mineclone.world.entity.MobType.values()) {
+            java.awt.image.BufferedImage skin = com.mineclone.render.MobSkins.load(type);
+            assertEq("loaded skin width", 128, skin.getWidth());
+            assertEq("loaded skin height", 64, skin.getHeight());
+        }
+    }
+
+    private static void testFlightStopsFall() {
+        World w = flatTestWorld();
+        var p = new com.mineclone.game.Player();
+        p.respawn(8.5f, 40f, 8.5f);
+        for (int i = 0; i < 300 && p.position.y > 13f; i++)
+            p.update(1f / 120f, w, null, false);
+        assertTrue("long descent accumulated", p.fallDistance > 20f);
+        assertTrue("still above ground", !p.onGround && p.position.y > 11f);
+        p.flying = true;
+        p.update(1f / 120f, w, null, false);
+        assertEq("flight clears fall distance", 0f, p.fallDistance);
+        assertEq("flight arrests descent", 0f, p.velocity.y);
+        p.flying = false;
+        for (int i = 0; i < 300 && !p.onGround; i++)
+            p.update(1f / 120f, w, null, false);
+        assertTrue("landed after short fall", p.onGround);
+        assertEq("short fall is harmless", com.mineclone.game.Player.MAX_HEALTH, p.health);
+        assertEq("no stale damage", 0f, p.lastFallDamage);
+
+        p.respawn(8.5f, 19f, 8.5f);
+        for (int i = 0; i < 300 && !p.onGround; i++)
+            p.update(1f / 120f, w, null, false);
+        assertTrue("uninterrupted fall still hurts", p.lastFallDamage > 4.9f && p.lastFallDamage < 5.1f);
+    }
+
+    private static void testMobBuoyancy() {
+        World w = flatTestWorld();
+        for (int y = 11; y < 17; y++)
+            w.getChunk(0, 0).set(8, y, 8, BlockType.WATER);
+        org.joml.Vector3f pos = new org.joml.Vector3f(8.5f, 12f, 8.5f);
+        org.joml.Vector3f vel = new org.joml.Vector3f();
+        for (int i = 0; i < 60; i++)
+            com.mineclone.world.entity.EntityPhysics.step(w, pos, vel, 0.6f, 1.8f, 1f / 60f, -30f);
+        assertTrue("submerged mob rises from rest", pos.y > 12.2f);
     }
 
     private static void testEntityPhysicsFall() {
@@ -660,6 +720,39 @@ public final class TestMain {
             for (int b = a + 1; b < pixelSets.size(); b++)
                 assertTrue("skins " + a + " and " + b + " differ",
                         !Arrays.equals(pixelSets.get(a), pixelSets.get(b)));
+    }
+
+    /**
+     * Рука и предмет в первом лице обязаны оставаться перед камерой и в кадре:
+     * позы — это набор подобранных на глаз констант, и одна опечатка молча
+     * уносит руку за экран. Проверяем кулак (локально −Y у бокса руки) и
+     * центр блока.
+     */
+    private static void testFirstPersonPoses() {
+        org.joml.Matrix4f proj = com.mineclone.render.HeldItemRenderer.projection(16f / 9f, 70f);
+        // equip = 1 (достали), swing = 0 и 0.5 — покой и пик замаха.
+        for (float swing : new float[] { 0f, 0.5f, 1f })
+            for (boolean holding : new boolean[] { false, true }) {
+                org.joml.Matrix4f arm = com.mineclone.render.HeldItemRenderer.armPose(
+                        1f, swing, 0f, false, holding);
+                checkOnScreen("кулак (holding=" + holding + ", swing=" + swing + ")",
+                        proj, arm, 0f, -0.5f, 0f);
+            }
+        for (float swing : new float[] { 0f, 0.5f, 1f }) {
+            org.joml.Matrix4f item = com.mineclone.render.HeldItemRenderer.itemPose(
+                    1f, swing, 0f, false);
+            checkOnScreen("предмет (swing=" + swing + ")", proj, item, 0f, 0f, 0f);
+        }
+    }
+
+    private static void checkOnScreen(String what, org.joml.Matrix4f proj,
+            org.joml.Matrix4f model, float lx, float ly, float lz) {
+        org.joml.Vector4f p = new org.joml.Matrix4f(proj).mul(model)
+                .transform(new org.joml.Vector4f(lx, ly, lz, 1f));
+        assertTrue(what + " перед камерой", p.w > 0f);
+        float x = p.x / p.w, y = p.y / p.w;
+        assertTrue(what + " в кадре по X (ndc=" + x + ")", x > -1f && x < 1f);
+        assertTrue(what + " в кадре по Y (ndc=" + y + ")", y > -1f && y < 1f);
     }
 
     private static void testMobSounds() {
@@ -930,10 +1023,10 @@ public final class TestMain {
         for (int i = 0; i < 240; i++)
             p.update(1f / 60f, w, noInput, false);
         assertEq("no regen during the pause", hurt, p.health);
-        // Ещё 8 с — пауза истекла, тик регена прошёл.
+        // Even after the combat delay expires, menus must not heal the player.
         for (int i = 0; i < 480; i++)
             p.update(1f / 60f, w, noInput, false);
-        assertTrue("regen resumed, hp=" + p.health, p.health > hurt);
+        assertEq("menus do not regenerate health", hurt, p.health);
     }
 
     private static void testItemStack() {
@@ -986,6 +1079,14 @@ public final class TestMain {
         for (int i = 0; i < 36; i++) full.set(i, new ItemStack(BlockType.DIRT, 64));
         int rem = full.add(BlockType.DIRT, 5);
         assertEq("leftover when full", 5, rem);
+        assertTrue("cannot fit a mined drop", !full.canAdd(BlockType.STONE, 1));
+        full.get(0).count = 63;
+        assertTrue("matching stack has capacity", full.canAdd(BlockType.DIRT, 1));
+        assertTrue("capacity query does not mutate", full.get(0).count == 63);
+        ItemStack cursor = full.rightClick(0, null);
+        full.set(1, new ItemStack(BlockType.STONE, 64));
+        cursor = full.leftClick(1, cursor);
+        assertEq("swapped cursor cannot be silently returned", 64, full.add(cursor.type, cursor.count));
 
         // add with amount <= 0 returns 0
         Inventory inv2 = new Inventory();

@@ -17,7 +17,7 @@ public final class EntityPhysics {
     public static final float GRAVITY = -28f;        // как у игрока
     public static final float JUMP_VELOCITY = 8.0f;  // хватает на 1 блок
     /** Подъёмная сила в воде, м/с². */
-    public static final float BUOYANCY = 4.0f;
+    public static final float BUOYANCY = 10.0f;
     private static final float EPS = 1e-4f;
 
     /** Результат одного шага: контакты, которые нужны ИИ. */

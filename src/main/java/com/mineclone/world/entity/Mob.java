@@ -76,6 +76,8 @@ public class Mob {
     public boolean burning;
     public float hurtFlash;
     public float walkedDistance;
+    public float animationTime;
+    public float walkAmount;
 
     /** >0 — зомби замахивается, рендер поднимает руки. */
     public float attackSwing;
@@ -105,6 +107,7 @@ public class Mob {
         this.position.set(x, y, z);
         this.health = type.maxHealth;
         this.yaw = rnd.nextFloat() * (float) (Math.PI * 2);
+        this.animationTime = (float) (x * 0.73 + z * 0.37);
         this.idleSoundTimer = IDLE_SOUND_MIN + rnd.nextFloat() * (IDLE_SOUND_MAX - IDLE_SOUND_MIN);
         enterIdle();
     }
@@ -125,6 +128,7 @@ public class Mob {
         if (invulnTime > 0f)
             invulnTime = Math.max(0f, invulnTime - dt);
 
+        animationTime += dt;
         idleSoundTimer -= dt;
         if (idleSoundTimer <= 0f) {
             idleSoundTimer = IDLE_SOUND_MIN + rnd.nextFloat() * (IDLE_SOUND_MAX - IDLE_SOUND_MIN);
@@ -162,6 +166,7 @@ public class Mob {
 
         // step() обнулит vel.y при посадке — скорость удара нужно снять до него.
         float impactSpeed = -velocity.y;
+        float previousX = position.x, previousZ = position.z;
         EntityPhysics.Contact c = EntityPhysics.step(world, position, velocity,
                 type.width, type.height, dt, type.maxFallSpeed);
         onGround = c.onGround();
@@ -197,7 +202,10 @@ public class Mob {
         }
         wasOnGround = onGround;
 
-        float hSpeed = (float) Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+        float dxMoved = position.x - previousX, dzMoved = position.z - previousZ;
+        float hSpeed = dt > 0f ? (float) Math.sqrt(dxMoved * dxMoved + dzMoved * dzMoved) / dt : 0f;
+        float targetWalk = Math.min(1f, hSpeed / Math.max(0.1f, type.walkSpeed));
+        walkAmount += (targetWalk - walkAmount) * (1f - (float) Math.exp(-10f * dt));
         walkedDistance += hSpeed * dt;
         if (onGround) {
             stepDistance += hSpeed * dt;

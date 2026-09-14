@@ -10,101 +10,212 @@ import java.util.List;
 import java.util.Map;
 
 import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL13.*;
+import static org.lwjgl.opengl.GL15.glDeleteBuffers;
+import static org.lwjgl.opengl.GL30.glBindVertexArray;
+import static org.lwjgl.opengl.GL30.glDeleteVertexArrays;
 
+/**
+ * Вид от первого лица: рука и то, что в ней.
+ *
+ * Рука — обычный текстурированный бокс из {@link PlayerSkin}, рисуемый тем же
+ * кубом и шейдером, что и части тела мобов ({@link MobRenderer}). Она видна
+ * ВСЕГДА: и с пустой ладонью, и когда игрок держит блок — предмет висит перед
+ * кулаком, а не сам по себе.
+ *
+ * Позы вынесены в статические {@link #armPose} и {@link #itemPose}: это чистая
+ * матричная математика без GL, её можно считать в оффлайне и смотреть, что
+ * получилось, не запуская игру.
+ */
 public final class HeldItemRenderer {
+
+    // Габариты руки в единицах вида. Рука — вытянутый бокс, +Y локально
+    // указывает на плечо, −Y на кулак (как на тайлах скина).
+    private static final float ARM_W = 0.22f;
+    private static final float ARM_L = 0.72f;
+
     private final Shader blockShader;
-    private final Shader solidShader;
-    private final Mesh armMesh;
+    private final Shader armShader;
     private final Map<BlockType, Mesh> blockMeshes = new EnumMap<>(BlockType.class);
+    private final int armVao, armVbo;
+    private final int armTexture;
 
     public HeldItemRenderer() {
         this.blockShader = new Shader(Shaders.CHUNK_VERTEX, Shaders.CHUNK_FRAGMENT);
-        this.solidShader = new Shader(Shaders.LINE_VERTEX, Shaders.LINE_FRAGMENT);
-        this.armMesh = createSolidBox();
+        this.armShader = new Shader(Shaders.MOB_VERTEX, Shaders.MOB_FRAGMENT);
+        int[] ids = MobRenderer.createCubeVao();
+        this.armVao = ids[0];
+        this.armVbo = ids[1];
+        this.armTexture = MobRenderer.uploadTexture(PlayerSkin.load());
     }
+
+    // -------------------------------------------------------------------------
+    //  Позы — чистая математика, без GL
+    // -------------------------------------------------------------------------
+
+    /**
+     * Матрица руки. Локальный бокс развёрнут rotateZ(180°): на тайле скина
+     * плечо сверху, а на экране кисть должна смотреть вверх-влево, к прицелу.
+     *
+     * @param holding true — в руке предмет: кисть уходит ниже и правее, чтобы
+     *                блок сел перед ней, а не внутрь неё.
+     */
+    public static Matrix4f armPose(float equipProgress, float swingProgress,
+                                   float walkDistance, boolean viewBobbing, boolean holding) {
+        float arc = swingArc(swingProgress);
+        float yaw = swingYaw(swingProgress);
+        float eq = equipEase(equipProgress);
+        float drop = (1f - eq) * 0.75f;
+        float tilt = (1f - eq) * (float) Math.toRadians(55f);
+        float bobX = bobX(walkDistance, viewBobbing);
+        float bobY = bobY(walkDistance, viewBobbing);
+
+        if (holding) {
+            // Кулак под предметом: почти вертикально, чуть завален внутрь.
+            return new Matrix4f()
+                    .translate(0.74f + bobX + arc * 0.04f,
+                               -0.80f - drop + bobY + arc * 0.10f,
+                               -0.80f - arc * 0.06f)
+                    .rotateZ((float) Math.PI + (float) Math.toRadians(30f + arc * 6f))
+                    .rotateY((float) Math.toRadians(-14f + yaw * 6f))
+                    .rotateX((float) Math.toRadians(10f + arc * 10f) - tilt * 0.6f)
+                    .scale(ARM_W, ARM_L, ARM_W);
+        }
+        // Пустая рука: предплечье наискось из правого нижнего угла, замах
+        // выносит кулак к центру экрана.
+        return new Matrix4f()
+                .translate(0.68f + bobX - arc * 0.24f,
+                           -0.64f - drop + bobY + arc * 0.12f,
+                           -0.95f - arc * 0.16f)
+                .rotateZ((float) Math.PI + (float) Math.toRadians(18f + arc * 14f))
+                .rotateY((float) Math.toRadians(-15f + yaw * 12f))
+                .rotateX((float) Math.toRadians(-15f + arc * 20f) - tilt)
+                .scale(ARM_W, ARM_L, ARM_W);
+    }
+
+    /**
+     * Матрица предмета. Блок повёрнут на 45° по рысканью и наклонён вперёд —
+     * так видно верх и две боковые грани сразу, иначе куб читается плоским
+     * квадратом.
+     */
+    public static Matrix4f itemPose(float equipProgress, float swingProgress,
+                                    float walkDistance, boolean viewBobbing) {
+        float arc = swingArc(swingProgress);
+        float yaw = swingYaw(swingProgress);
+        float eq = equipEase(equipProgress);
+        float drop = (1f - eq) * 0.62f;
+        float tilt = (1f - eq) * (float) Math.toRadians(55f);
+
+        return new Matrix4f()
+                .translate(0.27f + bobX(walkDistance, viewBobbing) + arc * 0.08f,
+                           -0.27f - drop + bobY(walkDistance, viewBobbing) - arc * 0.10f,
+                           -0.76f - arc * 0.10f)
+                .rotateY((float) Math.toRadians(48f + yaw * 14f))
+                .rotateX((float) Math.toRadians(-14f - arc * 14f) + tilt * 0.6f)
+                .rotateZ((float) Math.toRadians(6f - arc * 12f))
+                .scale(0.34f);
+    }
+
+    /** Проекция вида от первого лица — отдельная от мировой, с узким near. */
+    public static Matrix4f projection(float aspect, float fovDegrees) {
+        return new Matrix4f().perspective(
+                (float) Math.toRadians(70f),
+                aspect, 0.05f, 20f);
+    }
+
+    /**
+     * Дуга замаха: короткий занос, резкий удар, мягкий возврат. Степень 1.5
+     * даёт пик острее чистого синуса — как в MC.
+     */
+    private static float swingArc(float swingProgress) {
+        float s = 1f - clamp01(swingProgress);
+        return (float) Math.sin(Math.sqrt(s) * Math.PI);
+    }
+
+    /** Горизонтальная составляющая замаха: кисть уходит влево и возвращается. */
+    private static float swingYaw(float swingProgress) {
+        float s = 1f - clamp01(swingProgress);
+        return (float) -Math.sin(s * Math.PI * 2.0);
+    }
+
+    /** Кубический ease-out доставания предмета: быстро вверх, мягкая посадка. */
+    private static float equipEase(float equipProgress) {
+        float e = 1f - clamp01(equipProgress);
+        return 1f - e * e * e;
+    }
+
+    // Фигура Лиссажу для покачивания при ходьбе: по X один период, по Y два —
+    // именно удвоение по вертикали даёт «восьмёрку», а не круг.
+    private static float bobX(float walkDistance, boolean on) {
+        return on ? (float) Math.cos(walkDistance * Math.PI) * 0.022f : 0f;
+    }
+
+    private static float bobY(float walkDistance, boolean on) {
+        return on ? (float) Math.sin(walkDistance * Math.PI * 2f) * 0.016f : 0f;
+    }
+
+    // -------------------------------------------------------------------------
+    //  Отрисовка
+    // -------------------------------------------------------------------------
 
     public void render(TextureAtlas atlas, BlockType held, float aspect,
             float fovDegrees, float equipProgress, float swingProgress,
             float walkDistance, boolean underwater, boolean viewBobbing,
             float daylight, float brightness, float skyFrac, float blockFrac) {
-        float equip = clamp01(equipProgress);
-        float swing = 1f - clamp01(swingProgress); // 0 → 1 over the swing
-        // MC swing curve: short windup, sharp impact, slower follow-through.
-        // sin(s·π)^1.5 gives a sharper peak than plain sin and matches MC's feel.
-        float swingArc  = (float) Math.pow(Math.sin(swing * Math.PI), 1.5);
-        float swingYaw  = (float) -Math.sin(swing * (float) Math.PI * 2.0); // left→right horizontal arc
-        float swingTilt = (float) Math.sin(swing * (float) Math.PI * 0.5);  // impact dip toward target
 
-        // Lissajous figure-8 view-bob (MC-authentic):
-        //   X = cos(t)   · Ax  → one side-to-side cycle
-        //   Y = sin(2·t) · Ay  → two up-down cycles per one left-right (the "×2" is the secret)
-        float bobPhase = walkDistance * (float) Math.PI;
-        float bobX = viewBobbing ? (float) Math.cos(bobPhase) * 0.022f : 0f;
-        float bobY = viewBobbing ? (float) Math.sin(bobPhase * 2f) * 0.016f : 0f;
-
-        // Single source of truth for held-item lighting — mirrors the chunk shader exactly.
-        // effectiveLight = max(sky * daylight, blockLight) incorporates both sources.
-        // lightTint  — used directly for solid-color arm (solidShader has no lighting model).
-        // ambient / effectiveLight — passed as uniforms to blockShader so face-direction
-        //   multipliers (baked into vLight) still apply per-face, giving AO-like shading.
-        float ambient       = 0.04f + 0.18f * daylight;
+        // Единый источник правды по свету — повторяет шейдер чанков:
+        // effectiveLight = max(sky·daylight, blockLight).
+        float ambient = 0.04f + 0.18f * daylight;
         float effectiveLight = Math.max(skyFrac * daylight, blockFrac);
-        float lightTint     = (float) Math.pow(Math.max(ambient, effectiveLight), 0.75) * brightness;
+        float armLight = (float) Math.pow(Math.max(ambient, effectiveLight), 0.75) * brightness;
 
-        // Equip ease-out: fast at start, soft landing. Cubic.
-        float eq = 1f - (1f - equip) * (1f - equip) * (1f - equip);
-        float equipDrop  = (1f - eq) * 0.62f;          // vertical drop while bringing up
-        float equipTilt  = (1f - eq) * (float) Math.toRadians(60f); // forward pitch while equipping
+        Matrix4f projection = projection(aspect, fovDegrees);
+        Matrix4f view = new Matrix4f().translate(
+                -0.48f * Math.max(0f, 1f - aspect / (16f / 9f)), 0f, 0f);
+        boolean holding = held != null && held != BlockType.AIR;
 
-        Matrix4f projection = new Matrix4f().perspective(
-                (float) Math.toRadians(Math.max(55f, Math.min(95f, fovDegrees))),
-                aspect, 0.05f, 20f);
-        Matrix4f view = new Matrix4f();
-
-        glDisable(GL_DEPTH_TEST);
-        glDepthMask(false);
+        // Собственный чистый z-буфер на первый план: без него задние грани
+        // бокса руки перекрывают передние (обход вершин куба не гарантирован,
+        // поэтому на куллинг здесь полагаться нельзя), а предмет не может
+        // корректно закрыть кулак.
+        glDepthMask(true);            // без записи в глубину glClear ничего не очистит
+        glClear(GL_DEPTH_BUFFER_BIT);
+        glEnable(GL_DEPTH_TEST);
         glDisable(GL_BLEND);
-        glEnable(GL_CULL_FACE);
+        glDisable(GL_CULL_FACE);
 
-        boolean emptyHand = (held == null || held == BlockType.AIR);
-        if (emptyHand) {
-            // Show arm only when nothing is held.
-            solidShader.bind();
-            solidShader.setMat4("uProjection", projection);
-            solidShader.setMat4("uView", view);
+        // --- рука: видна всегда, в том числе с предметом ---------------------
+        armShader.bind();
+        armShader.setMat4("uProjection", projection);
+        armShader.setMat4("uView", view);
+        armShader.setMat4("uModel", armPose(equipProgress, swingProgress,
+                walkDistance, viewBobbing, holding));
+        armShader.setInt("uSkin", 0);
+        armShader.setVec2("uTileSize", MobRenderer.TILE_U, MobRenderer.TILE_V);
+        armShader.setVec2("uUvFront", MobRenderer.uvX(MobSkins.T_ACCENT),
+                MobRenderer.uvY(MobSkins.T_ACCENT));
+        armShader.setVec2("uUvSide", MobRenderer.uvX(MobSkins.T_LIMB),
+                MobRenderer.uvY(MobSkins.T_LIMB));
+        armShader.setVec2("uUvTop", MobRenderer.uvX(MobSkins.T_BODY_TOP),
+                MobRenderer.uvY(MobSkins.T_BODY_TOP));
+        armShader.setFloat("uLight", Math.min(1f, armLight));
+        // Под водой рука уходит в холодный синий — как и всё остальное.
+        armShader.setVec3("uTint", underwater ? UNDERWATER_TINT : NO_TINT);
+        armShader.setVec3("uFogColor", new Vector3f(0f, 0f, 0f));
+        armShader.setFloat("uFogStart", 100f);
+        armShader.setFloat("uFogEnd", 120f);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, armTexture);
+        glBindVertexArray(armVao);
+        glDrawArrays(GL_TRIANGLES, 0, MobRenderer.VERTEX_COUNT);
+        glBindVertexArray(0);
+        armShader.unbind();
 
-            Matrix4f armRoot = new Matrix4f()
-                    .translate(0.88f + bobX + swingArc * 0.18f,
-                            -1.12f - equipDrop + bobY + swingTilt * 0.04f,
-                            -0.98f - swingArc * 0.06f)
-                    .rotateZ((float) Math.toRadians(-8f - swingArc * 22f))
-                    .rotateY((float) Math.toRadians(6f + swingYaw * 14f))
-                    .rotateX((float) Math.toRadians(-12f + swingArc * 18f) + equipTilt);
-
-            float sleeveR = (underwater ? 0.30f : 0.40f) * lightTint;
-            float sleeveG = (underwater ? 0.42f : 0.50f) * lightTint;
-            float sleeveB = (underwater ? 0.62f : 0.76f) * lightTint;
-            solidShader.setVec4("uColor", sleeveR, sleeveG, sleeveB, 1f);
-            solidShader.setMat4("uModel", new Matrix4f(armRoot)
-                    .translate(0f, 0.65f, 0f)
-                    .scale(0.33f, 0.22f, 0.33f));
-            armMesh.render();
-
-            float skinR = (underwater ? 0.60f : 0.95f) * lightTint;
-            float skinG = (underwater ? 0.64f : 0.70f) * lightTint;
-            float skinB = (underwater ? 0.60f : 0.51f) * lightTint;
-            solidShader.setVec4("uColor", skinR, skinG, skinB, 1f);
-            solidShader.setMat4("uModel", new Matrix4f(armRoot)
-                    .translate(0f, 0.32f, 0f)
-                    .scale(0.28f, 0.62f, 0.28f));
-            armMesh.render();
-            solidShader.unbind();
-        }
-
-        if (held != null && held != BlockType.AIR) {
+        // --- предмет ---------------------------------------------------------
+        if (holding) {
             Mesh mesh = blockMeshes.computeIfAbsent(held, HeldItemRenderer::createItemMesh);
-            // Torch is its own light source — boost minimum brightness so it never goes dark.
-            float itemLight = (held == BlockType.TORCH)
+            // Факел светит сам — не даём ему потемнеть в руке.
+            float itemLight = held == BlockType.TORCH
                     ? Math.max(effectiveLight, 0.75f) : effectiveLight;
             blockShader.bind();
             blockShader.setMat4("uProjection", projection);
@@ -118,22 +229,17 @@ public final class HeldItemRenderer {
             blockShader.setFloat("uBrightness", brightness);
             blockShader.setFloat("uTime", 0f);
             atlas.bind(0);
-            Matrix4f itemModel = new Matrix4f()
-                    .translate(0.52f + bobX + swingArc * 0.14f,
-                            -0.48f - equipDrop * 0.70f + bobY - swingTilt * 0.12f,
-                            -1.00f - swingArc * 0.10f)
-                    .rotateX((float) Math.toRadians(-23f - swingArc * 28f) + equipTilt * 0.6f)
-                    .rotateY((float) Math.toRadians(42f + swingYaw * 22f))
-                    .rotateZ((float) Math.toRadians(8f - swingArc * 14f))
-                    .scale(0.34f);
-            blockShader.setMat4("uModel", itemModel);
+            blockShader.setMat4("uModel",
+                    itemPose(equipProgress, swingProgress, walkDistance, viewBobbing));
             mesh.render();
             blockShader.unbind();
         }
 
-        glDepthMask(true);
-        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_CULL_FACE);
     }
+
+    private static final Vector3f NO_TINT = new Vector3f(1f, 1f, 1f);
+    private static final Vector3f UNDERWATER_TINT = new Vector3f(0.62f, 0.78f, 1.0f);
 
     /** Dispatches to the correct mesh builder for each block type. */
     private static Mesh createItemMesh(BlockType block) {
@@ -182,17 +288,6 @@ public final class HeldItemRenderer {
         List<Integer> indices = new ArrayList<>();
         emitBox(pos, uvs, light, blockLight, indices,
                 block.sideTile, block.topTile, block.bottomTile);
-        return new Mesh(toFloatArray(pos), toFloatArray(uvs), toFloatArray(light),
-                toFloatArray(blockLight), toIntArray(indices));
-    }
-
-    private static Mesh createSolidBox() {
-        List<Float> pos = new ArrayList<>();
-        List<Float> uvs = new ArrayList<>();
-        List<Float> light = new ArrayList<>();
-        List<Float> blockLight = new ArrayList<>();
-        List<Integer> indices = new ArrayList<>();
-        emitBox(pos, uvs, light, blockLight, indices, 0, 0, 0);
         return new Mesh(toFloatArray(pos), toFloatArray(uvs), toFloatArray(light),
                 toFloatArray(blockLight), toIntArray(indices));
     }
@@ -254,11 +349,13 @@ public final class HeldItemRenderer {
     }
 
     public void destroy() {
-        armMesh.destroy();
         for (Mesh mesh : blockMeshes.values())
             mesh.destroy();
         blockMeshes.clear();
+        glDeleteVertexArrays(armVao);
+        glDeleteBuffers(armVbo);
+        glDeleteTextures(armTexture);
         blockShader.destroy();
-        solidShader.destroy();
+        armShader.destroy();
     }
 }

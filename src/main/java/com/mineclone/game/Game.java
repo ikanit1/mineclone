@@ -257,7 +257,7 @@ public class Game {
                 player.position.x, player.position.y, player.position.z,
                 worldSpawn.x, worldSpawn.y, worldSpawn.z,
                 player.camera.yaw, player.camera.pitch,
-                gameTime, selectedSlot, invSnapshot, gameMode, System.currentTimeMillis());
+                gameTime, selectedSlot, invSnapshot, gameMode, System.currentTimeMillis(), player.health);
         save.saveLevel(worldId, d);
         for (com.mineclone.world.Chunk c : world.getLoadedChunks()) {
             saveChunkIfModified(c);
@@ -438,7 +438,8 @@ public class Game {
             worldDisplayName = "World";
         }
 
-        player.health = Player.MAX_HEALTH;
+        player.respawn(player.position.x, player.position.y, player.position.z);
+        player.health = lvl != null ? lvl.health : Player.MAX_HEALTH;
         player.velocity.set(0, 0, 0);
         player.lastFallDistance = 0f;
         lastHeldBlock = currentBlock();
@@ -843,11 +844,6 @@ public class Game {
             }
             return;
         }
-        updateHeldItem(dt);
-        player.update(dt, world, input, false);
-        wasInWater = player.inWater;
-        updateFootsteps();
-        updateActiveWorld(dt);
     }
 
     private void updateCreativeMenu(float dt) {
@@ -855,7 +851,11 @@ public class Game {
         if (input.keyPressed(GLFW.GLFW_KEY_E) || input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
             if (cursorItem != null) {
                 // return the held stack to the inventory so items are not lost on close
-                inventory.add(cursorItem.type, cursorItem.count);
+                int leftover = inventory.add(cursorItem.type, cursorItem.count);
+                if (leftover > 0) {
+                    cursorItem.count = leftover;
+                    return;
+                }
                 cursorItem = null;
             }
             sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
@@ -1153,6 +1153,10 @@ public class Game {
                 int px = lastHit.x + lastHit.nx;
                 int py = lastHit.y + lastHit.ny;
                 int pz = lastHit.z + lastHit.nz;
+                if (py < 0 || py >= Chunk.SIZE_Y
+                        || world.getChunkIfExists(Math.floorDiv(px, Chunk.SIZE_X),
+                                Math.floorDiv(pz, Chunk.SIZE_Z)) == null)
+                    return;
                 if (!playerOccupies(px, py, pz)) {
                     BlockType placing = currentBlock();
                     if (placing == null || placing == BlockType.AIR)
@@ -1164,7 +1168,8 @@ public class Game {
                     if (placing == BlockType.DOOR_CLOSED) {
                         meta = facingFromCamera();
                         // Place 2-block door: bottom + top
-                        if (world.getBlock(px, py + 1, pz) == BlockType.AIR
+                        if (py + 1 < Chunk.SIZE_Y
+                                && world.getBlock(px, py + 1, pz) == BlockType.AIR
                                 && !playerOccupies(px, py + 1, pz)) {
                             sound.playOneOfAt(sounds.place(placing), blockSoundPosition(px, py, pz),
                                     0.8f, 0.85f + 0.2f * (float) Math.random());
@@ -1225,6 +1230,10 @@ public class Game {
     }
 
     private void executeBlockBreak(int x, int y, int z, BlockType target) {
+        if (gameMode == com.mineclone.world.GameMode.SURVIVAL
+                && target.getDrop() != BlockType.AIR
+                && !inventory.canAdd(target.getDrop(), 1))
+            return;
         startHandSwing();
         byte targetMeta = world.getBlockMeta(x, y, z);
         sound.playOneOfAt(sounds.breakBlock(target), blockSoundPosition(x, y, z),

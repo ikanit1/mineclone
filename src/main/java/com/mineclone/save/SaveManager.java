@@ -140,6 +140,7 @@ public final class SaveManager {
                 o.writeUTF(d.name);
                 o.writeLong(d.seed);
                 o.writeLong(d.lastPlayed);
+                o.writeFloat(d.health);
                 o.writeDouble(d.px); o.writeDouble(d.py); o.writeDouble(d.pz);
                 o.writeDouble(d.spawnX); o.writeDouble(d.spawnY); o.writeDouble(d.spawnZ);
                 o.writeFloat(d.yaw); o.writeFloat(d.pitch);
@@ -174,6 +175,7 @@ public final class SaveManager {
             String name = (version >= 4) ? in.readUTF() : "";
             long seed = in.readLong();
             long lastPlayed = (version >= 5) ? in.readLong() : 0L;
+            float health = version >= 7 ? in.readFloat() : 20f;
             double px = in.readDouble(), py = in.readDouble(), pz = in.readDouble();
             double spawnX = 8.5, spawnY = 80.0, spawnZ = 8.5;
             if (version >= 2) {
@@ -215,7 +217,7 @@ public final class SaveManager {
             }
 
             return new LevelData(name, seed, px, py, pz, spawnX, spawnY, spawnZ,
-                    yaw, pitch, tod, slot, inventory, gameMode, lastPlayed);
+                    yaw, pitch, tod, slot, inventory, gameMode, lastPlayed, health);
         } catch (IOException e) {
             System.err.println("loadLevel failed: " + e.getMessage());
             return null;
@@ -272,7 +274,7 @@ public final class SaveManager {
         saveLevel(id, new LevelData(newName, d.seed,
                 d.px, d.py, d.pz, d.spawnX, d.spawnY, d.spawnZ,
                 d.yaw, d.pitch, d.timeOfDay, d.selectedSlot,
-                d.inventory, d.gameMode, d.lastPlayed));
+                d.inventory, d.gameMode, d.lastPlayed, d.health));
     }
 
     // ---- options.dat (global, not per-world) ----

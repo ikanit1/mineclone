@@ -1,33 +1,35 @@
 package com.mineclone.render;
 
 import com.mineclone.core.AppPaths;
+import com.mineclone.render.PixelArt.Pal;
+import com.mineclone.render.PixelArt.Sheet;
 import com.mineclone.world.entity.MobType;
 
 import javax.imageio.ImageIO;
-import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.util.Locale;
-import java.util.Random;
 
 /**
  * Скины мобов: пиксельные текстуры из 8 тайлов (4 колонки × 2 ряда).
  *
  * <pre>
  * 0 head_front   1 head_side   2 head_top   3 body_side
- * 4 body_top     5 limb        6 accent     7 (свободный)
+ * 4 body_top     5 limb        6 accent     7 (запас)
  * </pre>
  *
  * Каждая часть тела в {@link MobRenderer} берёт три тайла: front (грань −Z),
  * side (±X и +Z), top (±Y) — так «лицо» остаётся только на морде.
  *
- * Рисование идёт в ДОЛЯХ тайла, а не в пикселях: поднять {@link #TILE} с 32 на
- * 64 достаточно, чтобы вся графика отмасштабировалась без правки кода. Тон
- * набирается слоями — база, крап, вертикальная растушёвка, детали — иначе
- * плоские заливки читаются как пластик.
+ * Графика подчиняется тем же правилам, что и блочные текстуры (см.
+ * {@link PixelArt} и {@code tools/GenBlockTextures.java}): мастер 16×16 на
+ * тайл, индексированные рампы ровно из 5 стопов с hue shifting, объём —
+ * упорядоченным дизерингом, а не полупрозрачными накладками. Координаты в
+ * долях тайла, поэтому поднять {@link #TILE} с 32 на 64 можно без правки
+ * рисунка.
  *
  * Файл {@code assets/mobs/<type>.png} (той же раскладки) переопределяет
  * процедурный скин; иной размер масштабируется nearest-neighbour. Только AWT —
@@ -47,8 +49,13 @@ public final class MobSkins {
     public static final int T_BODY_TOP = 4;
     public static final int T_LIMB = 5;
     public static final int T_ACCENT = 6;
+    /** Запасной тайл — виден только если модель на него сошлётся. */
+    static final int T_SPARE = 7;
 
     public static final String OVERRIDE_DIR = "assets/mobs";
+
+    /** Доля тайла на один пиксель мастера — вся геометрия кратна ей. */
+    private static final float P = 1f / PixelArt.M;
 
     private MobSkins() {}
 
@@ -69,7 +76,7 @@ public final class MobSkins {
     }
 
     /** Приводит override к WIDTH×HEIGHT ARGB (nearest — пиксель-арт не мылится). */
-    private static BufferedImage normalize(BufferedImage raw) {
+    static BufferedImage normalize(BufferedImage raw) {
         if (raw.getWidth() == WIDTH && raw.getHeight() == HEIGHT
                 && raw.getType() == BufferedImage.TYPE_INT_ARGB)
             return raw;
@@ -83,361 +90,239 @@ public final class MobSkins {
     }
 
     public static BufferedImage generate(MobType type) {
-        BufferedImage img = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = img.createGraphics();
-        // Фиксированный seed на вид: крап получается стабильным между запусками,
-        // иначе текстура «дышала» бы при каждом старте игры.
-        Random rnd = new Random(0xB0B5EEDL ^ type.ordinal());
+        Pal pal = new Pal();
+        Sheet s = new Sheet(COLS, ROWS);
         switch (type) {
-            case COW -> cow(g, rnd);
-            case PIG -> pig(g, rnd);
-            case SHEEP -> sheep(g, rnd);
-            case CHICKEN -> chicken(g, rnd);
-            case ZOMBIE -> zombie(g, rnd);
+            case COW -> cow(s, pal);
+            case PIG -> pig(s, pal);
+            case SHEEP -> sheep(s, pal);
+            case CHICKEN -> chicken(s, pal);
+            case ZOMBIE -> zombie(s, pal);
         }
-        g.dispose();
-        return img;
+        return s.toImage(pal.toArray(), TILE);
     }
 
     // -------------------------------------------------------------------------
-    //  Виды
+    //  Виды. Рампы читаются слева направо: тень (холодная) → блик (тёплый).
     // -------------------------------------------------------------------------
 
-    private static void cow(Graphics2D g, Random rnd) {
-        // База светлее «настоящей» коровьей шкуры: на тёмно-бурой основе детали
-        // морды не читались вовсе, а под вечерним светом моб превращался в
-        // силуэт.
-        Color hide = new Color(0x6B4A2C);
-        Color hideDark = new Color(0x543A22);
-        Color patch = new Color(0xF0E8D9);
-        Color hoof = new Color(0x2A1F16);
-        Color muzzle = new Color(0xD5A29F);
+    private static void cow(Sheet s, Pal p) {
+        int hide  = p.ramp("2A1D20", "3E2B1D", "553D24", "6C5130", "87693C");
+        int cream = p.ramp("8C8375", "AEA493", "CAC1AF", "E2DBCA", "F7F2E4");
+        int muzz  = p.ramp("5C3A3E", "80555A", "A1716F", "BD8D87", "D6AC9F");
+        int horn  = p.ramp("6A6052", "897F6D", "A69B87", "C0B5A0", "D9CEB7");
+        int dark  = p.ramp("100B0D", "1B1416", "271E20", "342A2A", "433736");
 
-        for (int t : new int[] { T_HEAD_FRONT, T_HEAD_SIDE, T_HEAD_TOP, T_BODY_SIDE, T_BODY_TOP }) {
-            fill(g, t, hide);
-            dapple(g, t, hideDark, 10, 0.10f, 0.20f, rnd);
-        }
+        // Корпус: подпалины крупными пятнами, не мелким крапом — иначе с
+        // трёх метров корова читается как бурый шум.
+        s.grad(T_BODY_SIDE, hide, 0.80f, 0.30f, 11);
+        s.splotch(T_BODY_SIDE, 0.26f, 0.30f, 0.22f, cream, 12);
+        s.splotch(T_BODY_SIDE, 0.70f, 0.62f, 0.26f, cream, 13);
+        s.splotch(T_BODY_SIDE, 0.40f, 0.86f, 0.14f, cream, 14);
+        s.grad(T_BODY_TOP, hide, 0.72f, 0.44f, 15);
+        s.splotch(T_BODY_TOP, 0.32f, 0.36f, 0.24f, cream, 16);
+        s.splotch(T_BODY_TOP, 0.74f, 0.72f, 0.16f, cream, 17);
 
-        // Бок и спина: крупные белые пятна с рваным краем, не прямоугольники.
-        blob(g, T_BODY_SIDE, 0.10f, 0.16f, 0.34f, 0.30f, patch, rnd);
-        blob(g, T_BODY_SIDE, 0.55f, 0.48f, 0.36f, 0.34f, patch, rnd);
-        blob(g, T_BODY_SIDE, 0.30f, 0.72f, 0.22f, 0.20f, patch, rnd);
-        blob(g, T_BODY_TOP, 0.22f, 0.20f, 0.40f, 0.40f, patch, rnd);
-        blob(g, T_BODY_TOP, 0.62f, 0.60f, 0.26f, 0.26f, patch, rnd);
-        volume(g, T_BODY_SIDE, 26, 46);
-        volume(g, T_BODY_TOP, 30, 16);
+        // Морда: проточина сужается ко лбу и доходит до носа, рожки растут из
+        // верхних углов — деталь, оторванная от края тайла, читается как
+        // наклейка, а не как часть головы.
+        s.grad(T_HEAD_FRONT, hide, 0.82f, 0.38f, 21);
+        s.rectGrad(T_HEAD_FRONT, 5 * P, 0f, 6 * P, 5 * P, cream, 0.90f, 0.62f, 22);
+        s.rectGrad(T_HEAD_FRONT, 6 * P, 5 * P, 4 * P, 4 * P, cream, 0.62f, 0.50f, 22);
+        s.rectGrad(T_HEAD_FRONT, 0f, 0f, 3 * P, 2 * P, horn, 0.85f, 0.50f, 18);
+        s.rectGrad(T_HEAD_FRONT, 13 * P, 0f, 3 * P, 2 * P, horn, 0.85f, 0.50f, 19);
+        s.rectGrad(T_HEAD_FRONT, 3 * P, 9 * P, 10 * P, 7 * P, muzz, 0.78f, 0.40f, 23);
+        s.rect(T_HEAD_FRONT, 3 * P, 9 * P, 10 * P, P, muzz + 1);
+        s.rect(T_HEAD_FRONT, 5 * P, 11 * P, 2 * P, 2 * P, dark + 1);
+        s.rect(T_HEAD_FRONT, 9 * P, 11 * P, 2 * P, 2 * P, dark + 1);
+        s.eye(T_HEAD_FRONT, P, 5 * P, dark, cream + 4, true);
+        s.eye(T_HEAD_FRONT, 11 * P, 5 * P, dark, cream + 4, false);
 
-        // Морда: белая проточина, розовый нос с ноздрями, глаза с блеском.
-        box(g, T_HEAD_FRONT, 0.34f, 0f, 0.32f, 0.34f, patch);
-        box(g, T_HEAD_FRONT, 0.22f, 0.56f, 0.56f, 0.34f, muzzle);
-        box(g, T_HEAD_FRONT, 0.22f, 0.56f, 0.56f, 0.06f, new Color(0xB07E7C));
-        box(g, T_HEAD_FRONT, 0.34f, 0.68f, 0.09f, 0.12f, new Color(0x7C5150));
-        box(g, T_HEAD_FRONT, 0.57f, 0.68f, 0.09f, 0.12f, new Color(0x7C5150));
-        eye(g, T_HEAD_FRONT, 0.14f, 0.34f);
-        eye(g, T_HEAD_FRONT, 0.66f, 0.34f);
-        shadeBottom(g, T_HEAD_FRONT, 3, 26);
+        // Профиль: рог от макушки, ухо под ним, морда до левого края.
+        s.grad(T_HEAD_SIDE, hide, 0.80f, 0.36f, 24);
+        s.rectGrad(T_HEAD_SIDE, 0f, 8 * P, 5 * P, 6 * P, muzz, 0.72f, 0.42f, 25);
+        s.rectGrad(T_HEAD_SIDE, 10 * P, 0f, 4 * P, 4 * P, horn, 0.85f, 0.45f, 20);
+        s.rectGrad(T_HEAD_SIDE, 11 * P, 4 * P, 5 * P, 3 * P, hide, 0.30f, 0.15f, 26);
+        s.eye(T_HEAD_SIDE, 4 * P, 5 * P, dark, cream + 4, true);
 
-        // Профиль головы: ухо и намёк на скулу.
-        box(g, T_HEAD_SIDE, 0.62f, 0.16f, 0.22f, 0.16f, hideDark);
-        box(g, T_HEAD_SIDE, 0.10f, 0.52f, 0.34f, 0.22f, muzzle);
-        eye(g, T_HEAD_SIDE, 0.30f, 0.30f);
-        shadeBottom(g, T_HEAD_SIDE, 3, 26);
+        // Сверху — рога в стороны от краёв тайла.
+        s.grad(T_HEAD_TOP, hide, 0.74f, 0.50f, 27);
+        s.rectGrad(T_HEAD_TOP, 0f, 5 * P, 5 * P, 4 * P, horn, 0.85f, 0.40f, 28);
+        s.rectGrad(T_HEAD_TOP, 11 * P, 5 * P, 5 * P, 4 * P, horn, 0.85f, 0.40f, 29);
+        s.shift(T_HEAD_TOP, 0f, 8 * P, 5 * P, P, -2);
+        s.shift(T_HEAD_TOP, 11 * P, 8 * P, 5 * P, P, -2);
 
-        // Рога сверху.
-        box(g, T_HEAD_TOP, 0.06f, 0.34f, 0.18f, 0.14f, patch);
-        box(g, T_HEAD_TOP, 0.76f, 0.34f, 0.18f, 0.14f, patch);
-        box(g, T_HEAD_TOP, 0.02f, 0.30f, 0.10f, 0.10f, new Color(0xCFC6B4));
-        box(g, T_HEAD_TOP, 0.88f, 0.30f, 0.10f, 0.10f, new Color(0xCFC6B4));
-
-        // Нога светлее корпуса: иначе тёмная база плюс копыто плюс тень дают
-        // почти чёрный столбик.
-        limb(g, new Color(0x7B5734), hideDark, hoof, rnd);
-        fill(g, T_ACCENT, patch);
-        dapple(g, T_ACCENT, new Color(0xDED5C4), 8, 0.10f, 0.20f, rnd);
-        volume(g, T_ACCENT, 24, 28);
+        hoofedLimb(s, hide, dark, 29);
+        s.grad(T_ACCENT, cream, 0.85f, 0.50f, 30);
+        s.grad(T_SPARE, hide, 0.70f, 0.40f, 31);
     }
 
-    private static void pig(Graphics2D g, Random rnd) {
-        Color skin = new Color(0xEC9E9B);
-        Color skinDark = new Color(0xD1817E);
-        Color snout = new Color(0xC97673);
-        Color hoof = new Color(0x6B4A48);
+    private static void pig(Sheet s, Pal p) {
+        int skin  = p.ramp("6E4247", "955F5E", "B87C78", "D49A90", "EBBBAA");
+        int snout = p.ramp("52303A", "74484C", "915F5E", "AB7671", "C29188");
+        int dark  = p.ramp("140D11", "1F1518", "2B1F21", "38292A", "473635");
+        int bone  = p.ramp("8A8078", "A69C93", "BFB5AB", "D6CCC1", "F0E7DA");
 
-        for (int t : new int[] { T_HEAD_FRONT, T_HEAD_SIDE, T_HEAD_TOP, T_BODY_SIDE, T_BODY_TOP }) {
-            fill(g, t, skin);
-            dapple(g, t, skinDark, 8, 0.10f, 0.20f, rnd);
-        }
-        volume(g, T_BODY_SIDE, 26, 46);
-        volume(g, T_BODY_TOP, 30, 16);
+        s.grad(T_BODY_SIDE, skin, 0.78f, 0.34f, 41);
+        s.grad(T_BODY_TOP, skin, 0.72f, 0.46f, 42);
 
-        // Пятачок с ноздрями и характерная складка над ним.
-        box(g, T_HEAD_FRONT, 0.28f, 0.52f, 0.44f, 0.34f, snout);
-        box(g, T_HEAD_FRONT, 0.28f, 0.52f, 0.44f, 0.06f, new Color(0xA65E5C));
-        box(g, T_HEAD_FRONT, 0.37f, 0.64f, 0.09f, 0.13f, new Color(0x6E3E3D));
-        box(g, T_HEAD_FRONT, 0.54f, 0.64f, 0.09f, 0.13f, new Color(0x6E3E3D));
-        eye(g, T_HEAD_FRONT, 0.16f, 0.26f);
-        eye(g, T_HEAD_FRONT, 0.68f, 0.26f);
-        shadeBottom(g, T_HEAD_FRONT, 3, 22);
+        // Морда: пятак с двумя ноздрями и складка над ним.
+        s.grad(T_HEAD_FRONT, skin, 0.82f, 0.40f, 43);
+        s.rectGrad(T_HEAD_FRONT, 4 * P, 8 * P, 8 * P, 7 * P, snout, 0.76f, 0.38f, 44);
+        s.rect(T_HEAD_FRONT, 4 * P, 8 * P, 8 * P, P, snout + 1);
+        s.rect(T_HEAD_FRONT, 6 * P, 11 * P, 2 * P, 2 * P, dark + 1);
+        s.rect(T_HEAD_FRONT, 9 * P, 11 * P, 2 * P, 2 * P, dark + 1);
+        s.eye(T_HEAD_FRONT, 2 * P, 4 * P, dark, bone + 4, true);
+        s.eye(T_HEAD_FRONT, 10 * P, 4 * P, dark, bone + 4, false);
 
-        box(g, T_HEAD_SIDE, 0.08f, 0.48f, 0.28f, 0.24f, snout);
-        box(g, T_HEAD_SIDE, 0.58f, 0.10f, 0.26f, 0.22f, skinDark);   // ухо
-        eye(g, T_HEAD_SIDE, 0.32f, 0.26f);
-        shadeBottom(g, T_HEAD_SIDE, 3, 22);
+        s.grad(T_HEAD_SIDE, skin, 0.80f, 0.38f, 45);
+        s.rectGrad(T_HEAD_SIDE, 0f, 8 * P, 5 * P, 5 * P, snout, 0.72f, 0.40f, 46);
+        s.rectGrad(T_HEAD_SIDE, 9 * P, 0f, 5 * P, 4 * P, snout, 0.55f, 0.28f, 47);   // ухо
+        s.eye(T_HEAD_SIDE, 5 * P, 5 * P, dark, bone + 4, true);
 
-        // Уши сверху — треугольниками из двух ступенек.
-        box(g, T_HEAD_TOP, 0.10f, 0.04f, 0.24f, 0.16f, skinDark);
-        box(g, T_HEAD_TOP, 0.14f, 0.20f, 0.16f, 0.10f, snout);
-        box(g, T_HEAD_TOP, 0.66f, 0.04f, 0.24f, 0.16f, skinDark);
-        box(g, T_HEAD_TOP, 0.70f, 0.20f, 0.16f, 0.10f, snout);
+        // Уши сверху — двумя ступеньками, чтобы читался треугольник.
+        s.grad(T_HEAD_TOP, skin, 0.74f, 0.50f, 48);
+        s.rectGrad(T_HEAD_TOP, P, 0f, 4 * P, 3 * P, snout, 0.62f, 0.34f, 49);
+        s.rect(T_HEAD_TOP, 2 * P, 3 * P, 2 * P, 2 * P, snout + 1);
+        s.rectGrad(T_HEAD_TOP, 11 * P, 0f, 4 * P, 3 * P, snout, 0.62f, 0.34f, 50);
+        s.rect(T_HEAD_TOP, 12 * P, 3 * P, 2 * P, 2 * P, snout + 1);
 
-        limb(g, skin, skinDark, hoof, rnd);
-        fill(g, T_ACCENT, skinDark);
-        dapple(g, T_ACCENT, snout, 14, 0.06f, 0.12f, rnd);
+        hoofedLimb(s, skin, dark, 51);
+        s.grad(T_ACCENT, snout, 0.72f, 0.42f, 52);
+        s.grad(T_SPARE, skin, 0.70f, 0.42f, 53);
     }
 
-    private static void sheep(Graphics2D g, Random rnd) {
-        Color wool = new Color(0xE9E6DF);
-        Color woolMid = new Color(0xD5D1C8);
-        Color woolDark = new Color(0xBFBAB0);
-        Color face = new Color(0xCE9A97);
-        Color hoof = new Color(0x585048);
+    private static void sheep(Sheet s, Pal p) {
+        int wool = p.ramp("94918A", "B2AEA4", "CCC8BC", "E3DFD2", "F8F4E8");
+        int face = p.ramp("5E3F42", "805858", "9C7370", "B68D85", "CCA79A");
+        int dark = p.ramp("161314", "23201E", "302B28", "3D3733", "4C443E");
 
-        for (int t : new int[] { T_HEAD_SIDE, T_HEAD_TOP, T_BODY_SIDE, T_BODY_TOP, T_ACCENT }) {
-            fill(g, t, wool);
-            // Шерсть = крупные комки в три тона. Мелкий частый крап давал шум,
-            // в котором форма комков не читалась вообще.
-            dapple(g, t, woolMid, 11, 0.16f, 0.30f, rnd);
-            dapple(g, t, woolDark, 6, 0.12f, 0.22f, rnd);
-            dapple(g, t, new Color(0xF7F5F0), 9, 0.12f, 0.24f, rnd);
-        }
-        volume(g, T_BODY_SIDE, 28, 44);
-        volume(g, T_BODY_TOP, 32, 14);
-        volume(g, T_ACCENT, 24, 30);
+        // Шерсть — комки value-noise, а не градиент: гладкая тень читается как
+        // пластик, ровный крап — как шум. Комок даёт объём.
+        for (int t : new int[] { T_BODY_SIDE, T_BODY_TOP, T_HEAD_TOP, T_ACCENT, T_SPARE })
+            s.clumps(t, wool, 0.30f, 1.0f, 4, 61 + t);
+        s.shift(T_BODY_SIDE, 0f, 12 * P, 1f, 4 * P, -1);      // тень под брюхо
+        s.shift(T_BODY_SIDE, 0f, 0f, 1f, 2 * P, 1);           // свет по хребту
 
-        // Морда: шерсть на лбу, розовая мордочка, тёмный рот.
-        fill(g, T_HEAD_FRONT, face);
-        dapple(g, T_HEAD_FRONT, new Color(0xB98685), 7, 0.09f, 0.16f, rnd);
-        box(g, T_HEAD_FRONT, 0f, 0f, 1f, 0.28f, wool);
-        dapple(g, T_HEAD_FRONT, woolMid, 5, 0.10f, 0.18f, rnd);
-        box(g, T_HEAD_FRONT, 0f, 0f, 1f, 0.06f, woolDark);
-        eye(g, T_HEAD_FRONT, 0.14f, 0.36f);
-        eye(g, T_HEAD_FRONT, 0.68f, 0.36f);
-        box(g, T_HEAD_FRONT, 0.36f, 0.74f, 0.28f, 0.08f, new Color(0x6E4645));
-        box(g, T_HEAD_FRONT, 0.44f, 0.60f, 0.05f, 0.07f, new Color(0x8A5C5B));
-        box(g, T_HEAD_FRONT, 0.53f, 0.60f, 0.05f, 0.07f, new Color(0x8A5C5B));
-        shadeBottom(g, T_HEAD_FRONT, 3, 22);
+        // Морда розовая, лоб закрыт шерстью с рваной кромкой.
+        s.grad(T_HEAD_FRONT, face, 0.78f, 0.40f, 71);
+        s.clumps(T_HEAD_FRONT, wool, 0.45f, 1.0f, 4, 72);
+        s.rectGrad(T_HEAD_FRONT, 2 * P, 5 * P, 12 * P, 11 * P, face, 0.78f, 0.42f, 73);
+        s.ragged(T_HEAD_FRONT, 5 * P, 2 * P, wool, 0.55f, 74);
+        s.eye(T_HEAD_FRONT, 2 * P, 7 * P, dark, wool + 4, true);
+        s.eye(T_HEAD_FRONT, 10 * P, 7 * P, dark, wool + 4, false);
+        s.rect(T_HEAD_FRONT, 6 * P, 11 * P, P, 2 * P, face);
+        s.rect(T_HEAD_FRONT, 9 * P, 11 * P, P, 2 * P, face);
+        s.rect(T_HEAD_FRONT, 5 * P, 14 * P, 6 * P, P, dark + 1);
 
-        box(g, T_HEAD_SIDE, 0.06f, 0.40f, 0.30f, 0.30f, face);   // мордочка в профиль
-        box(g, T_HEAD_SIDE, 0.60f, 0.30f, 0.22f, 0.14f, woolDark); // ухо
-        eye(g, T_HEAD_SIDE, 0.34f, 0.34f);
+        s.clumps(T_HEAD_SIDE, wool, 0.40f, 1.0f, 4, 75);
+        s.rectGrad(T_HEAD_SIDE, 0f, 6 * P, 6 * P, 8 * P, face, 0.74f, 0.40f, 76);
+        s.rectGrad(T_HEAD_SIDE, 9 * P, 4 * P, 4 * P, 3 * P, wool, 0.35f, 0.20f, 77);  // ухо
+        s.eye(T_HEAD_SIDE, 5 * P, 7 * P, dark, wool + 4, true);
 
-        limb(g, woolMid, woolDark, hoof, rnd);
+        s.clumps(T_LIMB, wool, 0.35f, 0.85f, 4, 78);
+        s.rectGrad(T_LIMB, 0f, 12 * P, 1f, 4 * P, dark, 0.55f, 0.20f, 79);
     }
 
-    private static void chicken(Graphics2D g, Random rnd) {
-        Color body = new Color(0xF2F0EA);
-        Color shade = new Color(0xD9D6CE);
-        Color beak = new Color(0xE8A33C);
-        Color comb = new Color(0xC8332C);
-        Color leg = new Color(0xD9922F);
+    private static void chicken(Sheet s, Pal p) {
+        int feath = p.ramp("9A968D", "BAB6AB", "D4D0C4", "E9E5D9", "FDFAEE");
+        int beak  = p.ramp("6E4413", "94601B", "B47D26", "D09A35", "E9BC53");
+        int comb  = p.ramp("5A161C", "7A2020", "9B2C26", "BA3B31", "D75C46");
+        int dark  = p.ramp("121013", "1D1A1B", "282423", "342E2C", "423B37");
 
-        for (int t : new int[] { T_HEAD_FRONT, T_HEAD_SIDE, T_HEAD_TOP, T_BODY_SIDE, T_BODY_TOP }) {
-            fill(g, t, body);
-            dapple(g, t, shade, 6, 0.12f, 0.22f, rnd);
-        }
-        // Перья на боку — ряды коротких штрихов.
-        for (int row = 0; row < 5; row++) {
-            float y = 0.24f + row * 0.15f;
-            for (int i = 0; i < 4; i++) {
-                float x = 0.08f + i * 0.22f + (row % 2 == 0 ? 0f : 0.08f);
-                box(g, T_BODY_SIDE, x, y, 0.13f, 0.05f, shade);
-            }
-        }
-        shadeBottom(g, T_BODY_SIDE, 3, 30);
+        s.grad(T_BODY_SIDE, feath, 0.85f, 0.42f, 81);
+        // Перья: ряды коротких штрихов со сдвигом через ряд.
+        for (int row = 0; row < 5; row++)
+            for (int i = 0; i < 4; i++)
+                s.rect(T_BODY_SIDE, (1 + i * 4 + (row % 2)) * P, (4 + row * 2) * P,
+                        2 * P, P, feath + 1);
+        s.grad(T_BODY_TOP, feath, 0.80f, 0.52f, 82);
 
-        // Клюв, гребень, бородка.
-        box(g, T_HEAD_FRONT, 0.36f, 0.48f, 0.28f, 0.18f, beak);
-        box(g, T_HEAD_FRONT, 0.40f, 0.66f, 0.20f, 0.08f, new Color(0xBE7F26));
-        box(g, T_HEAD_FRONT, 0.40f, 0.78f, 0.20f, 0.16f, comb);
-        box(g, T_HEAD_FRONT, 0.34f, 0f, 0.32f, 0.14f, comb);
-        eye(g, T_HEAD_FRONT, 0.10f, 0.24f);
-        eye(g, T_HEAD_FRONT, 0.72f, 0.24f);
+        // Голова: гребень, клюв, бородка.
+        s.grad(T_HEAD_FRONT, feath, 0.88f, 0.46f, 83);
+        s.rectGrad(T_HEAD_FRONT, 5 * P, 0f, 6 * P, 3 * P, comb, 0.80f, 0.45f, 84);
+        s.rectGrad(T_HEAD_FRONT, 6 * P, 7 * P, 4 * P, 4 * P, beak, 0.85f, 0.45f, 85);
+        s.rect(T_HEAD_FRONT, 6 * P, 10 * P, 4 * P, P, beak);
+        s.rectGrad(T_HEAD_FRONT, 6 * P, 11 * P, 4 * P, 3 * P, comb, 0.65f, 0.35f, 86);
+        s.eye(T_HEAD_FRONT, P, 4 * P, dark, feath + 4, true);
+        s.eye(T_HEAD_FRONT, 12 * P, 4 * P, dark, feath + 4, false);
 
-        box(g, T_HEAD_SIDE, 0.04f, 0.44f, 0.26f, 0.16f, beak);
-        box(g, T_HEAD_SIDE, 0.30f, 0f, 0.36f, 0.14f, comb);
-        eye(g, T_HEAD_SIDE, 0.40f, 0.26f);
+        s.grad(T_HEAD_SIDE, feath, 0.86f, 0.44f, 87);
+        s.rectGrad(T_HEAD_SIDE, 5 * P, 0f, 6 * P, 3 * P, comb, 0.80f, 0.45f, 88);
+        s.rectGrad(T_HEAD_SIDE, 0f, 6 * P, 4 * P, 4 * P, beak, 0.85f, 0.45f, 89);
+        s.eye(T_HEAD_SIDE, 5 * P, 4 * P, dark, feath + 4, true);
 
-        box(g, T_HEAD_TOP, 0.34f, 0.10f, 0.30f, 0.30f, comb);
-        box(g, T_HEAD_TOP, 0.40f, 0.02f, 0.18f, 0.10f, new Color(0xA82823));
+        s.grad(T_HEAD_TOP, feath, 0.82f, 0.52f, 90);
+        s.rectGrad(T_HEAD_TOP, 6 * P, 0f, 4 * P, 1f, comb, 0.80f, 0.40f, 91);
 
-        // Лапы чешуйчатые.
-        fill(g, T_LIMB, leg);
+        // Лапа чешуйчатая, коготь темнее.
+        s.grad(T_LIMB, beak, 0.78f, 0.40f, 92);
         for (int i = 0; i < 7; i++)
-            box(g, T_LIMB, 0.1f, 0.08f + i * 0.13f, 0.8f, 0.05f, new Color(0xB87824));
-        box(g, T_LIMB, 0f, 0.86f, 1f, 0.14f, new Color(0x9C6420));
+            s.rect(T_LIMB, 2 * P, (1 + i * 2) * P, 12 * P, P, beak + 1);
+        s.rectGrad(T_LIMB, 0f, 14 * P, 1f, 2 * P, beak, 0.35f, 0.15f, 93);
 
-        // Крыло — маховые перья тремя тонами.
-        fill(g, T_ACCENT, body);
-        for (int i = 0; i < 5; i++) {
-            float y = 0.12f + i * 0.17f;
-            box(g, T_ACCENT, 0.06f, y, 0.88f, 0.10f, i % 2 == 0 ? shade : new Color(0xE6E3DB));
-        }
-        box(g, T_ACCENT, 0f, 0.82f, 1f, 0.18f, new Color(0xC9C5BC));
+        // Крыло: маховые перья полосами и тёмный задний край.
+        s.grad(T_ACCENT, feath, 0.90f, 0.55f, 94);
+        for (int i = 0; i < 5; i++)
+            s.rect(T_ACCENT, P, (2 + i * 3) * P, 14 * P, 2 * P, feath + (i % 2 == 0 ? 1 : 3));
+        s.shift(T_ACCENT, 0f, 13 * P, 1f, 3 * P, -1);
+        s.grad(T_SPARE, feath, 0.80f, 0.50f, 95);
     }
 
-    private static void zombie(Graphics2D g, Random rnd) {
-        Color skin = new Color(0x4C7A38);
-        Color skinDark = new Color(0x3A5E2A);
-        Color skinLight = new Color(0x5E8E45);
-        Color shirt = new Color(0x2F6E7C);
-        Color shirtDark = new Color(0x235662);
-        Color pants = new Color(0x2C3A55);
-        Color pantsDark = new Color(0x212C42);
-        Color socket = new Color(0x14200E);
+    private static void zombie(Sheet s, Pal p) {
+        int flesh = p.ramp("1E3018", "2C4620", "3A5C28", "497331", "5F8E3E");
+        int shirt = p.ramp("11313A", "1A4854", "245F6C", "2F7684", "43929E");
+        int pants = p.ramp("161C2C", "212940", "2C3653", "384467", "4A587F");
+        int rot   = p.ramp("080D07", "10160C", "181F11", "212917", "2A341D");
+        int bone  = p.ramp("857F6E", "9F9987", "B7B19E", "CDC7B3", "E4DECA");
 
-        for (int t : new int[] { T_HEAD_FRONT, T_HEAD_SIDE }) {
-            fill(g, t, skin);
-            dapple(g, t, skinDark, 9, 0.10f, 0.20f, rnd);
-            dapple(g, t, skinLight, 5, 0.09f, 0.16f, rnd);
-        }
+        // Голова: волосы шапкой, пустые глазницы, приоткрытый рот.
+        s.grad(T_HEAD_FRONT, flesh, 0.82f, 0.38f, 101);
+        s.rectGrad(T_HEAD_FRONT, 0f, 0f, 1f, 2 * P, rot, 0.70f, 0.35f, 102);
+        s.rect(T_HEAD_FRONT, 2 * P, 5 * P, 4 * P, 3 * P, rot);
+        s.rect(T_HEAD_FRONT, 10 * P, 5 * P, 4 * P, 3 * P, rot);
+        s.rect(T_HEAD_FRONT, 3 * P, 6 * P, P, P, flesh + 1);
+        s.rect(T_HEAD_FRONT, 12 * P, 6 * P, P, P, flesh + 1);
+        s.rect(T_HEAD_FRONT, 4 * P, 11 * P, 8 * P, 3 * P, rot);
+        for (int i = 0; i < 3; i++)
+            s.rect(T_HEAD_FRONT, (5 + i * 2) * P, 11 * P, P, P, bone + 3);
+        s.shift(T_HEAD_FRONT, 0f, 14 * P, 1f, 2 * P, -1);
 
-        // Волосы сверху и на затылке — тёмная шапка.
-        fill(g, T_HEAD_TOP, new Color(0x2A4420));
-        dapple(g, T_HEAD_TOP, new Color(0x1F3318), 18, 0.06f, 0.14f, rnd);
-        box(g, T_HEAD_SIDE, 0f, 0f, 1f, 0.18f, new Color(0x2A4420));
-        box(g, T_HEAD_FRONT, 0f, 0f, 1f, 0.12f, new Color(0x2A4420));
-
-        // Пустые глазницы с еле заметным блеском внутри — читается как «мёртвый».
-        box(g, T_HEAD_FRONT, 0.14f, 0.30f, 0.24f, 0.18f, socket);
-        box(g, T_HEAD_FRONT, 0.62f, 0.30f, 0.24f, 0.18f, socket);
-        box(g, T_HEAD_FRONT, 0.20f, 0.36f, 0.07f, 0.06f, new Color(0x2E4A22));
-        box(g, T_HEAD_FRONT, 0.68f, 0.36f, 0.07f, 0.06f, new Color(0x2E4A22));
-        // Приоткрытый рот с зубами.
-        box(g, T_HEAD_FRONT, 0.30f, 0.70f, 0.40f, 0.12f, new Color(0x24160F));
-        box(g, T_HEAD_FRONT, 0.34f, 0.70f, 0.06f, 0.05f, new Color(0xC9C4B4));
-        box(g, T_HEAD_FRONT, 0.46f, 0.70f, 0.06f, 0.05f, new Color(0xC9C4B4));
-        box(g, T_HEAD_FRONT, 0.58f, 0.70f, 0.06f, 0.05f, new Color(0xC9C4B4));
-        box(g, T_HEAD_SIDE, 0.16f, 0.32f, 0.20f, 0.16f, socket);
-        shadeBottom(g, T_HEAD_FRONT, 3, 24);
-        shadeBottom(g, T_HEAD_SIDE, 3, 24);
+        s.grad(T_HEAD_SIDE, flesh, 0.80f, 0.36f, 103);
+        s.rectGrad(T_HEAD_SIDE, 0f, 0f, 1f, 3 * P, rot, 0.70f, 0.35f, 104);
+        s.rect(T_HEAD_SIDE, 3 * P, 5 * P, 3 * P, 3 * P, rot);
+        s.splotch(T_HEAD_SIDE, 0.74f, 0.66f, 0.11f, flesh, 105);    // рваная щека
+        s.grad(T_HEAD_TOP, rot, 0.62f, 0.30f, 106);
 
         // Рубаха: шов по центру, рваный подол, из-под него зелёная кожа.
-        fill(g, T_BODY_SIDE, shirt);
-        dapple(g, T_BODY_SIDE, shirtDark, 8, 0.10f, 0.20f, rnd);
-        box(g, T_BODY_SIDE, 0.46f, 0f, 0.08f, 1f, shirtDark);
-        box(g, T_BODY_SIDE, 0f, 0.80f, 1f, 0.20f, skin);
-        dapple(g, T_BODY_SIDE, skinDark, 4, 0.08f, 0.14f, rnd);
-        // Рваный край подола ступеньками.
-        for (int i = 0; i < 6; i++)
-            box(g, T_BODY_SIDE, i * 0.17f, 0.74f + (i % 2) * 0.06f, 0.17f, 0.08f, shirt);
-        volume(g, T_BODY_SIDE, 24, 44);
+        s.grad(T_BODY_SIDE, shirt, 0.80f, 0.36f, 107);
+        s.rect(T_BODY_SIDE, 7 * P, 0f, 2 * P, 1f, shirt + 1);
+        s.rectGrad(T_BODY_SIDE, 0f, 12 * P, 1f, 4 * P, flesh, 0.60f, 0.32f, 108);
+        s.ragged(T_BODY_SIDE, 12 * P, 3 * P, shirt, 0.45f, 109);
+        s.grad(T_BODY_TOP, shirt, 0.74f, 0.48f, 110);
 
-        fill(g, T_BODY_TOP, shirt);
-        dapple(g, T_BODY_TOP, shirtDark, 7, 0.11f, 0.20f, rnd);
-        volume(g, T_BODY_TOP, 28, 14);
+        // Штаны со швом и тёмной обувью.
+        s.grad(T_LIMB, pants, 0.78f, 0.36f, 111);
+        s.rect(T_LIMB, 7 * P, 0f, 2 * P, 1f, pants + 1);
+        s.rectGrad(T_LIMB, 0f, 14 * P, 1f, 2 * P, rot, 0.55f, 0.25f, 112);
 
-        // Штаны с тёмным швом.
-        fill(g, T_LIMB, pants);
-        dapple(g, T_LIMB, pantsDark, 7, 0.10f, 0.20f, rnd);
-        box(g, T_LIMB, 0.44f, 0f, 0.12f, 1f, pantsDark);
-        box(g, T_LIMB, 0f, 0.88f, 1f, 0.12f, new Color(0x191F2E));   // обувь
-        shadeBottom(g, T_LIMB, 3, 30);
-
-        // Руки: голая кожа, у плеча остаток рукава.
-        fill(g, T_ACCENT, skin);
-        dapple(g, T_ACCENT, skinDark, 8, 0.10f, 0.18f, rnd);
-        dapple(g, T_ACCENT, skinLight, 4, 0.08f, 0.14f, rnd);
-        box(g, T_ACCENT, 0f, 0f, 1f, 0.30f, shirt);
-        box(g, T_ACCENT, 0f, 0.28f, 1f, 0.05f, shirtDark);
-        volume(g, T_ACCENT, 20, 28);
+        // Руки: голая кожа, у плеча остаток рукава с рваным краем.
+        s.grad(T_ACCENT, flesh, 0.80f, 0.36f, 113);
+        s.rectGrad(T_ACCENT, 0f, 0f, 1f, 5 * P, shirt, 0.78f, 0.42f, 114);
+        s.ragged(T_ACCENT, 5 * P, 2 * P, shirt, 0.40f, 115);
+        s.splotch(T_ACCENT, 0.62f, 0.70f, 0.12f, rot, 116);         // рана
+        s.grad(T_SPARE, flesh, 0.72f, 0.40f, 117);
     }
 
     // -------------------------------------------------------------------------
-    //  Примитивы рисования. Все координаты — доли тайла (0..1).
-    // -------------------------------------------------------------------------
-
-    /** Нога: база, крап, тёмное копыто внизу, растушёвка. */
-    private static void limb(Graphics2D g, Color base, Color dark, Color hoof, Random rnd) {
-        fill(g, T_LIMB, base);
-        dapple(g, T_LIMB, dark, 16, 0.06f, 0.14f, rnd);
-        box(g, T_LIMB, 0f, 0.78f, 1f, 0.22f, hoof);
-        box(g, T_LIMB, 0f, 0.74f, 1f, 0.05f, dark);
-        shadeBottom(g, T_LIMB, 3, 30);
-    }
-
-    /** Глаз: тёмный зрачок и светлый блик — без блика взгляд «мёртвый». */
-    private static void eye(Graphics2D g, int tile, float fx, float fy) {
-        box(g, tile, fx, fy, 0.20f, 0.16f, new Color(0x140F0C));
-        box(g, tile, fx + 0.03f, fy + 0.03f, 0.07f, 0.06f, new Color(0xE8E4DC));
-    }
-
-    private static void fill(Graphics2D g, int tile, Color c) {
-        box(g, tile, 0f, 0f, 1f, 1f, c);
-    }
-
-    /** Случайные пятнышки одного тона — крап, который убирает «пластиковость». */
-    private static void dapple(Graphics2D g, int tile, Color c, int count,
-                               float minSize, float maxSize, Random rnd) {
-        for (int i = 0; i < count; i++) {
-            float s = minSize + rnd.nextFloat() * (maxSize - minSize);
-            float x = rnd.nextFloat() * (1f - s);
-            float y = rnd.nextFloat() * (1f - s);
-            box(g, tile, x, y, s, s * (0.6f + rnd.nextFloat() * 0.8f), c);
-        }
-    }
-
-    /** Пятно с рваным краем: ядро плюс несколько случайных выступов. */
-    private static void blob(Graphics2D g, int tile, float fx, float fy, float fw, float fh,
-                             Color c, Random rnd) {
-        box(g, tile, fx, fy, fw, fh, c);
-        for (int i = 0; i < 6; i++) {
-            float s = fw * (0.20f + rnd.nextFloat() * 0.3f);
-            float x = fx - s * 0.5f + rnd.nextFloat() * fw;
-            float y = fy - s * 0.5f + rnd.nextFloat() * fh;
-            box(g, tile, clamp01(x, s), clamp01(y, s), s, s, c);
-        }
-    }
 
     /**
-     * Объём одним движением: светлая полоса сверху и тень книзу. Свет во всей
-     * текстуре падает сверху — без этого правила тайлы не склеиваются в одну
-     * фигуру, каждый читается как отдельная наклейка.
+     * Нога копытного: тело сверху, тёмное копыто снизу. Верх ноги светлее
+     * корпуса — тёмная база плюс копыто плюс тень дают почти чёрный столбик.
      */
-    private static void volume(Graphics2D g, int tile, int topLight, int bottomShade) {
-        box(g, tile, 0f, 0f, 1f, 0.10f, new Color(255, 255, 255, topLight));
-        box(g, tile, 0f, 0.10f, 1f, 0.08f, new Color(255, 255, 255, topLight / 2));
-        shadeBottom(g, tile, 3, bottomShade);
-    }
-
-    /** Вертикальная растушёвка: несколько полупрозрачных полос книзу. */
-    private static void shadeBottom(Graphics2D g, int tile, int steps, int maxAlpha) {
-        for (int i = 0; i < steps; i++) {
-            float h = 0.5f / steps;
-            float y = 1f - h * (i + 1);
-            int alpha = maxAlpha * (i + 1) / steps;
-            box(g, tile, 0f, y, 1f, h, new Color(0, 0, 0, alpha));
-        }
-    }
-
-    private static float clamp01(float v, float size) {
-        return Math.max(0f, Math.min(1f - size, v));
-    }
-
-    /** Прямоугольник в долях тайла. */
-    private static void box(Graphics2D g, int tile, float fx, float fy, float fw, float fh,
-                            Color c) {
-        int bx = (tile % COLS) * TILE;
-        int by = (tile / COLS) * TILE;
-        int x = Math.round(fx * TILE);
-        int y = Math.round(fy * TILE);
-        int w = Math.max(1, Math.round(fw * TILE));
-        int h = Math.max(1, Math.round(fh * TILE));
-        // Не выпускаем кисть за пределы своего тайла — иначе сосед пачкается.
-        w = Math.min(w, TILE - x);
-        h = Math.min(h, TILE - y);
-        if (w <= 0 || h <= 0)
-            return;
-        g.setColor(c);
-        g.fillRect(bx + x, by + y, w, h);
+    private static void hoofedLimb(Sheet s, int coat, int hoof, int seed) {
+        s.grad(T_LIMB, coat, 0.80f, 0.45f, seed);
+        s.rectGrad(T_LIMB, 0f, 12 * P, 1f, 4 * P, hoof, 0.60f, 0.25f, seed + 1);
+        s.rect(T_LIMB, 0f, 12 * P, 1f, P, hoof + 3);
     }
 }
