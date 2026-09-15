@@ -39,6 +39,7 @@ final class MusicTests {
         r.run("a cave track fades out on the sunny surface", MusicTests::testMismatchFade);
         r.run("waking replaces a night track with a morning one", MusicTests::testWake);
         r.run("music slider at zero stops and holds the music", MusicTests::testDisabled);
+        r.run("mp3 stream reads the same PCM in any chunk size", MusicTests::testMp3Chunks);
     }
 
     // ---- каталог и ситуация ----------------------------------------------------
@@ -404,6 +405,45 @@ final class MusicTests {
         float wait = untilPlaying(d, p, Sit.menu().get(), 20f);
         assertTrue("raising the slider brings the menu music back (was " + wait + ")",
                 wait >= 0f && wait <= MusicDirector.MENU_GAP_MAX + 0.1f);
+    }
+
+    // ---- декодер ---------------------------------------------------------------
+
+    private static void testMp3Chunks() throws Exception {
+        File file = new File(AppPaths.file("assets/music"), "Fading into Warmth.mp3");
+        int total = 48000 * 2 * 4;   // четыре секунды стерео
+        short[] whole = new short[total];
+        try (com.mineclone.audio.Mp3Stream s = new com.mineclone.audio.Mp3Stream(file)) {
+            assertEq("sample rate", 48000, s.sampleRate());
+            assertEq("channels", 2, s.channels());
+            assertEq("one big read fills the buffer", total, s.read(whole, 0, total));
+        }
+        short[] pieces = new short[total];
+        int[] sizes = { 1, 7, 1153, 3001, 4097, 2 };
+        try (com.mineclone.audio.Mp3Stream s = new com.mineclone.audio.Mp3Stream(file)) {
+            int at = 0, i = 0;
+            while (at < total) {
+                int n = s.read(pieces, at, Math.min(sizes[i++ % sizes.length], total - at));
+                assertTrue("a chunk is read", n > 0);
+                at += n;
+            }
+        }
+        assertTrue("chunks of any size join into the same PCM", java.util.Arrays.equals(whole, pieces));
+        boolean audible = false;
+        for (short v : whole)
+            audible |= Math.abs(v) > 1000;
+        assertTrue("the decoded start is not silence", audible);
+
+        long samples = 0;
+        try (com.mineclone.audio.Mp3Stream s = new com.mineclone.audio.Mp3Stream(file)) {
+            short[] buf = new short[24000];
+            int n;
+            while ((n = s.read(buf, 0, buf.length)) > 0)
+                samples += n;
+            assertEq("after the end only -1", -1, s.read(buf, 0, buf.length));
+        }
+        double seconds = samples / 2.0 / 48000.0;
+        assertTrue("the whole track decodes, 2:30 (was " + seconds + ")", Math.abs(seconds - 150.0) < 1.0);
     }
 
     private static void assertFirstHas(MusicLibrary lib, int seed, MusicSituation s, MusicMood mood) {
