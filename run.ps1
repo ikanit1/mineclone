@@ -39,6 +39,8 @@ foreach ($m in $lwjglModules) {
     $jars += Get-Jar 'org.lwjgl' $m $LWJGL 'natives-windows'
 }
 $jars += Get-Jar 'org.joml' 'joml' $JOML
+# MP3-декодер для музыки из assets/music (stb_vorbis умеет только OGG).
+$jars += Get-Jar 'com.googlecode.soundlibs' 'jlayer' '1.0.1.4'
 
 # Build classpath
 $sep = ';'

@@ -38,6 +38,9 @@ dependencies {
     runtimeOnly "org.lwjgl:lwjgl-openal::$lwjglNatives"
 
     implementation "org.joml:joml:$jomlVersion"
+
+    // MP3-декодер для музыки из assets/music: stb_vorbis умеет только OGG.
+    implementation 'com.googlecode.soundlibs:jlayer:1.0.1.4'
 }
 
 application {
