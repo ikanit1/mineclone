@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Run
 
-No Maven/Gradle wrapper — uses a self-contained PowerShell script that downloads LWJGL + JOML jars on first run:
+No Maven/Gradle wrapper — uses a self-contained PowerShell script that downloads LWJGL + JOML + JLayer (MP3) jars on first run:
 
 ```powershell
 .\run.ps1          # compile + launch
@@ -279,7 +279,8 @@ Tests run via `.\run-tests.ps1` (no JUnit — plain main + asserts in `src/test/
 скрытое окно, сейвы и options.dat во временной папке. Снимает фон меню на
 закате и ночью, титул, миры, создание, загрузку, игру, паузу, настройки,
 клавиши и возврат в меню; настоящим Esc проверяет переходы паузы и запись
-превью мира. Код выхода ненулевой при провале. Ловит то, чего не видно в
+превью мира. Проверяет и музыку: трек меню играет и идёт, `/music next` его
+меняет, после выхода из мира снова звучит трек меню. Код выхода ненулевой при провале. Ловит то, чего не видно в
 офлайновых снимках: сборку кадра меню игрой, контраст над живым фоном,
 порядок обновления и отрисовки.
 
@@ -438,6 +439,29 @@ GL и без ссылки на мир, поэтому проверяется о�
 играют как раньше, и никто выше по стеку об этом не знает. Перезамер раз в
 полсекунды. ADR: `knowledge/decisions/ambient-and-reverb.md`.
 
+### Музыка
+Семь MP3 из `assets/music/` играют по ситуации, в ритме Minecraft: трек, потом
+тишина 2,5–7 мин. В меню музыка звучит всегда: первый трек через 1–2 с, между
+треками 4–10 с. ADR: `knowledge/decisions/music.md`.
+
+- `MusicLibrary.CATALOG` — трек → настроения (`MusicMood`: меню, части суток,
+  пещера, опасность, путь, стройка, дом, полёт) и поправка громкости по LUFS.
+  Файл не из таблицы играет как трек дня и меню. Новый трек меряется
+  `java -cp "libs/*" tools\AnalyzeMusic.java`.
+- `MusicDirector` — чистая логика без OpenAL, часы игры моделируются в тестах.
+  Ситуация решает, что играть: первое подходящее настроение — фильтр, остальные —
+  вес. Моменты (прибытие, пробуждение, возрождение, пещера, рассвет, закат, дом,
+  путь, стройка, полёт, опасность) только иногда сокращают тишину — по жребию и
+  с кулдауном. В бою спокойный трек сначала приглушается, гаснет только после
+  12 с. Не терпимый ситуацией трек гаснет через 20 с. Трек меню доигрывает в
+  мире, если миру подходит.
+- `MusicPlayer` — поток `mineclone-music`: JLayer декодирует кусками по 0,25 с в
+  очередь из 6 буферов. Подвисания кадра музыку не рвут. Главный поток видит
+  запрос сразу (поколения), поток музыки сообщает только «поколение доиграло».
+- `game/MusicSense` — пещера, укрытие, опасность, путь и стройка: мировые пробы
+  дважды в секунду, занятия — по событиям.
+- F3 — строка `Music:`; консоль — `/music` и `/music next`.
+
 **Сообщения в консоль пишутся латиницей**: у консоли Windows кодировка не
 UTF-8, и кириллица в ней превращается в кашу.
 
@@ -546,6 +570,16 @@ claude --add-dir "E:\mineclone\knowledge" --add-dir "E:\mineclone\graphify-out"
 | `PathFinder` | `MAX_LEAP_GAP / LEAP_COST` | Самый широкий перепрыгиваемый провал и его цена |
 | `PathFinder` | `LIT_CELL / LIGHT_COST` | С какого блочного света клетка «под факелом» и насколько нежить её обходит |
 | `AmbientSound` | `WIND_THRESHOLD / WIND_MIN / WIND_MAX` | С какого ветра слышны порывы и как часто |
+| `MusicDirector` | `GAP_MIN / GAP_MAX` | Тишина в мире после трека (150–420 с): доля времени с музыкой |
+| `MusicDirector` | `MENU_FIRST_* / MENU_GAP_* / MENU_RETURN_*` | Когда начинается музыка меню и сколько молчит между треками |
+| `MusicDirector` | `Moment` | Шанс и задержка каждого момента, который начинает трек раньше |
+| `MusicDirector` | `MIN_SILENCE / MOMENT_COOLDOWN` | Тишина после трека, до которой моменты молчат, и кулдаун жребия |
+| `MusicDirector` | `MISMATCH_GRACE / DANGER_DUCK_DELAY / DANGER_DUCK / DANGER_STOP` | Реакция на смену обстановки и бой |
+| `MusicDirector` | `PAUSE_DUCK / WATER_DUCK` | Насколько тише музыка на паузе и под водой |
+| `MusicLibrary` | `CATALOG` | Настроения и поправка громкости каждого трека |
+| `MusicPlayer` | `MUSIC_BASE` | Уровень музыки относительно звуков (0,7) |
+| `MusicPlayer` | `BUFFERS / CHUNK_SECONDS` | Запас очереди OpenAL (6 × 0,25 с) |
+| `MusicSense` | `UNDERGROUND_* / SHELTER_* / DANGER_RANGE / TRAVEL_* / BUILD_*` | Что считается пещерой, домом, опасностью, путём и стройкой |
 | `Rivers` | `FREQ / WIDTH / BANK` | Масштаб русла, его ширина и где начинается берег |
 | `Rivers` | `MAX_ABOVE` | Выше скольки блоков над морем река уже не пробивается |
 | `Rivers` | `LAKE_FREQ / LAKE_THRESHOLD / LAKE_DEPTH` | Размер, редкость и глубина озёр |
