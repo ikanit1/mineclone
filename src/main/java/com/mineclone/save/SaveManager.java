@@ -141,6 +141,7 @@ public final class SaveManager {
                 o.writeLong(d.seed);
                 o.writeLong(d.lastPlayed);
                 o.writeFloat(d.health);
+                o.writeFloat(d.hunger);                      // v9
                 o.writeDouble(d.px); o.writeDouble(d.py); o.writeDouble(d.pz);
                 o.writeDouble(d.spawnX); o.writeDouble(d.spawnY); o.writeDouble(d.spawnZ);
                 o.writeFloat(d.yaw); o.writeFloat(d.pitch);
@@ -148,15 +149,10 @@ public final class SaveManager {
                 o.writeInt(d.selectedSlot);
                 o.writeInt(d.gameMode.ordinal());            // v6
                 o.writeInt(d.inventory.length);
-                for (com.mineclone.world.ItemStack s : d.inventory) {   // v6: type + count
-                    if (s == null) {
-                        o.writeByte(com.mineclone.world.BlockType.AIR.ordinal());
-                        o.writeShort(0);
-                    } else {
-                        o.writeByte(s.type.ordinal());
-                        o.writeShort(s.count);
-                    }
-                }
+                // v8: слот стал размеченным — блок и инструмент больше не
+                // различить по одному id, у инструмента ещё и износ.
+                for (com.mineclone.world.ItemStack s : d.inventory)
+                    writeStack(o, s);
             });
         } catch (IOException e) {
             System.err.println("saveLevel failed: " + e.getMessage());
@@ -176,6 +172,7 @@ public final class SaveManager {
             long seed = in.readLong();
             long lastPlayed = (version >= 5) ? in.readLong() : 0L;
             float health = version >= 7 ? in.readFloat() : 20f;
+            float hunger = version >= 9 ? in.readFloat() : 20f;
             double px = in.readDouble(), py = in.readDouble(), pz = in.readDouble();
             double spawnX = 8.5, spawnY = 80.0, spawnZ = 8.5;
             if (version >= 2) {
@@ -192,7 +189,14 @@ public final class SaveManager {
                                    : com.mineclone.world.GameMode.CREATIVE;
 
             com.mineclone.world.ItemStack[] inventory = LevelData.emptyInventory();
-            if (version >= 6) {
+            if (version >= 8) {
+                int n = Math.max(0, Math.min(256, in.readInt()));
+                com.mineclone.world.ItemStack[] tmp =
+                        new com.mineclone.world.ItemStack[Math.max(com.mineclone.world.Inventory.SIZE, n)];
+                for (int i = 0; i < n; i++)
+                    tmp[i] = readStack(in);
+                inventory = tmp;
+            } else if (version >= 6) {
                 int n = Math.max(0, Math.min(256, in.readInt()));
                 com.mineclone.world.ItemStack[] tmp =
                         new com.mineclone.world.ItemStack[Math.max(com.mineclone.world.Inventory.SIZE, n)];
@@ -217,11 +221,65 @@ public final class SaveManager {
             }
 
             return new LevelData(name, seed, px, py, pz, spawnX, spawnY, spawnZ,
-                    yaw, pitch, tod, slot, inventory, gameMode, lastPlayed, health);
+                    yaw, pitch, tod, slot, inventory, gameMode, lastPlayed, health, hunger);
         } catch (IOException e) {
             System.err.println("loadLevel failed: " + e.getMessage());
             return null;
         }
+    }
+
+    // ---- стопки предметов ----
+
+    /**
+     * Одна стопка в поток. Формат общий у инвентаря игрока и у сундуков:
+     * разойдись они, любая правка предметов ломала бы ровно одно из двух
+     * хранилищ, и заметить это можно было бы только открыв сундук.
+     */
+    static void writeStack(DataOutputStream o, com.mineclone.world.ItemStack s)
+            throws IOException {
+        if (s == null) {
+            o.writeByte(SLOT_EMPTY);
+        } else if (s.isTool()) {
+            o.writeByte(SLOT_TOOL);
+            o.writeByte(s.tool.ordinal());
+            o.writeShort(Math.min(Short.MAX_VALUE, s.damage));
+        } else if (s.isFood()) {
+            o.writeByte(SLOT_FOOD);
+            o.writeByte(s.food.ordinal());
+            o.writeShort(s.count);
+        } else {
+            o.writeByte(SLOT_BLOCK);
+            o.writeByte(s.type.ordinal());
+            o.writeShort(s.count);
+        }
+    }
+
+    /** Одна стопка из потока; null — пустой слот или неизвестный предмет. */
+    static com.mineclone.world.ItemStack readStack(DataInputStream in) throws IOException {
+        int kind = in.readUnsignedByte();
+        if (kind == SLOT_TOOL) {
+            com.mineclone.world.ToolType t =
+                    com.mineclone.world.ToolType.byId(in.readUnsignedByte());
+            int dmg = in.readShort();
+            if (t == null)
+                return null;
+            com.mineclone.world.ItemStack st = new com.mineclone.world.ItemStack(t);
+            st.damage = Math.max(0, dmg);
+            return st;
+        }
+        if (kind == SLOT_FOOD) {
+            com.mineclone.world.FoodType f =
+                    com.mineclone.world.FoodType.byId(in.readUnsignedByte());
+            int count = in.readShort();
+            return (f != null && count > 0) ? new com.mineclone.world.ItemStack(f, count) : null;
+        }
+        if (kind == SLOT_BLOCK) {
+            int blockId = in.readUnsignedByte();
+            int count = in.readShort();
+            if (count > 0 && blockId > 0 && blockId < BlockType.VALUES.length)
+                return new com.mineclone.world.ItemStack(BlockType.VALUES[blockId], count);
+        }
+        return null;
     }
 
     // ---- chunk snapshots ----
@@ -238,6 +296,33 @@ public final class SaveManager {
                 o.writeInt(SaveFormat.CHUNK_VERSION);
                 o.write(s.blocks, 0, SaveFormat.CHUNK_VOLUME);
                 o.write(s.meta, 0, SaveFormat.CHUNK_VOLUME);
+                o.writeInt(s.chests.size());                                  // v2
+                for (var e : s.chests.entrySet()) {
+                    o.writeInt(e.getKey());
+                    com.mineclone.world.ItemStack[] slots = e.getValue();
+                    o.writeByte(slots.length);
+                    for (com.mineclone.world.ItemStack st : slots)
+                        writeStack(o, st);
+                }
+                o.writeInt(s.furnaces.size());                                // v3
+                for (var e : s.furnaces.entrySet()) {
+                    o.writeInt(e.getKey());
+                    com.mineclone.world.Furnace f = e.getValue();
+                    writeStack(o, f.input);
+                    writeStack(o, f.fuel);
+                    writeStack(o, f.output);
+                    o.writeFloat(f.burnLeft);
+                    o.writeFloat(f.burnMax);
+                    o.writeFloat(f.cook);
+                }
+                o.writeInt(s.items.size());                                   // v4
+                for (com.mineclone.world.DroppedItem d : s.items) {
+                    writeStack(o, d.stack);
+                    o.writeFloat(d.x);
+                    o.writeFloat(d.y);
+                    o.writeFloat(d.z);
+                    o.writeFloat(d.age);
+                }
             });
         } catch (IOException e) {
             System.err.println("saveChunk failed: " + e.getMessage());
@@ -251,12 +336,59 @@ public final class SaveManager {
         try (DataInputStream in = new DataInputStream(new GZIPInputStream(
                 new BufferedInputStream(new FileInputStream(f))))) {
             if (in.readInt() != SaveFormat.MAGIC) return null;
-            if (in.readInt() != SaveFormat.CHUNK_VERSION) return null;
+            int version = in.readInt();
+            // Первая версия читается как раньше: сундуков в ней просто нет.
+            // Отказаться от неё значило бы выкинуть все правки во всех уже
+            // сохранённых мирах.
+            if (version < 1 || version > SaveFormat.CHUNK_VERSION) return null;
             byte[] blocks = new byte[SaveFormat.CHUNK_VOLUME];
             byte[] meta = new byte[SaveFormat.CHUNK_VOLUME];
             in.readFully(blocks);
             in.readFully(meta);
-            return new ChunkSnapshot(cx, cz, blocks, meta);
+            java.util.Map<Integer, com.mineclone.world.ItemStack[]> chests =
+                    new java.util.HashMap<>();
+            if (version >= 2) {
+                int n = Math.max(0, Math.min(4096, in.readInt()));
+                for (int i = 0; i < n; i++) {
+                    int key = in.readInt();
+                    int len = in.readUnsignedByte();
+                    com.mineclone.world.ItemStack[] slots =
+                            new com.mineclone.world.ItemStack[len];
+                    for (int k = 0; k < len; k++)
+                        slots[k] = readStack(in);
+                    if (key >= 0 && key < SaveFormat.CHUNK_VOLUME)
+                        chests.put(key, slots);
+                }
+            }
+            java.util.Map<Integer, com.mineclone.world.Furnace> furnaces =
+                    new java.util.HashMap<>();
+            if (version >= 3) {
+                int n = Math.max(0, Math.min(4096, in.readInt()));
+                for (int i = 0; i < n; i++) {
+                    int key = in.readInt();
+                    com.mineclone.world.Furnace furnace = new com.mineclone.world.Furnace();
+                    furnace.input = readStack(in);
+                    furnace.fuel = readStack(in);
+                    furnace.output = readStack(in);
+                    furnace.burnLeft = in.readFloat();
+                    furnace.burnMax = in.readFloat();
+                    furnace.cook = in.readFloat();
+                    if (key >= 0 && key < SaveFormat.CHUNK_VOLUME)
+                        furnaces.put(key, furnace);
+                }
+            }
+            java.util.List<com.mineclone.world.DroppedItem> items = new java.util.ArrayList<>();
+            if (version >= 4) {
+                int n = Math.max(0, Math.min(4096, in.readInt()));
+                for (int i = 0; i < n; i++) {
+                    com.mineclone.world.ItemStack st = readStack(in);
+                    float x = in.readFloat(), y = in.readFloat(), z = in.readFloat();
+                    float age = in.readFloat();
+                    if (st != null)
+                        items.add(new com.mineclone.world.DroppedItem(st, x, y, z, age));
+                }
+            }
+            return new ChunkSnapshot(cx, cz, blocks, meta, chests, furnaces, items);
         } catch (IOException e) {
             System.err.println("loadChunk failed: " + e.getMessage());
             return null;
@@ -267,15 +399,25 @@ public final class SaveManager {
         deleteRecursive(worldDir(id));
     }
 
-    /** Renames a world's display name in its level.dat without touching any chunk files. */
+    /**
+     * Renames a world's display name in its level.dat without touching any chunk files.
+     * Сытость передаётся явно: конструктор без неё ставит полную, и переименование
+     * молча кормило игрока.
+     */
     public void renameWorld(String id, String newName) {
         LevelData d = loadLevel(id);
         if (d == null) return;
         saveLevel(id, new LevelData(newName, d.seed,
                 d.px, d.py, d.pz, d.spawnX, d.spawnY, d.spawnZ,
                 d.yaw, d.pitch, d.timeOfDay, d.selectedSlot,
-                d.inventory, d.gameMode, d.lastPlayed, d.health));
+                d.inventory, d.gameMode, d.lastPlayed, d.health, d.hunger));
     }
+
+    /** Метки слота инвентаря в формате уровня v8. */
+    private static final int SLOT_EMPTY = 0;
+    private static final int SLOT_BLOCK = 1;
+    private static final int SLOT_TOOL = 2;
+    private static final int SLOT_FOOD = 3;
 
     // ---- options.dat (global, not per-world) ----
 
@@ -293,7 +435,7 @@ public final class SaveManager {
             float br = in.readFloat();
             float vol = in.readFloat();
             if (version == 1) {
-                return new Options(rr, fov, br, vol, 0, true, false, true, 1.0f, false, 1.0f, 1.0f, 0);
+                return new Options(rr, fov, br, vol, 0, true, false, true, 1.0f, false, 1.0f, 1.0f, 0, 1);
             }
             // v2+
             int maxFps = in.readInt();
@@ -306,12 +448,31 @@ public final class SaveManager {
             float effectsVol = in.readFloat();
             if (version == 2) {
                 return new Options(rr, fov, br, vol, maxFps, vsync, fullscreen, viewBobbing,
-                        sensitivity, invertY, musicVol, effectsVol, 0);
+                        sensitivity, invertY, musicVol, effectsVol, 0, 1);
             }
-            // v3
+            // v3+
             int guiScale = in.readInt();
+            if (version == 3) {
+                return new Options(rr, fov, br, vol, maxFps, vsync, fullscreen, viewBobbing,
+                        sensitivity, invertY, musicVol, effectsVol, guiScale, 1);
+            }
+            // v4
+            int shaderQuality = in.readInt();
+            if (version == 4) {
+                return new Options(rr, fov, br, vol, maxFps, vsync, fullscreen, viewBobbing,
+                        sensitivity, invertY, musicVol, effectsVol, guiScale, shaderQuality);
+            }
+            // v5: раскладка клавиш парами «имя действия — код клавиши»
+            int n = Math.max(0, Math.min(256, in.readInt()));
+            java.util.Map<String, Integer> saved = new java.util.LinkedHashMap<>();
+            for (int i = 0; i < n; i++) {
+                String action = in.readUTF();
+                saved.put(action, in.readInt());
+            }
+            com.mineclone.core.KeyBindings keys = new com.mineclone.core.KeyBindings();
+            keys.load(saved);
             return new Options(rr, fov, br, vol, maxFps, vsync, fullscreen, viewBobbing,
-                    sensitivity, invertY, musicVol, effectsVol, guiScale);
+                    sensitivity, invertY, musicVol, effectsVol, guiScale, shaderQuality, keys);
         } catch (IOException e) {
             System.err.println("loadOptions failed: " + e.getMessage());
             return Options.defaults();
@@ -336,6 +497,13 @@ public final class SaveManager {
                 out.writeFloat(o.musicVolume);
                 out.writeFloat(o.effectsVolume);
                 out.writeInt(o.guiScale);
+                out.writeInt(o.shaderQuality);
+                java.util.Map<String, Integer> keys = o.keys.toMap();   // v5
+                out.writeInt(keys.size());
+                for (java.util.Map.Entry<String, Integer> e : keys.entrySet()) {
+                    out.writeUTF(e.getKey());
+                    out.writeInt(e.getValue());
+                }
             });
         } catch (IOException e) {
             System.err.println("saveOptions failed: " + e.getMessage());

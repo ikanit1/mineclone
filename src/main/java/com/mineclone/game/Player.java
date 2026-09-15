@@ -8,6 +8,8 @@ import org.joml.Vector3f;
 public class Player {
     public final Camera camera = new Camera();
     public final Vector3f velocity = new Vector3f();
+    /** Множитель от временных состояний; Game обновляет его до шага физики. */
+    public float statusSpeedMultiplier = 1f;
     public boolean onGround = false;
     public boolean flying = false;
     public boolean inWater = false;
@@ -24,6 +26,21 @@ public class Player {
     public static final float REGEN_DELAY_AFTER_HIT = 5f;
     /** Сколько ждать между 0.5 HP регена. */
     public static final float REGEN_INTERVAL = 6f;
+
+    // ---- голод ----
+    public static final float MAX_HUNGER = 20f;
+    /** Порог сытости, ниже которого здоровье не восстанавливается. */
+    public static final float REGEN_HUNGER_MIN = 14f;
+    /** Сколько голода уходит за секунду просто от того, что игрок жив. */
+    public static final float HUNGER_IDLE_DRAIN = 0.035f;
+    /** Во сколько раз быстрее голод уходит на бегу. */
+    public static final float HUNGER_SPRINT_MUL = 4f;
+    /** Урон в секунду, когда сытость кончилась совсем. */
+    public static final float STARVE_DAMAGE = 0.5f;
+    /** Ниже этого здоровья голод больше не убивает — умирать должен бой. */
+    public static final float STARVE_FLOOR = 1f;
+
+    public float hunger = MAX_HUNGER;
     private float regenDelay = 0f;
     public float fallDistance = 0f;
     public float lastFallDamage = 0f;
@@ -83,7 +100,7 @@ public class Player {
                     (float) (input.getDy() * (invertY ? -sens : sens)));
 
         // toggle fly
-        if (controlsEnabled && input.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_F)) {
+        if (controlsEnabled && input.pressed(com.mineclone.core.KeyBindings.Action.FLY)) {
             flying = !flying;
             if (flying) isSprinting = false;
         }
@@ -99,19 +116,20 @@ public class Player {
             right.normalize();
 
         Vector3f wish = new Vector3f();
-        if (controlsEnabled && input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_W))
+        if (controlsEnabled && input.down(com.mineclone.core.KeyBindings.Action.FORWARD))
             wish.add(fwd);
-        if (controlsEnabled && input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_S))
+        if (controlsEnabled && input.down(com.mineclone.core.KeyBindings.Action.BACK))
             wish.sub(fwd);
-        if (controlsEnabled && input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_D))
+        if (controlsEnabled && input.down(com.mineclone.core.KeyBindings.Action.RIGHT))
             wish.add(right);
-        if (controlsEnabled && input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_A))
+        if (controlsEnabled && input.down(com.mineclone.core.KeyBindings.Action.LEFT))
             wish.sub(right);
         if (wish.lengthSquared() > 0.0001)
             wish.normalize();
 
-        float speed = flying ? flySpeed : (isSprinting ? SPRINT_SPEED : WALK_SPEED);
-        boolean jumpDown = controlsEnabled && input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE);
+        float speed = (flying ? flySpeed : (isSprinting ? SPRINT_SPEED : WALK_SPEED))
+                * Math.max(0.15f, statusSpeedMultiplier);
+        boolean jumpDown = controlsEnabled && input.down(com.mineclone.core.KeyBindings.Action.JUMP);
 
         inWater = !flying && touchingWater(world);
         eyeInWater = !flying && eyeBlockIsWater(world);
@@ -122,15 +140,15 @@ public class Player {
             velocity.y = 0;
             if (jumpDown)
                 velocity.y = speed;
-            if (controlsEnabled && input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT))
+            if (controlsEnabled && input.down(com.mineclone.core.KeyBindings.Action.DESCEND))
                 velocity.y = -speed;
         } else if (inWater) {
             // Горизонталь: exponential lerp к wish*SWIM_SPEED (инерция воды)
             float hDrag = (float) Math.pow(0.15, dt);
-            velocity.x = velocity.x * hDrag + wish.x * SWIM_SPEED * (1f - hDrag);
-            velocity.z = velocity.z * hDrag + wish.z * SWIM_SPEED * (1f - hDrag);
+            velocity.x = velocity.x * hDrag + wish.x * SWIM_SPEED * statusSpeedMultiplier * (1f - hDrag);
+            velocity.z = velocity.z * hDrag + wish.z * SWIM_SPEED * statusSpeedMultiplier * (1f - hDrag);
 
-            boolean sinking = controlsEnabled && input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_SHIFT);
+            boolean sinking = controlsEnabled && input.down(com.mineclone.core.KeyBindings.Action.DESCEND);
 
             // vertical drag: slow sink by default; SPACE overrides to swim up
             float waterVDrag = (float) Math.pow(0.8, dt / 0.05f);
@@ -139,7 +157,7 @@ public class Player {
             if (jumpDown) {
                 if (!eyeInWater) {
                     // Water exit jump: instant JUMP_VELOCITY on first press, like land jump
-                    if (input.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE))
+                    if (input.pressed(com.mineclone.core.KeyBindings.Action.JUMP))
                         velocity.y = JUMP_VELOCITY;
                     else
                         velocity.y = Math.min(velocity.y + 12f * dt, JUMP_VELOCITY);
@@ -160,7 +178,9 @@ public class Player {
             // Сильный разгон/торможение на земле, слабый контроль в воздухе.
             float targetX = wish.x * speed;
             float targetZ = wish.z * speed;
-            float rate = onGround ? GROUND_ACCEL : AIR_ACCEL;
+            // На льду сцепление слабое: и разгон, и торможение растягиваются
+            // в скольжение, но в воздухе хуже не становится.
+            float rate = onGround ? Math.max(AIR_ACCEL, GROUND_ACCEL * gripUnderFeet(world)) : AIR_ACCEL;
             float t = 1f - (float) Math.exp(-rate * dt);
             velocity.x += (targetX - velocity.x) * t;
             velocity.z += (targetZ - velocity.z) * t;
@@ -207,13 +227,14 @@ public class Player {
         }
         wasOnGround = onGround;
 
-        // Медленный реген (~0.5 HP за REGEN_INTERVAL) с паузой после боя.
-        // Полноценной ценой урона станет голод (подсистема F); пока лечение
-        // бесплатное, но хотя бы не мгновенное — иначе бой ничего не стоит.
+        tickHunger(dt, controlsEnabled);
+
+        // Медленный реген (~0.5 HP за REGEN_INTERVAL) с паузой после боя и
+        // только на сытый желудок: голод — это и есть цена урона.
         if (regenDelay > 0f) {
             regenDelay = Math.max(0f, regenDelay - dt);
             regenTimer = 0f;
-        } else if (controlsEnabled && health > 0f) {
+        } else if (controlsEnabled && canRegen()) {
             regenTimer += dt;
             if (regenTimer >= REGEN_INTERVAL) {
                 if (health < MAX_HEALTH)
@@ -223,6 +244,63 @@ public class Player {
         }
 
         camera.position.set(position.x, position.y + EYE_HEIGHT, position.z);
+    }
+
+    /**
+     * Голод: медленно уходит сам, быстрее на бегу, а на нуле начинает
+     * отнимать здоровье — но не досмерти.
+     *
+     * Пол в {@link #STARVE_FLOOR} стоит намеренно: смерть от голода в игре
+     * без земледелия и без сундуков — это не вызов, а тупик. Голодный игрок
+     * должен становиться уязвимым, а добивать его должен зомби.
+     */
+    public void tickHunger(float dt, boolean active) {
+        if (!active || flying || health <= 0f)
+            return;
+        float drain = HUNGER_IDLE_DRAIN * dt;
+        if (isSprinting)
+            drain *= HUNGER_SPRINT_MUL;
+        hunger = Math.max(0f, hunger - drain);
+        if (hunger <= 0f && health > STARVE_FLOOR)
+            health = Math.max(STARVE_FLOOR, health - STARVE_DAMAGE * dt);
+    }
+
+    /**
+     * Можно ли сейчас восстанавливать здоровье. Вынесено отдельно, чтобы
+     * правило можно было проверить тестом: прогнать сам update без реального
+     * GLFW-ввода нельзя.
+     */
+    public boolean canRegen() {
+        return regenDelay <= 0f && health > 0f && hunger >= REGEN_HUNGER_MIN;
+    }
+
+    /** Съесть: поднимает сытость, но не выше предела. */
+    public void eat(float nutrition) {
+        hunger = Math.min(MAX_HUNGER, hunger + nutrition);
+    }
+
+    /** Есть смысл, только если желудок не полон — иначе еда тратится впустую. */
+    public boolean canEat() {
+        return hunger < MAX_HUNGER - 0.01f;
+    }
+
+    /**
+     * Сцепление с блоком под ногами — по самому цепкому из тех, на чём стоим:
+     * одной ногой на камне уже не скользишь, иначе край озера превращался бы в
+     * каток, с которого не уйти.
+     */
+    private float gripUnderFeet(World world) {
+        float hw = WIDTH / 2f - 0.02f;
+        int y = (int) Math.floor(position.y - 0.05f);
+        float grip = -1f;
+        for (float dx : new float[] { -hw, hw })
+            for (float dz : new float[] { -hw, hw }) {
+                BlockType b = world.getBlock((int) Math.floor(position.x + dx), y,
+                        (int) Math.floor(position.z + dz));
+                if (b.solid)
+                    grip = Math.max(grip, b.grip());
+            }
+        return grip < 0f ? 1f : grip;
     }
 
     private boolean eyeBlockIsWater(World world) {
@@ -311,9 +389,9 @@ public class Player {
     }
 
     private void checkSprintActivation(com.mineclone.core.Input input, float dt) {
-        boolean wPressed = input.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_W);
-        boolean wDown    = input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_W);
-        boolean ctrlDown = input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL);
+        boolean wPressed = input.pressed(com.mineclone.core.KeyBindings.Action.FORWARD);
+        boolean wDown    = input.down(com.mineclone.core.KeyBindings.Action.FORWARD);
+        boolean ctrlDown = input.down(com.mineclone.core.KeyBindings.Action.SPRINT);
 
         // Double-tap W: second press within DOUBLE_TAP_WINDOW activates sprint
         if (wPressed) {
@@ -522,6 +600,7 @@ public class Player {
 
     public void respawn(float x, float y, float z) {
         health = MAX_HEALTH;
+        hunger = MAX_HUNGER;
         hurtCooldown = 0f;
         fallDistance = 0f;
         regenTimer = 0f;

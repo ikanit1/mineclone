@@ -9,9 +9,15 @@ public final class SaveFormat {
     /** "MCLD" — first int of every save file. */
     public static final int MAGIC = 0x4D434C44;
 
-    public static final int LEVEL_VERSION = 7;
-    public static final int CHUNK_VERSION = 1;
-    public static final int OPTIONS_VERSION = 3;
+    public static final int LEVEL_VERSION = 9;
+    /**
+     * Версия формата чанка. 2 — содержимое сундуков, 3 — состояние печей,
+     * 4 — предметы на земле. Младшие версии читаются как раньше: чего в них
+     * нет, того просто нет.
+     */
+    public static final int CHUNK_VERSION = 4;
+    /** Версия настроек. 5 — раскладка клавиш; 1–4 читаются с раскладкой по умолчанию. */
+    public static final int OPTIONS_VERSION = 5;
 
     /** Blocks per chunk = SIZE_X*SIZE_Y*SIZE_Z (16*128*16 = 32768). */
     public static final int CHUNK_VOLUME = Chunk.SIZE_X * Chunk.SIZE_Y * Chunk.SIZE_Z;

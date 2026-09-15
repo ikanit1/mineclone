@@ -15,6 +15,8 @@ public class Input {
     private double scrollThisFrame;
     private boolean cursorGrabbed = true;
     private final StringBuilder charBuffer = new StringBuilder();
+    /** Раскладка, через которую игра спрашивает действия, а не клавиши. */
+    private KeyBindings bindings = new KeyBindings();
 
     public Input(long window) {
         this.window = window;
@@ -56,6 +58,27 @@ public class Input {
 
     public boolean keyDown(int key) { return keysCur[key]; }
     public boolean keyPressed(int key) { return keysCur[key] && !keysPrev[key]; }
+    public boolean keyReleased(int key) { return !keysCur[key] && keysPrev[key]; }
+
+    public void setBindings(KeyBindings bindings) { this.bindings = bindings; }
+    public KeyBindings bindings() { return bindings; }
+    public boolean down(KeyBindings.Action a) { return keyDown(bindings.key(a)); }
+    public boolean pressed(KeyBindings.Action a) { return keyPressed(bindings.key(a)); }
+    public boolean released(KeyBindings.Action a) { return keyReleased(bindings.key(a)); }
+
+    /** Первая клавиша, нажатая в этом кадре, или −1. Нужна захвату на экране клавиш. */
+    public int firstKeyPressed() {
+        for (int k = GLFW_KEY_SPACE; k < keysCur.length; k++)
+            if (keyPressed(k))
+                return k;
+        return -1;
+    }
+
+    /** Текст из буфера обмена или пустая строка — для вставки сида. */
+    public String clipboard() {
+        String s = glfwGetClipboardString(window);
+        return s != null ? s : "";
+    }
     public boolean mouseDown(int b) { return mouseCur[b]; }
     public boolean mousePressed(int b) { return mouseCur[b] && !mousePrev[b]; }
     public double getDx() { return dx; }

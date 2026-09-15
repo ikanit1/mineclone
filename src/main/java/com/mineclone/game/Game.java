@@ -4,6 +4,7 @@ import com.mineclone.audio.SoundEngine;
 import com.mineclone.audio.Sounds;
 import com.mineclone.core.AppPaths;
 import com.mineclone.core.Input;
+import com.mineclone.core.KeyBindings;
 import com.mineclone.core.Window;
 import com.mineclone.render.*;
 import com.mineclone.world.*;
@@ -37,6 +38,8 @@ public class Game {
     private float musicVolume;
     private float effectsVolume;
     private int guiScale; // 0=Auto, 1=Small(1×), 2=Normal(2×), 3=Large(3×)
+    /** Раскладка клавиш: один объект на игру, Input читает действия через него. */
+    private final KeyBindings keys = new KeyBindings();
 
     private enum SettingsTab { HUB, VIDEO, CONTROLS, AUDIO }
 
@@ -342,6 +345,8 @@ public class Game {
         this.musicVolume     = opts.musicVolume;
         this.effectsVolume   = opts.effectsVolume;
         this.guiScale        = opts.guiScale;
+        this.keys.copyFrom(opts.keys);
+        this.input.setBindings(this.keys);
         window.setVSync(this.vsync);
         window.setFullscreen(this.fullscreen);
         this.menuBackground = new MenuBackground(save);
@@ -396,7 +401,7 @@ public class Game {
                 renderRadius, fovDegrees, brightness, volume,
                 maxFps, vsync, fullscreen, viewBobbing,
                 mouseSensitivity, invertMouseY, musicVolume, effectsVolume, guiScale,
-                shaderQuality);
+                shaderQuality, keys);
     }
 
     private int effectiveGuiScale() {
@@ -897,7 +902,7 @@ public class Game {
             return; // keep the world ticking, but don't move the player while typing
         }
 
-        if (input.keyPressed(GLFW.GLFW_KEY_E)) {
+        if (input.pressed(KeyBindings.Action.INVENTORY)) {
             sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
             state = State.CREATIVE_MENU;
             input.grabCursor(false);
@@ -917,7 +922,7 @@ public class Game {
             wireframe = !wireframe;
 
         // Open console on T (game key — only when chat is closed).
-        if (input.keyPressed(GLFW.GLFW_KEY_T)) {
+        if (input.pressed(KeyBindings.Action.CONSOLE)) {
             consoleOpen = true;
             input.grabCursor(false);
             consoleLine.setLength(0);
@@ -1370,7 +1375,7 @@ public class Game {
 
     private void updateCreativeMenu(float dt) {
         updateCommandToast(dt);
-        if (input.keyPressed(GLFW.GLFW_KEY_E) || input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
+        if (input.pressed(KeyBindings.Action.INVENTORY) || input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
             if (cursorItem != null) {
                 // Стопка с курсора возвращается в инвентарь, а что не влезло —
                 // на землю. Раньше здесь был inventory.add по блоку, и инструмент
@@ -1405,7 +1410,7 @@ public class Game {
             closeChest();
             return;
         }
-        if (input.keyPressed(GLFW.GLFW_KEY_E) || input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
+        if (input.pressed(KeyBindings.Action.INVENTORY) || input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
             sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
             closeChest();
             return;
@@ -1425,7 +1430,7 @@ public class Game {
             closeFurnace();
             return;
         }
-        if (input.keyPressed(GLFW.GLFW_KEY_E) || input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
+        if (input.pressed(KeyBindings.Action.INVENTORY) || input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
             sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
             closeFurnace();
             return;
@@ -1503,10 +1508,8 @@ public class Game {
 
     private void handleHotbar() {
         int prev = selectedSlot;
-        int[] keys = { GLFW.GLFW_KEY_1, GLFW.GLFW_KEY_2, GLFW.GLFW_KEY_3, GLFW.GLFW_KEY_4,
-                GLFW.GLFW_KEY_5, GLFW.GLFW_KEY_6, GLFW.GLFW_KEY_7, GLFW.GLFW_KEY_8, GLFW.GLFW_KEY_9 };
-        for (int i = 0; i < keys.length && i < 9; i++) {
-            if (input.keyPressed(keys[i]))
+        for (int i = 0; i < 9; i++) {
+            if (input.pressed(KeyBindings.slot(i)))
                 selectedSlot = i;
         }
         // В фоторежиме колесо ведёт фокус, а не слот: иначе одно движение
@@ -1537,7 +1540,7 @@ public class Game {
         // только от первого лица — в третьем лице рука не видна вовсе.
         boolean want = state == State.PLAYING && !consoleOpen && !photoMode
                 && viewMode == ViewMode.FIRST && inventory.get(selectedSlot) != null
-                && input.keyDown(GLFW.GLFW_KEY_R);
+                && input.down(KeyBindings.Action.INSPECT);
         float step = dt / INSPECT_TIME;
         inspect = want ? Math.min(1f, inspect + step) : Math.max(0f, inspect - step);
         if (inspect > 0f)
@@ -2118,15 +2121,15 @@ public class Game {
             throwCharge = 0f;
             return;
         }
-        if (input.keyPressed(GLFW.GLFW_KEY_Q)) {
+        if (input.pressed(KeyBindings.Action.DROP)) {
             chargingThrow = inventory.get(selectedSlot) != null;
             throwCharge = 0f;
             throwWholeStack = input.keyDown(GLFW.GLFW_KEY_LEFT_CONTROL)
                     || input.keyDown(GLFW.GLFW_KEY_RIGHT_CONTROL);
         }
-        if (chargingThrow && input.keyDown(GLFW.GLFW_KEY_Q))
+        if (chargingThrow && input.down(KeyBindings.Action.DROP))
             throwCharge = Math.min(1f, throwCharge + dt / THROW_CHARGE_TIME);
-        if (chargingThrow && input.keyReleased(GLFW.GLFW_KEY_Q)) {
+        if (chargingThrow && input.released(KeyBindings.Action.DROP)) {
             throwHeldItem(throwWholeStack, throwCharge);
             chargingThrow = false;
             throwCharge = 0f;
@@ -3629,7 +3632,7 @@ public class Game {
         photoPitch = Math.max(-limit, Math.min(limit, photoPitch));
 
         float speed = PHOTO_SPEED * dt;
-        if (input.keyDown(GLFW.GLFW_KEY_LEFT_CONTROL))
+        if (input.down(KeyBindings.Action.SPRINT))
             speed *= PHOTO_FAST;
         if (input.keyDown(GLFW.GLFW_KEY_LEFT_ALT))
             speed *= PHOTO_SLOW;
@@ -3638,17 +3641,17 @@ public class Game {
         float cp = (float) Math.cos(photoPitch), sp = (float) Math.sin(photoPitch);
         Vector3f fwd = new Vector3f(cp * sin, sp, -cp * cos);
         Vector3f right = new Vector3f(cos, 0f, sin);
-        if (input.keyDown(GLFW.GLFW_KEY_W))
+        if (input.down(KeyBindings.Action.FORWARD))
             photoPos.add(new Vector3f(fwd).mul(speed));
-        if (input.keyDown(GLFW.GLFW_KEY_S))
+        if (input.down(KeyBindings.Action.BACK))
             photoPos.sub(new Vector3f(fwd).mul(speed));
-        if (input.keyDown(GLFW.GLFW_KEY_D))
+        if (input.down(KeyBindings.Action.RIGHT))
             photoPos.add(new Vector3f(right).mul(speed));
-        if (input.keyDown(GLFW.GLFW_KEY_A))
+        if (input.down(KeyBindings.Action.LEFT))
             photoPos.sub(new Vector3f(right).mul(speed));
-        if (input.keyDown(GLFW.GLFW_KEY_SPACE))
+        if (input.down(KeyBindings.Action.JUMP))
             photoPos.y += speed;
-        if (input.keyDown(GLFW.GLFW_KEY_LEFT_SHIFT))
+        if (input.down(KeyBindings.Action.DESCEND))
             photoPos.y -= speed;
 
         // Колесо ведёт фокус по геометрической шкале: у близкого фокуса шаг
