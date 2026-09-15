@@ -216,6 +216,7 @@ public class RenderHudPreview {
 
         com.mineclone.ui.WorldSelectScreen worlds = new com.mineclone.ui.WorldSelectScreen(save, settings);
         worlds.select("preview_b");
+        Thread.sleep(300);   // размеры миров считаются в фоне
         menuShot("menu-worlds", backdrop, theme, worlds, at(500f, 170f), 1);
         worlds.requestDelete();
         menuShot("menu-worlds-delete", backdrop, theme, worlds, at(470f, 430f), 1);

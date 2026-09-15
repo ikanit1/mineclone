@@ -48,7 +48,7 @@ public final class TitleScreen implements Screen {
 
     private void refresh() {
         last = null;
-        for (SaveManager.WorldInfo w : save.listWorlds())
+        for (SaveManager.WorldInfo w : save.listWorlds(false))
             if (!w.corrupted) {
                 last = w;   // список уже от последнего сыгранного
                 break;

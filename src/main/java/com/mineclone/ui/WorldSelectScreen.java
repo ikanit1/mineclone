@@ -7,6 +7,8 @@ import com.mineclone.world.GameMode;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.lwjgl.glfw.GLFW.*;
 
@@ -38,6 +40,11 @@ public final class WorldSelectScreen implements Screen {
     private Dialog dialog = Dialog.NONE;
     private final TextField renameField = new TextField("", NAME_MAX, TextField.ANY);
     private boolean ensureSelectedVisible;
+    /**
+     * Размеры миров считаются в фоне и дописываются в строки, когда готовы:
+     * обход тысячи файлов чанков стоил кадр при каждом открытии списка.
+     */
+    private final Map<String, Long> sizes = new ConcurrentHashMap<>();
 
     public WorldSelectScreen(SaveManager save, SettingsModel settings) {
         this.save = save;
@@ -47,7 +54,16 @@ public final class WorldSelectScreen implements Screen {
     }
 
     private void refresh(String select) {
-        worlds = save.listWorlds();
+        worlds = save.listWorlds(false);
+        List<String> ids = new ArrayList<>();
+        for (SaveManager.WorldInfo w : worlds)
+            ids.add(w.id);
+        Thread sizer = new Thread(() -> {
+            for (String id : ids)
+                sizes.put(id, save.worldSize(id));
+        }, "world-sizes");
+        sizer.setDaemon(true);
+        sizer.start();
         selectedId = null;
         for (SaveManager.WorldInfo w : worlds)
             if (w.id.equals(select))
@@ -223,7 +239,9 @@ public final class WorldSelectScreen implements Screen {
         }
         t.text(MenuTheme.ellipsize(t.font(), wi.displayName, lw), lx, y + 34f, MenuTheme.TEXT, 1f);
         String mode = wi.mode == GameMode.CREATIVE ? "Творчество" : "Выживание";
-        String info = mode + "  ·  " + MenuText.gameDay(wi.timeOfDay) + "  ·  " + MenuText.fileSize(wi.sizeBytes);
+        Long size = sizes.get(wi.id);
+        String info = mode + "  ·  " + MenuText.gameDay(wi.timeOfDay)
+                + (size != null ? "  ·  " + MenuText.fileSize(size) : "");
         t.smallText(MenuTheme.ellipsize(t.small(), info, lw), lx, y + 58f, MenuTheme.TEXT_DIM, 1f);
         String when = "Последний вход: " + MenuText.lastPlayed(wi.lastPlayed, now, zone) + "  ·  сид " + wi.seed;
         t.smallText(MenuTheme.ellipsize(t.small(), when, lw), lx, y + 77f, MenuTheme.TEXT_FAINT, 1f);

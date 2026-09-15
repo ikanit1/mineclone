@@ -109,7 +109,11 @@ public final class SaveManager {
      * один битый сейв не должен прятать остальные миры.
      */
     public WorldInfo loadWorldInfo(String id) {
-        long size = directorySize(worldDir(id));
+        return loadWorldInfo(id, true);
+    }
+
+    private WorldInfo loadWorldInfo(String id, boolean withSize) {
+        long size = withSize ? directorySize(worldDir(id)) : 0L;
         LevelData d = loadLevel(id);
         if (d == null)
             return WorldInfo.corrupted(id, size);
@@ -124,13 +128,22 @@ public final class SaveManager {
      * который играли вчера, нужен чаще, чем «Мир 2» по алфавиту.
      */
     public java.util.List<WorldInfo> listWorlds() {
+        return listWorlds(true);
+    }
+
+    /**
+     * @param withSizes считать ли размер на диске. Это обход всех файлов мира:
+     *                  титулу и экрану создания размер не нужен, и платить за
+     *                  него кадром при каждом открытии экрана незачем.
+     */
+    public java.util.List<WorldInfo> listWorlds(boolean withSizes) {
         java.util.List<WorldInfo> list = new java.util.ArrayList<>();
         File[] dirs = savesRoot.listFiles(File::isDirectory);
         if (dirs == null) return list;
         for (File d : dirs) {
             if (!new File(d, SaveFormat.LEVEL_FILE).isFile()) continue;
             try {
-                list.add(loadWorldInfo(d.getName()));
+                list.add(loadWorldInfo(d.getName(), withSizes));
             } catch (Exception e) {
                 list.add(WorldInfo.corrupted(d.getName(), 0L));
             }
@@ -143,15 +156,38 @@ public final class SaveManager {
         return list;
     }
 
-    private static long directorySize(File f) {
-        if (f.isFile())
-            return f.length();
-        long total = 0;
-        File[] kids = f.listFiles();
-        if (kids != null)
-            for (File k : kids)
-                total += directorySize(k);
-        return total;
+    /** Сколько мир занимает на диске, байты. Обход всех файлов — не для кадра. */
+    public long worldSize(String id) {
+        return directorySize(worldDir(id));
+    }
+
+    /**
+     * Размер каталога. Через {@code walkFileTree}, а не {@code File.length()} на
+     * каждый файл: на Windows атрибуты приходят вместе с листингом каталога, и
+     * тысяча чанков считается без тысячи отдельных запросов к файловой системе.
+     */
+    private static long directorySize(File dir) {
+        if (!dir.exists())
+            return 0L;
+        long[] total = { 0L };
+        try {
+            Files.walkFileTree(dir.toPath(), new java.nio.file.SimpleFileVisitor<>() {
+                @Override
+                public java.nio.file.FileVisitResult visitFile(java.nio.file.Path file,
+                        java.nio.file.attribute.BasicFileAttributes attrs) {
+                    total[0] += attrs.size();
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public java.nio.file.FileVisitResult visitFileFailed(java.nio.file.Path file, IOException e) {
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+            });
+        } catch (IOException e) {
+            return total[0];
+        }
+        return total[0];
     }
 
     /** Свободный id каталога: base, а если занят — base_2, base_3… */

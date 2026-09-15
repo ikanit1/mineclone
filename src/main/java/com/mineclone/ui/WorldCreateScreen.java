@@ -35,7 +35,7 @@ public final class WorldCreateScreen implements Screen {
     public WorldCreateScreen(SaveManager save, SettingsModel settings) {
         this.settings = settings;
         List<String> names = new ArrayList<>();
-        for (SaveManager.WorldInfo w : save.listWorlds())
+        for (SaveManager.WorldInfo w : save.listWorlds(false))
             names.add(w.displayName);
         this.defaultName = WorldSettings.defaultName(names);
         this.name = new TextField(defaultName, WorldSelectScreen.NAME_MAX, TextField.ANY);
