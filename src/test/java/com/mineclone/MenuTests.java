@@ -61,6 +61,97 @@ final class MenuTests {
         r.run("loading rows are done, active or pending by stage", MenuTests::testLoadingStages);
         r.run("loading tips rotate on a timer", MenuTests::testLoadingTips);
         r.run("settings sliders map to whole values and back", MenuTests::testSettingsSliders);
+        r.run("sky palette is the frame math it replaced, bit for bit", MenuTests::testSkyPalette);
+        r.run("menu day lasts two minutes, its night one", MenuTests::testMenuDayCycle);
+    }
+
+    /**
+     * Палитра кадра вынесена из Game.render, чтобы меню рисовало небо той же
+     * формулой. Здесь та формула слово в слово, как она стояла в кадре:
+     * разойдутся — значит, вынос что-то поменял в картинке игры.
+     */
+    private static void testSkyPalette() {
+        float[][] cases = {
+                { (float) (Math.PI / 6.0), 0f, 0f, 1f, 0f },
+                { (float) (Math.PI / 2.0), 0.7f, 0.4f, 1f, 0f },
+                { (float) (Math.PI * 1.4), 0.2f, 0f, 0.4f, 0.8f },
+                { 0.02f, 1f, 1f, 0.32f, 0.3f },
+        };
+        com.mineclone.render.SkyPalette p = new com.mineclone.render.SkyPalette();
+        for (float[] c : cases) {
+            float gameTime = c[0], clouds = c[1], storm = c[2], moonlight = c[3], aurora = c[4];
+            float daylight = Math.max(0f, (float) Math.sin(gameTime));
+            p.compute(gameTime, daylight, clouds, storm, moonlight, aurora);
+
+            org.joml.Vector3f skySrgb = legacySkyColor(daylight);
+            skySrgb.lerp(new org.joml.Vector3f(0.32f, 0.36f, 0.42f).mul(0.15f + daylight * 0.85f), clouds * 0.62f);
+            org.joml.Vector3f skyLin = new org.joml.Vector3f((float) Math.pow(skySrgb.x, 2.2),
+                    (float) Math.pow(skySrgb.y, 2.2), (float) Math.pow(skySrgb.z, 2.2));
+            org.joml.Vector3f zenith = new org.joml.Vector3f(skyLin).mul(0.70f).add(0.000f, 0.004f, 0.024f);
+            org.joml.Vector3f horizon = new org.joml.Vector3f(skyLin).mul(1.32f);
+            org.joml.Vector3f ground = new org.joml.Vector3f(skyLin).mul(0.30f).add(0.012f, 0.010f, 0.008f);
+            boolean moonUp = Math.sin(gameTime) <= 0.0;
+            float moonK = moonUp ? moonlight : 1f;
+            org.joml.Vector3f lightCol = com.mineclone.render.SunLight.lightColor(gameTime)
+                    .mul((1f - clouds * 0.72f - storm * 0.10f) * moonK);
+            org.joml.Vector3f skyAmb = com.mineclone.render.SunLight.skyAmbient(skyLin, daylight)
+                    .mul(daylight + (1f - daylight) * (0.62f + 0.38f * moonlight))
+                    .mul(1f - clouds * 0.12f - storm * 0.08f);
+            skyAmb.add(0.006f * aurora, 0.034f * aurora, 0.018f * aurora);
+            org.joml.Vector3f groundAmb = com.mineclone.render.SunLight.groundAmbient(skyAmb);
+            org.joml.Vector3f sunGlow = new org.joml.Vector3f(lightCol).mul(daylight > 0.02f ? 0.85f : 0.30f);
+
+            String at = " at t=" + gameTime;
+            assertEq("небо sRGB" + at, skySrgb, p.skySrgb);
+            assertEq("небо линейное" + at, skyLin, p.skyLin);
+            assertEq("зенит" + at, zenith, p.zenith);
+            assertEq("горизонт" + at, horizon, p.horizon);
+            assertEq("земля" + at, ground, p.ground);
+            assertEq("цвет светила" + at, lightCol, p.lightCol);
+            assertEq("небесный ambient" + at, skyAmb, p.skyAmb);
+            assertEq("земной ambient" + at, groundAmb, p.groundAmb);
+            assertEq("гало" + at, sunGlow, p.sunGlow);
+            assertEq("множитель луны" + at, moonK, p.moonK);
+            assertEq("направление света" + at, com.mineclone.render.SunLight.lightDirection(gameTime), p.lightDir);
+        }
+    }
+
+    private static org.joml.Vector3f legacySkyColor(float d) {
+        float[] night = { 0.02f, 0.03f, 0.08f };
+        float[] horizon = { 0.85f, 0.45f, 0.20f };
+        float[] day = { 0.55f, 0.75f, 0.95f };
+        float[] a, b;
+        float t;
+        if (d < 0.3f) {
+            a = night;
+            b = horizon;
+            t = d / 0.3f;
+        } else {
+            a = horizon;
+            b = day;
+            t = (d - 0.3f) / 0.7f;
+        }
+        return new org.joml.Vector3f(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t);
+    }
+
+    /**
+     * Фон меню живёт полными сутками за три минуты, но ночь идёт вдвое быстрее
+     * дня: полторы минуты темноты под меню — это уже не атмосфера, а плохо
+     * видно кнопки.
+     */
+    private static void testMenuDayCycle() {
+        float t = 0f, dayTime = 0f, nightTime = 0f;
+        float step = 1f / 120f;
+        for (int i = 0; i < 180 * 120; i++) {
+            if (Math.sin(t) > 0.0)
+                dayTime += step;
+            else
+                nightTime += step;
+            t = com.mineclone.game.MenuBackground.advance(t, step);
+        }
+        assertTrue("за три минуты прошли сутки (" + t + ")", Math.abs(t - Math.PI * 2.0) < 0.05);
+        assertTrue("день около двух минут (" + dayTime + ")", Math.abs(dayTime - 120f) < 1.5f);
+        assertTrue("ночь около минуты (" + nightTime + ")", Math.abs(nightTime - 60f) < 1.5f);
     }
 
     /**

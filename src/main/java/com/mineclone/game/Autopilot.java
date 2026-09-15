@@ -36,6 +36,8 @@ final class Autopilot {
 
         void shot(String name);
 
+        void setMenuTime(float gameTime);
+
         /** Снимок заказан, но ещё не снят. */
         boolean shotPending();
 
@@ -73,34 +75,39 @@ final class Autopilot {
         switch (step) {
             // Снимок и переход никогда не в одном кадре: иначе на снимке
             // проступает первый кадр фейда следующего экрана.
-            case 0 -> after(2.5f, () -> d.shot("01-title"));
-            case 1 -> after(0.3f, () -> d.open(new WorldSelectScreen(d.save(), d.settings())));
-            case 2 -> after(0.8f, () -> d.shot("02-worlds"));
-            case 3 -> after(0.2f, () -> d.open(new WorldCreateScreen(d.save(), d.settings())));
-            case 4 -> after(0.8f, () -> d.shot("03-create"));
-            case 5 -> after(0.2f, () ->
+            case 0 -> after(2.5f, () -> d.setMenuTime((float) (Math.PI * 0.93)));
+            case 1 -> after(0.4f, () -> d.shot("00-title-dusk"));
+            case 2 -> after(0.1f, () -> d.setMenuTime((float) (Math.PI * 1.5)));
+            case 3 -> after(0.4f, () -> d.shot("00-title-night"));
+            case 4 -> after(0.1f, () -> d.setMenuTime(0.55f));
+            case 5 -> after(0.4f, () -> d.shot("01-title"));
+            case 6 -> after(0.3f, () -> d.open(new WorldSelectScreen(d.save(), d.settings())));
+            case 7 -> after(0.8f, () -> d.shot("02-worlds"));
+            case 8 -> after(0.2f, () -> d.open(new WorldCreateScreen(d.save(), d.settings())));
+            case 9 -> after(0.8f, () -> d.shot("03-create"));
+            case 10 -> after(0.2f, () ->
                     d.act(MenuAction.create(new WorldSettings("Автопилот", 20260915L, GameMode.SURVIVAL))));
-            case 6 -> {
+            case 11 -> {
                 if ("LOADING".equals(d.state()))
                     after(0.3f, () -> d.shot("04-loading"));
                 else if ("PLAYING".equals(d.state()))
                     next();   // загрузка успела пройти за один кадр — снимать нечего
             }
-            case 7 -> {
+            case 12 -> {
                 if ("PLAYING".equals(d.state()))
                     after(3f, () -> d.shot("05-play"));
                 else
                     stepClock = 0f;
             }
-            case 8 -> after(0.2f, d::pause);
-            case 9 -> after(1.0f, () -> d.shot("06-pause"));
-            case 10 -> after(0.2f, () -> d.open(new SettingsScreen(d.settings(), 0)));
-            case 11 -> after(0.8f, () -> d.shot("07-settings"));
-            case 12 -> after(0.2f, () -> d.open(new KeybindScreen(d.settings())));
-            case 13 -> after(0.8f, () -> d.shot("08-keys"));
-            case 14 -> after(0.2f, () -> d.act(MenuAction.of(MenuAction.Kind.MAIN_MENU)));
-            case 15 -> after(1.5f, () -> d.shot("09-title-continue"));
-            case 16 -> after(0.5f, () -> {
+            case 13 -> after(0.2f, d::pause);
+            case 14 -> after(1.0f, () -> d.shot("06-pause"));
+            case 15 -> after(0.2f, () -> d.open(new SettingsScreen(d.settings(), 0)));
+            case 16 -> after(0.8f, () -> d.shot("07-settings"));
+            case 17 -> after(0.2f, () -> d.open(new KeybindScreen(d.settings())));
+            case 18 -> after(0.8f, () -> d.shot("08-keys"));
+            case 19 -> after(0.2f, () -> d.act(MenuAction.of(MenuAction.Kind.MAIN_MENU)));
+            case 20 -> after(1.5f, () -> d.shot("09-title-continue"));
+            case 21 -> after(0.5f, () -> {
                 boolean icon = d.worldHasIcon();
                 System.out.println("autopilot: world icon " + (icon ? "saved" : "MISSING"));
                 d.quit(icon ? 0 : 1);

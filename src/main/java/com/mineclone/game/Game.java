@@ -78,6 +78,9 @@ public class Game {
     private PostProcess post;
     private final SceneLighting lighting = new SceneLighting();
     private final SkyRenderer.Dome skyDome = new SkyRenderer.Dome();
+    /** Палитра кадра игры и отдельная — фона меню: у них разное время суток. */
+    private final SkyPalette framePalette = new SkyPalette();
+    private final SkyPalette menuPalette = new SkyPalette();
     private final PostProcess.Settings postSettings = new PostProcess.Settings();
     private final FrustumIntersection shadowFrustum = new FrustumIntersection();
     private final Matrix4f scratchLight = new Matrix4f();
@@ -693,6 +696,7 @@ public class Game {
 
     private void updateMenu(float dt) {
         menuBackground.update(dt);
+        updateMenuMusic(dt);
         updateCommandToast(dt);
     }
 
@@ -846,6 +850,7 @@ public class Game {
         updateCommandToast(dt);
         // Экран загрузки стоит над живым фоном меню, а не над полусобранным миром.
         menuBackground.update(dt);
+        updateMenuMusic(dt);
         // На этом экране мир не рисуется, и кадру больше нечем заняться —
         // бюджеты подняты в разы. Это и делает загрузку быстрее, и позволяет
         // ждать большего радиуса, не удлиняя ожидание.
@@ -864,26 +869,6 @@ public class Game {
 
     private float computeDaylight() {
         return Math.max(0f, (float) Math.sin(gameTime));
-    }
-
-    private static Vector3f skyColor(float d) {
-        float[] night = { 0.02f, 0.03f, 0.08f };
-        float[] horizon = { 0.85f, 0.45f, 0.20f };
-        float[] day = { 0.55f, 0.75f, 0.95f };
-        float[] a, b;
-        float t;
-        if (d < 0.3f) {
-            a = night;
-            b = horizon;
-            t = d / 0.3f;
-        } else {
-            a = horizon;
-            b = day;
-            t = (d - 0.3f) / 0.7f;
-        }
-        return new Vector3f(a[0] + (b[0] - a[0]) * t,
-                a[1] + (b[1] - a[1]) * t,
-                a[2] + (b[2] - a[2]) * t);
     }
 
     private void updatePlaying(float dt) {
@@ -3238,11 +3223,6 @@ public class Game {
 
     // ---------------- rendering ----------------
 
-    private static Vector3f linear(Vector3f srgb) {
-        return new Vector3f((float) Math.pow(srgb.x, 2.2), (float) Math.pow(srgb.y, 2.2),
-                (float) Math.pow(srgb.z, 2.2));
-    }
-
     /** HDR-путь жив только если драйвер собрал плавающий буфер. */
     private boolean hdrActive() {
         return post != null && post.isReady();
@@ -3265,31 +3245,22 @@ public class Game {
         }
 
         // --- палитра кадра ---------------------------------------------------
+        // Та же функция рисует небо фона меню: две копии формулы спорили бы о
+        // цвете неба.
         float clouds = atmosphere.cloudiness;
-        Vector3f skySrgb = skyColor(daylight);
-        skySrgb.lerp(new Vector3f(0.32f, 0.36f, 0.42f).mul(0.15f + daylight * 0.85f), clouds * 0.62f);
-        Vector3f skyLin = linear(skySrgb);
-        Vector3f zenith  = new Vector3f(skyLin).mul(0.70f).add(0.000f, 0.004f, 0.024f);
-        Vector3f horizon = new Vector3f(skyLin).mul(1.32f);
-        Vector3f ground  = new Vector3f(skyLin).mul(0.30f).add(0.012f, 0.010f, 0.008f);
-
-        Vector3f sunDir   = SunLight.sunDirection(gameTime);
-        Vector3f lightDir = SunLight.lightDirection(gameTime);
-        // Ночью светит луна — и светит по фазе: в новолуние заметно темнее.
-        boolean moonUp = Math.sin(gameTime) <= 0.0;
-        float moonK = moonUp ? atmosphere.moonlight : 1f;
-        Vector3f lightCol = SunLight.lightColor(gameTime)
-                .mul((1f - clouds * 0.72f - atmosphere.storm * 0.10f) * moonK);
-        // Под тучами темнеет и рассеянный свет, не только солнце: иначе в грозу
-        // трава горит тем же дневным зелёным.
-        Vector3f skyAmb   = SunLight.skyAmbient(skyLin, daylight)
-                .mul(daylight + (1f - daylight) * (0.62f + 0.38f * atmosphere.moonlight))
-                .mul(1f - clouds * 0.12f - atmosphere.storm * 0.08f);
-        // Сияние чуть подкрашивает снег и землю под собой — иначе оно висит
-        // картинкой на небе, не касаясь мира.
-        skyAmb.add(0.006f * atmosphere.aurora, 0.034f * atmosphere.aurora, 0.018f * atmosphere.aurora);
-        Vector3f groundAmb = SunLight.groundAmbient(skyAmb);
-        Vector3f sunGlow  = new Vector3f(lightCol).mul(daylight > 0.02f ? 0.85f : 0.30f);
+        framePalette.compute(gameTime, daylight, clouds, atmosphere.storm, atmosphere.moonlight, atmosphere.aurora);
+        Vector3f skySrgb = framePalette.skySrgb;
+        Vector3f skyLin = framePalette.skyLin;
+        Vector3f zenith = framePalette.zenith;
+        Vector3f horizon = framePalette.horizon;
+        Vector3f ground = framePalette.ground;
+        Vector3f sunDir = framePalette.sunDir;
+        Vector3f lightDir = framePalette.lightDir;
+        float moonK = framePalette.moonK;
+        Vector3f lightCol = framePalette.lightCol;
+        Vector3f skyAmb = framePalette.skyAmb;
+        Vector3f groundAmb = framePalette.groundAmb;
+        Vector3f sunGlow = framePalette.sunGlow;
 
         boolean underwater = player.eyeInWater;
         float visibility = underwater ? 1f : atmosphere.visibility;
@@ -3298,8 +3269,8 @@ public class Game {
         float fogStart = underwater ? 2.5f : fogEnd * (0.10f + 0.42f * visibility);
         // Мгла ливня серо-синяя и тёмная, мгла метели — белёсая: снег сам
         // отражает свет, и белая мгла светлее неба над ней.
-        Vector3f rainHaze = linear(new Vector3f(0.40f, 0.44f, 0.50f));
-        Vector3f snowHaze = linear(new Vector3f(0.78f, 0.82f, 0.88f));
+        Vector3f rainHaze = SkyPalette.linear(new Vector3f(0.40f, 0.44f, 0.50f));
+        Vector3f snowHaze = SkyPalette.linear(new Vector3f(0.78f, 0.82f, 0.88f));
         Vector3f hazeCol = rainHaze.lerp(snowHaze, atmosphere.snow)
                 .mul(0.06f + 0.94f * Math.max(daylight, 0.05f) * moonK);
         float hazeMix = underwater ? 0f : Math.min(0.92f, (1f - visibility) * 1.15f);
@@ -3983,8 +3954,19 @@ public class Game {
             if (!m.dead && (m.type.hostile || m.isAngry()))
                 nearest = Math.min(nearest, m.position.distance(player.position));
         float moving = (float) Math.hypot(player.velocity.x, player.velocity.z);
-        var mix = com.mineclone.audio.AdaptiveMusic.mix(daylight,
-                player.health / Math.max(1f, Player.MAX_HEALTH), nearest, moving > 0.6f);
+        playMusic(dt, com.mineclone.audio.AdaptiveMusic.mix(daylight,
+                player.health / Math.max(1f, Player.MAX_HEALTH), nearest, moving > 0.6f));
+    }
+
+    /**
+     * Музыка меню — тот же адаптивный саундтрек, что в игре: спокойный, без
+     * угрозы, и ночью фона в нём просыпается бас. Громкость — ползунок музыки.
+     */
+    private void updateMenuMusic(float dt) {
+        playMusic(dt, com.mineclone.audio.AdaptiveMusic.mix(menuBackground.daylight(), 1f, 99f, true));
+    }
+
+    private void playMusic(float dt, com.mineclone.audio.AdaptiveMusic.Mix mix) {
         musicBeatTimer -= dt;
         if (musicBeatTimer > 0f) return;
         musicBeatTimer = 0.72f / mix.tempo();
@@ -4006,9 +3988,14 @@ public class Game {
      * и лучи считать не из чего.
      */
     private float[] sunScreenUv(Matrix4f proj, Matrix4f view, Vector3f sunDir, boolean underwater) {
-        if (underwater || shaderQuality < 1 || daylight < 0.04f || sunDir.y <= 0.02f)
+        return sunScreenUv(proj, view, player.camera.position, sunDir, daylight, underwater);
+    }
+
+    private float[] sunScreenUv(Matrix4f proj, Matrix4f view, Vector3f eye, Vector3f sunDir,
+                                float day, boolean underwater) {
+        if (underwater || shaderQuality < 1 || day < 0.04f || sunDir.y <= 0.02f)
             return null;
-        Vector3f p = new Vector3f(player.camera.position).add(new Vector3f(sunDir).mul(200f));
+        Vector3f p = new Vector3f(eye).add(new Vector3f(sunDir).mul(200f));
         Vector4f clip = new Matrix4f(proj).mul(view).transform(new Vector4f(p.x, p.y, p.z, 1f));
         if (clip.w <= 1e-4f)
             return null;
@@ -4144,46 +4131,86 @@ public class Game {
         glEnable(GL_CULL_FACE);
     }
 
-    /** Фон главного меню: фиксированный полдень, без теней. */
-    private SceneLighting menuLighting(boolean hdr) {
+    /**
+     * Свет фона меню — из той же палитры, что игра, по времени суток фона.
+     * Теней нет: карта теней снята с игрового мира, а не с фона.
+     */
+    private SceneLighting menuLighting(boolean hdr, SkyPalette p, float day) {
         SceneLighting l = new SceneLighting();
-        Vector3f sky = linear(new Vector3f(0.55f, 0.75f, 0.95f));
         l.camPos.set(menuBackground.cameraPosition());
-        l.lightDir.set(0.32f, 0.78f, -0.54f).normalize();
-        l.lightColor.set(1.20f, 1.14f, 1.02f);
-        l.skyLight.set(SunLight.skyAmbient(sky, 1f));
-        l.groundLight.set(SunLight.groundAmbient(l.skyLight));
+        l.lightDir.set(p.lightDir);
+        l.lightColor.set(p.lightCol);
+        l.skyLight.set(p.skyAmb);
+        l.groundLight.set(p.groundAmb);
         l.torchColor.set(1.55f, 0.88f, 0.42f);
-        l.ambientColor.set(0.035f, 0.040f, 0.060f);
-        l.fogColor.set(new Vector3f(sky).mul(1.32f));
-        l.fogSunColor.set(0.20f, 0.16f, 0.10f);
+        l.ambientColor.set(0.030f, 0.034f, 0.052f).mul(0.65f + 0.35f * day);
+        l.fogColor.set(p.horizon);
+        l.fogSunColor.set(p.lightCol).mul(0.22f);
         l.fogStart = MenuBackground.RADIUS * Chunk.SIZE_X * 0.55f;
         l.fogEnd = MenuBackground.RADIUS * Chunk.SIZE_X * 1.05f;
         l.brightness = 1f;
-        l.time = totalTime;
+        l.time = uiClock;
         l.linearOut = hdr ? 1f : 0f;
+        l.waterTint.set(0.34f, 0.66f, 0.92f);
         l.shadows = false;
         return l;
     }
 
+    /**
+     * Живой фон меню: купол неба и светила по суткам фона, мир, вода, пост.
+     * Тем же порядком, что кадр игры, — иначе меню и игра снова выглядели бы
+     * из разных игр.
+     */
     private void renderMenu(boolean hdr, int sw, int sh) {
-        Vector3f sky = new Vector3f(0.55f, 0.75f, 0.95f);
-        Vector3f skyLin = linear(sky);
+        MenuBackground bg = menuBackground;
+        float mt = bg.gameTime(), day = bg.daylight(), clouds = bg.cloudiness();
+        SkyPalette p = menuPalette;
+        p.compute(mt, day, clouds, bg.storm(), bg.moonlight(), bg.aurora());
+        Matrix4f proj = bg.projection(window.getAspect(), fovDegrees);
+        Matrix4f view = bg.view();
+        Vector3f eye = bg.cameraPosition();
+
         if (hdr) {
-            post.begin(skyLin.x, skyLin.y, skyLin.z);
+            post.begin(p.skyLin.x, p.skyLin.y, p.skyLin.z);
         } else {
-            glClearColor(sky.x, sky.y, sky.z, 1f);
+            glClearColor(p.skySrgb.x, p.skySrgb.y, p.skySrgb.z, 1f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         }
-        menuBackground.render(chunkShader, atlas, window.getAspect(), fovDegrees, menuLighting(hdr));
+        SkyRenderer.Dome dome = skyDome;
+        dome.zenith.set(p.zenith);
+        dome.horizon.set(p.horizon);
+        dome.ground.set(p.ground);
+        dome.sunGlow.set(p.sunGlow);
+        dome.lightDir.set(p.lightDir);
+        dome.cloudiness = clouds;
+        dome.aurora = bg.aurora();
+        dome.time = uiClock;
+        dome.haze.set(p.horizon);
+        dome.hazeMix = 0f;
+        dome.linearOut = hdr ? 1f : 0f;
+        skyRenderer.renderDome(new Matrix4f(proj).mul(view).invert(), dome);
+        glDepthMask(false);
+        skyRenderer.render(proj, view, eye, mt, day, uiClock, hdr ? 1f : 0f, bg.moonPhase(), clouds, 0f);
+        glDepthMask(true);
+
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        glDisable(GL_BLEND);
+        bg.renderWorld(chunkShader, waterShader, atlas, proj, view, menuLighting(hdr, p, day));
+
         if (hdr) {
-            postSettings.bloomStrength = shaderQuality >= 1 ? 0.35f : 0f;
+            boolean fancy = shaderQuality >= 1;
+            postSettings.bloomStrength = fancy ? 0.35f : 0f;
             postSettings.bloomThreshold = 1.1f;
-            postSettings.rayStrength = 0f;
+            postSettings.rayStrength = fancy ? 0.55f * day : 0f;
+            postSettings.rayDensity = 0.62f;
+            postSettings.rayDecay = 0.945f;
+            Vector3f rc = new Vector3f(p.lightCol);
+            float m = Math.max(0.001f, Math.max(rc.x, Math.max(rc.y, rc.z)));
+            postSettings.rayColor.set(rc.mul(1f / m));
             postSettings.exposure = 0.97f;
-            postSettings.vignette = 0.10f;
+            postSettings.vignette = 0.22f;
             postSettings.underwater = 0f;
-            postSettings.night = 0f;
+            postSettings.night = 1f - Math.min(1f, day * 3.2f);
             postSettings.saturation = 1.02f;
             // Настройки общие с игрой: туман, иней и размытие оттуда в меню не
             // должны доезжать.
@@ -4191,9 +4218,11 @@ public class Game {
             postSettings.fogHaze = 0f;
             postSettings.dofStrength = 0f;
             postSettings.frost = 0f;
+            postSettings.poison = 0f;
+            postSettings.stun = 0f;
             postSettings.damage = 0f;
             post.resolve();
-            post.render(postSettings, null);
+            post.render(postSettings, sunScreenUv(proj, view, eye, p.sunDir, day, false));
         }
         // Меню — такое же стекло, как HUD: размытый фон снимается до интерфейса.
         if (backdrop != null && ui != null) {
@@ -4526,6 +4555,11 @@ public class Game {
         @Override
         public void shot(String name) {
             pendingShot = name;
+        }
+
+        @Override
+        public void setMenuTime(float t) {
+            menuBackground.setGameTime(t);
         }
 
         @Override
