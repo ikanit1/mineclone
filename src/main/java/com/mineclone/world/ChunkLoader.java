@@ -10,7 +10,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -19,21 +22,74 @@ import java.util.concurrent.atomic.AtomicInteger;
  *   generated && neighbours generated  ->  MESH (bg)  ->  MeshData in ready queue
  *   main thread polls ready queue -> uploads to GPU
  *
- * Player edits stay synchronous (Game's dirty rebuild path).
+ * <p><b>Правки игрока идут этим же путём.</b> Раньше перестройка меша после
+ * удара по блоку шла синхронно в главном потоке: обход 32 768 ячеек чанка с
+ * расчётом AO на грань, до восьми чанков за кадр. Это и был главный источник
+ * фризов. Теперь правка — такая же задача меш-пула, только с приоритетом:
+ * очередь пула упорядочена по расстоянию до игрока, а правка идёт вперёд всех.
+ * Задержка в кадр-другой между ударом и исчезновением блока не читается —
+ * частицы, звук и снятие оверлея разрушения происходят немедленно.
  */
 public class ChunkLoader {
     public static final class Ready {
         public final long key;
         public final MeshData[] data;  // [0]=opaque, [1]=water
-        Ready(long key, MeshData[] data) { this.key = key; this.data = data; }
+        /**
+         * Поколение содержимого чанка, из которого построен этот меш. Главный
+         * поток по нему решает, не устарел ли меш и не пришёл ли он позже
+         * более свежего: меш-потоков несколько, и порядок возврата ничем не
+         * задан.
+         */
+        public final int version;
+
+        Ready(long key, MeshData[] data, int version) {
+            this.key = key;
+            this.data = data;
+            this.version = version;
+        }
     }
+
+    /**
+     * Задача меширования с приоритетом. {@link ThreadPoolExecutor} с
+     * {@link PriorityBlockingQueue} сравнивает сами Runnable, поэтому задача
+     * обязана быть Comparable — обёртка {@code submit()} в FutureTask таким
+     * не является, отсюда {@code execute()} и собственный тип.
+     */
+    private static final class MeshTask implements Runnable, Comparable<MeshTask> {
+        /** Меньше — раньше. Правка игрока получает отрицательный. */
+        final int priority;
+        final long seq;
+        final Runnable body;
+
+        MeshTask(int priority, long seq, Runnable body) {
+            this.priority = priority;
+            this.seq = seq;
+            this.body = body;
+        }
+
+        @Override public void run() { body.run(); }
+
+        @Override public int compareTo(MeshTask o) {
+            int c = Integer.compare(priority, o.priority);
+            // При равном приоритете — в порядке поступления: иначе очередь
+            // тасует равные задачи и ближний ряд чанков достраивается рвано.
+            return c != 0 ? c : Long.compare(seq, o.seq);
+        }
+    }
+
+    /** Приоритет правки игрока: раньше любого расстояния. */
+    private static final int EDIT_PRIORITY = -1;
 
     private final World world;
     private final ChunkMesher mesher;
     private final ExecutorService genPool;
-    private final ExecutorService meshPool;
+    private final ThreadPoolExecutor meshPool;
     private final com.mineclone.save.SaveManager save;
     private final String worldId;
+    private final AtomicInteger meshSeq = new AtomicInteger();
+
+    /** Чанк игрока — центр, от которого считается приоритет очереди. */
+    private volatile int centerX = 0, centerZ = 0;
 
     private final Set<Long> pendingGen  = ConcurrentHashMap.newKeySet();
     private final Set<Long> pendingMesh = ConcurrentHashMap.newKeySet();
@@ -49,7 +105,7 @@ public class ChunkLoader {
      * <p>
      * Set semantics (not Queue): when chunk C loads we also enqueue its 8
      * loaded neighbours so their emitters re-flood and reach C. Without
-     * dedup a chunk could appear up to 9× and we'd rescan its 32 768 cells
+     * dedup a chunk could appear up to 9× and we'd rescan its emitters
      * needlessly.
      */
     private final Set<Long> pendingLightFlood = ConcurrentHashMap.newKeySet();
@@ -60,8 +116,31 @@ public class ChunkLoader {
         this.mesher = mesher;
         this.save = save;
         this.worldId = worldId;
-        this.genPool  = Executors.newFixedThreadPool(2, daemon("mineclone-gen"));
-        this.meshPool = Executors.newFixedThreadPool(2, daemon("mineclone-mesh"));
+        // Пулы по числу ядер, а не жёсткие 2+2: на восьмиядерной машине
+        // прежние константы оставляли шесть ядер простаивать, пока игрок
+        // ждал загрузки чанков. Одно ядро всегда оставляем главному потоку.
+        int cores = Runtime.getRuntime().availableProcessors();
+        int meshThreads = Math.max(2, Math.min(6, cores - 1));
+        int genThreads  = Math.max(2, Math.min(4, cores / 2));
+        this.genPool  = Executors.newFixedThreadPool(genThreads, daemon("mineclone-gen"));
+        this.meshPool = new ThreadPoolExecutor(
+                meshThreads, meshThreads, 0L, TimeUnit.MILLISECONDS,
+                new PriorityBlockingQueue<>(64), daemon("mineclone-mesh"));
+    }
+
+    /**
+     * Куда сместился игрок. Очередь меширования упорядочена по расстоянию до
+     * этой точки: без неё дальний край радиуса обслуживался наравне с
+     * ближним, и игрок смотрел в дыру, пока достраивался горизонт.
+     */
+    public void setPriorityCenter(int cx, int cz) {
+        centerX = cx;
+        centerZ = cz;
+    }
+
+    private int distancePriority(int cx, int cz) {
+        int dx = cx - centerX, dz = cz - centerZ;
+        return dx * dx + dz * dz;
     }
 
     /** Schedule generation/meshing for chunks within radius of (pcx,pcz). */
@@ -74,7 +153,7 @@ public class ChunkLoader {
                     submitGen(cx, cz, k);
                 } else if (!pendingGen.contains(k) && !pendingLightFlood.contains(k)
                         && !meshed.contains(k) && !pendingMesh.contains(k)) {
-                    if (neighboursReady(cx, cz)) submitMesh(cx, cz, k);
+                    if (neighboursReady(cx, cz)) submitMesh(cx, cz, k, false);
                 }
             }
         }
@@ -100,6 +179,21 @@ public class ChunkLoader {
         return pendingLightFlood.contains(key);
     }
 
+    /** Сколько чанков ещё ждёт генерации — для прогресса загрузки. */
+    public int pendingGenCount() {
+        return pendingGen.size();
+    }
+
+    /** Сколько чанков ещё ждёт заливки света — для прогресса загрузки. */
+    public int pendingLightCount() {
+        return pendingLightFlood.size();
+    }
+
+    /** Сколько мешей строится или ждёт очереди — для прогресса загрузки. */
+    public int pendingMeshCount() {
+        return pendingMesh.size();
+    }
+
     /**
      * Apply any saved snapshot over an already-generated chunk: restore
      * blocks+meta, recompute chunk-local sky light, flag for remesh, and
@@ -110,9 +204,12 @@ public class ChunkLoader {
     public void applySnapshot(Chunk c) {
         com.mineclone.save.ChunkSnapshot snap = save.loadChunk(worldId, c.cx, c.cz);
         if (snap != null) {
+            // restore() сам пересобирает список излучателей и двигает версию.
             c.restore(snap.blocks, snap.meta);
+            c.restoreChests(snap.chests);
+            c.restoreFurnaces(snap.furnaces);
+            c.setPendingItems(snap.items);
             c.computeSkyLight();
-            c.dirty = true;
             c.modified = false;
         }
         // Always queue this chunk: flood its own emitters and inherit border light
@@ -130,19 +227,21 @@ public class ChunkLoader {
             long k = World.key(cx + d[0], cz + d[1]);
             Chunk n = world.getChunkIfExists(cx + d[0], cz + d[1]);
             if (n != null && meshed.contains(k))
-                n.dirty = true;
+                n.markDirty();
         }
     }
 
     /**
      * Drain restored chunks needing block-light emitter flood. MUST be called
      * from the main thread (Chunk.blockLight is single-writer per the engine's
-     * concurrency contract). For each queued chunk, scans every cell and
-     * floods light from any block with {@code emittedLight > 0} via
-     * {@link World#floodFillAdd}. Bounded by {@code maxPerFrame} chunks per
-     * call to keep the per-frame cost predictable when many saved chunks
-     * restore at once. floodFillAdd sets dirty on touched chunks, so the
-     * existing dirty-remesh path picks up the updated light next frame.
+     * concurrency contract).
+     * <p>
+     * Излучатели берутся из списка чанка, а не перебором всех его ячеек.
+     * Перебор стоил 32 768 чтений на чанк и до восьми чанков за кадр — четверть
+     * миллиона обращений в главном потоке ради поиска нескольких факелов.
+     * <p>
+     * floodFillAdd sets dirty on touched chunks, so the existing dirty-remesh
+     * path picks up the updated light next frame.
      */
     public void drainLightFlood(int maxPerFrame) {
         Iterator<Long> it = pendingLightFlood.iterator();
@@ -156,13 +255,14 @@ public class ChunkLoader {
             if (c == null) continue;
             int bx = cx * Chunk.SIZE_X;
             int bz = cz * Chunk.SIZE_Z;
-            for (int lx = 0; lx < Chunk.SIZE_X; lx++) {
-                for (int y = 0; y < Chunk.SIZE_Y; y++) {
-                    for (int lz = 0; lz < Chunk.SIZE_Z; lz++) {
-                        if (c.get(lx, y, lz).emittedLight > 0)
-                            world.floodFillAdd(bx + lx, y, bz + lz);
-                    }
-                }
+            for (int i = 0; i < c.emitterCount(); i++) {
+                int packed = c.emitterAt(i);
+                // Обратная распаковка Chunk.idx: (y * SIZE_Z + z) * SIZE_X + x.
+                int lx = packed % Chunk.SIZE_X;
+                int rest = packed / Chunk.SIZE_X;
+                int lz = rest % Chunk.SIZE_Z;
+                int y = rest / Chunk.SIZE_Z;
+                world.floodFillAdd(bx + lx, y, bz + lz);
             }
             // Inherit light from already-lit neighbours — re-flooding the
             // emitter in a neighbour doesn't work (BFS stops at cells that
@@ -183,30 +283,47 @@ public class ChunkLoader {
         });
     }
 
-    private void submitMesh(int cx, int cz, long key) {
-        if (!pendingMesh.add(key)) return;
-        meshPool.submit(() -> {
+    /**
+     * Ставит чанк в очередь на перестройку меша.
+     *
+     * @param edit правка игрока — идёт вперёд очереди из дальних чанков
+     * @return false, если задача уже в работе
+     */
+    public boolean submitMesh(int cx, int cz, long key, boolean edit) {
+        if (!pendingMesh.add(key)) return false;
+        int priority = edit ? EDIT_PRIORITY : distancePriority(cx, cz);
+        meshPool.execute(new MeshTask(priority, meshSeq.incrementAndGet(), () -> {
             try {
                 Chunk c = world.getChunkIfExists(cx, cz);
                 if (c == null) return;
+                // Версия снимается ДО постройки: меш описывает то состояние,
+                // которое было на входе. Изменится оно во время сборки —
+                // главный поток увидит расхождение и закажет ещё одну.
+                int version = c.contentVersion();
                 MeshData[] data = mesher.buildData(c);
-                ready.offer(new Ready(key, data));
+                ready.offer(new Ready(key, data, version));
                 meshed.add(key);
             } finally {
                 pendingMesh.remove(key);
             }
-        });
+        }));
+        return true;
     }
 
     /** Drains up to maxPerFrame finished mesh builds; main thread uploads them. */
     public List<Ready> drainReady(int maxPerFrame) {
-        List<Ready> out = new ArrayList<>(maxPerFrame);
+        List<Ready> out = new ArrayList<>(Math.min(maxPerFrame, 32));
         for (int i = 0; i < maxPerFrame; i++) {
             Ready r = ready.poll();
             if (r == null) break;
             out.add(r);
         }
         return out;
+    }
+
+    /** Есть ли что загружать на GPU — для бюджета кадра на экране загрузки. */
+    public boolean hasReady() {
+        return !ready.isEmpty();
     }
 
     /** Mark a chunk as remeshed via the sync (main-thread) path so we don't re-mesh it in the background. */

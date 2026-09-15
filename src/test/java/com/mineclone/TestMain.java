@@ -9,11 +9,28 @@ import com.mineclone.save.SaveManager;
 import com.mineclone.world.Biome;
 import com.mineclone.world.BiomeProvider;
 import com.mineclone.world.BlockType;
+import com.mineclone.world.BlockTicker;
+import com.mineclone.world.Caves;
 import com.mineclone.world.Chunk;
+import com.mineclone.world.entity.Mob;
+import com.mineclone.world.entity.MobSpawner;
+import com.mineclone.world.entity.MobType;
 import com.mineclone.world.GameMode;
 import com.mineclone.world.Inventory;
 import com.mineclone.world.ItemStack;
+import com.mineclone.world.Recipes;
+import com.mineclone.world.FoodType;
+import com.mineclone.world.ToolType;
+import com.mineclone.game.Player;
+import com.mineclone.game.Hud;
+import com.mineclone.render.PlayerRenderer;
+import com.mineclone.render.ShadowMap;
+import com.mineclone.render.SunLight;
 import com.mineclone.world.World;
+
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
+import org.joml.Vector4f;
 
 import java.util.EnumSet;
 
@@ -35,19 +52,105 @@ public final class TestMain {
     private static int failed = 0;
 
     public static void main(String[] args) {
+        run("a stale mesh never overwrites a fresher one", TestMain::testMeshVersionRejectsStale);
+        run("the emitter list tracks the blocks it describes", TestMain::testEmitterListMatchesChunk);
+        run("player edits jump the mesh queue ahead of distance", TestMain::testMeshPriorityOrder);
+        run("frame profiler keeps the worst frame, not the average", TestMain::testFrameProfilerWorst);
+        run("removing the last torch actually puts the light out", TestMain::testLastTorchGoesOut);
         run("World.key round-trips through (cx,cz)", TestMain::testWorldKeyRoundTrip);
         run("BlockType.byId guards out-of-range ids", TestMain::testByIdGuard);
         run("ItemStack clamps and stacks", TestMain::testItemStack);
         run("Inventory add merges then fills", TestMain::testInventoryAdd);
         run("Inventory removeOne empties slot", TestMain::testInventoryRemoveOne);
         run("Inventory left/right click stack ops", TestMain::testInventoryClick);
+        run("tools never stack and keep their own wear", TestMain::testToolStacks);
+        run("tool tier gates the drop, class gates the speed", TestMain::testToolGating);
+        run("tools wear out and vanish", TestMain::testToolWear);
+        run("crafting consumes exactly what the recipe says", TestMain::testCrafting);
+        run("every recipe is reachable and unambiguous", TestMain::testRecipeTable);
+        run("level.dat carries tools with their wear", TestMain::testToolSaveRoundTrip);
+        run("food stacks by kind and never with blocks", TestMain::testFoodStacks);
+        run("hunger drains, gates regen and stops short of killing",
+                TestMain::testHunger);
+        run("peaceful mobs drop meat, zombies drop nothing", TestMain::testMobDrops);
+        run("level.dat carries food and hunger", TestMain::testFoodSaveRoundTrip);
         run("new biome blocks registered", TestMain::testBiomeBlocks);
         run("level.dat save/load round-trip", TestMain::testLevelRoundTrip);
         run("Mob floats upward in water", TestMain::testMobBuoyancy);
+        run("Water drains, weakens and falls without sideways arms", TestMain::testWaterFlow);
+        run("Single water source cannot flood a stepped hillside", TestMain::testWaterSlope);
+        run("Water prefers nearest downhill outlet", TestMain::testWaterOutlet);
+        run("Weather cycle follows biome precipitation rules", TestMain::testWeather);
         run("Flight stop clears previous fall damage", TestMain::testFlightStopsFall);
         run("Mob animation moves at rest and settles after walking", TestMain::testMobAnimation);
         run("chunk save/load round-trip", TestMain::testChunkRoundTrip);
         run("options.dat save/load round-trip", TestMain::testOptionsRoundTrip);
+        run("sun light direction never grazes the horizon", TestMain::testSunLightDirection);
+        run("shadow strength fades across sunrise", TestMain::testShadowStrength);
+        run("shadow cascade covers its radius and snaps to texels",
+                TestMain::testShadowCascade);
+        run("lazy cascade rebuilds on age, camera turn and time jump",
+                TestMain::testCascadeStaleness);
+        run("caves carve a sane share of the underground", TestMain::testCavesCarveUnderground);
+        run("caves keep bedrock and the seabed intact", TestMain::testCavesKeepSeabedAndBedrock);
+        run("ores sit in their bands and in stone only", TestMain::testOreBandsAndHost);
+        run("world generation is deterministic per seed",
+                TestMain::testWorldGenerationDeterministic);
+        run("hostile spawn rule follows light, not the clock",
+                TestMain::testHostileSpawnLightRule);
+        run("structures appear, stay inside their chunk and repeat per seed",
+                TestMain::testStructures);
+        run("grass spreads onto bare dirt and dies when covered",
+                TestMain::testGrassTick);
+        run("orphaned leaves decay, supported ones stay", TestMain::testLeafDecay);
+        run("cactus grows up to its limit", TestMain::testCactusGrowth);
+        run("setBlock skips relighting when opacity is unchanged",
+                TestMain::testSetBlockSkipsRelight);
+        run("fire spreads along fuel and eats it", TestMain::testFireSpreadsAndConsumes);
+        run("fire without fuel burns out", TestMain::testFireDiesWithoutFuel);
+        run("water and rain put fire out, a roof saves it",
+                TestMain::testWaterAndRainExtinguishFire);
+        run("snow settles in the tundra, thickens and melts",
+                TestMain::testSnowAccumulation);
+        run("player stops striding when he stops walking",
+                TestMain::testPlayerWalkAmplitude);
+        run("hotbar selection spring starts and settles",
+                TestMain::testSelectSpring);
+        run("compass heading turns the right way", TestMain::testCompassHeading);
+        run("compass clock agrees with the sun", TestMain::testCompassClock);
+        run("A* walks around a wall instead of into it", TestMain::testPathAroundWall);
+        run("A* climbs a step and drops off a ledge", TestMain::testPathVertical);
+        run("A* refuses the impossible and stays cheap", TestMain::testPathLimits);
+        run("chasing zombie walks around a wall to the doorway",
+                TestMain::testZombieNavigatesWall);
+        run("zombies flank instead of queueing up", TestMain::testZombieFlanking);
+        run("scattered cows gather into a herd", TestMain::testHerding);
+        run("footprints hold, then fade out", TestMain::testDecalFade);
+        run("chest keeps its contents through a save", TestMain::testChestSaveRoundTrip);
+        run("breaking a chest forgets what was inside", TestMain::testChestLifecycle);
+        run("chest slots follow the same click rules as the inventory",
+                TestMain::testContainerClicks);
+        run("rivers are ribbons, not blotches", TestMain::testRiverShape);
+        run("rivers never cut canyons and never raise ground",
+                TestMain::testRiverCarveLimits);
+        run("generated world actually has fresh water", TestMain::testRiverInWorld);
+        run("furnace smelts, burns fuel and stops when full",
+                TestMain::testFurnaceSmelting);
+        run("furnace wastes no fuel and keeps state through a save",
+                TestMain::testFurnaceFuelAndSave);
+        run("cooking is worth the trouble", TestMain::testCookedFoodBalance);
+        run("sleep needs night and quiet, and wakes at dawn", TestMain::testSleepRules);
+        run("bedroll is craftable, layered and save-safe", TestMain::testBedroll);
+        run("bedroll meshes half a block tall", TestMain::testBedrollHeight);
+        run("cave ambience is rare and only underground", TestMain::testAmbientCave);
+        run("water and rain ambience take priority over the cave",
+                TestMain::testAmbientPriority);
+        run("every ambient cue has files behind it", TestMain::testAmbientAssets);
+        run("a cave sounds more enclosed than a field", TestMain::testAcousticProbe);
+        run("spatial sound grows smoothly while approaching", TestMain::testSpatialSoundGain);
+        run("behaviour tree picks branches by priority", TestMain::testBehaviorTree);
+        run("burning zombie runs for shade when there is any",
+                TestMain::testZombieSeeksShelter);
         run("atomic save leaves no .tmp files", TestMain::testNoTempLeftovers);
         run("save overwrite keeps old data on rewrite", TestMain::testOverwriteRoundTrip);
         run("biome params sane", TestMain::testBiomeParams);
@@ -84,8 +187,14 @@ public final class TestMain {
         run("Player ignores mob hits inside its window", TestMain::testPlayerInvulnWindow);
         run("Zombie burns at /time set day, not only at noon", TestMain::testZombieBurnsAtDay);
         run("Zombie needs line of sight to aggro", TestMain::testZombieLineOfSight);
+        run("Zombie has a blind spot behind it", TestMain::testSightCone);
+        run("walls muffle positional sound", TestMain::testSoundOcclusion);
+        run("darkness shortens the detection range", TestMain::testSightRangeByLight);
+        run("noise pulls a zombie to investigate, chase wins over noise",
+                TestMain::testHearingAndInvestigate);
         run("Dead mob lingers for the fall-over animation", TestMain::testMobDeathLinger);
         run("Player regen pauses after a hit", TestMain::testRegenPause);
+        FeatureTests.runAll((name, check) -> run(name, check::run));
 
         System.out.println();
         System.out.println("==== " + passed + " passed, " + failed + " failed ====");
@@ -184,7 +293,7 @@ public final class TestMain {
     private static void testOptionsRoundTrip() throws Exception {
         SaveManager sm = freshManager();
         Options in = new Options(8, 90, 0.7f, 0.5f, 144, false, true, false,
-                1.5f, true, 0.25f, 0.9f, 2);
+                1.5f, true, 0.25f, 0.9f, 2, 2);
         sm.saveOptions(in);
         Options out = sm.loadOptions();
         assertEq("renderRadius", 8, out.renderRadius);
@@ -194,6 +303,1562 @@ public final class TestMain {
         assertTrue("fullscreen", out.fullscreen);
         assertTrue("invertMouseY", out.invertMouseY);
         assertEq("guiScale", 2, out.guiScale);
+        assertEq("shaderQuality", 2, out.shaderQuality);
+    }
+
+    /**
+     * walkedDistance монотонен и на месте не убывает, поэтому размах шага
+     * обязан гаснуть отдельной амплитудой — иначе остановившийся игрок
+     * застывает с раскинутыми ногами.
+     */
+    private static void testPlayerWalkAmplitude() {
+        float mid = 0.62f;   // фаза, на которой синус заведомо не ноль
+        assertTrue("stride swings while walking",
+                Math.abs(PlayerRenderer.swingOf(mid, 1f)) > 0.1f);
+        assertTrue("stride is still at rest",
+                Math.abs(PlayerRenderer.swingOf(mid, 0f)) < 1e-6f);
+        assertTrue("amplitude scales the stride",
+                Math.abs(PlayerRenderer.swingOf(mid, 0.5f))
+                        < Math.abs(PlayerRenderer.swingOf(mid, 1f)));
+        // Амплитуда выше единицы не должна выкручивать ноги за предел.
+        assertTrue("amplitude is clamped",
+                Math.abs(PlayerRenderer.swingOf(mid, 5f) - PlayerRenderer.swingOf(mid, 1f)) < 1e-6f);
+    }
+
+    /**
+     * Пружина выделения слота обязана быть нулевой на концах: до
+     * переключения и после того, как анимация отыграла. Ненулевой хвост
+     * означает, что рамка навсегда останется смещённой.
+     */
+    private static void testSelectSpring() {
+        assertTrue("spring is at rest before the switch", Hud.selectSpring(0f) == 0f);
+        assertTrue("spring is at rest after it settles", Hud.selectSpring(1f) == 0f);
+        assertTrue("spring is at rest past the end", Hud.selectSpring(2f) == 0f);
+        float peak = 0f;
+        for (float t = 0.02f; t < 1f; t += 0.02f)
+            peak = Math.max(peak, Math.abs(Hud.selectSpring(t)));
+        assertTrue("spring actually moves (peak " + peak + ")", peak > 0.2f);
+        // Затухание: вторая половина анимации обязана быть тише первой.
+        assertTrue("spring decays", Math.abs(Hud.selectSpring(0.75f)) < Math.abs(Hud.selectSpring(0.2f)));
+    }
+
+    /**
+     * Лента компаса едет в ту же сторону, что и мир.
+     *
+     * Ошибка знака здесь не падает и не ломает кадр — компас просто врёт,
+     * и заметить это можно только заблудившись.
+     */
+    private static void testCompassHeading() {
+        // Камера при yaw = 0 смотрит в −Z, а солнце встаёт именно там, значит
+        // это восток: курс 90°.
+        assertTrue("yaw 0 looks east", Math.abs(Hud.heading(0f) - 90f) < 1e-3f);
+        assertTrue("quarter turn is a quarter of the dial",
+                Math.abs(Hud.heading((float) (Math.PI / 2.0)) - 180f) < 1e-3f);
+        assertTrue("heading never leaves the dial",
+                Hud.heading(-40f) >= 0f && Hud.heading(-40f) < 360f);
+
+        // Кратчайшая дуга: через ноль, а не длинным путём.
+        assertTrue("wraps forward", Math.abs(Hud.angleDelta(10f, 350f) - 20f) < 1e-3f);
+        assertTrue("wraps backward", Math.abs(Hud.angleDelta(350f, 10f) + 20f) < 1e-3f);
+        assertTrue("delta stays in range",
+                Math.abs(Hud.angleDelta(200f, 0f)) <= 180f);
+
+        // Повернулись направо — метки уехали влево, и наоборот.
+        float before = Hud.angleDelta(90f, Hud.heading(0f));
+        float after = Hud.angleDelta(90f, Hud.heading(0.3f));
+        assertTrue("marks slide against the turn (" + before + " -> " + after + ")",
+                after < before);
+    }
+
+    /**
+     * Часы на компасе и команда {@code /time} обязаны показывать одно и то же,
+     * а полдень обязан совпадать с верхней точкой солнца.
+     */
+    private static void testCompassClock() {
+        assertEq("noon", "12:00", Hud.clockText((float) (Math.PI / 2.0)));
+        assertEq("sunrise", "06:00", Hud.clockText(0f));
+        assertEq("sunset", "18:00", Hud.clockText((float) Math.PI));
+        assertEq("midnight", "00:00", Hud.clockText((float) (Math.PI * 1.5)));
+        // Отрицательное и переполненное время не должно ломать формат.
+        assertEq("wraps below zero", "00:00", Hud.clockText((float) (-Math.PI / 2.0)));
+        assertEq("wraps above a full turn", "12:00",
+                Hud.clockText((float) (Math.PI / 2.0 + Math.PI * 4.0)));
+        // Полдень по часам — это и максимум солнца.
+        assertTrue("noon is the sun's top",
+                com.mineclone.render.SunLight.sunDirection((float) (Math.PI / 2.0)).y > 0.999f);
+    }
+
+    // ---- Поиск пути ------------------------------------------------------
+
+    /** Рост моба в блоках для тестов пути. */
+    private static final int PATH_H = 2;
+    /**
+     * Границы пола в {@link #flatTestWorld()}: чанки −1..1, то есть блоки
+     * −16..31 по обеим осям. За этой рамкой блоков нет, стоять негде — и
+     * стена, перекрывающая полосу целиком, делит мир надвое по-настоящему.
+     */
+    private static final int FLOOR_MIN = -16, FLOOR_MAX = 31;
+
+    /** Стена во всю ширину пола поперёк оси Z, с проёмом в gapX. */
+    private static void wallAcross(World w, int z, int height, int gapX) {
+        for (int x = FLOOR_MIN; x <= FLOOR_MAX; x++) {
+            if (x == gapX)
+                continue;
+            for (int y = 11; y < 11 + height; y++)
+                w.setBlock(x, y, z, BlockType.STONE);
+        }
+    }
+
+    private static java.util.List<org.joml.Vector3f> path(World w,
+            int sx, int sy, int sz, int tx, int ty, int tz) {
+        return com.mineclone.world.entity.PathFinder.find(w, sx, sy, sz, tx, ty, tz, PATH_H);
+    }
+
+    private static void testPathAroundWall() {
+        World w = flatTestWorld();
+        wallAcross(w, 8, 3, 14);   // сплошная стена с единственным проёмом
+
+        var p = path(w, 5, 11, 4, 5, 11, 12);
+        assertTrue("path exists through the doorway", p != null && !p.isEmpty());
+        // Ни одна точка пути не должна оказаться внутри камня.
+        boolean usedGap = false;
+        for (var v : p) {
+            BlockType b = w.getBlock((int) Math.floor(v.x), (int) v.y, (int) Math.floor(v.z));
+            assertTrue("path stays out of solid blocks at " + v, !b.solid);
+            if (Math.floor(v.x) == 14 && Math.floor(v.z) == 8)
+                usedGap = true;
+        }
+        assertTrue("path goes through the only doorway", usedGap);
+        var last = p.get(p.size() - 1);
+        assertTrue("path ends at the goal",
+                Math.floor(last.x) == 5 && Math.floor(last.z) == 12);
+        // Крюк через проём длиннее прямой (8 шагов) минимум вдвое.
+        assertTrue("detour is longer than the straight line (" + p.size() + ")", p.size() >= 16);
+
+        // Замуровали проём — пути нет вовсе.
+        for (int y = 11; y < 14; y++)
+            w.setBlock(14, y, 8, BlockType.STONE);
+        assertTrue("no path through a sealed wall", path(w, 5, 11, 4, 5, 11, 12) == null);
+    }
+
+    private static void testPathVertical() {
+        World w = flatTestWorld();
+        // Помост в один блок: на него обязаны запрыгивать.
+        for (int x = 4; x <= 8; x++)
+            for (int z = 6; z <= 10; z++)
+                w.setBlock(x, 11, z, BlockType.STONE);
+
+        var up = path(w, 6, 11, 4, 6, 12, 8);
+        assertTrue("path climbs one block", up != null && !up.isEmpty());
+        assertEq("path ends on top of the step", 12f, up.get(up.size() - 1).y);
+
+        var down = path(w, 6, 12, 8, 6, 11, 4);
+        assertTrue("path drops off the ledge", down != null && !down.isEmpty());
+        assertEq("path ends at the bottom", 11f, down.get(down.size() - 1).y);
+
+        // Два блока — это стена, а не ступенька.
+        World w2 = flatTestWorld();
+        wallAcross(w2, 8, 2, Integer.MIN_VALUE);
+        assertTrue("two blocks is a wall, not a step", path(w2, 5, 11, 4, 5, 11, 12) == null);
+
+        // Прыжок под потолком запрещён: над собственной головой должно быть
+        // свободно. Потолок кладём везде, кроме объёма над помостом, — цель
+        // остаётся законной, а подпрыгнуть к ней неоткуда.
+        World w3 = flatTestWorld();
+        for (int x = 4; x <= 8; x++)
+            for (int z = 6; z <= 10; z++)
+                w3.setBlock(x, 11, z, BlockType.STONE);
+        for (int x = FLOOR_MIN; x <= FLOOR_MAX; x++)
+            for (int z = FLOOR_MIN; z <= FLOOR_MAX; z++) {
+                boolean overStep = x >= 4 && x <= 8 && z >= 6 && z <= 10;
+                if (!overStep)
+                    w3.setBlock(x, 13, z, BlockType.STONE);
+            }
+        assertTrue("the goal itself is still legal",
+                com.mineclone.world.entity.PathFinder.standable(w3, 6, 12, 8, PATH_H));
+        assertTrue("cannot jump with a ceiling overhead", path(w3, 6, 11, 4, 6, 12, 8) == null);
+    }
+
+    private static void testPathLimits() {
+        World w = flatTestWorld();
+        // Цель в воздухе без опоры — пути нет, а не бесконечный поиск.
+        assertTrue("no path to thin air", path(w, 5, 11, 5, 5, 60, 5) == null);
+
+        // Уже на месте — пустой путь, а не null и не шаг в никуда.
+        var here = path(w, 5, 11, 5, 5, 11, 5);
+        assertTrue("standing on the goal gives an empty path", here != null && here.isEmpty());
+
+        // Цель за краем пола недостижима, и поиск обязан сдаться быстро,
+        // а не перебирать всё вокруг.
+        long t0 = System.nanoTime();
+        var far = path(w, 0, 11, 0, 300, 11, 300);
+        long ms = (System.nanoTime() - t0) / 1_000_000L;
+        assertTrue("unreachable goal returns null", far == null);
+        assertTrue("search gives up instead of hanging (" + ms + " ms)", ms < 300);
+
+        // Упаковка ключа обязана пережить отрицательные координаты: молчаливая
+        // потеря знака здесь превращает путь в мусор без единой ошибки.
+        long k = com.mineclone.world.entity.PathFinder.key(-137, 64, -9001);
+        assertEq("key keeps x", -137, com.mineclone.world.entity.PathFinder.unpackX(k));
+        assertEq("key keeps y", 64, com.mineclone.world.entity.PathFinder.unpackY(k));
+        assertEq("key keeps z", -9001, com.mineclone.world.entity.PathFinder.unpackZ(k));
+    }
+
+    /**
+     * Зомби с маршрутом обязан обойти стену и дойти до игрока.
+     *
+     * Прямое наведение упирается в стену и топчется в ней до утра — ровно то
+     * поведение, ради которого заводился A*. Видимость здесь не при чём:
+     * состояние погони выставлено руками, восприятие проверяется отдельно.
+     */
+    private static void testZombieNavigatesWall() {
+        World w = flatTestWorld();
+        wallAcross(w, 8, 3, 14);          // единственный проём на x = 14
+
+        var player = new org.joml.Vector3f(5.5f, 11f, 12.5f);
+        var m = spawnAt(com.mineclone.world.entity.MobType.ZOMBIE, 5.5f, 11f, 4.5f, 7);
+        m.state = com.mineclone.world.entity.Mob.State.CHASE;
+
+        float best = Float.MAX_VALUE;
+        boolean crossed = false;
+        for (int i = 0; i < 20 * 45; i++) {          // 45 секунд при 20 Гц
+            m.update(w, player, 1f / 20f, 0f, true);
+            best = Math.min(best, m.position.distance(player));
+            if (m.position.z > 8.9f)
+                crossed = true;
+            if (best < 2f)
+                break;
+        }
+        assertTrue("zombie got past the wall", crossed);
+        assertTrue("zombie reached the player (closest " + best + ")", best < 2.5f);
+        assertTrue("zombie never walked into stone",
+                !w.getBlock((int) Math.floor(m.position.x), (int) Math.floor(m.position.y),
+                        (int) Math.floor(m.position.z)).solid);
+    }
+
+    /**
+     * Стая заходит с разных сторон, а не выстраивается в колонну.
+     *
+     * Сторона захода постоянна на всю жизнь моба: иначе стая дёргается, меняя
+     * направление каждую секунду, и выглядит хуже, чем без фланкирования.
+     */
+    private static void testZombieFlanking() {
+        boolean sawLeft = false, sawRight = false, sawStraight = false;
+        for (long seed = 0; seed < 24; seed++) {
+            int side = spawnAt(com.mineclone.world.entity.MobType.ZOMBIE,
+                    0.5f, 11f, 0.5f, seed).flankSide();
+            assertTrue("flank side stays in range", side >= -1 && side <= 1);
+            sawLeft |= side == -1;
+            sawRight |= side == 1;
+            sawStraight |= side == 0;
+        }
+        assertTrue("some zombies swing left", sawLeft);
+        assertTrue("some zombies swing right", sawRight);
+        assertTrue("some zombies come straight on", sawStraight);
+
+        // Заходящий сбоку уводит себя вбок от прямой, идущий в лоб — нет.
+        World w = flatTestWorld();
+        var player = new org.joml.Vector3f(5.5f, 11f, 25.5f);
+        float sideDrift = -1f, straightDrift = -1f;
+        for (long seed = 0; seed < 24 && (sideDrift < 0f || straightDrift < 0f); seed++) {
+            var m = spawnAt(com.mineclone.world.entity.MobType.ZOMBIE, 5.5f, 11f, 5.5f, seed);
+            m.state = com.mineclone.world.entity.Mob.State.CHASE;
+            for (int i = 0; i < 20 * 4; i++)
+                m.update(w, player, 1f / 20f, 0f, true);
+            float drift = Math.abs(m.position.x - 5.5f);
+            if (m.flankSide() != 0 && sideDrift < 0f)
+                sideDrift = drift;
+            if (m.flankSide() == 0 && straightDrift < 0f)
+                straightDrift = drift;
+        }
+        assertTrue("a flanking zombie leaves the straight line (" + sideDrift + ")",
+                sideDrift > 0.8f);
+        assertTrue("a head-on zombie keeps the straight line (" + straightDrift + ")",
+                straightDrift >= 0f && straightDrift < 0.4f);
+    }
+
+    /**
+     * Разбредённое стадо обязано собираться, но не схлопываться в точку.
+     *
+     * Без тяги к своим мирные мобы расползаются случайным блужданием и через
+     * пару минут стадо превращается в одиночек по всей карте.
+     */
+    private static void testHerding() {
+        World w = flatTestWorld();
+        var far = new org.joml.Vector3f(300f, 11f, 300f);   // игрока рядом нет
+        java.util.List<com.mineclone.world.entity.Mob> herd = new java.util.ArrayList<>();
+        for (int i = 0; i < 6; i++)
+            herd.add(spawnAt(com.mineclone.world.entity.MobType.COW,
+                    8.5f + (i % 3) * 7f, 11f, 8.5f + (i / 3) * 7f, 40 + i));
+
+        float before = herdSpread(herd);
+        for (int i = 0; i < 20 * 90; i++) {
+            com.mineclone.world.entity.MobHerd.update(herd);
+            for (var m : herd)
+                m.update(w, far, 1f / 20f, 0f, false);
+        }
+        float after = herdSpread(herd);
+        assertTrue("herd tightens up (" + before + " -> " + after + ")", after < before);
+        assertTrue("herd does not collapse into one point (" + after + ")", after > 0.4f);
+
+        // Зомби в стадо не входит: тяга к своим считается по виду.
+        var lone = spawnAt(com.mineclone.world.entity.MobType.ZOMBIE, 8.5f, 11f, 8.5f, 3);
+        herd.add(lone);
+        com.mineclone.world.entity.MobHerd.update(herd);
+        assertEq("a zombie has no herd", 0f, lone.herdDistance());
+
+        // Одинокая корова тоже без стада — тянуть её некуда.
+        var solo = java.util.List.of(
+                spawnAt(com.mineclone.world.entity.MobType.COW, 0.5f, 11f, 0.5f, 9));
+        com.mineclone.world.entity.MobHerd.update(solo);
+        assertEq("a single cow has no herd", 0f, solo.get(0).herdDistance());
+    }
+
+    /** Средний разброс стада относительно его центра. */
+    private static float herdSpread(java.util.List<com.mineclone.world.entity.Mob> herd) {
+        float cx = 0f, cz = 0f;
+        for (var m : herd) {
+            cx += m.position.x;
+            cz += m.position.z;
+        }
+        cx /= herd.size();
+        cz /= herd.size();
+        float sum = 0f;
+        for (var m : herd)
+            sum += (float) Math.hypot(m.position.x - cx, m.position.z - cz);
+        return sum / herd.size();
+    }
+
+    /**
+     * Селектор берёт первую непровалившуюся ветку, последовательность —
+     * останавливается на первой неудаче. Порядок веток в дереве зомби и есть
+     * правило игры, поэтому комбинаторы обязаны быть проверены отдельно.
+     */
+    private static void testBehaviorTree() {
+        var log = new StringBuilder();
+        com.mineclone.world.entity.Behavior fail = (m, c) -> {
+            log.append('f');
+            return com.mineclone.world.entity.Behavior.Status.FAILURE;
+        };
+        com.mineclone.world.entity.Behavior ok = (m, c) -> {
+            log.append('o');
+            return com.mineclone.world.entity.Behavior.Status.SUCCESS;
+        };
+        com.mineclone.world.entity.Behavior running = (m, c) -> {
+            log.append('r');
+            return com.mineclone.world.entity.Behavior.Status.RUNNING;
+        };
+
+        assertEq("selector takes the first branch that works",
+                com.mineclone.world.entity.Behavior.Status.SUCCESS,
+                com.mineclone.world.entity.Behavior.selector(fail, ok, ok).tick(null, null));
+        assertEq("selector stopped right after the first success", "fo", log.toString());
+
+        log.setLength(0);
+        assertEq("selector fails when every branch fails",
+                com.mineclone.world.entity.Behavior.Status.FAILURE,
+                com.mineclone.world.entity.Behavior.selector(fail, fail).tick(null, null));
+
+        log.setLength(0);
+        assertEq("RUNNING also stops the selector",
+                com.mineclone.world.entity.Behavior.Status.RUNNING,
+                com.mineclone.world.entity.Behavior.selector(running, ok).tick(null, null));
+        assertEq("nothing ran after RUNNING", "r", log.toString());
+
+        log.setLength(0);
+        assertEq("sequence stops on the first failure",
+                com.mineclone.world.entity.Behavior.Status.FAILURE,
+                com.mineclone.world.entity.Behavior.sequence(ok, fail, ok).tick(null, null));
+        assertEq("sequence did not run past the failure", "of", log.toString());
+
+        assertEq("check turns a false condition into FAILURE",
+                com.mineclone.world.entity.Behavior.Status.FAILURE,
+                com.mineclone.world.entity.Behavior.check((m, c) -> false).tick(null, null));
+    }
+
+    /**
+     * Горящий зомби бежит в тень, если она есть, и продолжает погоню, если её
+     * нет. Ветка укрытия стоит в дереве выше погони — но проваливается там,
+     * где бежать некуда, иначе зомби в чистом поле застыл бы столбом.
+     */
+    private static void testZombieSeeksShelter() {
+        // Крыша на y=15 над пятачком рядом с зомби.
+        World roofed = flatTestWorld();
+        for (int x = 20; x <= 25; x++)
+            for (int z = 6; z <= 14; z++)
+                roofed.setBlock(x, 15, z, BlockType.STONE);
+
+        var player = new org.joml.Vector3f(10.5f, 11f, 10.5f);
+        var m = spawnAt(com.mineclone.world.entity.MobType.ZOMBIE, 16.5f, 11f, 10.5f, 5);
+        m.state = com.mineclone.world.entity.Mob.State.CHASE;
+        boolean ranForShade = false;
+        for (int i = 0; i < 20 * 20; i++) {
+            m.update(roofed, player, 1f / 20f, 1f, true);   // daylight = полдень
+            if (m.state == com.mineclone.world.entity.Mob.State.SEEK_SHELTER)
+                ranForShade = true;
+        }
+        assertTrue("zombie broke off the chase for shade", ranForShade);
+        assertTrue("zombie ended up under the roof (x=" + m.position.x + ")",
+                m.position.x >= 20f);
+        assertTrue("zombie stopped burning", !m.burning);
+        assertTrue("shade saved it from dying (" + m.health + ")", m.health > 0f);
+
+        // Чистое поле: прятаться негде, ветка обязана провалиться.
+        World open = flatTestWorld();
+        var m2 = spawnAt(com.mineclone.world.entity.MobType.ZOMBIE, 16.5f, 11f, 10.5f, 5);
+        m2.state = com.mineclone.world.entity.Mob.State.CHASE;
+        float startDist = m2.position.distance(player);
+        for (int i = 0; i < 20 * 6; i++)
+            m2.update(open, player, 1f / 20f, 1f, true);
+        assertTrue("no shade means no shelter state",
+                m2.state != com.mineclone.world.entity.Mob.State.SEEK_SHELTER);
+        assertTrue("it keeps chasing instead of freezing",
+                m2.position.distance(player) < startDist - 1f);
+        assertTrue("and it does burn in the open", m2.health < m2.type.maxHealth);
+    }
+
+    /**
+     * След держится ровным, пока не начнёт таять, и уходит в ноль.
+     *
+     * Затухание с первой же секунды выглядит как мерцание: дорожка за игроком
+     * должна лежать, а не пульсировать.
+     */
+    private static void testDecalFade() {
+        assertEq("fresh print is solid", 1f,
+                com.mineclone.render.DecalRenderer.fade(10f, 10f));
+        assertEq("still solid past the middle", 1f,
+                com.mineclone.render.DecalRenderer.fade(5f, 10f));
+        assertTrue("fades in the tail",
+                com.mineclone.render.DecalRenderer.fade(2f, 10f) < 1f);
+        assertEq("gone at the end", 0f,
+                com.mineclone.render.DecalRenderer.fade(0f, 10f));
+        assertTrue("fade never leaves 0..1",
+                com.mineclone.render.DecalRenderer.fade(-1f, 10f) == 0f
+                        && com.mineclone.render.DecalRenderer.fade(20f, 10f) == 1f);
+        assertEq("a zero-life print is invisible, not a division by zero", 0f,
+                com.mineclone.render.DecalRenderer.fade(1f, 0f));
+    }
+
+    // ---- Сундуки ---------------------------------------------------------
+
+    private static void testChestSaveRoundTrip() throws Exception {
+        SaveManager sm = freshManager();
+        byte[] blocks = new byte[com.mineclone.save.SaveFormat.CHUNK_VOLUME];
+        byte[] meta = new byte[com.mineclone.save.SaveFormat.CHUNK_VOLUME];
+        int key = Chunk.idx(3, 40, 7);
+        blocks[key] = (byte) BlockType.CHEST.ordinal();
+
+        ItemStack[] slots = new ItemStack[Chunk.CHEST_SLOTS];
+        slots[0] = new ItemStack(BlockType.COBBLE, 41);
+        slots[5] = new ItemStack(ToolType.IRON_PICKAXE);
+        slots[5].damage = 77;
+        slots[26] = new ItemStack(FoodType.RAW_PORK, 3);
+        var chests = new java.util.HashMap<Integer, ItemStack[]>();
+        chests.put(key, slots);
+
+        sm.saveChunkAsync("w1", new ChunkSnapshot(1, -2, blocks, meta, chests));
+        sm.flushAndAwait();
+        ChunkSnapshot out = sm.loadChunk("w1", 1, -2);
+        assertTrue("chunk loaded", out != null);
+        ItemStack[] back = out.chests.get(key);
+        assertTrue("chest came back", back != null);
+        assertEq("slot count survived", Chunk.CHEST_SLOTS, back.length);
+        assertEq("blocks survived", BlockType.COBBLE, back[0].type);
+        assertEq("count survived", 41, back[0].count);
+        assertTrue("tool survived", back[5] != null && back[5].isTool());
+        assertEq("tool wear survived", 77, back[5].damage);
+        assertTrue("food survived", back[26] != null && back[26].isFood());
+        assertTrue("empty slots stayed empty", back[1] == null);
+
+        // Чанк без сундуков сохраняется и читается как раньше.
+        sm.saveChunkAsync("w1", new ChunkSnapshot(4, 4, blocks, meta));
+        sm.flushAndAwait();
+        ChunkSnapshot plain = sm.loadChunk("w1", 4, 4);
+        assertTrue("chunk without chests still loads", plain != null);
+        assertTrue("and has no chests", plain.chests.isEmpty());
+    }
+
+    private static void testChestLifecycle() {
+        World w = flatTestWorld();
+        w.setBlock(4, 11, 4, BlockType.CHEST);
+        ItemStack[] slots = w.createChest(4, 11, 4);
+        assertTrue("chest created", slots != null);
+        assertEq("chest is empty at first", Chunk.CHEST_SLOTS, slots.length);
+        slots[0] = new ItemStack(BlockType.DIAMOND_ORE, 5);
+
+        // Повторное открытие отдаёт тот же массив, а не новый.
+        assertTrue("reopening gives the same storage", w.createChest(4, 11, 4) == slots);
+        assertEq("contents kept", 5, w.getChest(4, 11, 4)[0].count);
+
+        // Сломали — содержимое забыто. Иначе оно всплывёт у следующего
+        // сундука, поставленного на то же место.
+        w.setBlock(4, 11, 4, BlockType.AIR);
+        assertTrue("storage is gone with the block", w.getChest(4, 11, 4) == null);
+        w.setBlock(4, 11, 4, BlockType.CHEST);
+        ItemStack[] fresh = w.createChest(4, 11, 4);
+        assertTrue("a new chest starts empty", fresh[0] == null);
+
+        // Замена сундука сундуком ничего не теряет: блок тот же.
+        fresh[1] = new ItemStack(BlockType.STONE, 2);
+        w.setBlock(4, 11, 4, BlockType.CHEST);
+        assertTrue("setting the same block keeps the storage",
+                w.getChest(4, 11, 4) != null && w.getChest(4, 11, 4)[1] != null);
+    }
+
+    /**
+     * Сундук обязан вести себя ровно как инвентарь: те же правила слияния,
+     * дележа правой кнопкой и обмена. Вторая копия этих правил разошлась бы
+     * с первой, и игрок обнаружил бы разницу в самый неподходящий момент.
+     */
+    private static void testContainerClicks() {
+        ItemStack[] box = new ItemStack[Chunk.CHEST_SLOTS];
+        box[0] = new ItemStack(BlockType.COBBLE, 10);
+
+        // Левой без курсора — забрать всё.
+        ItemStack cursor = Inventory.leftClick(box, 0, null);
+        assertTrue("picked the stack up", cursor != null && cursor.count == 10);
+        assertTrue("slot is empty now", box[0] == null);
+
+        // Левой в пустой слот — положить всё.
+        cursor = Inventory.leftClick(box, 3, cursor);
+        assertTrue("cursor is empty", cursor == null);
+        assertEq("stack landed", 10, box[3].count);
+
+        // Правой без курсора — половина вверх.
+        cursor = Inventory.rightClick(box, 3, null);
+        assertEq("took half", 5, cursor.count);
+        assertEq("half stayed", 5, box[3].count);
+
+        // Правой по своей же стопке — по одному вниз.
+        cursor = Inventory.rightClick(box, 3, cursor);
+        assertEq("dropped one", 6, box[3].count);
+        assertEq("four left on the cursor", 4, cursor.count);
+
+        // Инструмент не делится.
+        box[7] = new ItemStack(ToolType.STONE_AXE);
+        ItemStack tool = Inventory.rightClick(box, 7, null);
+        assertTrue("a tool comes whole", tool != null && tool.isTool());
+        assertTrue("its slot is empty", box[7] == null);
+
+        // Выход за границы массива ничего не портит.
+        ItemStack held = new ItemStack(BlockType.SAND, 1);
+        assertTrue("out of range is a no-op", Inventory.leftClick(box, 99, held) == held);
+        assertTrue("null array is a no-op", Inventory.leftClick(null, 0, held) == held);
+    }
+
+    // ---- Реки и озёра ----------------------------------------------------
+
+    private static void testRiverShape() {
+        var r = new com.mineclone.world.Rivers(4242L);
+        // Русло — узкая лента. Меряем не маску, а результат: сколько низин
+        // вдоль длинной прямой действительно уходит под воду. Маска шире
+        // русла намеренно — по ней размыв ещё затухает с высотой.
+        int sea = World.SEA_LEVEL;
+        int hits = 0, n = 0;
+        for (int x = -3000; x < 3000; x += 3) {
+            n++;
+            if (r.carve(x, 517, sea + 2, sea) < sea)
+                hits++;
+        }
+        float share = hits / (float) n;
+        assertTrue("rivers flood a small share of the lowlands (" + share + ")",
+                share > 0.01f && share < 0.20f);
+
+        // Лента непрерывна: попав в русло, соседняя точка тоже в нём.
+        int streak = 0, bestStreak = 0;
+        for (int x = -3000; x < 3000; x++) {
+            if (r.riverStrength(x, 517) > 0.5f) {
+                streak++;
+                bestStreak = Math.max(bestStreak, streak);
+            } else {
+                streak = 0;
+            }
+        }
+        assertTrue("a river is wider than one block (" + bestStreak + ")", bestStreak >= 3);
+
+        // Сид решает всё: другой сид — другие русла.
+        var other = new com.mineclone.world.Rivers(777L);
+        boolean differs = false;
+        for (int x = 0; x < 400 && !differs; x++)
+            differs = Math.abs(r.riverStrength(x, 40) - other.riverStrength(x, 40)) > 0.2f;
+        assertTrue("a different seed gives different rivers", differs);
+        assertEq("same seed is reproducible", r.riverStrength(123, 456),
+                new com.mineclone.world.Rivers(4242L).riverStrength(123, 456));
+    }
+
+    private static void testRiverCarveLimits() {
+        var r = new com.mineclone.world.Rivers(4242L);
+        int sea = World.SEA_LEVEL;
+        for (int x = -900; x < 900; x += 7)
+            for (int z = -400; z < 400; z += 11) {
+                // Размыв никогда не поднимает рельеф.
+                for (int h : new int[] { sea - 8, sea, sea + 3, sea + 12, sea + 40 }) {
+                    int out = r.carve(x, z, h, sea);
+                    assertTrue("carve never raises ground", out <= h);
+                    assertTrue("carve never digs below the river bed",
+                            out >= Math.min(h, sea - com.mineclone.world.Rivers.LAKE_DEPTH));
+                }
+                // Горы рекой не режутся: иначе получается отвесный каньон.
+                int high = sea + 40;
+                assertEq("mountains keep their height", high, r.carve(x, z, high, sea));
+                // Дно океана трогать незачем — оно уже ниже русла.
+                int deep = sea - 20;
+                assertEq("the sea floor is left alone", deep, r.carve(x, z, deep, sea));
+            }
+    }
+
+    private static void testRiverInWorld() {
+        World w = new World(1337L);
+        int water = 0, land = 0, cliffs = 0;
+        for (int cx = -2; cx <= 2; cx++)
+            for (int cz = -2; cz <= 2; cz++) {
+                Chunk c = w.getChunk(cx, cz);
+                for (int x = 0; x < Chunk.SIZE_X; x++)
+                    for (int z = 0; z < Chunk.SIZE_Z; z++) {
+                        int wx = cx * Chunk.SIZE_X + x, wz = cz * Chunk.SIZE_Z + z;
+                        boolean river = w.rivers.riverStrength(wx, wz) > 0.8f
+                                || w.rivers.lakeStrength(wx, wz) > 0.8f;
+                        BlockType top = c.get(x, World.SEA_LEVEL, z);
+                        if (!river)
+                            continue;
+                        if (top == BlockType.WATER)
+                            water++;
+                        else
+                            land++;
+                        // Рядом с руслом не должно быть отвесной стены: это
+                        // ровно тот каньон, ради которого заведено затухание
+                        // размыва по высоте.
+                        if (top == BlockType.WATER && c.get(x, World.SEA_LEVEL + 9, z) != BlockType.AIR)
+                            cliffs++;
+                    }
+            }
+        assertTrue("the river mask puts water on the ground (" + water + "/" + (water + land) + ")",
+                water > (water + land) / 4);
+        assertTrue("no canyon walls beside the water (" + cliffs + ")", cliffs == 0);
+    }
+
+    // ---- Печь ------------------------------------------------------------
+
+    private static void testFurnaceSmelting() {
+        var f = new com.mineclone.world.Furnace();
+        f.input = new ItemStack(FoodType.RAW_BEEF, 3);
+        f.fuel = new ItemStack(BlockType.COAL_ORE, 1);
+
+        // Первый же тик поджигает печь и съедает единицу топлива.
+        assertTrue("lighting the furnace changes the slots", f.tick(0.1f));
+        assertTrue("furnace is lit", f.isLit());
+        assertTrue("fuel was consumed", f.fuel == null);
+
+        // Одна переплавка — ровно COOK_TIME секунд.
+        float cookTime = com.mineclone.world.Smelting.COOK_TIME;
+        stepFurnace(f, cookTime - 0.2f, 0.1f);
+        assertTrue("nothing is done early", f.output == null);
+        stepFurnace(f, 0.4f, 0.1f);
+        assertTrue("one item came out", f.output != null && f.output.isFood());
+        assertEq("and it is cooked", FoodType.COOKED_BEEF, f.output.food);
+        assertEq("one went in", 2, f.input.count);
+
+        // Уголь тянет восемь переплавок — трёх кусков ему хватит с запасом.
+        stepFurnace(f, cookTime * 2.2f, 0.1f);
+        assertTrue("the rest got cooked too", f.input == null);
+        assertEq("three cooked in total", 3, f.output.count);
+
+        // Пустая печь не жжёт топливо.
+        f.fuel = new ItemStack(BlockType.PLANKS, 4);
+        f.burnLeft = 0f;
+        stepFurnace(f, 5f, 0.1f);
+        assertEq("idle furnace keeps its fuel", 4, f.fuel.count);
+        assertTrue("and stays cold", !f.isLit());
+    }
+
+    private static void testFurnaceFuelAndSave() throws Exception {
+        // Полный выходной слот останавливает печь: иначе результат исчезает.
+        var f = new com.mineclone.world.Furnace();
+        f.input = new ItemStack(BlockType.SAND, 10);
+        f.fuel = new ItemStack(BlockType.COAL_ORE, 5);
+        f.output = new ItemStack(BlockType.GLASS, ItemStack.MAX_STACK);
+        stepFurnace(f, 30f, 0.25f);
+        assertEq("a full output stops the furnace", ItemStack.MAX_STACK, f.output.count);
+        assertEq("nothing was smelted", 10, f.input.count);
+        assertEq("and no fuel was spent", 5, f.fuel.count);
+
+        // Несовместимый результат тоже останавливает: стекло и камень не
+        // ложатся в одну стопку.
+        f.output = new ItemStack(BlockType.STONE, 1);
+        stepFurnace(f, 30f, 0.25f);
+        assertEq("mismatched output blocks smelting", 10, f.input.count);
+
+        // Что не плавится — не плавится.
+        var idle = new com.mineclone.world.Furnace();
+        idle.input = new ItemStack(BlockType.DIRT, 5);
+        idle.fuel = new ItemStack(BlockType.COAL_ORE, 1);
+        stepFurnace(idle, 30f, 0.25f);
+        assertTrue("dirt does not smelt", idle.output == null);
+        assertEq("and burns no coal", 1, idle.fuel.count);
+        assertTrue("tools are not fuel",
+                !com.mineclone.world.Smelting.isFuel(new ItemStack(ToolType.WOOD_AXE)));
+        assertTrue("cooked meat does not cook twice",
+                com.mineclone.world.Smelting.result(new ItemStack(FoodType.COOKED_BEEF, 1)) == null);
+
+        // Состояние переживает сохранение чанка.
+        SaveManager sm = freshManager();
+        byte[] blocks = new byte[com.mineclone.save.SaveFormat.CHUNK_VOLUME];
+        byte[] meta = new byte[com.mineclone.save.SaveFormat.CHUNK_VOLUME];
+        int key = Chunk.idx(2, 30, 9);
+        var hot = new com.mineclone.world.Furnace();
+        hot.input = new ItemStack(BlockType.COBBLE, 7);
+        hot.fuel = new ItemStack(BlockType.WOOD, 2);
+        hot.output = new ItemStack(BlockType.STONE, 4);
+        hot.burnLeft = 3.5f;
+        hot.burnMax = 12f;
+        hot.cook = 2.25f;
+        var map = new java.util.HashMap<Integer, com.mineclone.world.Furnace>();
+        map.put(key, hot);
+        sm.saveChunkAsync("w1", new ChunkSnapshot(0, 0, blocks, meta,
+                new java.util.HashMap<>(), map));
+        sm.flushAndAwait();
+        ChunkSnapshot out = sm.loadChunk("w1", 0, 0);
+        assertTrue("chunk loaded", out != null);
+        var back = out.furnaces.get(key);
+        assertTrue("furnace came back", back != null);
+        assertEq("input survived", 7, back.input.count);
+        assertEq("fuel survived", BlockType.WOOD, back.fuel.type);
+        assertEq("output survived", 4, back.output.count);
+        assertTrue("burn survived", Math.abs(back.burnLeft - 3.5f) < 1e-4f);
+        assertTrue("progress survived", Math.abs(back.cook - 2.25f) < 1e-4f);
+    }
+
+    /**
+     * Жарить должно быть выгодно. Если жареное не сытнее сырого, печь — это
+     * механика, которая просто тратит время игрока.
+     */
+    private static void testCookedFoodBalance() {
+        assertTrue("beef is worth cooking",
+                FoodType.COOKED_BEEF.nutrition > FoodType.RAW_BEEF.nutrition);
+        assertTrue("pork is worth cooking",
+                FoodType.COOKED_PORK.nutrition > FoodType.RAW_PORK.nutrition);
+        assertTrue("chicken is worth cooking",
+                FoodType.COOKED_CHICKEN.nutrition > FoodType.RAW_CHICKEN.nutrition);
+        assertTrue("mutton is worth cooking",
+                FoodType.COOKED_MUTTON.nutrition > FoodType.RAW_MUTTON.nutrition);
+        // Каждый сырой кусок обязан иметь жареную пару, иначе часть добычи
+        // становится бессмысленной.
+        for (FoodType t : FoodType.VALUES)
+            if (t.name().startsWith("RAW_"))
+                assertTrue("there is a cooked form of " + t,
+                        com.mineclone.world.Smelting.result(new ItemStack(t, 1)) != null);
+    }
+
+    private static void stepFurnace(com.mineclone.world.Furnace f, float seconds, float dt) {
+        for (float t = 0; t < seconds; t += dt)
+            f.tick(dt);
+    }
+
+    // ---- Фоновая атмосфера -----------------------------------------------
+
+    private static com.mineclone.audio.AmbientSound ambient(long seed) {
+        return new com.mineclone.audio.AmbientSound(new java.util.Random(seed));
+    }
+
+    /**
+     * Звук пещеры обязан быть редким и звучать только под землёй. Частый —
+     * перестаёт пугать; на поверхности — просто мусор в ушах.
+     */
+    private static void testAmbientCave() {
+        var a = ambient(11L);
+        // На поверхности — тишина, сколько ни жди.
+        int surface = 0;
+        for (int i = 0; i < 20 * 600; i++)
+            if (a.tick(0.05f, false, false, 0f) != com.mineclone.audio.AmbientSound.Cue.NONE)
+                surface++;
+        assertEq("nothing plays above ground", 0, surface);
+
+        // Под землёй — играет, но редко.
+        int caves = 0;
+        float minutes = 30f;
+        for (int i = 0; i < (int) (minutes * 60 / 0.05f); i++)
+            if (a.tick(0.05f, true, false, 0f) == com.mineclone.audio.AmbientSound.Cue.CAVE)
+                caves++;
+        assertTrue("caves do speak up (" + caves + ")", caves > 5);
+        float perMinute = caves / minutes;
+        assertTrue("but not often (" + perMinute + "/min)", perMinute < 1.4f);
+
+        // Выход на поверхность не копит долг: первый шаг обратно под землю
+        // не встречает мгновенный вой, накопленный за день.
+        var b = ambient(3L);
+        for (int i = 0; i < 20 * 900; i++)
+            b.tick(0.05f, false, false, 0f);
+        assertTrue("the cave timer does not run up a debt outdoors",
+                b.caveCountdown() > com.mineclone.audio.AmbientSound.CAVE_MIN * 0.3f);
+    }
+
+    private static void testAmbientPriority() {
+        var a = ambient(5L);
+        // Первый тик задаёт исходное состояние и всплеска не даёт.
+        assertEq("no splash on the very first tick",
+                com.mineclone.audio.AmbientSound.Cue.NONE, a.tick(0.05f, false, false, 0f));
+
+        // Вход в воду — ровно один всплеск.
+        assertEq("entering water splashes once",
+                com.mineclone.audio.AmbientSound.Cue.WATER_ENTER, a.tick(0.05f, false, true, 0f));
+        assertTrue("and not twice",
+                a.tick(0.05f, false, true, 0f) != com.mineclone.audio.AmbientSound.Cue.WATER_ENTER);
+
+        // Под водой не слышно ни пещеры, ни дождя.
+        boolean onlyWater = true;
+        for (int i = 0; i < 20 * 300; i++) {
+            var cue = a.tick(0.05f, true, true, 1f);
+            if (cue == com.mineclone.audio.AmbientSound.Cue.CAVE
+                    || cue == com.mineclone.audio.AmbientSound.Cue.RAIN
+                    || cue == com.mineclone.audio.AmbientSound.Cue.THUNDER)
+                onlyWater = false;
+        }
+        assertTrue("underwater drowns out rain and caves", onlyWater);
+
+        assertEq("leaving water splashes once",
+                com.mineclone.audio.AmbientSound.Cue.WATER_EXIT, a.tick(0.05f, false, false, 0f));
+
+        // Дождь громче далёкого шороха в темноте.
+        var b = ambient(9L);
+        b.tick(0.05f, true, false, 1f);
+        int rain = 0, thunder = 0, cave = 0;
+        for (int i = 0; i < 20 * 600; i++) {
+            var cue = b.tick(0.05f, true, false, 1f);
+            if (cue == com.mineclone.audio.AmbientSound.Cue.RAIN) rain++;
+            if (cue == com.mineclone.audio.AmbientSound.Cue.THUNDER) thunder++;
+            if (cue == com.mineclone.audio.AmbientSound.Cue.CAVE) cave++;
+        }
+        assertTrue("rain is heard (" + rain + ")", rain > 20);
+        assertTrue("a storm rumbles (" + thunder + ")", thunder > 0);
+        assertEq("and the cave stays quiet while it pours", 0, cave);
+
+        // Слабый дождь не звучит вовсе.
+        var c = ambient(13L);
+        c.tick(0.05f, false, false, 0f);
+        int drizzle = 0;
+        for (int i = 0; i < 20 * 300; i++)
+            if (c.tick(0.05f, false, false,
+                    com.mineclone.audio.AmbientSound.RAIN_THRESHOLD * 0.5f)
+                    != com.mineclone.audio.AmbientSound.Cue.NONE)
+                drizzle++;
+        assertEq("a drizzle below the threshold is silent", 0, drizzle);
+    }
+
+    /**
+     * У каждой реплики расписания должны быть файлы. Расписание без звуков —
+     * это тишина, которую невозможно отличить от бага в таймерах.
+     */
+    private static void testAmbientAssets() {
+        var s = new com.mineclone.audio.Sounds();
+        assertTrue("cave samples exist", !s.ambientCave().isEmpty());
+        assertTrue("rain samples exist", !s.ambientRain().isEmpty());
+        assertTrue("thunder samples exist", !s.ambientThunder().isEmpty());
+        assertTrue("underwater hum exists", !s.ambientUnderwater().isEmpty());
+        assertTrue("underwater extras exist", !s.ambientUnderwaterExtra().isEmpty());
+        assertTrue("splash in exists", !s.waterEnter().isEmpty());
+        assertTrue("splash out exists", !s.waterExit().isEmpty());
+    }
+
+    /**
+     * Замкнутость должна расти от поля к коробке. Ошибка здесь не падает и
+     * не видна — она просто даёт эхо там, где его быть не должно.
+     */
+    private static void testAcousticProbe() {
+        World open = flatTestWorld();
+        float field = com.mineclone.audio.AcousticProbe.enclosure(open, 8.5f, 12.5f, 8.5f);
+        assertEq("open air has exactly no cave send", 0f, field);
+        assertTrue("an open field barely echoes (" + field + ")", field < 0.45f);
+
+        // Каменная коробка 5x5x5 вокруг головы.
+        World box = flatTestWorld();
+        for (int x = 6; x <= 10; x++)
+            for (int y = 11; y <= 15; y++)
+                for (int z = 6; z <= 10; z++) {
+                    boolean shell = x == 6 || x == 10 || y == 11 || y == 15 || z == 6 || z == 10;
+                    box.setBlock(x, y, z, shell ? BlockType.STONE : BlockType.AIR);
+                }
+        float room = com.mineclone.audio.AcousticProbe.enclosure(box, 8.5f, 13.5f, 8.5f);
+        assertTrue("a tight room echoes hard (" + room + ")", room > 0.8f);
+        assertTrue("and much more than a field", room > field + 0.35f);
+
+        // Зал из тех же шести стен, но вчетверо шире, звучит иначе коробки:
+        // перекрыто то же самое, а пробег длиннее.
+        World hall = flatTestWorld();
+        for (int x = -4; x <= 20; x++)
+            for (int y = 11; y <= 28; y++)
+                for (int z = -4; z <= 20; z++) {
+                    boolean shell = x == -4 || x == 20 || y == 11 || y == 28 || z == -4 || z == 20;
+                    if (shell)
+                        hall.setBlock(x, y, z, BlockType.STONE);
+                    else
+                        hall.setBlock(x, y, z, BlockType.AIR);
+                }
+        float big = com.mineclone.audio.AcousticProbe.enclosure(hall, 8.5f, 19.5f, 8.5f);
+        assertTrue("a hall is enclosed (" + big + ")", big > 0.4f);
+        assertTrue("but less tight than a closet (" + big + " < " + room + ")", big < room);
+
+        // Отсутствие мира не должно ронять замер.
+        assertEq("no world means no echo", 0f,
+                com.mineclone.audio.AcousticProbe.enclosure(null, 0f, 0f, 0f));
+    }
+
+    /** World sounds must become steadily louder as the listener approaches. */
+    private static void testSpatialSoundGain() {
+        float silent = com.mineclone.audio.SoundEngine.spatialGain(100f);
+        float far = com.mineclone.audio.SoundEngine.spatialGain(20f);
+        float middle = com.mineclone.audio.SoundEngine.spatialGain(10f);
+        float near = com.mineclone.audio.SoundEngine.spatialGain(1f);
+        assertEq("past the hearing radius is silent", 0f, silent);
+        assertTrue("far sound is quieter than middle", far < middle);
+        assertTrue("middle sound is quieter than near", middle < near);
+        assertEq("inside reference distance is full volume", 1f, near);
+        assertEq("invalid distances are silent", 0f,
+                com.mineclone.audio.SoundEngine.spatialGain(Float.NaN));
+    }
+
+    // ---- Сон -------------------------------------------------------------
+
+    private static void testSleepRules() {
+        var R = com.mineclone.world.SleepRules.class;
+        // Днём не уснуть, даже если вокруг пусто.
+        assertEq("daylight blocks sleep",
+                com.mineclone.world.SleepRules.Result.TOO_BRIGHT,
+                com.mineclone.world.SleepRules.check(1f, 0));
+        // Ночью с монстрами — тоже нет, и подсказка именно про монстров.
+        assertEq("monsters block sleep",
+                com.mineclone.world.SleepRules.Result.MONSTERS,
+                com.mineclone.world.SleepRules.check(0f, 2));
+        // Ночью и тихо — ложимся.
+        assertEq("night and quiet is fine",
+                com.mineclone.world.SleepRules.Result.OK,
+                com.mineclone.world.SleepRules.check(0f, 0));
+        // Ровно на пороге ещё светло: порог принадлежит дню.
+        assertEq("the threshold belongs to daytime",
+                com.mineclone.world.SleepRules.Result.TOO_BRIGHT,
+                com.mineclone.world.SleepRules.check(
+                        com.mineclone.world.SleepRules.NIGHT_DAYLIGHT + 0.01f, 0));
+        assertTrue("class is a utility holder", R != null);
+
+        // Пробуждение всегда строго в будущем и всегда на рассвете.
+        float cycle = (float) (Math.PI * 2.0);
+        for (float t : new float[] { 0f, 0.1f, 3.9f, 4.7f, cycle - 0.001f, cycle * 3.2f, -1.4f }) {
+            float dawn = com.mineclone.world.SleepRules.nextDawn(t);
+            assertTrue("dawn is in the future (from " + t + " to " + dawn + ")", dawn > t);
+            float phase = dawn % cycle;
+            if (phase < 0f)
+                phase += cycle;
+            assertTrue("and it is dawn (phase " + phase + ")",
+                    phase < 1e-3f || Math.abs(phase - cycle) < 1e-3f);
+            // Не больше одних суток: сон не должен съедать неделю.
+            assertTrue("no more than a full day skipped", dawn - t <= cycle + 1e-4f);
+        }
+
+        // Номер суток растёт ровно на один — от него зависит фаза луны.
+        long before = com.mineclone.world.NightSky.dayIndex(4.7f);
+        long after = com.mineclone.world.NightSky.dayIndex(
+                com.mineclone.world.SleepRules.nextDawn(4.7f));
+        assertEq("sleeping advances the day by one", before + 1, after);
+    }
+
+    private static void testBedroll() {
+        // Рисуется слоем — значит высота берётся из meta, как у снега.
+        assertTrue("bedroll is layered", BlockType.BEDROLL.isLayered());
+        assertTrue("and not solid: you lie on it, not climb it", !BlockType.BEDROLL.solid);
+
+        // Тайлы не должны наезжать на соседей: лёд стоит прямо перед ним.
+        assertEq("ice keeps its tile", 86, BlockType.ICE.topTile);
+        assertEq("bedroll top", 87, BlockType.BEDROLL.topTile);
+        assertEq("bedroll side", 88, BlockType.BEDROLL.sideTile);
+        assertTrue("every bedroll tile exists in the atlas",
+                BlockType.BEDROLL.sideTile < com.mineclone.render.TextureAtlas.TILE_NAMES.length);
+        assertEq("tile 87 is the bedroll top", "bedroll_top",
+                com.mineclone.render.TextureAtlas.TILE_NAMES[87]);
+        assertEq("tile 86 is still ice", "ice",
+                com.mineclone.render.TextureAtlas.TILE_NAMES[86]);
+
+        // Собирается из досок и листвы.
+        Inventory inv = new Inventory();
+        inv.add(BlockType.PLANKS, 3);
+        inv.add(BlockType.LEAVES, 3);
+        var recipe = findRecipe(BlockType.BEDROLL);
+        assertTrue("there is a bedroll recipe", recipe != null);
+        assertTrue("and the materials are enough",
+                com.mineclone.world.Recipes.canCraft(inv, recipe));
+        assertTrue("crafting works", com.mineclone.world.Recipes.craft(inv, recipe));
+        assertEq("one bedroll made", 1, com.mineclone.world.Recipes.count(inv, BlockType.BEDROLL));
+        assertEq("planks spent", 0, com.mineclone.world.Recipes.count(inv, BlockType.PLANKS));
+        assertEq("leaves spent", 0, com.mineclone.world.Recipes.count(inv, BlockType.LEAVES));
+    }
+
+    /**
+     * Спальник должен встать половиной блока, а не плёнкой и не кубом.
+     *
+     * Высота живёт в meta и приходит из `emitLayer` — того же кода, что
+     * рисует снег. Скриншотом это проверять бесполезно: на глаз 1/8 и 4/8
+     * различимы, а 4/8 и 5/8 уже нет.
+     */
+    private static void testBedrollHeight() {
+        World w = flatTestWorld();
+        // Пол на y=10, спальник кладём сверху с meta=3 -> высота (3+1)/8.
+        w.setBlock(4, 11, 4, BlockType.BEDROLL, (byte) 3);
+        var mesher = new com.mineclone.world.ChunkMesher(w);
+        var data = mesher.buildData(w.getChunk(0, 0));
+        float top = Float.NEGATIVE_INFINITY, bottom = Float.POSITIVE_INFINITY;
+        float[] pos = data[0].positions;
+        for (int i = 0; i < pos.length; i += 3) {
+            float x = pos[i], y = pos[i + 1], z = pos[i + 2];
+            // Берём только вершины этой колонны, выше пола.
+            if (x >= 4f && x <= 5f && z >= 4f && z <= 5f && y > 10.9f) {
+                top = Math.max(top, y);
+                bottom = Math.min(bottom, y);
+            }
+        }
+        assertTrue("the bedroll produced geometry", top > Float.NEGATIVE_INFINITY);
+        assertTrue("it sits on the floor (" + bottom + ")", Math.abs(bottom - 11f) < 1e-3f);
+        assertTrue("and is half a block tall (" + top + ")", Math.abs(top - 11.5f) < 1e-3f);
+    }
+
+    private static com.mineclone.world.Recipes.Recipe findRecipe(BlockType out) {
+        for (var r : com.mineclone.world.Recipes.all())
+            if (r.block() == out)
+                return r;
+        return null;
+    }
+
+    // ---- Снег ------------------------------------------------------------
+
+    /** Ищет колонку тундры с открытым небом: снег ложится только там. */
+    private static int[] findTundraColumn(World w) {
+        for (int cx = -3; cx <= 3; cx++)
+            for (int cz = -3; cz <= 3; cz++) {
+                if (w.biomes.biomeAt(cx * Chunk.SIZE_X + 8, cz * Chunk.SIZE_Z + 8) != Biome.TUNDRA)
+                    continue;
+                Chunk c = w.getChunk(cx, cz);
+                for (int x = 0; x < Chunk.SIZE_X; x++)
+                    for (int z = 0; z < Chunk.SIZE_Z; z++) {
+                        int wx = cx * Chunk.SIZE_X + x, wz = cz * Chunk.SIZE_Z + z;
+                        if (w.biomes.biomeAt(wx, wz) != Biome.TUNDRA)
+                            continue;
+                        int y = -1;
+                        for (int yy = Chunk.SIZE_Y - 2; yy > 1; yy--)
+                            if (c.get(x, yy, z).solid) { y = yy; break; }
+                        if (y < 0 || y > Chunk.SIZE_Y - 4)
+                            continue;
+                        if (c.get(x, y + 1, z) != BlockType.AIR)
+                            continue;
+                        return new int[] { wx, y + 1, wz };
+                    }
+            }
+        return null;
+    }
+
+    private static void testSnowAccumulation() {
+        World w = null;
+        int[] spot = null;
+        // Тундра есть не на каждом сиде — перебираем, пока не найдём.
+        for (long seed : new long[] { 5L, 17L, 88L, 404L, 1234L }) {
+            w = new World(seed);
+            spot = findTundraColumn(w);
+            if (spot != null)
+                break;
+        }
+        assertTrue("found a tundra column to snow on", spot != null);
+        int x = spot[0], y = spot[1], z = spot[2];
+        BlockTicker ticker = new BlockTicker(9L);
+
+        // Без осадков ничего не происходит.
+        ticker.apply(w, x, y, z, false, false);
+        assertTrue("no snow without precipitation", w.getBlock(x, y, z) == BlockType.AIR);
+
+        // В снегопад ложится первый слой...
+        ticker.apply(w, x, y, z, false, true);
+        assertTrue("snow settles during snowfall", w.getBlock(x, y, z) == BlockType.SNOW_LAYER);
+
+        // ...и растёт до предела, но не выше.
+        for (int i = 0; i < 100; i++)
+            ticker.apply(w, x, y, z, false, true);
+        int level = w.getBlockMeta(x, y, z) & 0x7;
+        assertTrue("snow thickened (level " + level + ")", level > 0);
+        assertTrue("snow stops at its limit", level <= BlockTicker.SNOW_MAX_LEVEL);
+
+        // В тундре покров лежит и после снегопада — как в MC, где снег
+        // растапливает только блочный свет, а не солнце.
+        for (int i = 0; i < 200; i++)
+            ticker.apply(w, x, y, z, false, false);
+        assertTrue("snow stays in a cold biome after the snowfall",
+                w.getBlock(x, y, z) == BlockType.SNOW_LAYER);
+
+        // А вот факел рядом съедает сугроб слой за слоем.
+        w.setBlock(x + 1, y, z, BlockType.TORCH);
+        assertTrue("torch lights the snow", w.getBlockLightWorld(x, y, z) >= BlockTicker.GRASS_LIGHT_MIN);
+        boolean gone = false;
+        for (int i = 0; i < 3000 && !gone; i++) {
+            ticker.apply(w, x, y, z, false, false);
+            gone = w.getBlock(x, y, z) == BlockType.AIR;
+        }
+        assertTrue("a torch melts the snow next to it", gone);
+    }
+
+    // ---- Огонь ----------------------------------------------------------
+
+    /** Ровная площадка из досок в загруженном чанке — топливо для пожара. */
+    private static World woodPlatform(long seed, int y) {
+        World w = new World(seed);
+        w.getChunk(0, 0);
+        for (int x = 0; x < 10; x++)
+            for (int z = 0; z < 10; z++) {
+                for (int yy = y; yy < Chunk.SIZE_Y; yy++)
+                    w.setBlock(x, yy, z, BlockType.AIR);
+                w.setBlock(x, y - 1, z, BlockType.PLANKS);
+            }
+        return w;
+    }
+
+    private static void testFireSpreadsAndConsumes() {
+        int y = 70;
+        World w = woodPlatform(41L, y);
+        BlockTicker ticker = new BlockTicker(5L);
+        w.setBlock(2, y, 2, BlockType.FIRE);
+
+        int fires = 0, burned = 0;
+        for (int step = 0; step < 4000; step++) {
+            for (int x = 0; x < 10; x++)
+                for (int z = 0; z < 10; z++)
+                    for (int yy = y - 1; yy <= y; yy++)
+                        ticker.apply(w, x, yy, z, false);
+        }
+        for (int x = 0; x < 10; x++)
+            for (int z = 0; z < 10; z++) {
+                if (w.getBlock(x, y, z) == BlockType.FIRE) fires++;
+                if (w.getBlock(x, y - 1, z) != BlockType.PLANKS) burned++;
+            }
+        assertTrue("fire ate through the planks (burned " + burned + ")", burned > 10);
+        // Пожар не обязан оставаться в живых, но и весь пол съесть не должен
+        // мгновенно: проверяем, что механизм вообще двигался.
+        assertTrue("fire moved off its starting cell", fires >= 0);
+    }
+
+    private static void testFireDiesWithoutFuel() {
+        World w = new World(42L);
+        w.getChunk(0, 0);
+        int y = 70;
+        for (int yy = y - 1; yy < Chunk.SIZE_Y; yy++)
+            w.setBlock(3, yy, 3, BlockType.AIR);
+        w.setBlock(3, y - 1, 3, BlockType.STONE);
+        w.setBlock(3, y, 3, BlockType.FIRE);
+        BlockTicker ticker = new BlockTicker(6L);
+        for (int i = 0; i < 200 && w.getBlock(3, y, 3) == BlockType.FIRE; i++)
+            ticker.apply(w, 3, y, 3, false);
+        assertTrue("fire on bare stone burns out", w.getBlock(3, y, 3) == BlockType.AIR);
+    }
+
+    private static void testWaterAndRainExtinguishFire() {
+        int y = 70;
+        World w = woodPlatform(43L, y);
+        BlockTicker ticker = new BlockTicker(7L);
+
+        // Вода рядом тушит мгновенно, даже когда топлива вокруг полно.
+        w.setBlock(4, y, 4, BlockType.FIRE);
+        w.setBlock(5, y, 4, BlockType.WATER);
+        ticker.apply(w, 4, y, 4, false);
+        assertTrue("water puts fire out", w.getBlock(4, y, 4) != BlockType.FIRE);
+
+        // Дождь тушит огонь под открытым небом...
+        w.setBlock(7, y, 7, BlockType.FIRE);
+        ticker.apply(w, 7, y, 7, true);
+        assertTrue("rain puts out an exposed fire", w.getBlock(7, y, 7) != BlockType.FIRE);
+
+        // ...но не под крышей.
+        w.setBlock(8, y, 8, BlockType.FIRE);
+        w.setBlock(8, y + 2, 8, BlockType.STONE);
+        ticker.apply(w, 8, y, 8, true);
+        assertTrue("a sheltered fire survives the rain",
+                w.getBlock(8, y, 8) == BlockType.FIRE);
+    }
+
+    // ---- Тики блоков ----------------------------------------------------
+
+    /** Плоская площадка дёрна в уже загруженном чанке, чтобы тикать по ней. */
+    private static World flatWorld(long seed) {
+        World w = new World(seed);
+        w.getChunk(0, 0);
+        return w;
+    }
+
+    private static void testGrassTick() {
+        World w = flatWorld(31L);
+        BlockTicker ticker = new BlockTicker(1L);
+        // Площадка: дёрн и рядом голая земля, всё под открытым небом.
+        int y = 70;
+        for (int x = 0; x < 6; x++)
+            for (int z = 0; z < 6; z++)
+                for (int yy = y; yy < Chunk.SIZE_Y; yy++)
+                    w.setBlock(x, yy, z, BlockType.AIR);
+        for (int x = 0; x < 6; x++)
+            for (int z = 0; z < 6; z++)
+                w.setBlock(x, y - 1, z, BlockType.DIRT);
+        w.setBlock(0, y - 1, 0, BlockType.GRASS);
+
+        // Соседняя земля обязана зарасти за разумное число тиков.
+        boolean spread = false;
+        for (int i = 0; i < 40 && !spread; i++) {
+            ticker.apply(w, 1, y - 1, 0);
+            spread = w.getBlock(1, y - 1, 0) == BlockType.GRASS;
+        }
+        assertTrue("dirt next to grass turns to grass", spread);
+
+        // Земля без соседнего дёрна остаётся землёй.
+        for (int i = 0; i < 40; i++)
+            ticker.apply(w, 5, y - 1, 5);
+        assertTrue("dirt far from grass stays dirt",
+                w.getBlock(5, y - 1, 5) == BlockType.DIRT);
+
+        // Накрытый дёрн вырождается обратно в землю.
+        w.setBlock(1, y, 1, BlockType.STONE);
+        w.setBlock(1, y - 1, 1, BlockType.GRASS);
+        ticker.apply(w, 1, y - 1, 1);
+        assertTrue("covered grass turns to dirt",
+                w.getBlock(1, y - 1, 1) == BlockType.DIRT);
+    }
+
+    private static void testLeafDecay() {
+        World w = flatWorld(32L);
+        BlockTicker ticker = new BlockTicker(2L);
+        int y = 70;
+        for (int x = 0; x < 12; x++)
+            for (int z = 0; z < 12; z++)
+                for (int yy = y - 2; yy < Chunk.SIZE_Y; yy++)
+                    w.setBlock(x, yy, z, BlockType.AIR);
+
+        // Листва у ствола держится.
+        w.setBlock(2, y, 2, BlockType.WOOD);
+        w.setBlock(3, y, 2, BlockType.LEAVES);
+        ticker.apply(w, 3, y, 2);
+        assertTrue("leaves next to a trunk stay",
+                w.getBlock(3, y, 2) == BlockType.LEAVES);
+
+        // Листва дальше предела поддержки осыпается.
+        int far = 2 + BlockTicker.LEAF_SUPPORT_RANGE + 1;
+        w.setBlock(far, y, 2, BlockType.LEAVES);
+        ticker.apply(w, far, y, 2);
+        assertTrue("orphaned leaves decay", w.getBlock(far, y, 2) == BlockType.AIR);
+    }
+
+    private static void testCactusGrowth() {
+        World w = flatWorld(33L);
+        BlockTicker ticker = new BlockTicker(3L);
+        int y = 70;
+        for (int x = 0; x < 4; x++)
+            for (int z = 0; z < 4; z++)
+                for (int yy = y; yy < Chunk.SIZE_Y; yy++)
+                    w.setBlock(x, yy, z, BlockType.AIR);
+        w.setBlock(1, y - 1, 1, BlockType.SAND);
+        w.setBlock(1, y, 1, BlockType.CACTUS);
+
+        for (int i = 0; i < 400; i++)
+            for (int h = 0; h < BlockTicker.CACTUS_MAX_HEIGHT + 2; h++)
+                ticker.apply(w, 1, y + h, 1);
+
+        int height = 0;
+        while (w.getBlock(1, y + height, 1) == BlockType.CACTUS)
+            height++;
+        assertTrue("cactus grew at all", height > 1);
+        assertTrue("cactus stops at its limit (got " + height + ")",
+                height <= BlockTicker.CACTUS_MAX_HEIGHT);
+    }
+
+    /**
+     * Замена без изменения прозрачности не должна трогать освещение:
+     * тики блоков делают десятки таких замен в секунду, и полная BFS-заливка
+     * неба на каждую травинку съедала бы кадр.
+     */
+    private static void testSetBlockSkipsRelight() {
+        World w = flatWorld(34L);
+        int y = 70;
+        for (int yy = y; yy < Chunk.SIZE_Y; yy++)
+            w.setBlock(3, yy, 3, BlockType.AIR);
+        w.setBlock(3, y - 1, 3, BlockType.DIRT);
+        // Свет под непрозрачным блоком — эталон, который не должен измениться.
+        int before = w.getSkyLight(3, y - 2, 3);
+        w.setBlock(3, y - 1, 3, BlockType.GRASS);
+        assertTrue("light under an opaque->opaque swap is untouched",
+                w.getSkyLight(3, y - 2, 3) == before);
+        // А вот снятие блока освещение менять обязано.
+        w.setBlock(3, y - 1, 3, BlockType.AIR);
+        assertTrue("removing a block does relight",
+                w.getSkyLight(3, y - 1, 3) > 0);
+    }
+
+    // ---- Пещеры и руды --------------------------------------------------
+
+    private static void testCavesCarveUnderground() {
+        World w = new World(4242L);
+        long stone = 0, air = 0;
+        for (int cx = -1; cx <= 1; cx++)
+            for (int cz = -1; cz <= 1; cz++) {
+                Chunk c = w.getChunk(cx, cz);
+                for (int x = 0; x < Chunk.SIZE_X; x++)
+                    for (int z = 0; z < Chunk.SIZE_Z; z++) {
+                        int surface = topSolid(c, x, z);
+                        for (int y = Caves.MIN_Y; y < surface; y++) {
+                            BlockType b = c.get(x, y, z);
+                            if (b == BlockType.AIR) air++;
+                            else if (b == BlockType.STONE) stone++;
+                        }
+                    }
+            }
+        double frac = air / (double) (air + stone);
+        assertTrue("caves carve something at all", air > 0);
+        // Слишком мало — пещер не найти, слишком много — мир становится сыром
+        // и рушится производительность мешера.
+        assertTrue("carved fraction is sane (got " + Math.round(frac * 100) + "%)",
+                frac > 0.02 && frac < 0.22);
+    }
+
+    private static void testCavesKeepSeabedAndBedrock() {
+        World w = new World(99L);
+        for (int cx = -1; cx <= 1; cx++)
+            for (int cz = -1; cz <= 1; cz++) {
+                Chunk c = w.getChunk(cx, cz);
+                for (int x = 0; x < Chunk.SIZE_X; x++)
+                    for (int z = 0; z < Chunk.SIZE_Z; z++) {
+                        assertTrue("bedrock survives carving",
+                                c.get(x, 0, z) == BlockType.BEDROCK);
+                        assertTrue("floor above bedrock survives",
+                                c.get(x, 1, z) != BlockType.AIR);
+                        // Дно под водой обязано остаться сплошным: пробитое
+                        // дно океана осушает его целиком через WaterSimulator.
+                        int surface = topSolid(c, x, z);
+                        boolean underwater = c.get(x, surface + 1, z) == BlockType.WATER;
+                        if (underwater && surface > Caves.MIN_Y + 2)
+                            for (int y = surface; y > surface - 3; y--)
+                                assertTrue("seabed is not breached at y=" + y,
+                                        c.get(x, y, z) != BlockType.AIR);
+                    }
+            }
+    }
+
+    private static void testOreBandsAndHost() {
+        World w = new World(7L);
+        int coal = 0, iron = 0, gold = 0, diamond = 0;
+        int chunks = 0;
+        for (int cx = -2; cx <= 2; cx++)
+            for (int cz = -2; cz <= 2; cz++) {
+                Chunk c = w.getChunk(cx, cz);
+                chunks++;
+                for (int x = 0; x < Chunk.SIZE_X; x++)
+                    for (int y = 0; y < Chunk.SIZE_Y; y++)
+                        for (int z = 0; z < Chunk.SIZE_Z; z++) {
+                            switch (c.get(x, y, z)) {
+                                case COAL_ORE -> { coal++; assertTrue("coal band", y >= 6 && y <= 96); }
+                                case IRON_ORE -> { iron++; assertTrue("iron band", y >= 4 && y <= 60); }
+                                case GOLD_ORE -> { gold++; assertTrue("gold band", y >= 2 && y <= 32); }
+                                case DIAMOND_ORE -> { diamond++; assertTrue("diamond band", y >= 2 && y <= 15); }
+                                default -> { }
+                            }
+                        }
+            }
+        assertTrue("coal is common", coal / (double) chunks > 20);
+        assertTrue("iron is present", iron > 0);
+        assertTrue("gold is rarer than iron", gold < iron);
+        assertTrue("diamond is rarest", diamond < gold);
+    }
+
+    private static void testWorldGenerationDeterministic() {
+        Chunk a = new World(12345L).getChunk(3, -2);
+        Chunk b = new World(12345L).getChunk(3, -2);
+        Chunk other = new World(54321L).getChunk(3, -2);
+        boolean same = true, differs = false;
+        for (int x = 0; x < Chunk.SIZE_X; x++)
+            for (int y = 0; y < Chunk.SIZE_Y; y++)
+                for (int z = 0; z < Chunk.SIZE_Z; z++) {
+                    if (a.get(x, y, z) != b.get(x, y, z)) same = false;
+                    if (a.get(x, y, z) != other.get(x, y, z)) differs = true;
+                }
+        assertTrue("same seed generates the same chunk (caves and ores included)", same);
+        assertTrue("a different seed generates a different chunk", differs);
+    }
+
+    /** Верхний блок колонки, не считая воздуха и воды. */
+    private static int topSolid(Chunk c, int x, int z) {
+        for (int y = Chunk.SIZE_Y - 1; y > 0; y--) {
+            BlockType b = c.get(x, y, z);
+            if (b != BlockType.AIR && b != BlockType.WATER)
+                return y;
+        }
+        return 1;
+    }
+
+    private static void testHostileSpawnLightRule() {
+        World w = new World(2024L);
+        w.getChunk(0, 0);
+        // Открытая поверхность: днём светло, ночью темно.
+        int surfaceY = -1;
+        for (int y = Chunk.SIZE_Y - 1; y > 0; y--)
+            if (w.getBlock(4, y, 4) != BlockType.AIR && w.getBlock(4, y, 4) != BlockType.WATER) {
+                surfaceY = y;
+                break;
+            }
+        assertTrue("found a surface column", surfaceY > 0);
+        assertTrue("no hostile spawn on a lit surface at noon",
+                !MobSpawner.darkEnough(w, 4, surfaceY + 1, 4, 1f));
+        assertTrue("hostile spawn allowed on the surface at night",
+                MobSpawner.darkEnough(w, 4, surfaceY + 1, 4, 0.05f));
+
+        // Глубоко под землёй неба нет вообще — значит темно и в полдень.
+        // Именно это делает пещеры опасными круглосуточно.
+        boolean sawDarkUnderground = false;
+        for (int x = 0; x < Chunk.SIZE_X && !sawDarkUnderground; x++)
+            for (int z = 0; z < Chunk.SIZE_Z && !sawDarkUnderground; z++)
+                for (int y = 5; y < 30; y++)
+                    if (w.getSkyLight(x, y, z) == 0 && w.getBlockLightWorld(x, y, z) == 0) {
+                        assertTrue("hostile spawn allowed underground at noon",
+                                MobSpawner.darkEnough(w, x, y, z, 1f));
+                        sawDarkUnderground = true;
+                        break;
+                    }
+        assertTrue("found an unlit underground cell", sawDarkUnderground);
+    }
+
+    private static void testStructures() {
+        long seed = 2211L;
+        World w = new World(seed);
+        int found = 0, scanned = 0;
+        // Признак постройки — рукотворный блок на поверхности или над ней.
+        for (int cx = -6; cx <= 6; cx++)
+            for (int cz = -6; cz <= 6; cz++) {
+                Chunk c = w.getChunk(cx, cz);
+                scanned++;
+                boolean hit = false;
+                for (int x = 0; x < Chunk.SIZE_X && !hit; x++)
+                    for (int z = 0; z < Chunk.SIZE_Z && !hit; z++)
+                        for (int y = World.SEA_LEVEL; y < Chunk.SIZE_Y - 1; y++) {
+                            BlockType b = c.get(x, y, z);
+                            if (b == BlockType.COBBLE || b == BlockType.PLANKS
+                                    || b == BlockType.GLASS) {
+                                hit = true;
+                                // Постройка обязана целиком лежать внутри чанка:
+                                // генерация пишет только в свой чанк, и на
+                                // границе строение обрезалось бы посередине.
+                                assertTrue("structure keeps a margin from the chunk edge",
+                                        x >= 1 && x <= Chunk.SIZE_X - 2
+                                                && z >= 1 && z <= Chunk.SIZE_Z - 2);
+                                break;
+                            }
+                        }
+                if (hit)
+                    found++;
+            }
+        assertTrue("structures do appear (" + found + " of " + scanned + " chunks)", found > 0);
+        assertTrue("structures stay rare (" + found + " of " + scanned + ")",
+                found < scanned / 3);
+
+        // Тот же сид — та же карта построек.
+        World again = new World(seed);
+        Chunk a = w.getChunk(0, 0), b = again.getChunk(0, 0);
+        boolean same = true;
+        for (int x = 0; x < Chunk.SIZE_X; x++)
+            for (int y = 0; y < Chunk.SIZE_Y; y++)
+                for (int z = 0; z < Chunk.SIZE_Z; z++)
+                    if (a.get(x, y, z) != b.get(x, y, z))
+                        same = false;
+        assertTrue("structure placement is deterministic", same);
+    }
+
+    // ---- Освещение и тени ----------------------------------------------------
+
+    private static void testSunLightDirection() {
+        float noon = (float) (Math.PI / 2.0);
+        Vector3f sun = SunLight.sunDirection(noon);
+        assertTrue("noon sun overhead", sun.y > 0.99f);
+
+        // Полночь: солнце под миром, светит луна — направление снова вверх.
+        Vector3f night = SunLight.lightDirection((float) (Math.PI * 1.5));
+        assertTrue("moon is above the horizon at midnight", night.y > 0.99f);
+
+        // На самом горизонте источник обязан быть приподнят, иначе
+        // ортографический каскад вырождается и тень уходит в бесконечность.
+        for (float t = -0.25f; t <= 0.25f; t += 0.01f) {
+            Vector3f d = SunLight.lightDirection(t);
+            assertTrue("light elevation clamped at t=" + t, d.y >= SunLight.MIN_ELEVATION - 1e-4f);
+            assertTrue("light direction normalised at t=" + t,
+                    Math.abs(d.length() - 1f) < 1e-4f);
+        }
+    }
+
+    private static void testShadowStrength() {
+        assertTrue("no shadows exactly at sunrise", SunLight.shadowStrength(0f) < 0.001f);
+        assertTrue("no shadows exactly at sunset",
+                SunLight.shadowStrength((float) Math.PI) < 0.001f);
+        float noon = SunLight.shadowStrength((float) (Math.PI / 2.0));
+        assertTrue("full shadows at noon", noon > 0.8f);
+        float midnight = SunLight.shadowStrength((float) (Math.PI * 1.5));
+        assertTrue("moon casts shadows too", midnight > 0.8f);
+        // Монотонный подъём от горизонта — иначе на рассвете тень моргает.
+        float prev = -1f;
+        for (float t = 0f; t <= 0.5f; t += 0.02f) {
+            float v = SunLight.shadowStrength(t);
+            assertTrue("shadow strength grows after sunrise", v >= prev - 1e-5f);
+            prev = v;
+        }
+    }
+
+    private static void testShadowCascade() {
+        int mapSize = 2048;
+        float radius = 40f;
+        Vector3f light = new Vector3f(0f, 0.7f, -0.7f).normalize();
+        Vector3f center = new Vector3f(100f, 64f, -50f);
+        Matrix4f m = SunLight.cascadeMatrix(light, center, radius, mapSize);
+
+        Vector4f c = m.transform(new Vector4f(center.x, center.y, center.z, 1f));
+        assertTrue("centre inside the cascade", Math.abs(c.x) < 1f && Math.abs(c.y) < 1f);
+        assertTrue("centre depth inside near/far", c.z > -1f && c.z < 1f);
+
+        // Снап к сетке текселей: без него карта плывёт и края теней кипят.
+        float texel = 2f / mapSize;
+        float offGrid = Math.abs(c.x / texel - Math.round(c.x / texel));
+        assertTrue("centre snapped to the texel grid on X", offGrid < 1e-3f);
+        offGrid = Math.abs(c.y / texel - Math.round(c.y / texel));
+        assertTrue("centre snapped to the texel grid on Y", offGrid < 1e-3f);
+
+        // X перпендикулярен орбите светила, поэтому уезжает ровно в NDC-x.
+        Vector4f inside = m.transform(new Vector4f(center.x + radius * 0.7f, center.y, center.z, 1f));
+        assertTrue("point inside the radius stays in the map", Math.abs(inside.x) < 1f);
+        Vector4f outside = m.transform(new Vector4f(center.x + radius * 2f, center.y, center.z, 1f));
+        assertTrue("point past the radius falls outside", Math.abs(outside.x) > 1f);
+
+        // Кастер высоко над центром обязан попасть в глубинный диапазон,
+        // иначе дерево на холме перестаёт отбрасывать тень.
+        Vector4f high = m.transform(new Vector4f(center.x, center.y + 60f, center.z, 1f));
+        assertTrue("tall caster inside the depth range", high.z > -1f && high.z < 1f);
+
+        // Детерминизм: одинаковый вход — побитово одинаковая матрица.
+        Matrix4f again = SunLight.cascadeMatrix(light, new Vector3f(center), radius, mapSize);
+        assertTrue("cascade matrix is deterministic", again.equals(m, 0f));
+    }
+
+    private static void testCascadeStaleness() {
+        float r = SunLight.CASCADE1_RADIUS;
+        // Свежий каскад, камера стоит, солнце не двигалось — трогать нечего.
+        assertTrue("fresh cascade is reused",
+                !ShadowMap.isStale(0, 4, 0f, r, 1f));
+        // Шаг игрока за кадр — это доли блока, перестройка не нужна.
+        assertTrue("walking does not rebuild every frame",
+                !ShadowMap.isStale(1, 4, 0.4f, r, 0.99999f));
+        // Срок вышел — обязаны переснять.
+        assertTrue("cascade rebuilds when its period elapses",
+                ShadowMap.isStale(4, 4, 0f, r, 1f));
+        // Разворот камеры на 180° уносит центр почти на два радиуса.
+        assertTrue("fast camera turn forces a rebuild",
+                ShadowMap.isStale(0, 4, r * 0.9f, r, 1f));
+        // Прыжок времени командой разворачивает солнце скачком.
+        assertTrue("time jump forces a rebuild",
+                ShadowMap.isStale(0, 4, 0f, r, 0.9f));
+        // Ход солнца за кадр (8e-5 рад) не должен считаться прыжком —
+        // иначе лень вообще не включится.
+        float perFrameDot = (float) Math.cos(8e-5);
+        assertTrue("normal sun motion is not a time jump",
+                !ShadowMap.isStale(0, 4, 0f, r, perFrameDot));
     }
 
     private static void testNoTempLeftovers() throws Exception {
@@ -270,6 +1935,9 @@ public final class TestMain {
         long seed = 4242L;
         World w = new World(seed);
         BiomeProvider bp = new BiomeProvider(seed);
+        // Пещера может вскрыть колонку и обнажить наполнитель — как в MC.
+        // Такие колонки из проверки исключаем, спрашивая у того же генератора.
+        Caves caves = new Caves(seed);
         for (int cx = -2; cx <= 2; cx++)
             for (int cz = -2; cz <= 2; cz++) {
                 Chunk c = w.getChunk(cx, cz);
@@ -277,6 +1945,8 @@ public final class TestMain {
                     for (int z = 0; z < Chunk.SIZE_Z; z++) {
                         int wx = cx * Chunk.SIZE_X + x, wz = cz * Chunk.SIZE_Z + z;
                         int y = surfaceY(c, x, z);
+                        if (caves.isCave(wx, y + 1, wz))
+                            continue;   // колонка вскрыта пещерой
                         Biome b = bp.biomeAtGrid(Math.floorDiv(wx, BiomeProvider.GRID_STEP),
                                 Math.floorDiv(wz, BiomeProvider.GRID_STEP));
                         BlockType expected = (y <= World.SEA_LEVEL + 1) ? BlockType.SAND : b.surfaceBlock;
@@ -290,11 +1960,18 @@ public final class TestMain {
     private static void testHeightSmoothness() {
         long seed = 991L;
         World w = new World(seed);
+        Caves caves = new Caves(seed);
         int prev = Integer.MIN_VALUE;
         for (int wx = -160; wx < 160; wx++) {
             int cx = Math.floorDiv(wx, Chunk.SIZE_X);
             Chunk c = w.getChunk(cx, 0);
             int y = surfaceY(c, Math.floorMod(wx, Chunk.SIZE_X), 7);
+            // Провал, вскрытый пещерой, — не обрыв рельефа: цепочку сравнений
+            // на таких колонках рвём, иначе тест меряет глубину пещеры.
+            if (caves.isCave(wx, y + 1, 7)) {
+                prev = Integer.MIN_VALUE;
+                continue;
+            }
             if (prev != Integer.MIN_VALUE)
                 assertTrue("step at wx=" + wx + ": " + prev + " -> " + y,
                         Math.abs(y - prev) <= 4);
@@ -413,6 +2090,15 @@ public final class TestMain {
         m.walkAmount = 1f;
         for (int i = 0; i < 20; i++) m.update(w, far, 0.05f, 0f, false);
         assertTrue("legs settle at rest", m.walkAmount < 0.01f);
+        var observer = spawnAt(com.mineclone.world.entity.MobType.COW, 8.5f, 11f, 8.5f, 4);
+        observer.yaw = 0f;
+        observer.update(w, new org.joml.Vector3f(10.5f, 11f, 8.5f), 0.05f, 1f, false);
+        assertTrue("idle animal turns head toward nearby player", observer.lookYaw < -0.05f);
+        w.getChunk(0, 0).set(8, 10, 8, BlockType.GRASS);
+        observer.animationTime = 2f;
+        observer.onGround = true;
+        observer.update(w, far, 0.05f, 1f, false);
+        assertTrue("idle animal grazes on grass", observer.grazeAmount > 0f);
         for (var type : com.mineclone.world.entity.MobType.values()) {
             java.awt.image.BufferedImage skin = com.mineclone.render.MobSkins.load(type);
             assertEq("loaded skin width", 128, skin.getWidth());
@@ -443,6 +2129,85 @@ public final class TestMain {
         for (int i = 0; i < 300 && !p.onGround; i++)
             p.update(1f / 120f, w, null, false);
         assertTrue("uninterrupted fall still hurts", p.lastFallDamage > 4.9f && p.lastFallDamage < 5.1f);
+    }
+
+    private static void testWaterOutlet() {
+        World w = flatTestWorld();
+        com.mineclone.world.WaterSimulator.reset();
+        w.setBlock(10, 10, 8, BlockType.AIR);
+        w.setBlock(8, 11, 8, BlockType.WATER);
+        com.mineclone.world.WaterSimulator.tick(w);
+        assertEq("flows toward outlet", BlockType.WATER_FLOW, w.getBlock(9, 11, 8));
+        assertEq("does not spread uphill", BlockType.AIR, w.getBlock(7, 11, 8));
+        assertEq("does not form broad side curtain", BlockType.AIR, w.getBlock(8, 11, 9));
+        com.mineclone.world.WaterSimulator.reset();
+    }
+
+    private static void testWaterSlope() {
+        World w = flatTestWorld();
+        com.mineclone.world.WaterSimulator.reset();
+        for (int x = 0; x < 32; x++)
+            for (int z = 0; z < 16; z++) {
+                int height = 20 - Math.min(10, x / 2);
+                for (int y = 11; y <= height; y++)
+                    w.getChunk(x / 16, 0).set(x % 16, y, z, BlockType.STONE);
+            }
+        w.setBlock(1, 21, 8, BlockType.WATER);
+        for (int i = 0; i < 60; i++) com.mineclone.world.WaterSimulator.tick(w);
+        assertEq("water reaches first step", BlockType.WATER_FLOW, w.getBlock(2, 20, 8));
+        assertEq("fall preserves distance from source", 1, w.getBlockMeta(2, 20, 8) & 15);
+        for (int x = 9; x < 32; x++)
+            for (int y = 11; y < 22; y++)
+                assertTrue("no renewed spread beyond seven horizontal steps at " + x + "," + y,
+                        w.getBlock(x, y, 8) != BlockType.WATER_FLOW);
+        w.setBlock(1, 21, 8, BlockType.AIR);
+        for (int i = 0; i < 80; i++) com.mineclone.world.WaterSimulator.tick(w);
+        assertEq("slope drains when source is removed", BlockType.AIR, w.getBlock(2, 20, 8));
+        com.mineclone.world.WaterSimulator.reset();
+    }
+
+    private static void testWeather() {
+        // Первый фронт мира ясный; подробные проверки фронтов — в FeatureTests.
+        assertEq("clear interval", 0f, com.mineclone.world.Weather.intensity(0, 0));
+        boolean wet = false;
+        for (float t = 0f; t < com.mineclone.world.Weather.FRONT_LENGTH * 40 && !wet; t += 30f)
+            wet = com.mineclone.world.Weather.intensity(0, t) > 0.3f;
+        assertTrue("some front brings precipitation", wet);
+        assertTrue("desert stays dry", !com.mineclone.world.Weather.precipitates(Biome.DESERT));
+        assertTrue("tundra has precipitation", com.mineclone.world.Weather.precipitates(Biome.TUNDRA));
+    }
+
+    private static void testWaterFlow() {
+        World w = flatTestWorld();
+        com.mineclone.world.WaterSimulator.reset();
+        w.setBlock(8, 11, 8, BlockType.WATER);
+        for (int i = 0; i < 10; i++) com.mineclone.world.WaterSimulator.tick(w);
+        assertEq("flow reaches seven cells", BlockType.WATER_FLOW, w.getBlock(15, 11, 8));
+        assertEq("flow stops at eighth cell", BlockType.AIR, w.getBlock(16, 11, 8));
+        w.setBlock(8, 11, 8, BlockType.AIR);
+        for (int i = 0; i < 20; i++) com.mineclone.world.WaterSimulator.tick(w);
+        assertEq("removed source drains pool", BlockType.AIR, w.getBlock(12, 11, 8));
+
+        w.setBlock(8, 11, 8, BlockType.WATER);
+        w.setBlock(14, 11, 8, BlockType.WATER);
+        for (int i = 0; i < 12; i++) com.mineclone.world.WaterSimulator.tick(w);
+        w.setBlock(8, 11, 8, BlockType.AIR);
+        for (int i = 0; i < 20; i++) com.mineclone.world.WaterSimulator.tick(w);
+        assertEq("remaining source still supports stream", BlockType.WATER_FLOW, w.getBlock(9, 11, 8));
+        assertEq("stream weakens with longer route", 5, w.getBlockMeta(9, 11, 8) & 15);
+
+        w = flatTestWorld();
+        com.mineclone.world.WaterSimulator.reset();
+        w.setBlock(8, 16, 8, BlockType.WATER);
+        com.mineclone.world.WaterSimulator.tick(w);
+        assertEq("fall takes priority", BlockType.WATER_FLOW, w.getBlock(8, 15, 8));
+        assertEq("no floating side arm", BlockType.AIR, w.getBlock(9, 16, 8));
+        w.setBlock(7, 14, 8, BlockType.WATER);
+        w.setBlock(9, 14, 8, BlockType.WATER);
+        w.setBlock(8, 14, 8, BlockType.WATER_FLOW, (byte) 1);
+        com.mineclone.world.WaterSimulator.tick(w);
+        assertTrue("unsupported cell does not become infinite source", w.getBlock(8, 14, 8) != BlockType.WATER);
+        com.mineclone.world.WaterSimulator.reset();
     }
 
     private static void testMobBuoyancy() {
@@ -499,6 +2264,15 @@ public final class TestMain {
         float behind = com.mineclone.world.entity.EntityPhysics.rayAabbDistance(
                 0f, 0.5f, 0.5f, -1f, 0f, 0f, 5f, 0f, 0f, 6f, 1f, 1f);
         assertTrue("behind returns negative, got " + behind, behind < 0f);
+    }
+
+    /**
+     * Разворачивает моба к точке. Нужен всем тестам погони: курс у свежего
+     * моба случайный, а с конусом зрения стоящий спиной зомби игрока не
+     * видит — это проверяется отдельно, в testSightCone.
+     */
+    private static void aimAt(Mob m, org.joml.Vector3f target) {
+        m.yaw = (float) Math.atan2(-(target.x - m.position.x), -(target.z - m.position.z));
     }
 
     private static com.mineclone.world.entity.Mob spawnAt(
@@ -566,6 +2340,7 @@ public final class TestMain {
                 spawnAt(com.mineclone.world.entity.MobType.ZOMBIE, 8.5f, 11f, 8.5f, 11L);
         // Игрок в 10 блоках — в радиусе агра (16).
         org.joml.Vector3f near = new org.joml.Vector3f(8.5f, 11f, -1.5f);
+        aimAt(z, near);
         z.update(w, near, 1f / 60f, 0f, true);
         assertEq("chases at 10 blocks", com.mineclone.world.entity.Mob.State.CHASE, z.state);
         float startZ = z.position.z;
@@ -743,6 +2518,19 @@ public final class TestMain {
                     1f, swing, 0f, false);
             checkOnScreen("предмет (swing=" + swing + ")", proj, item, 0f, 0f, 0f);
         }
+        // У инструмента поза своя: он плоский и его держат за рукоять, а не
+        // за центр. Рукоять на спрайте — правый нижний угол, и она обязана
+        // быть в кадре и рядом с кулаком, иначе кирка висит в воздухе.
+        for (float swing : new float[] { 0f, 0.5f, 1f }) {
+            org.joml.Matrix4f tool = com.mineclone.render.HeldItemRenderer.toolPose(
+                    1f, swing, 0f, false);
+            checkOnScreen("инструмент, центр (swing=" + swing + ")", proj, tool, 0f, 0f, 0f);
+            checkOnScreen("инструмент, головка (swing=" + swing + ")",
+                    proj, tool, -0.62f, 0.62f, 0f);
+        }
+        // Сидит ли рукоять в кулаке — вопрос картинки, а не числа: расстояние
+        // от угла спрайта до конца бокса руки одинаково и у правильной позы,
+        // и у сломанной. Это смотрится в tools/RenderMobPreview.java.
     }
 
     private static void checkOnScreen(String what, org.joml.Matrix4f proj,
@@ -867,6 +2655,7 @@ public final class TestMain {
         // Цель берётся по прямой видимости, поэтому сначала даём зомби увидеть
         // игрока, и только потом ставим стену — ровно так это и происходит в
         // игре: моб уже бежит, а путь перекрыт.
+        aimAt(z, player);
         z.update(w, player, 1f / 60f, 0f, true);
         assertEq("target acquired before the wall goes up",
                 com.mineclone.world.entity.Mob.State.CHASE, z.state);
@@ -960,6 +2749,104 @@ public final class TestMain {
                 com.mineclone.world.entity.MobType.ZOMBIE.maxHealth, dusk.health);
     }
 
+    private static void testSoundOcclusion() {
+        World w = flatTestWorld();
+        Vector3f ear = new Vector3f(4.5f, 12f, 8.5f);
+        Vector3f src = new Vector3f(14.5f, 12f, 8.5f);
+
+        // Открытое пространство — звук не теряет ничего.
+        assertTrue("clear air does not muffle",
+                com.mineclone.audio.SoundOcclusion.factor(w, ear, src) == 1f);
+
+        // Одна стена между ними.
+        for (int y = 11; y <= 14; y++)
+            for (int zz = 4; zz <= 13; zz++)
+                w.getChunk(0, 0).set(9, y, zz, BlockType.STONE);
+        float oneWall = com.mineclone.audio.SoundOcclusion.factor(w, ear, src);
+        assertTrue("one wall muffles (got " + oneWall + ")", oneWall < 1f && oneWall > 0.2f);
+
+        // Вторая стена глушит сильнее первой.
+        for (int y = 11; y <= 14; y++)
+            for (int zz = 4; zz <= 13; zz++)
+                w.getChunk(0, 0).set(11, y, zz, BlockType.STONE);
+        float twoWalls = com.mineclone.audio.SoundOcclusion.factor(w, ear, src);
+        assertTrue("two walls muffle more", twoWalls < oneWall);
+
+        // Один блок, пройденный по диагонали, не должен считаться трижды:
+        // без дедупликации клеток он глушил бы как три стены. Концы отрезка
+        // берём заведомо снаружи стены — клетки источника и уха не считаются.
+        int diag = com.mineclone.audio.SoundOcclusion.solidBetween(w,
+                new Vector3f(8.2f, 11.2f, 8.5f), new Vector3f(10.8f, 13.8f, 8.5f));
+        assertTrue("a diagonal pass counts the wall once or twice, not more (got " + diag + ")",
+                diag >= 1 && diag <= 2);
+
+        // Насыщение: бесконечно глушить нельзя, иначе звук уходит в денормали.
+        assertTrue("muffling saturates",
+                com.mineclone.audio.SoundOcclusion.gainFor(100)
+                        == com.mineclone.audio.SoundOcclusion.gainFor(
+                                com.mineclone.audio.SoundOcclusion.MAX_BLOCKS));
+    }
+
+    /**
+     * Конус зрения. Соглашение движка: вперёд — это (-sin yaw, -cos yaw),
+     * и именно оно тихо ломается при любой правке поворотов, поэтому
+     * проверяется отдельно от мира.
+     */
+    private static void testSightCone() {
+        // yaw = 0 -> смотрим в -Z.
+        assertTrue("sees straight ahead", Mob.inSightCone(0f, 0f, -10f));
+        assertTrue("sees within the cone", Mob.inSightCone(0f, 4f, -8f));
+        assertTrue("does not see straight behind", !Mob.inSightCone(0f, 0f, 10f));
+        assertTrue("does not see directly to the side", !Mob.inSightCone(0f, 10f, 0f));
+        // Развернулись на 180 — теперь видно то, что было за спиной.
+        float back = (float) Math.PI;
+        assertTrue("turning around flips the cone", Mob.inSightCone(back, 0f, 10f));
+        assertTrue("and loses what was in front", !Mob.inSightCone(back, 0f, -10f));
+    }
+
+    private static void testSightRangeByLight() {
+        float lit = Mob.sightRange(1f);
+        float dark = Mob.sightRange(0f);
+        assertTrue("a lit target is seen far", lit > 15f);
+        assertTrue("a dark target is seen closer", dark < lit * 0.85f);
+        assertTrue("range grows with light", Mob.sightRange(0.5f) > dark
+                && Mob.sightRange(0.5f) < lit);
+        // Выход за пределы 0..1 не должен ломать дальность.
+        assertTrue("range is clamped from above", Mob.sightRange(5f) == lit);
+        assertTrue("range is clamped from below", Mob.sightRange(-5f) == dark);
+    }
+
+    private static void testHearingAndInvestigate() {
+        World w = flatTestWorld();
+        Mob z = new Mob(MobType.ZOMBIE, 8.5f, 11f, 8.5f, new java.util.Random(1));
+        z.onGround = true;
+
+        // Далёкий шум не слышно.
+        z.hearNoise(60f, 11f, 8.5f, 12f);
+        assertTrue("a distant noise is ignored", !z.isInvestigating());
+
+        // Близкий — слышно, и моб идёт к точке.
+        z.hearNoise(16.5f, 11f, 8.5f, 12f);
+        assertTrue("a nearby noise starts an investigation", z.isInvestigating());
+
+        Vector3f faraway = new Vector3f(500f, 11f, 500f);   // игрока рядом нет
+        float startDx = Math.abs(16.5f - z.position.x);
+        for (int i = 0; i < 60; i++)
+            z.update(w, faraway, 0.05f, 0f, true);
+        assertTrue("the zombie walks toward the noise",
+                Math.abs(16.5f - z.position.x) < startDx);
+
+        // Погоня важнее шума: услышанное во время преследования игнорируется.
+        Vector3f near = new Vector3f(z.position.x + 2f, z.position.y, z.position.z);
+        aimAt(z, near);
+        for (int i = 0; i < 10; i++)
+            z.update(w, near, 0.05f, 0f, true);
+        assertTrue("the zombie is chasing", z.state == Mob.State.CHASE
+                || z.state == Mob.State.ATTACK);
+        z.hearNoise(z.position.x - 9f, z.position.y, z.position.z, 12f);
+        assertTrue("noise does not interrupt a chase", !z.isInvestigating());
+    }
+
     private static void testZombieLineOfSight() {
         // Сначала сам предикат: сквозь воздух видно, сквозь камень нет.
         World w = flatTestWorld();
@@ -987,6 +2874,7 @@ public final class TestMain {
         World open = flatTestWorld();
         com.mineclone.world.entity.Mob seeing = spawnAt(
                 com.mineclone.world.entity.MobType.ZOMBIE, 5.5f, 11f, 8.5f, 61L);
+        aimAt(seeing, player);
         seeing.update(open, player, 1f / 60f, 0f, true);
         assertEq("aggros with a clear line",
                 com.mineclone.world.entity.Mob.State.CHASE, seeing.state);
@@ -1027,6 +2915,270 @@ public final class TestMain {
         for (int i = 0; i < 480; i++)
             p.update(1f / 60f, w, noInput, false);
         assertEq("menus do not regenerate health", hurt, p.health);
+    }
+
+    // ---- Еда и голод ------------------------------------------------------
+
+    private static void testFoodStacks() {
+        ItemStack beef = new ItemStack(FoodType.RAW_BEEF, 4);
+        assertTrue("food is food", beef.isFood());
+        assertTrue("food is not a tool", !beef.isTool());
+        assertTrue("same food stacks", beef.stacksWith(new ItemStack(FoodType.RAW_BEEF, 1)));
+        assertTrue("different food does not stack",
+                !beef.stacksWith(new ItemStack(FoodType.RAW_PORK, 1)));
+        assertTrue("food never stacks with blocks",
+                !beef.stacksWith(new ItemStack(BlockType.STONE, 1)));
+        assertTrue("food never stacks with tools",
+                !beef.stacksWith(new ItemStack(ToolType.WOOD_AXE)));
+
+        // Инвентарь обязан сливать одинаковую еду и не путать её с блоками.
+        Inventory inv = new Inventory();
+        inv.addFood(FoodType.RAW_BEEF, 10);
+        inv.addFood(FoodType.RAW_BEEF, 5);
+        inv.add(BlockType.STONE, 5);
+        int beefSlots = 0, beefTotal = 0;
+        for (int i = 0; i < inv.size(); i++) {
+            ItemStack st = inv.get(i);
+            if (st != null && st.isFood() && st.food == FoodType.RAW_BEEF) {
+                beefSlots++;
+                beefTotal += st.count;
+            }
+        }
+        assertEq("beef merged into one stack", 1, beefSlots);
+        assertEq("beef total is right", 15, beefTotal);
+        assertEq("stone kept its own stack", 5, Recipes.count(inv, BlockType.STONE));
+    }
+
+    private static void testHunger() {
+        Player p = new Player();
+        p.respawn(8.5f, 12f, 8.5f);
+        assertEq("starts full", Player.MAX_HUNGER, p.hunger);
+
+        // Голод уходит сам по себе. Гоняем tickHunger напрямую: полный
+        // update требует настоящего GLFW-ввода, которого в тестах нет.
+        for (int i = 0; i < 600; i++)
+            p.tickHunger(1f / 60f, true);
+        assertTrue("hunger drains over time (" + p.hunger + ")", p.hunger < Player.MAX_HUNGER);
+
+        // В меню и в творческом полёте голод стоит.
+        float held = p.hunger;
+        for (int i = 0; i < 600; i++)
+            p.tickHunger(1f / 60f, false);
+        assertEq("hunger freezes when controls are off", held, p.hunger);
+
+        // Бег ест сытость заметно быстрее ходьбы.
+        p.hunger = Player.MAX_HUNGER;
+        for (int i = 0; i < 600; i++)
+            p.tickHunger(1f / 60f, true);
+        float walked = Player.MAX_HUNGER - p.hunger;
+        p.hunger = Player.MAX_HUNGER;
+        p.isSprinting = true;
+        for (int i = 0; i < 600; i++)
+            p.tickHunger(1f / 60f, true);
+        float sprinted = Player.MAX_HUNGER - p.hunger;
+        p.isSprinting = false;
+        assertTrue("sprinting costs more (" + walked + " vs " + sprinted + ")",
+                sprinted > walked * 2f);
+
+        // Реген гейтится сытостью.
+        p.health = 10f;
+        p.hunger = Player.MAX_HUNGER;
+        assertTrue("fed player regenerates", p.canRegen());
+        p.hunger = 2f;
+        assertTrue("hungry player does not", !p.canRegen());
+
+        // Пустой желудок отнимает здоровье, но не добивает: смерть от голода
+        // в игре без земледелия — тупик, а не вызов.
+        p.hunger = 0f;
+        p.health = 10f;
+        for (int i = 0; i < 60 * 120; i++)
+            p.tickHunger(1f / 60f, true);
+        assertTrue("starving hurts", p.health < 10f);
+        assertTrue("starving never kills (" + p.health + ")", p.health >= Player.STARVE_FLOOR);
+
+        // Еда поднимает сытость и не переполняет её.
+        p.hunger = 19f;
+        p.eat(10f);
+        assertEq("hunger is capped", Player.MAX_HUNGER, p.hunger);
+        assertTrue("a full player has no reason to eat", !p.canEat());
+    }
+
+    private static void testMobDrops() {
+        assertEq("cow drops beef", FoodType.RAW_BEEF, MobType.COW.drop());
+        assertEq("pig drops pork", FoodType.RAW_PORK, MobType.PIG.drop());
+        assertEq("chicken drops chicken", FoodType.RAW_CHICKEN, MobType.CHICKEN.drop());
+        assertEq("sheep drops mutton", FoodType.RAW_MUTTON, MobType.SHEEP.drop());
+        // Зомби ничего не даёт: иначе ночь превращается в ферму и сидеть в
+        // темноте становится выгоднее, чем строить дом.
+        assertTrue("zombie drops nothing", MobType.ZOMBIE.drop() == null);
+        for (MobType t : MobType.values())
+            if (t.drop() != null)
+                assertTrue("drop count is sane for " + t, t.dropCount() > 0 && t.dropCount() <= 4);
+    }
+
+    private static void testFoodSaveRoundTrip() throws Exception {
+        SaveManager sm = freshManager();
+        ItemStack[] inv = LevelData.emptyInventory();
+        inv[0] = new ItemStack(FoodType.RAW_PORK, 7);
+        inv[1] = new ItemStack(ToolType.WOOD_AXE);
+        inv[2] = new ItemStack(BlockType.PLANKS, 12);
+        sm.saveLevel("w1", new LevelData("w", 5L, 1, 2, 3, 1, 2, 3, 0f, 0f, 0f, 0,
+                inv, GameMode.SURVIVAL, 0L, 13f, 8.5f));
+
+        LevelData out = sm.loadLevel("w1");
+        assertTrue("level loaded", out != null);
+        assertTrue("food survived", out.inventory[0] != null && out.inventory[0].isFood());
+        assertEq("food kind survived", FoodType.RAW_PORK, out.inventory[0].food);
+        assertEq("food count survived", 7, out.inventory[0].count);
+        assertTrue("tool still fine", out.inventory[1] != null && out.inventory[1].isTool());
+        assertTrue("block still fine", out.inventory[2] != null
+                && !out.inventory[2].isTool() && !out.inventory[2].isFood());
+        assertTrue("hunger survived", Math.abs(out.hunger - 8.5f) < 1e-4f);
+        assertTrue("health survived", Math.abs(out.health - 13f) < 1e-4f);
+    }
+
+    // ---- Инструменты и крафт ---------------------------------------------
+
+    private static void testToolStacks() {
+        ItemStack pick = new ItemStack(ToolType.STONE_PICKAXE);
+        assertTrue("a tool is a tool", pick.isTool());
+        assertTrue("a tool is always a single item", pick.count == 1);
+        assertTrue("a tool is always full", pick.isFull());
+        assertTrue("a tool never stacks with another tool",
+                !pick.stacksWith(new ItemStack(ToolType.STONE_PICKAXE)));
+        assertTrue("a tool never stacks with blocks",
+                !pick.stacksWith(new ItemStack(BlockType.STONE, 1)));
+        assertEq("pouring into a tool changes nothing", 5, pick.addUpTo(5));
+
+        // Износ обязан переживать копирование: иначе перекладывание кирки
+        // в другой слот её чинит.
+        pick.damage = 40;
+        ItemStack copy = pick.copy();
+        assertEq("wear survives a copy", 40, copy.damage);
+        assertTrue("condition drops with wear", copy.condition() < 1f);
+
+        // Инвентарь не должен сливать инструменты в стопку.
+        Inventory inv = new Inventory();
+        inv.addItem(new ItemStack(ToolType.WOOD_AXE));
+        inv.addItem(new ItemStack(ToolType.WOOD_AXE));
+        int tools = 0;
+        for (int i = 0; i < inv.size(); i++)
+            if (inv.get(i) != null && inv.get(i).isTool())
+                tools++;
+        assertEq("two axes occupy two slots", 2, tools);
+    }
+
+    private static void testToolGating() {
+        // Что вообще даёт дроп.
+        assertEq("dirt needs no tool", 0, BlockType.DIRT.requiredToolLevel());
+        assertEq("stone needs a wooden pick", 1, BlockType.STONE.requiredToolLevel());
+        assertEq("iron ore needs a stone pick", 2, BlockType.IRON_ORE.requiredToolLevel());
+        assertEq("diamond needs an iron pick", 3, BlockType.DIAMOND_ORE.requiredToolLevel());
+
+        // Класс инструмента.
+        assertTrue("stone is a pickaxe job",
+                ToolType.STONE_PICKAXE.suits(BlockType.STONE));
+        assertTrue("a pickaxe is useless on dirt",
+                !ToolType.STONE_PICKAXE.suits(BlockType.DIRT));
+        assertTrue("a shovel is the dirt tool",
+                ToolType.WOOD_SHOVEL.suits(BlockType.DIRT));
+        assertTrue("an axe is the wood tool",
+                ToolType.WOOD_AXE.suits(BlockType.PLANKS));
+
+        // Вертикаль прогресса: уровень растёт вместе с материалом.
+        assertTrue("stone beats wood", ToolType.STONE_PICKAXE.level > ToolType.WOOD_PICKAXE.level);
+        assertTrue("iron beats stone", ToolType.IRON_PICKAXE.level > ToolType.STONE_PICKAXE.level);
+        assertTrue("diamond beats iron", ToolType.DIAMOND_PICKAXE.level > ToolType.IRON_PICKAXE.level);
+        assertTrue("better material digs faster",
+                ToolType.DIAMOND_PICKAXE.speed > ToolType.WOOD_PICKAXE.speed);
+    }
+
+    private static void testToolWear() {
+        ItemStack pick = new ItemStack(ToolType.WOOD_PICKAXE);
+        int uses = 0;
+        while (!pick.wear() && uses < 10000)
+            uses++;
+        assertEq("a tool lasts exactly its durability",
+                ToolType.WOOD_PICKAXE.durability - 1, uses);
+        assertTrue("a worn out tool has no condition left", pick.condition() <= 0f);
+        // Блок износом не интересуется.
+        assertTrue("blocks never wear", !new ItemStack(BlockType.STONE, 1).wear());
+    }
+
+    private static void testCrafting() {
+        Inventory inv = new Inventory();
+        inv.add(BlockType.COBBLE, 3);
+        inv.add(BlockType.PLANKS, 1);
+
+        var list = Recipes.available(inv);
+        assertTrue("stone pickaxe is offered", list.stream()
+                .anyMatch(r -> r.tool() == ToolType.STONE_PICKAXE));
+
+        var pickRecipe = java.util.Arrays.stream(Recipes.all())
+                .filter(r -> r.tool() == ToolType.STONE_PICKAXE).findFirst().orElse(null);
+        assertTrue("recipe table has the stone pickaxe", pickRecipe != null);
+        assertTrue("crafting succeeds", Recipes.craft(inv, pickRecipe));
+
+        // Списалось ровно по рецепту, ни блоком больше.
+        assertEq("cobble spent", 0, Recipes.count(inv, BlockType.COBBLE));
+        assertEq("plank spent", 0, Recipes.count(inv, BlockType.PLANKS));
+        int tools = 0;
+        for (int i = 0; i < inv.size(); i++)
+            if (inv.get(i) != null && inv.get(i).isTool())
+                tools++;
+        assertEq("got exactly one pickaxe", 1, tools);
+
+        // Второй раз собрать не из чего.
+        assertTrue("cannot craft without materials", !Recipes.craft(inv, pickRecipe));
+
+        // Рукоять того же вида считается отдельно: деревянная кирка это
+        // три доски плюс доска, а не три доски.
+        Inventory wood = new Inventory();
+        wood.add(BlockType.PLANKS, 3);
+        var woodPick = java.util.Arrays.stream(Recipes.all())
+                .filter(r -> r.tool() == ToolType.WOOD_PICKAXE).findFirst().orElse(null);
+        assertTrue("three planks are not enough for a wooden pickaxe",
+                !Recipes.canCraft(wood, woodPick));
+        wood.add(BlockType.PLANKS, 1);
+        assertTrue("four planks are", Recipes.canCraft(wood, woodPick));
+    }
+
+    private static void testRecipeTable() {
+        for (var r : Recipes.all()) {
+            assertTrue("recipe needs something", r.needCount() > 0 && r.needBlock() != null);
+            assertTrue("recipe produces something", r.tool() != null || r.block() != null);
+            if (r.block() != null)
+                assertTrue("block recipe yields at least one", r.blockCount() > 0);
+            // Ровно то, ради чего таблица и существует: рецепт должен быть
+            // выполним из материалов, которые в мире вообще добываются.
+            Inventory inv = new Inventory();
+            inv.add(r.needBlock(), r.needCount() + r.handleCount());
+            if (r.handle() != null && r.handle() != r.needBlock())
+                inv.add(r.handle(), r.handleCount());
+            assertTrue("recipe for " + r.resultName() + " is satisfiable",
+                    Recipes.canCraft(inv, r));
+        }
+    }
+
+    private static void testToolSaveRoundTrip() throws Exception {
+        SaveManager sm = freshManager();
+        ItemStack[] inv = LevelData.emptyInventory();
+        ItemStack pick = new ItemStack(ToolType.IRON_PICKAXE);
+        pick.damage = 77;
+        inv[0] = pick;
+        inv[1] = new ItemStack(BlockType.COBBLE, 30);
+        sm.saveLevel("w1", new LevelData("w", 5L, 1, 2, 3, 1, 2, 3, 0f, 0f, 0f, 0,
+                inv, GameMode.SURVIVAL, 0L, 20f));
+
+        LevelData out = sm.loadLevel("w1");
+        assertTrue("level loaded", out != null);
+        assertTrue("tool survived the round trip", out.inventory[0] != null
+                && out.inventory[0].isTool());
+        assertEq("tool type survived", ToolType.IRON_PICKAXE, out.inventory[0].tool);
+        assertEq("tool wear survived", 77, out.inventory[0].damage);
+        assertTrue("block stack still works", out.inventory[1] != null
+                && !out.inventory[1].isTool());
+        assertEq("block count survived", 30, out.inventory[1].count);
     }
 
     private static void testItemStack() {
@@ -1158,6 +3310,187 @@ public final class TestMain {
     }
 
     private interface Check { void run() throws Exception; }
+
+    /**
+     * Меши строятся в несколько потоков, порядок возврата ничем не задан.
+     * Без защиты меш от первой правки ложится поверх меша от второй —
+     * и только что сломанный блок возвращается на место.
+     */
+    private static void testMeshVersionRejectsStale() {
+        Chunk c = new Chunk(0, 0);
+        int v1 = c.contentVersion();
+        c.set(1, 1, 1, BlockType.STONE);
+        int v2 = c.contentVersion();
+        assertTrue("правка двигает версию", v2 > v1);
+
+        // Свежий меш принимается...
+        assertTrue("свежий меш принят", c.acceptMeshVersion(v2));
+        // ...а опоздавший старый — нет.
+        assertTrue("старый меш отвергнут", !c.acceptMeshVersion(v1));
+        assertTrue("повтор той же версии отвергнут", !c.acceptMeshVersion(v2));
+
+        // Флаг снимается только если содержимое не ушло вперёд.
+        c.set(2, 1, 1, BlockType.DIRT);
+        assertTrue("устаревшая версия не снимает флаг", !c.clearDirtyIfCurrent(v2));
+        assertTrue("чанк остался грязным", c.isDirty());
+        assertTrue("текущая версия снимает флаг",
+                c.clearDirtyIfCurrent(c.contentVersion()));
+        assertTrue("чанк чист", !c.isDirty());
+
+        // Выгрузка сбрасывает планку: чанк может вернуться с любой версией.
+        c.forgetUploadedMesh();
+        assertTrue("после выгрузки меш снова принимается", c.acceptMeshVersion(v2));
+    }
+
+    /**
+     * Список излучателей заменяет перебор 32 768 ячеек в главном потоке.
+     * Разойдись он с блоками — и факел либо перестанет светить, либо будет
+     * светить из пустоты.
+     */
+    private static void testEmitterListMatchesChunk() {
+        Chunk c = new Chunk(0, 0);
+        assertEq("пустой чанк — ни одного излучателя", 0, c.emitterCount());
+
+        BlockType lamp = null;
+        for (BlockType t : BlockType.values())
+            if (t.emittedLight > 0) { lamp = t; break; }
+        assertTrue("в игре есть хоть один источник света", lamp != null);
+
+        c.set(3, 40, 5, lamp);
+        c.set(9, 41, 2, lamp);
+        assertEq("два источника учтены", 2, c.emitterCount());
+        assertEmittersConsistent(c);
+
+        // Снятие одного.
+        c.set(3, 40, 5, BlockType.AIR);
+        assertEq("остался один", 1, c.emitterCount());
+        assertEmittersConsistent(c);
+
+        // Замена источника на источник не плодит дубликатов.
+        c.set(9, 41, 2, lamp);
+        assertEq("дубликата нет", 1, c.emitterCount());
+        assertEmittersConsistent(c);
+
+        // Восстановление из сейва пишет блоки массивом, мимо set().
+        byte[] blocks = new byte[Chunk.SIZE_X * Chunk.SIZE_Y * Chunk.SIZE_Z];
+        byte[] meta = new byte[blocks.length];
+        blocks[Chunk.idx(1, 10, 1)] = (byte) lamp.ordinal();
+        blocks[Chunk.idx(2, 10, 1)] = (byte) lamp.ordinal();
+        blocks[Chunk.idx(3, 10, 1)] = (byte) lamp.ordinal();
+        c.restore(blocks, meta);
+        assertEq("после restore список пересобран", 3, c.emitterCount());
+        assertEmittersConsistent(c);
+    }
+
+    /** Каждая позиция из списка действительно светит, и ни одна не забыта. */
+    private static void assertEmittersConsistent(Chunk c) {
+        java.util.HashSet<Integer> listed = new java.util.HashSet<>();
+        for (int i = 0; i < c.emitterCount(); i++) {
+            int packed = c.emitterAt(i);
+            int lx = packed % Chunk.SIZE_X;
+            int rest = packed / Chunk.SIZE_X;
+            int lz = rest % Chunk.SIZE_Z;
+            int y = rest / Chunk.SIZE_Z;
+            assertTrue("в списке только светящиеся блоки",
+                    c.get(lx, y, lz).emittedLight > 0);
+            assertTrue("позиции не повторяются", listed.add(packed));
+        }
+        int actual = 0;
+        for (int x = 0; x < Chunk.SIZE_X; x++)
+            for (int y = 0; y < Chunk.SIZE_Y; y++)
+                for (int z = 0; z < Chunk.SIZE_Z; z++)
+                    if (c.get(x, y, z).emittedLight > 0) {
+                        actual++;
+                        assertTrue("источник не забыт списком",
+                                listed.contains(Chunk.idx(x, y, z)));
+                    }
+        assertEq("длина списка совпадает с числом источников", actual, c.emitterCount());
+    }
+
+    /**
+     * Очередь меширования упорядочена по расстоянию, а правка игрока идёт
+     * вперёд всех. Иначе удар по блоку ждёт очереди из сотни дальних чанков.
+     */
+    private static void testMeshPriorityOrder() {
+        java.util.List<int[]> order = new java.util.ArrayList<>();
+        // Модель ключа приоритета из ChunkLoader: правка = -1,
+        // иначе квадрат расстояния до игрока.
+        order.add(new int[] { 100, 1 });  // дальний чанк
+        order.add(new int[] { -1, 2 });   // правка
+        order.add(new int[] { 4, 3 });    // ближний
+        order.add(new int[] { 4, 0 });    // ближний, поступил раньше
+        order.sort((a, b) -> a[0] != b[0] ? Integer.compare(a[0], b[0])
+                                          : Integer.compare(a[1], b[1]));
+        assertEq("правка игрока первая", -1, order.get(0)[0]);
+        assertEq("затем ближний, поступивший раньше", 0, order.get(1)[1]);
+        assertEq("затем ближний позже", 3, order.get(2)[1]);
+        assertEq("дальний последний", 100, order.get(3)[0]);
+    }
+
+    /**
+     * Рывок виден только в худшем кадре: среднее его съедает.
+     */
+    private static void testFrameProfilerWorst() {
+        com.mineclone.game.FrameProfiler prof = new com.mineclone.game.FrameProfiler();
+        double t = 0;
+        // Десять ровных кадров по 5 мс работы.
+        for (int i = 0; i < 10; i++) {
+            prof.beginFrame();
+            prof.begin(com.mineclone.game.FrameProfiler.Phase.WORLD, t);
+            t += 0.005;
+            prof.endFrame(t, 0.005);
+        }
+        double calmWorst = prof.worstMillis();
+        assertTrue("ровные кадры — худший около 5 мс",
+                calmWorst > 4.0 && calmWorst < 8.0);
+
+        // Один провал на 60 мс.
+        prof.beginFrame();
+        prof.begin(com.mineclone.game.FrameProfiler.Phase.WORLD, t);
+        t += 0.060;
+        prof.endFrame(t, 0.060);
+        assertTrue("провал виден сразу", prof.worstMillis() > 55.0);
+
+        // Сглаженное среднее провал почти не замечает — ради этой
+        // разницы худший кадр и считается отдельно.
+        assertTrue("среднее осталось малым", prof.totalMillis() < 20.0);
+
+        assertTrue("разбивка называет фазы", prof.breakdown().contains("world"));
+    }
+
+    /**
+     * floodFillRemove теперь рано выходит, когда излучателей в радиусе нет, — без
+     * этого каждая правка блока перебирала куб из 29 791 ячейки. Ловушка в том,
+     * что снятый факел в список излучателей уже не входит — его блок заменён
+     * раньше вызова, — а свет его в буфере остался. Ранний выход без проверки
+     * света в самой точке оставлял погасший факел светить навсегда.
+     */
+    private static void testLastTorchGoesOut() {
+        World w = new World(31337L);
+        // Площадка глубоко под землёй: там небесного света нет и виден
+        // только блочный.
+        w.getChunk(0, 0);
+        int x = 8, y = 20, z = 8;
+        BlockType torch = null;
+        for (BlockType t : BlockType.values())
+            if (t.emittedLight > 0) { torch = t; break; }
+        assertTrue("в игре есть источник света", torch != null);
+
+        // Расчистим карман, чтобы свету было куда разойтись.
+        for (int dx = -3; dx <= 3; dx++)
+            for (int dy = -3; dy <= 3; dy++)
+                for (int dz = -3; dz <= 3; dz++)
+                    w.setBlock(x + dx, y + dy, z + dz, BlockType.AIR);
+
+        w.setBlock(x, y, z, torch);
+        assertTrue("факел светит", w.getBlockLightWorld(x, y, z) > 0);
+        assertTrue("свет доходит до соседней клетки",
+                w.getBlockLightWorld(x + 2, y, z) > 0);
+
+        w.setBlock(x, y, z, BlockType.AIR);
+        assertEq("снятый факел не светит", 0, w.getBlockLightWorld(x, y, z));
+        assertEq("и рядом тоже темно", 0, w.getBlockLightWorld(x + 2, y, z));
+    }
 
     private static void run(String name, Check c) {
         try {
