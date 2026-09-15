@@ -58,6 +58,44 @@ final class Autopilot {
         com.mineclone.save.SaveManager save();
 
         com.mineclone.ui.SettingsModel settings();
+
+        /** Есть устройство звука и плеер музыки жив. */
+        boolean musicAvailable();
+
+        /** Играющий трек или null. */
+        String musicTrack();
+
+        /** Позиция играющего трека, секунды. */
+        float musicPosition();
+
+        /** Как {@code /music next}: погасить трек и начать другой. */
+        void musicNext();
+    }
+
+    /** Позиция трека на прошлом замере — чтобы проверить, что музыка идёт, а не стоит. */
+    private float musicMark = -1f;
+    private String musicMarkTrack;
+
+    /**
+     * Музыка звучит на самом деле: трек выбран, поток OpenAL его крутит.
+     * Без устройства звука (удалённая машина) проверка пропускается, а не падает.
+     */
+    private Step music(String name, float delay) {
+        return step(name, delay, d -> {
+            if (!d.musicAvailable()) {
+                System.out.println("autopilot: skip - " + name + " (no audio device)");
+                return;
+            }
+            String track = d.musicTrack();
+            if (track == null)
+                throw new IllegalStateException(name + ": no music is playing");
+            float pos = d.musicPosition();
+            if (track.equals(musicMarkTrack) && pos <= musicMark + 0.5f)
+                throw new IllegalStateException(name + ": " + track + " stands still at " + pos + " s");
+            System.out.println("autopilot: ok - " + name + " (" + track + " at " + pos + " s)");
+            musicMark = pos;
+            musicMarkTrack = track;
+        });
     }
 
     /** Дольше этого прогон не идёт: зависшая загрузка не должна висеть вечно. */
@@ -98,6 +136,18 @@ final class Autopilot {
             step("shoot night", 0.4f, d -> d.shot("00-title-night")),
             step("morning", 0.1f, d -> d.setMenuTime(0.55f)),
             step("shoot title", 0.4f, d -> d.shot("01-title")),
+            music("menu music is playing", 0.2f),
+            music("menu music moves on", 1.5f),
+            step("next track", 0.1f, Driver::musicNext),
+            step("the next track replaces the old one", 2.0f, d -> {
+                if (!d.musicAvailable())
+                    return;
+                if (d.musicTrack() == null || d.musicTrack().equals(musicMarkTrack))
+                    throw new IllegalStateException("next track: still " + d.musicTrack());
+                System.out.println("autopilot: ok - next track " + d.musicTrack());
+            }),
+            music("the next track plays through its fade-in", 1.5f),
+            music("the next track moves on", 1.5f),
             step("open worlds", 0.2f, d -> d.open(new WorldSelectScreen(d.save(), d.settings()))),
             step("shoot worlds", 0.8f, d -> d.shot("02-worlds")),
             step("open create", 0.2f, d -> d.open(new WorldCreateScreen(d.save(), d.settings()))),
@@ -130,7 +180,8 @@ final class Autopilot {
                 if (!d.worldHasIcon())
                     throw new IllegalStateException("world icon was not saved");
                 System.out.println("autopilot: ok - world icon saved");
-            }));
+            }),
+            music("menu music returns after leaving the world", 3.0f));
 
     private final Driver d;
     private float clock;

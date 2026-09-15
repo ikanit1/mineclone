@@ -4611,6 +4611,26 @@ public class Game {
         public SettingsModel settings() {
             return settingsModel;
         }
+
+        @Override
+        public boolean musicAvailable() {
+            return musicPlayer != null && musicPlayer.available() && musicPlayer.enabled();
+        }
+
+        @Override
+        public String musicTrack() {
+            return musicPlayer.currentTrackId();
+        }
+
+        @Override
+        public float musicPosition() {
+            return musicPlayer.position();
+        }
+
+        @Override
+        public void musicNext() {
+            music.requestNext();
+        }
     }
 
     private void resumeFromPause() {
