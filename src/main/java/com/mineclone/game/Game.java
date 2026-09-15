@@ -310,6 +310,8 @@ public class Game {
     /** Превью мира для списка миров: снимается с первого кадра после сохранения. */
     private final Thumbnail thumbnail = new Thumbnail();
     private boolean iconRequested;
+    /** В кадре, где меню открылось, его ввод пустой — см. {@link #openMenu}. */
+    private boolean menuInputBlocked;
     /** Автопилот меню ({@code -Dmineclone.autopilot=<папка>}) или null в обычной игре. */
     private final Autopilot autopilot;
     private java.nio.file.Path shotDir;
@@ -517,6 +519,10 @@ public class Game {
         syncSettingsModel();
         input.pollChars();
         menus.reset(root);
+        // Клавиша, которая открыла меню, в этом же кадре дойдёт до него ещё раз:
+        // пауза по Esc ставится в обновлении, а стек читает Esc в отрисовке — и
+        // без этого флага тут же возвращал бы в игру.
+        menuInputBlocked = true;
     }
 
     /** Звуки интерфейса: тихий щелчок наведения и полноценный — нажатия. */
@@ -4429,7 +4435,18 @@ public class Game {
     private MenuAction drawMenus(int vw, int vh, int scale) {
         if (menuTheme == null || menus.isEmpty())
             return MenuAction.NONE;
-        menuTheme.begin(vw, vh, menuInput(scale), uiClock, lastDt);
+        // Модель настроек — каждый кадр: F11 меняет полный экран в обход меню,
+        // и открытый экран настроек иначе показывал бы старое значение.
+        syncSettingsModel();
+        UiInput in;
+        if (menuInputBlocked) {
+            in = UiInput.builder().at((float) (input.getCursorX() / scale), (float) (input.getCursorY() / scale)).build();
+            input.pollChars();
+            menuInputBlocked = false;
+        } else {
+            in = menuInput(scale);
+        }
+        menuTheme.begin(vw, vh, in, uiClock, lastDt);
         MenuAction a = menus.frame(menuTheme);
         menuTheme.end();
         return a;
@@ -4548,13 +4565,13 @@ public class Game {
         }
 
         @Override
-        public void pause() {
-            pauseGame();
+        public void shot(String name) {
+            pendingShot = name;
         }
 
         @Override
-        public void shot(String name) {
-            pendingShot = name;
+        public void pressKey(int key) {
+            input.inject(key);
         }
 
         @Override

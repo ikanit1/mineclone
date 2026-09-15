@@ -9,18 +9,27 @@ import com.mineclone.ui.WorldSelectScreen;
 import com.mineclone.ui.WorldSettings;
 import com.mineclone.world.GameMode;
 
+import java.util.List;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
+
 /**
  * Автопилот меню в настоящей игре: {@code -Dmineclone.autopilot=<папка>}.
  *
  * <p>Офлайновые снимки экранов проверяют сами экраны, но не то, как игра их
  * собирает: живой фон под стеклом, экран загрузки над фоном, переходы между
  * состояниями, превью мира после сохранения. Автопилот проходит весь путь —
- * титул, миры, создание, загрузка, игра, пауза, настройки, клавиши, выход в
- * меню — снимает кадр на каждом шаге и закрывает игру.
+ * фон на закате и ночью, титул, миры, создание, загрузка, игра, пауза,
+ * настройки, клавиши, выход в меню — снимает кадр на каждом шаге и закрывает
+ * игру с ненулевым кодом, если что-то пошло не так.
  *
  * <p>Экраны открываются и действия подаются напрямую, мимо мыши: щелчки по
  * координатам ломались бы от любой правки раскладки, а сами щелчки уже
- * проверены снимками экранов.
+ * проверены снимками экранов. А вот Esc жмётся настоящий, через ввод: так
+ * нашёлся баг, когда стек меню в том же кадре читал Esc, открывший паузу, и
+ * пауза тут же закрывалась.
  */
 final class Autopilot {
 
@@ -32,14 +41,15 @@ final class Autopilot {
 
         void act(MenuAction a);
 
-        void pause();
+        /** Нажать клавишу на один кадр через настоящий ввод. */
+        void pressKey(int key);
 
         void shot(String name);
 
-        void setMenuTime(float gameTime);
-
         /** Снимок заказан, но ещё не снят. */
         boolean shotPending();
+
+        void setMenuTime(float gameTime);
 
         boolean worldHasIcon();
 
@@ -53,79 +63,123 @@ final class Autopilot {
     /** Дольше этого прогон не идёт: зависшая загрузка не должна висеть вечно. */
     static final float TIMEOUT = 150f;
 
+    /**
+     * Шаг: дождаться условия и паузы после предыдущего шага, сделать дело.
+     * Снимок и переход — всегда разные шаги: иначе на снимке проступает
+     * первый кадр фейда следующего экрана.
+     */
+    private record Step(String name, float delay, Predicate<Driver> ready, Consumer<Driver> action) {
+    }
+
+    private static Step step(String name, float delay, Consumer<Driver> action) {
+        return new Step(name, delay, d -> true, action);
+    }
+
+    private static Step when(String name, float delay, Predicate<Driver> ready, Consumer<Driver> action) {
+        return new Step(name, delay, ready, action);
+    }
+
+    private static Step expect(String name, float delay, String state) {
+        return new Step(name, delay, d -> true, d -> {
+            if (!state.equals(d.state()))
+                throw new IllegalStateException(name + ": expected " + state + ", got " + d.state());
+            System.out.println("autopilot: ok - " + name);
+        });
+    }
+
+    private static boolean in(Driver d, String state) {
+        return state.equals(d.state());
+    }
+
+    private final List<Step> steps = List.of(
+            step("dusk", 2.5f, d -> d.setMenuTime((float) (Math.PI * 0.93))),
+            step("shoot dusk", 0.4f, d -> d.shot("00-title-dusk")),
+            step("night", 0.1f, d -> d.setMenuTime((float) (Math.PI * 1.5))),
+            step("shoot night", 0.4f, d -> d.shot("00-title-night")),
+            step("morning", 0.1f, d -> d.setMenuTime(0.55f)),
+            step("shoot title", 0.4f, d -> d.shot("01-title")),
+            step("open worlds", 0.2f, d -> d.open(new WorldSelectScreen(d.save(), d.settings()))),
+            step("shoot worlds", 0.8f, d -> d.shot("02-worlds")),
+            step("open create", 0.2f, d -> d.open(new WorldCreateScreen(d.save(), d.settings()))),
+            step("shoot create", 0.8f, d -> d.shot("03-create")),
+            step("create world", 0.2f, d -> d.act(MenuAction.create(
+                    new WorldSettings("Автопилот", 20260915L, GameMode.SURVIVAL)))),
+            when("shoot loading", 0.3f, d -> in(d, "LOADING") || in(d, "PLAYING"), d -> {
+                if (in(d, "LOADING"))
+                    d.shot("04-loading");
+            }),
+            when("shoot play", 3f, d -> in(d, "PLAYING"), d -> d.shot("05-play")),
+            step("Esc", 0.2f, d -> d.pressKey(GLFW_KEY_ESCAPE)),
+            expect("Esc opens the pause and it stays open", 0.6f, "PAUSED"),
+            step("Esc", 0.1f, d -> d.pressKey(GLFW_KEY_ESCAPE)),
+            expect("Esc in the pause resumes the game", 0.6f, "PLAYING"),
+            step("Esc", 0.2f, d -> d.pressKey(GLFW_KEY_ESCAPE)),
+            expect("Esc pauses again", 0.6f, "PAUSED"),
+            step("shoot pause", 0.6f, d -> d.shot("06-pause")),
+            step("open settings", 0.2f, d -> d.open(new SettingsScreen(d.settings(), 0))),
+            step("shoot settings", 0.8f, d -> d.shot("07-settings")),
+            step("open keys", 0.2f, d -> d.open(new KeybindScreen(d.settings()))),
+            step("shoot keys", 0.8f, d -> d.shot("08-keys")),
+            step("Esc closes keys", 0.2f, d -> d.pressKey(GLFW_KEY_ESCAPE)),
+            step("Esc closes settings", 0.4f, d -> d.pressKey(GLFW_KEY_ESCAPE)),
+            expect("Esc from settings lands in the pause, not the game", 0.6f, "PAUSED"),
+            step("main menu", 0.2f, d -> d.act(MenuAction.of(MenuAction.Kind.MAIN_MENU))),
+            expect("main menu unloads the world", 0.3f, "MENU"),
+            step("shoot title with Continue", 1.2f, d -> d.shot("09-title-continue")),
+            step("world icon", 0.5f, d -> {
+                if (!d.worldHasIcon())
+                    throw new IllegalStateException("world icon was not saved");
+                System.out.println("autopilot: ok - world icon saved");
+            }));
+
     private final Driver d;
     private float clock;
     private float stepClock;
-    private int step;
+    private int index;
+    private boolean finished;
 
     Autopilot(Driver driver) {
         this.d = driver;
     }
 
     void update(float dt) {
+        if (finished)
+            return;
         clock += dt;
+        if (clock > TIMEOUT) {
+            fail("timeout at step '" + (index < steps.size() ? steps.get(index).name() : "end")
+                    + "' in state " + d.state());
+            return;
+        }
         if (d.shotPending())
             return;   // следующий шаг — только когда кадр предыдущего снят
         stepClock += dt;
-        if (clock > TIMEOUT) {
-            System.err.println("autopilot: timeout at step " + step + " in state " + d.state());
-            d.quit(2);
+        if (index >= steps.size()) {
+            finished = true;
+            System.out.println("autopilot: all checks passed");
+            d.quit(0);
             return;
         }
-        switch (step) {
-            // Снимок и переход никогда не в одном кадре: иначе на снимке
-            // проступает первый кадр фейда следующего экрана.
-            case 0 -> after(2.5f, () -> d.setMenuTime((float) (Math.PI * 0.93)));
-            case 1 -> after(0.4f, () -> d.shot("00-title-dusk"));
-            case 2 -> after(0.1f, () -> d.setMenuTime((float) (Math.PI * 1.5)));
-            case 3 -> after(0.4f, () -> d.shot("00-title-night"));
-            case 4 -> after(0.1f, () -> d.setMenuTime(0.55f));
-            case 5 -> after(0.4f, () -> d.shot("01-title"));
-            case 6 -> after(0.3f, () -> d.open(new WorldSelectScreen(d.save(), d.settings())));
-            case 7 -> after(0.8f, () -> d.shot("02-worlds"));
-            case 8 -> after(0.2f, () -> d.open(new WorldCreateScreen(d.save(), d.settings())));
-            case 9 -> after(0.8f, () -> d.shot("03-create"));
-            case 10 -> after(0.2f, () ->
-                    d.act(MenuAction.create(new WorldSettings("Автопилот", 20260915L, GameMode.SURVIVAL))));
-            case 11 -> {
-                if ("LOADING".equals(d.state()))
-                    after(0.3f, () -> d.shot("04-loading"));
-                else if ("PLAYING".equals(d.state()))
-                    next();   // загрузка успела пройти за один кадр — снимать нечего
-            }
-            case 12 -> {
-                if ("PLAYING".equals(d.state()))
-                    after(3f, () -> d.shot("05-play"));
-                else
-                    stepClock = 0f;
-            }
-            case 13 -> after(0.2f, d::pause);
-            case 14 -> after(1.0f, () -> d.shot("06-pause"));
-            case 15 -> after(0.2f, () -> d.open(new SettingsScreen(d.settings(), 0)));
-            case 16 -> after(0.8f, () -> d.shot("07-settings"));
-            case 17 -> after(0.2f, () -> d.open(new KeybindScreen(d.settings())));
-            case 18 -> after(0.8f, () -> d.shot("08-keys"));
-            case 19 -> after(0.2f, () -> d.act(MenuAction.of(MenuAction.Kind.MAIN_MENU)));
-            case 20 -> after(1.5f, () -> d.shot("09-title-continue"));
-            case 21 -> after(0.5f, () -> {
-                boolean icon = d.worldHasIcon();
-                System.out.println("autopilot: world icon " + (icon ? "saved" : "MISSING"));
-                d.quit(icon ? 0 : 1);
-            });
-            default -> {
-            }
-        }
-    }
-
-    private void after(float seconds, Runnable action) {
-        if (stepClock < seconds)
+        Step s = steps.get(index);
+        if (!s.ready().test(d)) {
+            stepClock = 0f;
             return;
-        action.run();
-        next();
-    }
-
-    private void next() {
-        step++;
+        }
+        if (stepClock < s.delay())
+            return;
+        try {
+            s.action().accept(d);
+        } catch (IllegalStateException e) {
+            fail(e.getMessage());
+            return;
+        }
+        index++;
         stepClock = 0f;
+    }
+
+    private void fail(String message) {
+        finished = true;
+        System.err.println("autopilot: FAILED - " + message);
+        d.quit(1);
     }
 }

@@ -19,6 +19,8 @@ public class Input {
     private KeyBindings bindings = new KeyBindings();
     /** Можно ли прятать и запирать курсор; автопилот идёт на чужом экране. */
     private boolean grabAllowed = true;
+    /** Клавиша, нажатая программно на один кадр, или −1. */
+    private int injected = -1;
 
     public Input(long window) {
         this.window = window;
@@ -51,6 +53,10 @@ public class Input {
         System.arraycopy(keysCur, 0, keysPrev, 0, keysCur.length);
         for (int k = 32; k < keysCur.length; k++) {
             keysCur[k] = glfwGetKey(window, k) == GLFW_PRESS;
+        }
+        if (injected >= 0 && injected < keysCur.length) {
+            keysCur[injected] = true;
+            injected = -1;   // в следующем кадре клавиша отпускается сама
         }
         System.arraycopy(mouseCur, 0, mousePrev, 0, mouseCur.length);
         for (int b = 0; b < mouseCur.length; b++) {
@@ -87,6 +93,15 @@ public class Input {
     public double getDx() { return dx; }
     public double getDy() { return dy; }
     public double getScroll() { return scrollThisFrame; }
+
+    /**
+     * Нажать клавишу на один кадр, как с клавиатуры. Автопилот проверяет так
+     * настоящий путь ввода: Esc проходит через {@link #keyPressed} туда же, куда
+     * и нажатие пальцем.
+     */
+    public void inject(int key) {
+        injected = key;
+    }
 
     public void setGrabAllowed(boolean allowed) {
         grabAllowed = allowed;
