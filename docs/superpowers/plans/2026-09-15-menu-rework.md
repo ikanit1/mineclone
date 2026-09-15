@@ -1,6 +1,6 @@
 ---
 tags: [plan, ui]
-status: in-progress
+status: done
 date: 2026-09-15
 spec: docs/superpowers/specs/2026-09-15-menu-and-performance-design.md
 ---
@@ -119,7 +119,13 @@ spec: docs/superpowers/specs/2026-09-15-menu-and-performance-design.md
 - [x] Тест цикла суток фона; автопилот снимает фон на закате и ночью.
 
 ### 7. Документация
-- [ ] ADR `knowledge/decisions/menu-architecture.md`.
-- [ ] `knowledge/decisions/chunk-loading-strategy.md` — этапы загрузки.
-- [ ] `CLAUDE.md`: пакет `ui`, клавиши, ручки настройки.
-- [ ] Спека: `status: done`.
+- [x] ADR `knowledge/decisions/menu-architecture.md`.
+- [x] `knowledge/decisions/chunk-loading-strategy.md` — этапы загрузки, пулы, бюджеты.
+- [x] `CLAUDE.md`: пакет `ui`, клавиши, автопилот, снимки, ручки настройки.
+- [x] Спека: `status: done`.
+
+### 8. Найдено по ходу и исправлено
+- [x] `listWorlds` стоил 16 мс при каждом открытии экрана: `walkFileTree`
+      (8,5 мс), без размеров для титула и создания (1 мс), размеры в фоне.
+- [x] Esc, открывший паузу, в том же кадре закрывал её через стек меню —
+      пустой ввод в кадре открытия; автопилот жмёт настоящий Esc.

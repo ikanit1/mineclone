@@ -1,6 +1,6 @@
 ---
 tags: [spec, ui, performance]
-status: approved
+status: done
 date: 2026-09-15
 ---
 
@@ -256,6 +256,16 @@ HUD и компаса (ADR `knowledge/decisions/hud-glass-and-compass.md`): по
 | Потеря правки из-за гонки версий | `meshVersion` + тест `testMeshVersionRejectsStale` |
 | Перенос меню ломает рабочие экраны | Перенос по одному экрану, `RenderHudPreview` после каждого |
 | Подъём версии `Options` теряет настройки | Тест чтения предыдущей версии, прецедент с `CHUNK_VERSION` в CLAUDE.md |
+
+# Итог
+
+Обе части сделаны. Часть A — коммит `16af655`, ADR
+`knowledge/decisions/async-chunk-meshing.md`. Часть B — план
+`docs/superpowers/plans/2026-09-15-menu-rework.md`, ADR
+`knowledge/decisions/menu-architecture.md`. Отступления от спеки записаны в
+плане и ADR: `LevelData` не поднимался (новых полей миру не понадобилось),
+экраны подключены к игре одним шагом после проверки снимками, в игру добавлен
+автопилот меню для проверки в настоящем окне.
 
 # ADR по итогам
 
