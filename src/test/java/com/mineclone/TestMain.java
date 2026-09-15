@@ -196,6 +196,7 @@ public final class TestMain {
         run("Player regen pauses after a hit", TestMain::testRegenPause);
         FeatureTests.runAll((name, check) -> run(name, check::run));
         MenuTests.runAll((name, check) -> run(name, check::run));
+        MusicTests.runAll((name, check) -> run(name, check::run));
 
         System.out.println();
         System.out.println("==== " + passed + " passed, " + failed + " failed ====");
