@@ -39,6 +39,368 @@ final class MenuTests {
         r.run("options v5 keep a custom layout", MenuTests::testOptionsKeysRoundTrip);
         r.run("options v4 still load, with default keys", MenuTests::testOptionsV4StillLoads);
         r.run("renaming a world keeps its hunger", MenuTests::testRenameKeepsHunger);
+        r.run("screen stack pushes, steps back and hands the root's back to the game",
+                MenuTests::testScreenStackNavigation);
+        r.run("screen transitions fade the new screen in and let the old one go",
+                MenuTests::testScreenStackFades);
+        r.run("text field types at the caret and stops at its length", MenuTests::testTextFieldEditing);
+        r.run("held backspace repeats only after a delay", MenuTests::testTextFieldRepeat);
+        r.run("text field pastes one clean line", MenuTests::testTextFieldPaste);
+        r.run("scroll stays inside the content and eases to its target", MenuTests::testScrollState);
+        r.run("russian plurals pick one, few and many", MenuTests::testPlural);
+        r.run("file sizes read in bytes, KB, MB and GB", MenuTests::testFileSize);
+        r.run("last played says today, yesterday or a date", MenuTests::testLastPlayed);
+        r.run("game day counts from one", MenuTests::testGameDay);
+        r.run("seed text: empty is random, digits are the seed, words hash", MenuTests::testParseSeed);
+        r.run("default world name takes the lowest free number", MenuTests::testDefaultWorldName);
+        r.run("world list knows mode, day, size and icon, newest first", MenuTests::testWorldInfo);
+        r.run("duplicating a world copies level, chunks and icon", MenuTests::testDuplicateWorld);
+        r.run("world ids never collide within one second", MenuTests::testUniqueWorldId);
+        r.run("world icon survives a save and load", MenuTests::testIconRoundTrip);
+        r.run("thumbnail crops the frame to its own aspect", MenuTests::testThumbnailCrop);
+        r.run("loading rows are done, active or pending by stage", MenuTests::testLoadingStages);
+        r.run("loading tips rotate on a timer", MenuTests::testLoadingTips);
+        r.run("settings sliders map to whole values and back", MenuTests::testSettingsSliders);
+    }
+
+    /**
+     * Ползунок отдаёт 0..1, а игре нужны целые чанки и кадры. Круговой перевод
+     * обязан возвращать то же значение: иначе открытие настроек само сдвигало
+     * бы дальность на чанк.
+     */
+    private static void testSettingsSliders() {
+        assertEq("минимум дальности", 2, com.mineclone.ui.SettingsScreen.radiusAt(0f));
+        assertEq("максимум дальности", 16, com.mineclone.ui.SettingsScreen.radiusAt(1f));
+        for (int r = 2; r <= 16; r++)
+            assertEq("дальность туда-обратно " + r, r,
+                    com.mineclone.ui.SettingsScreen.radiusAt(com.mineclone.ui.SettingsScreen.radiusT(r)));
+        for (int f = 50; f <= 120; f++)
+            assertEq("fov туда-обратно " + f, f,
+                    com.mineclone.ui.SettingsScreen.fovAt(com.mineclone.ui.SettingsScreen.fovT(f)));
+        assertEq("правый край — без ограничения", 0, com.mineclone.ui.SettingsScreen.fpsAt(1f));
+        assertEq("левый край", 30, com.mineclone.ui.SettingsScreen.fpsAt(0f));
+        assertEq("144 к/с туда-обратно", 144,
+                com.mineclone.ui.SettingsScreen.fpsAt(com.mineclone.ui.SettingsScreen.fpsT(144)));
+        assertEq("без ограничения туда-обратно", 0,
+                com.mineclone.ui.SettingsScreen.fpsAt(com.mineclone.ui.SettingsScreen.fpsT(0)));
+        assertEq("подпись без ограничения", "Без ограничения", com.mineclone.ui.SettingsScreen.fpsLabel(0));
+        assertEq("подпись кадров", "144 к/с", com.mineclone.ui.SettingsScreen.fpsLabel(144));
+        assertEq("чувствительность туда-обратно", 1.25f,
+                com.mineclone.ui.SettingsScreen.sensitivityAt(com.mineclone.ui.SettingsScreen.sensitivityT(1.25f)));
+    }
+
+    // ---------------------------------------------------------- форматирование
+
+    private static void testPlural() {
+        String[] f = { "чанк", "чанка", "чанков" };
+        assertEq("1", "1 чанк", com.mineclone.ui.MenuText.count(1, f[0], f[1], f[2]));
+        assertEq("2", "2 чанка", com.mineclone.ui.MenuText.count(2, f[0], f[1], f[2]));
+        assertEq("5", "5 чанков", com.mineclone.ui.MenuText.count(5, f[0], f[1], f[2]));
+        assertEq("11", "11 чанков", com.mineclone.ui.MenuText.count(11, f[0], f[1], f[2]));
+        assertEq("12", "12 чанков", com.mineclone.ui.MenuText.count(12, f[0], f[1], f[2]));
+        assertEq("21", "21 чанк", com.mineclone.ui.MenuText.count(21, f[0], f[1], f[2]));
+        assertEq("104", "104 чанка", com.mineclone.ui.MenuText.count(104, f[0], f[1], f[2]));
+        assertEq("0", "0 чанков", com.mineclone.ui.MenuText.count(0, f[0], f[1], f[2]));
+    }
+
+    private static void testFileSize() {
+        assertEq("байты", "512 Б", com.mineclone.ui.MenuText.fileSize(512));
+        assertEq("килобайты", "2 КБ", com.mineclone.ui.MenuText.fileSize(2048));
+        assertEq("мегабайты", "3,4 МБ", com.mineclone.ui.MenuText.fileSize(3_565_158L));
+        assertEq("гигабайты", "5,0 ГБ", com.mineclone.ui.MenuText.fileSize(5L * 1024 * 1024 * 1024));
+    }
+
+    private static void testLastPlayed() {
+        java.time.ZoneId utc = java.time.ZoneOffset.UTC;
+        long now = java.time.LocalDateTime.of(2026, 9, 15, 14, 0).atZone(utc).toInstant().toEpochMilli();
+        long today = java.time.LocalDateTime.of(2026, 9, 15, 9, 5).atZone(utc).toInstant().toEpochMilli();
+        long yesterday = java.time.LocalDateTime.of(2026, 9, 14, 23, 59).atZone(utc).toInstant().toEpochMilli();
+        long older = java.time.LocalDateTime.of(2026, 9, 13, 8, 0).atZone(utc).toInstant().toEpochMilli();
+        assertEq("сегодня", "сегодня, 09:05", com.mineclone.ui.MenuText.lastPlayed(today, now, utc));
+        assertEq("вчера", "вчера, 23:59", com.mineclone.ui.MenuText.lastPlayed(yesterday, now, utc));
+        assertEq("дата", "13.09.2026", com.mineclone.ui.MenuText.lastPlayed(older, now, utc));
+        assertEq("не открывали", "ещё не открывали", com.mineclone.ui.MenuText.lastPlayed(0L, now, utc));
+    }
+
+    private static void testGameDay() {
+        assertEq("новый мир", "День 1", com.mineclone.ui.MenuText.gameDay((float) (Math.PI / 6.0)));
+        assertEq("двенадцатые сутки", "День 12",
+                com.mineclone.ui.MenuText.gameDay((float) (Math.PI * 2.0 * 11 + 1.0)));
+    }
+
+    // ------------------------------------------------------------------- миры
+
+    private static void testParseSeed() {
+        java.util.function.LongSupplier dice = () -> 777L;
+        assertEq("пусто — случайный", 777L, com.mineclone.ui.WorldSettings.parseSeed("", dice));
+        assertEq("пробелы — случайный", 777L, com.mineclone.ui.WorldSettings.parseSeed("   ", dice));
+        assertEq("число", 12345L, com.mineclone.ui.WorldSettings.parseSeed("12345", dice));
+        assertEq("отрицательное с пробелами", -7L, com.mineclone.ui.WorldSettings.parseSeed(" -7 ", dice));
+        assertEq("слово — хеш", (long) "hello".hashCode(), com.mineclone.ui.WorldSettings.parseSeed("hello", dice));
+        String huge = "99999999999999999999";
+        assertEq("переполнение — хеш строки", (long) huge.hashCode(),
+                com.mineclone.ui.WorldSettings.parseSeed(huge, dice));
+    }
+
+    private static void testDefaultWorldName() {
+        assertEq("первый", "Мир 1", com.mineclone.ui.WorldSettings.defaultName(java.util.List.of()));
+        assertEq("дырка в нумерации", "Мир 2",
+                com.mineclone.ui.WorldSettings.defaultName(java.util.List.of("Мир 1", "Остров", "Мир 3")));
+    }
+
+    private static void writeWorld(SaveManager sm, String id, String name, long lastPlayed, GameMode mode, float tod) {
+        sm.saveLevel(id, new LevelData(name, 42L, 8, 70, 8, 8, 70, 8, 0f, 0f, tod, 0,
+                LevelData.emptyInventory(), mode, lastPlayed, 20f, 20f));
+    }
+
+    private static void testWorldInfo() throws Exception {
+        SaveManager sm = freshManager();
+        writeWorld(sm, "old", "Старый", 1_000L, GameMode.CREATIVE, (float) (Math.PI * 2.0 * 4 + 0.5));
+        writeWorld(sm, "new", "Новый", 9_000L, GameMode.SURVIVAL, 0.5f);
+        sm.saveChunkAsync("new", new com.mineclone.save.ChunkSnapshot(0, 0,
+                new byte[SaveFormat.CHUNK_VOLUME], new byte[SaveFormat.CHUNK_VOLUME]));
+        sm.flushAndAwait();
+        sm.saveIconAsync("old", 4, 2, new int[8]);
+        sm.flushAndAwait();
+
+        java.util.List<SaveManager.WorldInfo> list = sm.listWorlds();
+        assertEq("два мира", 2, list.size());
+        assertEq("свежий первым", "new", list.get(0).id);
+        SaveManager.WorldInfo n = list.get(0), o = list.get(1);
+        assertEq("режим", GameMode.SURVIVAL, n.mode);
+        assertEq("режим старого", GameMode.CREATIVE, o.mode);
+        assertEq("сутки", 5L, (long) Math.floor(o.timeOfDay / (Math.PI * 2.0)) + 1);
+        assertTrue("размер с чанком больше", n.sizeBytes > o.sizeBytes - 100 && n.sizeBytes > 0);
+        assertTrue("превью есть у старого", o.hasIcon);
+        assertTrue("у нового нет", !n.hasIcon);
+    }
+
+    private static void testDuplicateWorld() throws Exception {
+        SaveManager sm = freshManager();
+        writeWorld(sm, "w1", "Остров", 5_000L, GameMode.SURVIVAL, 1f);
+        byte[] blocks = new byte[SaveFormat.CHUNK_VOLUME];
+        blocks[123] = 7;
+        sm.saveChunkAsync("w1", new com.mineclone.save.ChunkSnapshot(2, -1, blocks, new byte[SaveFormat.CHUNK_VOLUME]));
+        sm.saveIconAsync("w1", 2, 2, new int[] { 0xff0000, 0x00ff00, 0x0000ff, 0xffffff });
+        sm.flushAndAwait();
+
+        String copy = sm.duplicateWorld("w1");
+        assertTrue("новый id", copy != null && !copy.equals("w1"));
+        LevelData d = sm.loadLevel(copy);
+        assertEq("имя копии", "Остров (копия)", d.name);
+        assertEq("сид тот же", 42L, d.seed);
+        assertEq("режим тот же", GameMode.SURVIVAL, d.gameMode);
+        com.mineclone.save.ChunkSnapshot c = sm.loadChunk(copy, 2, -1);
+        assertTrue("чанк скопирован", c != null && c.blocks[123] == 7);
+        assertTrue("превью скопировано", sm.loadIcon(copy) != null);
+        assertEq("оригинал на месте", "Остров", sm.loadLevel("w1").name);
+        assertEq("в списке двое", 2, sm.listWorlds().size());
+    }
+
+    private static void testUniqueWorldId() throws Exception {
+        SaveManager sm = freshManager();
+        writeWorld(sm, "world_x", "A", 1L, GameMode.SURVIVAL, 0f);
+        assertEq("свободный id не трогаем", "world_y", sm.uniqueWorldId("world_y"));
+        assertEq("занятый получает суффикс", "world_x_2", sm.uniqueWorldId("world_x"));
+        writeWorld(sm, "world_x_2", "B", 1L, GameMode.SURVIVAL, 0f);
+        assertEq("и следующий", "world_x_3", sm.uniqueWorldId("world_x"));
+    }
+
+    private static void testIconRoundTrip() throws Exception {
+        SaveManager sm = freshManager();
+        writeWorld(sm, "w1", "A", 1L, GameMode.SURVIVAL, 0f);
+        int[] px = new int[6 * 3];
+        px[0] = 0x123456;
+        px[17] = 0xabcdef;
+        sm.saveIconAsync("w1", 6, 3, px);
+        sm.flushAndAwait();
+        java.awt.image.BufferedImage img = sm.loadIcon("w1");
+        assertTrue("прочиталось", img != null);
+        assertEq("ширина", 6, img.getWidth());
+        assertEq("высота", 3, img.getHeight());
+        assertEq("левый верхний пиксель", 0x123456, img.getRGB(0, 0) & 0xffffff);
+        assertEq("правый нижний", 0xabcdef, img.getRGB(5, 2) & 0xffffff);
+        assertTrue("у мира без превью — null", sm.loadIcon("nope") == null);
+    }
+
+    private static void testThumbnailCrop() {
+        assertTrue("16:9 целиком", java.util.Arrays.equals(new int[] { 0, 0, 1920, 1080 },
+                com.mineclone.render.Thumbnail.crop(1920, 1080, 256, 144)));
+        assertTrue("5:4 режется по высоте", java.util.Arrays.equals(new int[] { 0, 152, 1280, 720 },
+                com.mineclone.render.Thumbnail.crop(1280, 1024, 256, 144)));
+        assertTrue("сверхширокий режется по ширине", java.util.Arrays.equals(new int[] { 400, 0, 1920, 1080 },
+                com.mineclone.render.Thumbnail.crop(2720, 1080, 256, 144)));
+    }
+
+    private static void testLoadingStages() {
+        com.mineclone.world.LoadStage L = com.mineclone.world.LoadStage.LIGHTING;
+        assertEq("пройденный", com.mineclone.ui.LoadingScreen.Row.DONE,
+                com.mineclone.ui.LoadingScreen.rowState(L, com.mineclone.world.LoadStage.GENERATING));
+        assertEq("текущий", com.mineclone.ui.LoadingScreen.Row.ACTIVE,
+                com.mineclone.ui.LoadingScreen.rowState(L, com.mineclone.world.LoadStage.LIGHTING));
+        assertEq("впереди", com.mineclone.ui.LoadingScreen.Row.PENDING,
+                com.mineclone.ui.LoadingScreen.rowState(L, com.mineclone.world.LoadStage.BUILDING));
+        assertEq("всё готово", com.mineclone.ui.LoadingScreen.Row.DONE,
+                com.mineclone.ui.LoadingScreen.rowState(com.mineclone.world.LoadStage.DONE,
+                        com.mineclone.world.LoadStage.BUILDING));
+    }
+
+    private static void testLoadingTips() {
+        float step = com.mineclone.ui.LoadingScreen.TIP_SECONDS;
+        assertEq("внутри интервала совет тот же",
+                com.mineclone.ui.LoadingScreen.tip(0.1f), com.mineclone.ui.LoadingScreen.tip(step * 0.9f));
+        assertTrue("через интервал другой",
+                !com.mineclone.ui.LoadingScreen.tip(0.1f).equals(com.mineclone.ui.LoadingScreen.tip(step + 0.1f)));
+    }
+
+    // ------------------------------------------------------------ стек экранов
+
+    /** Экран-заглушка: считает, сколько раз его вернули наверх и закрыли. */
+    private static final class FakeScreen implements com.mineclone.ui.Screen {
+        int resumed, closed;
+
+        @Override
+        public com.mineclone.ui.MenuAction draw(com.mineclone.ui.MenuTheme theme) {
+            return com.mineclone.ui.MenuAction.NONE;
+        }
+
+        @Override
+        public void resumed() { resumed++; }
+
+        @Override
+        public void closed() { closed++; }
+    }
+
+    private static void testScreenStackNavigation() {
+        com.mineclone.ui.ScreenStack st = new com.mineclone.ui.ScreenStack();
+        FakeScreen root = new FakeScreen(), child = new FakeScreen();
+        st.reset(root);
+        assertEq("один экран", 1, st.depth());
+        assertTrue("он наверху", st.top() == root);
+
+        assertEq("переход съеден стеком", com.mineclone.ui.MenuAction.Kind.NONE,
+                st.handle(com.mineclone.ui.MenuAction.push(child)).kind);
+        assertEq("два экрана", 2, st.depth());
+        assertTrue("дочерний наверху", st.top() == child);
+
+        assertEq("шаг назад съеден стеком", com.mineclone.ui.MenuAction.Kind.NONE,
+                st.handle(com.mineclone.ui.MenuAction.back()).kind);
+        assertTrue("корень снова наверху", st.top() == root);
+        assertEq("корень вернулся", 1, root.resumed);
+        // Закрывается, когда догаснет: пока гаснет, его ещё рисуют.
+        assertEq("гаснущий ещё не закрыт", 0, child.closed);
+        st.update(1f);
+        assertEq("догас — закрыт", 1, child.closed);
+
+        // Назад с корня решает игра: из паузы это «вернуться в игру», с титула — ничего.
+        assertEq("назад с корня уходит игре", com.mineclone.ui.MenuAction.Kind.BACK,
+                st.handle(com.mineclone.ui.MenuAction.back()).kind);
+        assertEq("корень остался", 1, st.depth());
+        assertEq("чужое действие проходит насквозь", com.mineclone.ui.MenuAction.Kind.QUIT,
+                st.handle(com.mineclone.ui.MenuAction.of(com.mineclone.ui.MenuAction.Kind.QUIT)).kind);
+
+        st.reset(new FakeScreen());
+        assertEq("сброс закрывает прежний корень", 1, root.closed);
+    }
+
+    private static void testScreenStackFades() {
+        com.mineclone.ui.ScreenStack st = new com.mineclone.ui.ScreenStack();
+        FakeScreen root = new FakeScreen(), child = new FakeScreen();
+        st.reset(root);
+        st.update(1f);
+        assertEq("корень проявился", 1f, st.alpha(root));
+
+        st.handle(com.mineclone.ui.MenuAction.push(child));
+        assertEq("новый экран начинает с нуля", 0f, st.alpha(child));
+        assertTrue("старый ещё виден", st.alpha(root) > 0.99f);
+        assertTrue("старый не принимает ввод", !st.acceptsInput(root));
+        assertTrue("новый принимает сразу", st.acceptsInput(child));
+
+        st.update(com.mineclone.ui.ScreenStack.FADE_OUT * 0.5f);
+        float mid = st.alpha(root);
+        assertTrue("старый гаснет (" + mid + ")", mid > 0f && mid < 1f);
+        assertTrue("новый проявляется", st.alpha(child) > 0f && st.alpha(child) < 1f);
+
+        st.update(1f);
+        assertEq("новый целиком", 1f, st.alpha(child));
+        assertEq("старый ушёл", 0f, st.alpha(root));
+        assertTrue("и больше не рисуется", st.leaving() == null);
+    }
+
+    // ------------------------------------------------------------ поле ввода
+
+    private static com.mineclone.ui.UiInput.Builder in() {
+        return com.mineclone.ui.UiInput.builder();
+    }
+
+    private static void testTextFieldEditing() {
+        com.mineclone.ui.TextField f = new com.mineclone.ui.TextField("", 5, com.mineclone.ui.TextField.ANY);
+        f.edit(in().typed("abcdefg").build(), 0.016f);
+        assertEq("обрезано по длине", "abcde", f.text());
+        f.edit(in().key(GLFW_KEY_BACKSPACE).build(), 0.016f);
+        assertEq("backspace", "abcd", f.text());
+        f.edit(in().key(GLFW_KEY_LEFT).build(), 0.016f);
+        f.edit(in().key(GLFW_KEY_LEFT).build(), 0.016f);
+        f.edit(in().typed("X").build(), 0.016f);
+        assertEq("вставка у каретки", "abXcd", f.text());
+        f.edit(in().key(GLFW_KEY_DELETE).build(), 0.016f);
+        assertEq("delete после каретки", "abXd", f.text());
+        f.edit(in().key(GLFW_KEY_HOME).build(), 0.016f);
+        f.edit(in().typed("Z").build(), 0.016f);
+        assertEq("home", "ZabXd", f.text());
+        assertTrue("enter — отправка", f.edit(in().key(GLFW_KEY_ENTER).build(), 0.016f));
+        assertTrue("без enter — нет", !f.edit(in().build(), 0.016f));
+
+        com.mineclone.ui.TextField digits = new com.mineclone.ui.TextField("", 10, Character::isDigit);
+        digits.edit(in().typed("a1b2").build(), 0.016f);
+        assertEq("фильтр", "12", digits.text());
+    }
+
+    /**
+     * Зажатый Backspace обязан стирать дальше, но не сразу: иначе короткое
+     * нажатие на медленном кадре съедает два символа.
+     */
+    private static void testTextFieldRepeat() {
+        com.mineclone.ui.TextField f = new com.mineclone.ui.TextField("abcdef", 32, com.mineclone.ui.TextField.ANY);
+        f.edit(in().key(GLFW_KEY_BACKSPACE).held(GLFW_KEY_BACKSPACE).build(), 0.016f);
+        assertEq("нажатие стирает один", "abcde", f.text());
+        f.edit(in().held(GLFW_KEY_BACKSPACE).build(), 0.30f);
+        assertEq("до задержки не повторяет", "abcde", f.text());
+        f.edit(in().held(GLFW_KEY_BACKSPACE).build(), 0.20f);
+        assertTrue("после задержки повторяет (" + f.text() + ")", f.text().length() < 5);
+        String held = f.text();
+        f.edit(in().build(), 1f);
+        assertEq("отпустил — перестал", held, f.text());
+    }
+
+    private static void testTextFieldPaste() {
+        com.mineclone.ui.TextField f = new com.mineclone.ui.TextField("ab", 8, com.mineclone.ui.TextField.ANY);
+        f.edit(in().held(GLFW_KEY_LEFT_CONTROL).key(GLFW_KEY_V).paste("12\n34").build(), 0.016f);
+        assertEq("только первая строка", "ab12", f.text());
+        f.edit(in().held(GLFW_KEY_LEFT_CONTROL).key(GLFW_KEY_V).paste("3\t456789").build(), 0.016f);
+        assertEq("без табуляции и по длине", "ab123456", f.text());
+    }
+
+    private static void testScrollState() {
+        com.mineclone.ui.ScrollState s = new com.mineclone.ui.ScrollState();
+        s.scrollBy(-500f, 300f, 200f);
+        assertEq("выше начала не уходит", 0f, s.target());
+        s.scrollBy(1000f, 300f, 200f);
+        assertEq("ниже конца не уходит", 100f, s.target());
+        s.update(10f);
+        assertTrue("доезжает до цели", Math.abs(s.offset() - 100f) < 0.01f);
+
+        s.clamp(250f, 200f);
+        assertEq("содержимое сжалось — цель тоже", 50f, s.target());
+        assertTrue("и сразу не за краем", s.offset() <= 50f);
+
+        s.clamp(1000f, 200f);
+        s.ensureVisible(600f, 680f, 200f);
+        assertEq("низ строки виден", 480f, s.target());
+        s.ensureVisible(10f, 90f, 200f);
+        assertEq("верх строки виден", 10f, s.target());
+        assertTrue("короткое содержимое не прокручивается",
+                new com.mineclone.ui.ScrollState().maxScroll(150f, 200f) == 0f);
     }
 
     // ---------------------------------------------------------------- клавиши

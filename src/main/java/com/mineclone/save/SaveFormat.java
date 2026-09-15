@@ -26,6 +26,8 @@ public final class SaveFormat {
     public static final String DEFAULT_WORLD_ID = "world";
     public static final String LEVEL_FILE = "level.dat";
     public static final String CHUNKS_DIR = "chunks";
+    /** Снимок мира для списка миров, 256×144. */
+    public static final String ICON_FILE = "icon.png";
 
     /** Global settings file (sibling of saves/, not inside any world dir). */
     public static final String OPTIONS_FILE = "options.dat";

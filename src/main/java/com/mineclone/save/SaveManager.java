@@ -32,15 +32,36 @@ public final class SaveManager {
         public final long seed;
         public final long lastPlayed;
         public final boolean corrupted;
+        /** Режим игры; у повреждённого сейва — выживание, но он и не играется. */
+        public final com.mineclone.world.GameMode mode;
+        /** Игровое время — по нему список показывает номер суток. */
+        public final float timeOfDay;
+        /** Сколько мир занимает на диске, байты. */
+        public final long sizeBytes;
+        /** Есть ли у мира снимок-превью. */
+        public final boolean hasIcon;
 
-        WorldInfo(String id, String displayName, long seed, long lastPlayed, boolean corrupted) {
+        WorldInfo(String id, String displayName, long seed, long lastPlayed, boolean corrupted,
+                  com.mineclone.world.GameMode mode, float timeOfDay, long sizeBytes, boolean hasIcon) {
             this.id = id;
             this.displayName = displayName;
             this.seed = seed;
             this.lastPlayed = lastPlayed;
             this.corrupted = corrupted;
+            this.mode = mode;
+            this.timeOfDay = timeOfDay;
+            this.sizeBytes = sizeBytes;
+            this.hasIcon = hasIcon;
+        }
+
+        static WorldInfo corrupted(String id, long size) {
+            return new WorldInfo(id, UNNAMED, 0L, 0L, true,
+                    com.mineclone.world.GameMode.SURVIVAL, 0f, size, false);
         }
     }
+
+    /** Имя мира, у которого в level.dat пусто. */
+    static final String UNNAMED = "Мир";
 
     private final File savesRoot;
     private final ExecutorService chunkWriter =
@@ -65,6 +86,7 @@ public final class SaveManager {
     private File chunkFile(String id, int cx, int cz) {
         return new File(chunksDir(id), SaveFormat.chunkFileName(cx, cz));
     }
+    private File iconFile(String id) { return new File(worldDir(id), SaveFormat.ICON_FILE); }
     private File optionsFile() { return new File(savesRoot.getParentFile() != null
             ? savesRoot.getParentFile() : new File("."), SaveFormat.OPTIONS_FILE); }
 
@@ -73,33 +95,24 @@ public final class SaveManager {
     }
 
     /**
-     * Reads only MAGIC, VERSION, name (v4+), and seed from level.dat.
-     * Returns a WorldInfo with {@code corrupted=true} on any error.
+     * Сводка мира для списка: имя, сид, режим, сутки, размер, превью.
+     * Нечитаемый level.dat даёт {@code corrupted=true}, а не исключение —
+     * один битый сейв не должен прятать остальные миры.
      */
     public WorldInfo loadWorldInfo(String id) {
-        File f = levelFile(id);
-        if (!f.isFile()) return new WorldInfo(id, "World", 0L, 0L, true);
-        try (DataInputStream in = new DataInputStream(new GZIPInputStream(
-                new BufferedInputStream(new FileInputStream(f))))) {
-            if (in.readInt() != SaveFormat.MAGIC) return new WorldInfo(id, "World", 0L, 0L, true);
-            int version = in.readInt();
-            if (version < 1 || version > SaveFormat.LEVEL_VERSION)
-                return new WorldInfo(id, "World", 0L, 0L, true);
-            String name = (version >= 4) ? in.readUTF() : "";
-            long seed = in.readLong();
-            long lastPlayed = (version >= 5) ? in.readLong() : 0L;
-            if (name.isEmpty()) name = "World";
-            return new WorldInfo(id, name, seed, lastPlayed, false);
-        } catch (IOException e) {
-            return new WorldInfo(id, "World", 0L, 0L, true);
-        }
+        long size = directorySize(worldDir(id));
+        LevelData d = loadLevel(id);
+        if (d == null)
+            return WorldInfo.corrupted(id, size);
+        String name = d.name.isEmpty() ? UNNAMED : d.name;
+        return new WorldInfo(id, name, d.seed, d.lastPlayed, false, d.gameMode, d.timeOfDay,
+                size, iconFile(id).isFile());
     }
 
     /**
-     * Lists all worlds in saves/. Each subdirectory containing level.dat is a
-     * world. Corrupted worlds are included with {@code corrupted=true}.
-     * Sorted: valid worlds by display name numeric suffix ("World 2" before
-     * "World 10"), corrupted worlds last.
+     * Все миры в saves/: каталог с level.dat — мир. Повреждённые тоже в
+     * списке, последними. Остальные — от последнего сыгранного: мир, в
+     * который играли вчера, нужен чаще, чем «Мир 2» по алфавиту.
      */
     public java.util.List<WorldInfo> listWorlds() {
         java.util.List<WorldInfo> list = new java.util.ArrayList<>();
@@ -110,24 +123,118 @@ public final class SaveManager {
             try {
                 list.add(loadWorldInfo(d.getName()));
             } catch (Exception e) {
-                list.add(new WorldInfo(d.getName(), "World", 0L, 0L, true));
+                list.add(WorldInfo.corrupted(d.getName(), 0L));
             }
         }
         list.sort((a, b) -> {
             if (a.corrupted != b.corrupted) return a.corrupted ? 1 : -1;
-            int na = trailingNumber(a.displayName);
-            int nb = trailingNumber(b.displayName);
-            if (na >= 0 && nb >= 0) return Integer.compare(na, nb);
+            if (a.lastPlayed != b.lastPlayed) return Long.compare(b.lastPlayed, a.lastPlayed);
             return a.displayName.compareToIgnoreCase(b.displayName);
         });
         return list;
     }
 
-    private static int trailingNumber(String s) {
-        int i = s.lastIndexOf(' ');
-        if (i < 0) return -1;
-        try { return Integer.parseInt(s.substring(i + 1)); }
-        catch (NumberFormatException e) { return -1; }
+    private static long directorySize(File f) {
+        if (f.isFile())
+            return f.length();
+        long total = 0;
+        File[] kids = f.listFiles();
+        if (kids != null)
+            for (File k : kids)
+                total += directorySize(k);
+        return total;
+    }
+
+    /** Свободный id каталога: base, а если занят — base_2, base_3… */
+    public String uniqueWorldId(String base) {
+        if (!worldDir(base).exists())
+            return base;
+        int n = 2;
+        while (worldDir(base + "_" + n).exists())
+            n++;
+        return base + "_" + n;
+    }
+
+    /**
+     * Копия мира целиком: level.dat, чанки, превью. Имя получает пометку, а
+     * время последнего входа — текущее, чтобы копия встала в списке первой,
+     * там, где её и ищут после нажатия.
+     *
+     * @return id копии или null, если исходник не читается
+     */
+    public String duplicateWorld(String id) {
+        LevelData d = loadLevel(id);
+        if (d == null)
+            return null;
+        flushAndAwait();   // запись чанков из очереди обязана успеть в копию
+        String copy = uniqueWorldId(SaveFormat.newWorldId());
+        try {
+            copyRecursive(worldDir(id), worldDir(copy));
+        } catch (IOException e) {
+            System.err.println("duplicateWorld failed: " + e.getMessage());
+            deleteRecursive(worldDir(copy));
+            return null;
+        }
+        saveLevel(copy, new LevelData(d.name + " (копия)", d.seed,
+                d.px, d.py, d.pz, d.spawnX, d.spawnY, d.spawnZ,
+                d.yaw, d.pitch, d.timeOfDay, d.selectedSlot,
+                d.inventory, d.gameMode, System.currentTimeMillis(), d.health, d.hunger));
+        return copy;
+    }
+
+    private static void copyRecursive(File src, File dst) throws IOException {
+        if (src.isDirectory()) {
+            if (!dst.isDirectory() && !dst.mkdirs())
+                throw new IOException("cannot create " + dst);
+            File[] kids = src.listFiles();
+            if (kids != null)
+                for (File k : kids)
+                    copyRecursive(k, new File(dst, k.getName()));
+        } else if (!src.getName().endsWith(".tmp")) {
+            Files.copy(src.toPath(), dst.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    // ---- превью мира ----
+
+    /**
+     * Записать превью в фоне, в том же потоке, что и чанки. Массив
+     * копируется: вызывающий волен переиспользовать свой.
+     */
+    public void saveIconAsync(String id, int w, int h, int[] argb) {
+        int[] px = argb.clone();
+        chunkWriter.submit(() -> {
+            File dir = worldDir(id);
+            if (!dir.isDirectory())
+                return;   // мир успели удалить, пока кадр ждал очереди
+            java.awt.image.BufferedImage img =
+                    new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
+            img.setRGB(0, 0, w, h, px, 0, w);
+            try {
+                File tmp = File.createTempFile("icon-", ".tmp", dir);
+                try {
+                    javax.imageio.ImageIO.write(img, "png", tmp);
+                    Files.move(tmp.toPath(), iconFile(id).toPath(), StandardCopyOption.REPLACE_EXISTING);
+                } finally {
+                    if (tmp.exists() && !tmp.delete())
+                        tmp.deleteOnExit();
+                }
+            } catch (IOException e) {
+                System.err.println("saveIcon failed: " + e.getMessage());
+            }
+        });
+    }
+
+    /** Превью мира или null, если его нет или файл не читается. */
+    public java.awt.image.BufferedImage loadIcon(String id) {
+        File f = iconFile(id);
+        if (!f.isFile())
+            return null;
+        try {
+            return javax.imageio.ImageIO.read(f);
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     // ---- level.dat ----
