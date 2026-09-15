@@ -142,8 +142,10 @@ public class Game {
     private float mobSpawnTimer = 0f;
     /** Herd and wildlife neighbourhoods are perception data, not 60 Hz physics. */
     private float mobSenseTimer;
-    private float musicBeatTimer;
-    private int musicBeat;
+    /** Музыка: ситуация из мира → режиссёр → потоковый плеер. */
+    private final MusicSense musicSense = new MusicSense();
+    private com.mineclone.audio.MusicDirector music;
+    private com.mineclone.audio.MusicPlayer musicPlayer;
     private com.mineclone.render.MobRenderer mobRenderer;
     private final SoundEngine sound = new SoundEngine();
     private final Sounds sounds = new Sounds();
@@ -500,13 +502,13 @@ public class Game {
         viewBobbing = m.viewBobbing;
         mouseSensitivity = m.sensitivity;
         invertMouseY = m.invertY;
-        if (volume != m.masterVolume) {
+        if (volume != m.masterVolume || musicVolume != m.musicVolume) {
+            if (volume != m.masterVolume)
+                sound.setMasterVolume(m.masterVolume);
             volume = m.masterVolume;
-            sound.setMasterVolume(volume);
-        }
-        if (musicVolume != m.musicVolume) {
             musicVolume = m.musicVolume;
-            sound.setMusicVolume(musicVolume);
+            if (musicPlayer != null)
+                musicPlayer.setVolume(volume, musicVolume);
         }
         if (effectsVolume != m.effectsVolume) {
             effectsVolume = m.effectsVolume;
@@ -598,8 +600,11 @@ public class Game {
     public void run() {
         sound.init();
         sound.setMasterVolume(volume);
-        sound.setMusicVolume(musicVolume);
         sound.setEffectsVolume(effectsVolume);
+        musicPlayer = new com.mineclone.audio.MusicPlayer(sound.hasReverb());
+        musicPlayer.setVolume(volume, musicVolume);
+        music = new com.mineclone.audio.MusicDirector(
+                com.mineclone.audio.MusicLibrary.scan(AppPaths.file("assets/music")), new java.util.Random());
         try {
             font = new Font(AppPaths.path("assets/minecraft.ttf"), 22f);
             smallFont = new Font(AppPaths.path("assets/minecraft.ttf"), 14f);
@@ -665,6 +670,7 @@ public class Game {
                 case FURNACE_MENU -> updateFurnaceMenu(dt);
                 case DEAD -> updateDead(dt);
             }
+            updateMusic(dt);
 
             sound.updateListener(player.camera.position, player.camera.forward());
             this.lastDt = dt;
@@ -702,7 +708,6 @@ public class Game {
 
     private void updateMenu(float dt) {
         menuBackground.update(dt);
-        updateMenuMusic(dt);
         updateCommandToast(dt);
     }
 
@@ -791,6 +796,7 @@ public class Game {
         mobSpawner = new com.mineclone.world.entity.MobSpawner(world.seed ^ 0x51E7B0BL);
         blockTicker = new com.mineclone.world.BlockTicker(world.seed);
         atmosphere.snap();
+        musicSense.reset();
         mobSpawnTimer = 0f;
 
         WaterSimulator.reset();
@@ -856,7 +862,6 @@ public class Game {
         updateCommandToast(dt);
         // Экран загрузки стоит над живым фоном меню, а не над полусобранным миром.
         menuBackground.update(dt);
-        updateMenuMusic(dt);
         // На этом экране мир не рисуется, и кадру больше нечем заняться —
         // бюджеты подняты в разы. Это и делает загрузку быстрее, и позволяет
         // ждать большего радиуса, не удлиняя ожидание.
@@ -1061,7 +1066,6 @@ public class Game {
         tickFurnaces(dt);
         updateWaterFlowSound(dt);
         updateAmbient(dt);
-        updateAdaptiveMusic(dt);
         totalTime += dt;
         applyFireDamage(dt);
         updateDamageFeedback(dt);
@@ -1447,6 +1451,7 @@ public class Game {
     private void respawnPlayer() {
         Vector3f spawn = findRespawnPosition();
         player.respawn(spawn.x, spawn.y, spawn.z);
+        musicSense.reset();
         lastPos.set(player.position);
         wasInWater = false;
         waterFlowProbeTimer = 0f;
@@ -1968,6 +1973,8 @@ public class Game {
                             playerStructures.add(com.mineclone.world.StructureStability.placementKey(px, py, pz));
                         placed = true;
                     }
+                    if (placed)
+                        musicSense.onBlockPlaced();
                     if (placed && gameMode == com.mineclone.world.GameMode.SURVIVAL)
                         inventory.removeOne(selectedSlot);
                 }
@@ -2284,6 +2291,8 @@ public class Game {
         // собой, а не только ради пропуска ночи.
         worldSpawn.set(x + 0.5f, y + 1f, z + 0.5f);
         invalidateShadows();
+        if (music != null)
+            music.onWake();
         sound.playOneOfAt(sounds.place(BlockType.BEDROLL),
                 blockSoundPosition(x, y, z), 0.5f, 0.85f);
         showCommandToast("Доброе утро. Точка возрождения здесь");
@@ -2706,6 +2715,15 @@ public class Game {
                         float ty = Float.parseFloat(parts[2]);
                         float tz = Float.parseFloat(parts[3]);
                         player.position.set(tx, ty, tz);
+                        musicSense.reset();
+                    }
+                }
+                case "/music" -> {
+                    if (parts.length >= 2 && parts[1].equalsIgnoreCase("next")) {
+                        music.requestNext();
+                        showCommandToast("Music: next track");
+                    } else {
+                        showCommandToast("Music: " + music.status(musicPlayer.position()));
                     }
                 }
                 case "/spawnpoint" -> executeSpawnPointCommand(parts);
@@ -3954,39 +3972,27 @@ public class Game {
         }
     }
 
-    private void updateAdaptiveMusic(float dt) {
-        float nearest = 99f;
-        for (com.mineclone.world.entity.Mob m : mobs)
-            if (!m.dead && (m.type.hostile || m.isAngry()))
-                nearest = Math.min(nearest, m.position.distance(player.position));
-        float moving = (float) Math.hypot(player.velocity.x, player.velocity.z);
-        playMusic(dt, com.mineclone.audio.AdaptiveMusic.mix(daylight,
-                player.health / Math.max(1f, Player.MAX_HEALTH), nearest, moving > 0.6f));
-    }
-
     /**
-     * Музыка меню — тот же адаптивный саундтрек, что в игре: спокойный, без
-     * угрозы, и ночью фона в нём просыпается бас. Громкость — ползунок музыки.
+     * Музыка: ситуация кадра — режиссёру, его команды — плееру.
+     *
+     * Меню и загрузка — одна сцена: экран загрузки стоит над фоном меню, и
+     * трек меню доигрывает над ним, а не обрывается на нажатии «Играть».
+     * Время суток в меню — у фона, а не у мира.
      */
-    private void updateMenuMusic(float dt) {
-        playMusic(dt, com.mineclone.audio.AdaptiveMusic.mix(menuBackground.daylight(), 1f, 99f, true));
-    }
-
-    private void playMusic(float dt, com.mineclone.audio.AdaptiveMusic.Mix mix) {
-        musicBeatTimer -= dt;
-        if (musicBeatTimer > 0f) return;
-        musicBeatTimer = 0.72f / mix.tempo();
-        int[] scale = { 0, 3, 5, 7, 10, 7, 5, 3 };
-        float pitch = (float) Math.pow(2.0, scale[musicBeat & 7] / 12.0);
-        if ((musicBeat & 1) == 0)
-            sound.playMusic("assets/sounds/note/harp.ogg", mix.ambient() * 0.12f, pitch * 0.55f);
-        if ((musicBeat & 3) == 0 && mix.pulse() > 0.08f)
-            sound.playMusic("assets/sounds/note/bass.ogg", mix.pulse() * 0.16f, pitch * 0.42f);
-        if ((musicBeat & 1) == 1 && mix.danger() > 0.2f)
-            sound.playMusic("assets/sounds/note/hat.ogg", mix.danger() * 0.10f, 0.8f + mix.danger() * 0.4f);
-        if ((musicBeat & 3) == 2 && mix.lowHealth() > 0.1f)
-            sound.playMusic("assets/sounds/note/icechime.ogg", mix.lowHealth() * 0.13f, 0.72f);
-        musicBeat++;
+    private void updateMusic(float dt) {
+        if (music == null)
+            return;
+        com.mineclone.audio.MusicSituation s;
+        if (state == State.MENU || state == State.LOADING || world == null) {
+            s = com.mineclone.audio.MusicSituation.menu(
+                    com.mineclone.audio.MusicSituation.dayPart(menuBackground.gameTime()));
+        } else {
+            s = musicSense.sample(dt, state == State.DEAD
+                            ? com.mineclone.audio.MusicSituation.Scene.DEAD
+                            : com.mineclone.audio.MusicSituation.Scene.WORLD,
+                    state == State.PAUSED, world, player, mobs, gameTime);
+        }
+        music.update(dt, s, musicPlayer, musicPlayer);
     }
 
     /**
@@ -4292,7 +4298,8 @@ public class Game {
                     hud.drawDebug(vw, vh, fpsCurrent, player.position, pcx, pcz,
                             countLoadedChunks(), drawnChunks, tgt, tgtMeta, wireframe, skyL, blkL,
                             world.biomes.biomeAt(bx, bz).name(), mobs.size(),
-                            profiler, loader.pendingMeshCount() + loader.pendingGenCount());
+                            profiler, loader.pendingMeshCount() + loader.pendingGenCount(),
+                            music.status(musicPlayer.position()));
                 }
                 if (consoleOpen)
                     hud.drawConsole(vw, vh, consoleLine.toString());
@@ -4631,6 +4638,7 @@ public class Game {
                 "/speed <value>",
                 "/fill <block> [radius]",
                 "/instamine",
+                "/music [next] - what plays, or a fitting track now",
                 "/debug",
                 "/gamemode <creative|survival> - Switch game mode"
         };
@@ -4676,6 +4684,9 @@ public class Game {
         if (loader != null)
             loader.shutdown();
         menuBackground.destroy();
+        // Поток музыки удаляет свои источники сам — до того, как умрёт контекст.
+        if (musicPlayer != null)
+            musicPlayer.close();
         sound.destroy();
         for (Mesh m : chunkMeshes.values())
             m.destroy();

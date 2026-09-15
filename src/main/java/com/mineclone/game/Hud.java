@@ -66,7 +66,7 @@ public class Hud {
             int chunkX, int chunkZ, int loadedChunks, int drawnChunks,
             BlockType target, byte targetMeta, boolean wireframe, int skyLight, int blockLight,
             String biome, int mobCount,
-            com.mineclone.game.FrameProfiler profiler, int chunkQueue) {
+            com.mineclone.game.FrameProfiler profiler, int chunkQueue, String music) {
         float lineH = font.getPixelHeight() + 2;
         float y = lineH;
         long used = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024);
@@ -87,6 +87,7 @@ public class Hud {
                 String.format("Frame: %.1f ms   worst %.1f ms", profiler.totalMillis(), profiler.worstMillis()),
                 profiler.breakdown(),
                 "Chunk queue: " + chunkQueue,
+                "Music: " + music,
         };
         for (String s : lines) {
             text.drawShadowed(font, s, 8, y, screenW, screenH, 1f, 1f, 1f);
