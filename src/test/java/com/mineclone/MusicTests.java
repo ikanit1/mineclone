@@ -40,6 +40,9 @@ final class MusicTests {
         r.run("waking replaces a night track with a morning one", MusicTests::testWake);
         r.run("music slider at zero stops and holds the music", MusicTests::testDisabled);
         r.run("mp3 stream reads the same PCM in any chunk size", MusicTests::testMp3Chunks);
+        r.run("cave and shelter probes read the column above the head", MusicTests::testSenseProbes);
+        r.run("building and travel counters rise and fade", MusicTests::testSenseActivity);
+        r.run("only a hunting hostile counts as danger", MusicTests::testSenseDanger);
     }
 
     // ---- каталог и ситуация ----------------------------------------------------
@@ -444,6 +447,94 @@ final class MusicTests {
         }
         double seconds = samples / 2.0 / 48000.0;
         assertTrue("the whole track decodes, 2:30 (was " + seconds + ")", Math.abs(seconds - 150.0) < 1.0);
+    }
+
+    // ---- ситуация из мира ------------------------------------------------------
+
+    private static void testSenseProbes() {
+        com.mineclone.world.World w = new com.mineclone.world.World(99L);
+        com.mineclone.world.Chunk c = w.getChunk(0, 0);
+        for (int x = 0; x < com.mineclone.world.Chunk.SIZE_X; x++)
+            for (int z = 0; z < com.mineclone.world.Chunk.SIZE_Z; z++)
+                for (int y = 0; y < com.mineclone.world.Chunk.SIZE_Y; y++)
+                    c.set(x, y, z, y <= 10 ? com.mineclone.world.BlockType.STONE : com.mineclone.world.BlockType.AIR);
+        for (int y = 20; y < 26; y++)
+            c.set(4, y, 4, com.mineclone.world.BlockType.STONE);
+        assertEq("six blocks of rock above the head", 6, com.mineclone.game.MusicSense.solidAbove(w, 4, 12, 4));
+        assertEq("the roof is eight blocks up", 8, com.mineclone.game.MusicSense.roofDistance(w, 4, 12, 4));
+        assertEq("open sky has no rock", 0, com.mineclone.game.MusicSense.solidAbove(w, 8, 12, 8));
+        assertEq("open sky has no roof", -1, com.mineclone.game.MusicSense.roofDistance(w, 8, 12, 8));
+
+        assertTrue("dark under rock is a cave", com.mineclone.game.MusicSense.isUnderground(0, 6));
+        assertTrue("lit under rock is not", !com.mineclone.game.MusicSense.isUnderground(12, 6));
+        assertTrue("a thin roof is not a cave", !com.mineclone.game.MusicSense.isUnderground(0, 2));
+        assertTrue("a roof and a torch make a shelter", com.mineclone.game.MusicSense.isSheltered(false, 3, 9));
+        assertTrue("a roof without light is not", !com.mineclone.game.MusicSense.isSheltered(false, 3, 4));
+        assertTrue("a lit cave is not a home", !com.mineclone.game.MusicSense.isSheltered(true, 3, 9));
+        assertTrue("a torch under the open sky is not", !com.mineclone.game.MusicSense.isSheltered(false, -1, 15));
+        assertTrue("a roof too high is not", !com.mineclone.game.MusicSense.isSheltered(false, 13, 15));
+    }
+
+    private static void testSenseActivity() {
+        com.mineclone.game.MusicSense sense = new com.mineclone.game.MusicSense();
+        com.mineclone.game.Player pl = new com.mineclone.game.Player();
+        pl.position.set(0f, 70f, 0f);
+        java.util.List<com.mineclone.world.entity.Mob> none = java.util.List.of();
+        float noon = (float) (Math.PI / 2);
+        MusicSituation.Scene w = MusicSituation.Scene.WORLD;
+        for (int i = 0; i < 12; i++) {
+            sense.onBlockPlaced();
+            sense.sample(0.5f, w, false, null, pl, none, noon);
+        }
+        assertTrue("a dozen blocks in six seconds is building", sense.sample(DT, w, false, null, pl, none, noon).building());
+        for (int i = 0; i < 2400; i++)
+            sense.sample(DT, w, false, null, pl, none, noon);
+        assertTrue("two idle minutes is not", !sense.building());
+
+        sense.reset();
+        for (float t = 0f; t < 70f; t += DT) {
+            pl.position.x += 2f * DT;
+            sense.sample(DT, w, false, null, pl, none, noon);
+        }
+        assertTrue("walking away at 2 blocks/s is travel", sense.exploring());
+        sense.reset();
+        for (float t = 0f; t < 120f; t += DT) {
+            pl.position.set(5f * (float) Math.cos(t), 70f, 5f * (float) Math.sin(t));
+            sense.sample(DT, w, false, null, pl, none, noon);
+        }
+        assertTrue("circling the base is not", !sense.exploring());
+        MusicSituation paused = sense.sample(DT, w, true, null, pl, none, noon);
+        assertTrue("pause is reported", paused.paused());
+        assertEq("day part comes from the clock", MusicMood.DAY, paused.dayPart());
+    }
+
+    private static void testSenseDanger() {
+        var chase = com.mineclone.world.entity.Mob.State.CHASE;
+        assertTrue("a chasing zombie", com.mineclone.game.MusicSense.threatens(false, true, false, chase, 10f));
+        assertTrue("an angry wolf attacking",
+                com.mineclone.game.MusicSense.threatens(false, false, true, com.mineclone.world.entity.Mob.State.ATTACK, 3f));
+        assertTrue("a zombie hesitating at the light",
+                com.mineclone.game.MusicSense.threatens(false, true, false, com.mineclone.world.entity.Mob.State.STALK, 8f));
+        assertTrue("a wandering zombie is not",
+                !com.mineclone.game.MusicSense.threatens(false, true, false, com.mineclone.world.entity.Mob.State.WANDER, 5f));
+        assertTrue("a dead one is not", !com.mineclone.game.MusicSense.threatens(true, true, false, chase, 5f));
+        assertTrue("a far one is not", !com.mineclone.game.MusicSense.threatens(false, true, false, chase, 17f));
+        assertTrue("a calm wolf hunting rabbits is not",
+                !com.mineclone.game.MusicSense.threatens(false, false, false, com.mineclone.world.entity.Mob.State.HUNT, 5f));
+
+        com.mineclone.game.MusicSense sense = new com.mineclone.game.MusicSense();
+        com.mineclone.game.Player pl = new com.mineclone.game.Player();
+        pl.position.set(0f, 70f, 0f);
+        var zombie = new com.mineclone.world.entity.Mob(com.mineclone.world.entity.MobType.ZOMBIE,
+                5f, 70f, 0f, new java.util.Random(1));
+        zombie.state = chase;
+        MusicSituation.Scene w = MusicSituation.Scene.WORLD;
+        assertTrue("a chase is danger", sense.sample(DT, w, false, null, pl, java.util.List.of(zombie), 1f).danger());
+        zombie.state = com.mineclone.world.entity.Mob.State.WANDER;
+        assertTrue("danger lingers a moment", sense.sample(2f, w, false, null, pl, java.util.List.of(zombie), 1f).danger());
+        for (int i = 0; i < 100; i++)
+            sense.sample(DT, w, false, null, pl, java.util.List.of(zombie), 1f);
+        assertTrue("and then passes", !sense.sample(DT, w, false, null, pl, java.util.List.of(zombie), 1f).danger());
     }
 
     private static void assertFirstHas(MusicLibrary lib, int seed, MusicSituation s, MusicMood mood) {
