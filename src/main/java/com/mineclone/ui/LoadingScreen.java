@@ -85,7 +85,9 @@ public final class LoadingScreen implements Screen {
         clock += t.dt();
         // Полоса догоняет цель плавно: конвейер отчитывается рывками, а
         // прыгающая полоса выглядит как зависание между прыжками.
-        shown += (target - shown) * (1f - (float) Math.exp(-t.dt() * 7f));
+        shown += (target - shown) * (1f - (float) Math.exp(-t.dt() * 10f));
+        // Но и не отстаёт: все этапы «готово» при полосе на 65 % читались ошибкой.
+        shown = Math.max(shown, target - 0.15f);
 
         int sw = t.width(), sh = t.height();
         t.dim(0.35f);
@@ -126,7 +128,7 @@ public final class LoadingScreen implements Screen {
         float phase = (clock % TIP_SECONDS) / TIP_SECONDS;
         float tipA = Math.min(1f, Math.min(phase, 1f - phase) * 10f);
         String tip = MenuTheme.ellipsize(t.small(), "Совет: " + tip(clock), sw - 48f);
-        t.smallCentered(tip, cx, py + ph + 36f, MenuTheme.TEXT_DIM, tipA);
+        t.smallShadow(tip, cx - t.smallWidth(tip) / 2f, py + ph + 36f, MenuTheme.TEXT, tipA);
         return MenuAction.NONE;
     }
 

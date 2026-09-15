@@ -19,10 +19,21 @@ public class Window {
     private boolean fullscreen;
     private int windowedX, windowedY, windowedW, windowedH;
 
+    private final boolean visible;
+
     public Window(String title, int width, int height) {
+        this(title, width, height, true);
+    }
+
+    /**
+     * @param visible false — окно не показывается и не забирает фокус; рисовать
+     *                в него можно. Нужно автопилоту, который идёт на экране игрока.
+     */
+    public Window(String title, int width, int height, boolean visible) {
         this.title = title;
         this.width = width;
         this.height = height;
+        this.visible = visible;
     }
 
     public void init() {
@@ -56,7 +67,8 @@ public class Window {
 
         glfwMakeContextCurrent(handle);
         glfwSwapInterval(1);
-        glfwShowWindow(handle);
+        if (visible)
+            glfwShowWindow(handle);
 
         GL.createCapabilities();
         glEnable(GL_DEPTH_TEST);

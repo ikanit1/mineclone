@@ -71,10 +71,14 @@ public final class TitleScreen implements Screen {
         float pulse = 0.78f + 0.22f * (float) Math.sin(t.time() * 3.2f);
         t.textCentered(splash, sw / 2f, logoTop + logoH + pixel * 2.6f, MenuTheme.ACCENT, pulse);
 
-        float bw = Math.min(400f, sw - 48f), bh = 48f, gap = 10f;
+        float bw = Math.min(400f, sw - 88f), bh = 48f, gap = 10f;
         float bx = (sw - bw) / 2f;
         float by = Math.max(logoTop + logoH + pixel * 4.4f, sh * 0.44f);
         MenuAction result = MenuAction.NONE;
+        // Кнопки на стеклянной карточке: над ярким небом и туманом одни
+        // полупрозрачные кнопки сливались с фоном.
+        int buttons = last != null ? 4 : 3;
+        t.panel(bx - 20f, by - 20f, bw + 40f, buttons * (bh + gap) - gap + 40f);
 
         if (last != null) {
             String label = "Продолжить: " + last.displayName;
@@ -93,8 +97,10 @@ public final class TitleScreen implements Screen {
             result = MenuAction.of(MenuAction.Kind.QUIT);
 
         float foot = sh - 16f;
-        t.smallText("Mineclone " + VERSION, 16f, foot, MenuTheme.TEXT_FAINT, 1f);
-        t.smallRight("F11 — полный экран", sw - 16f, foot, MenuTheme.TEXT_FAINT, 1f);
+        t.shadeBottom(56f, 0.45f);
+        t.smallShadow("Mineclone " + VERSION, 16f, foot, MenuTheme.TEXT_DIM, 1f);
+        String hint = "F11 — полный экран";
+        t.smallShadow(hint, sw - 16f - t.smallWidth(hint), foot, MenuTheme.TEXT_DIM, 1f);
         return result;
     }
 

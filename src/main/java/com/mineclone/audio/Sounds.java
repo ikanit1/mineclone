@@ -17,7 +17,62 @@ import java.util.Map;
 public final class Sounds {
 
     public enum Material {
-        GRASS, STONE, SAND, WOOD, GRAVEL, GLASS, SNOW, CLOTH, NONE
+        GRASS, STONE, SAND, WOOD, GRAVEL, GLASS, SNOW, CLOTH, NONE,
+        /** Лёд: звонкий камень выше тоном. */
+        ICE,
+        /** Раскисшая земля под дождём — хлюпает. */
+        MUD,
+        /** Трава под дождём. */
+        WET_GRASS,
+        /** Сугроб: нога проваливается с глухим хрустом. */
+        DEEP_SNOW
+    }
+
+    /** Толщина снежного покрова, с которой шаг проваливается. */
+    public static final int DEEP_SNOW_LEVEL = 3;
+
+    /**
+     * Чем звучит шаг — не только по блоку под ногой, но и по тому, что
+     * лежит на нём и какая погода. Сухая земля хрустит, как гравий (так в MC),
+     * мокрая хлюпает; тонкий снег скрипит, сугроб проваливается.
+     *
+     * @param under     блок, на котором стоим
+     * @param feet      блок в клетке ног (снежный покров не твёрдый и лежит там)
+     * @param snowLevel толщина покрова 0..7, если он есть
+     * @param wet       идёт дождь и над головой открытое небо
+     */
+    public static Material stepMaterial(BlockType under, BlockType feet, int snowLevel, boolean wet) {
+        if (feet == BlockType.SNOW_LAYER)
+            return snowLevel >= DEEP_SNOW_LEVEL ? Material.DEEP_SNOW : Material.SNOW;
+        if (under == null)
+            return Material.NONE;
+        return switch (under) {
+            case GRASS -> wet ? Material.WET_GRASS : Material.GRASS;
+            case DIRT -> wet ? Material.MUD : Material.GRAVEL;
+            case ICE -> Material.ICE;
+            default -> materialOfStatic(under);
+        };
+    }
+
+    /** Высота тона шага по материалу: лёд звенит, грязь и сугроб глуше. */
+    public static float stepPitch(Material m) {
+        return switch (m) {
+            case ICE -> 1.35f;
+            case MUD -> 0.78f;
+            case DEEP_SNOW -> 0.92f;
+            case WET_GRASS -> 0.9f;
+            default -> 1f;
+        };
+    }
+
+    /** Громкость шага по материалу. */
+    public static float stepVolume(Material m) {
+        return switch (m) {
+            case DEEP_SNOW -> 0.5f;
+            case ICE -> 0.28f;
+            case MUD -> 0.42f;
+            default -> 0.35f;
+        };
     }
 
     private static final String ROOT = "assets/sounds";
@@ -31,11 +86,23 @@ public final class Sounds {
 
     public Sounds() {
         for (Material m : Material.values()) {
-            if (m == Material.NONE || m == Material.GLASS)
+            if (m == Material.NONE || m == Material.GLASS || m == Material.ICE
+                    || m == Material.MUD || m == Material.DEEP_SNOW)
                 continue;
             stepFiles.put(m, listMatching(ROOT + "/step", m.name().toLowerCase(Locale.ROOT)));
             digFiles.put(m, listMatching(ROOT + "/dig", m.name().toLowerCase(Locale.ROOT)));
         }
+        // Материалы без своих файлов собираются из соседних: лёд шагает
+        // камнем (выше тоном) и бьётся стеклом, грязь хлюпает мокрой травой,
+        // сугроб — отдельной библиотекой рыхлого снега.
+        stepFiles.put(Material.ICE, stepFiles.getOrDefault(Material.STONE, Collections.emptyList()));
+        digFiles.put(Material.ICE, listMatching(ROOT + "/random", "glass"));
+        stepFiles.put(Material.MUD, stepFiles.getOrDefault(Material.WET_GRASS, Collections.emptyList()));
+        digFiles.put(Material.MUD, digFiles.getOrDefault(Material.WET_GRASS, Collections.emptyList()));
+        List<String> deep = listMatching(ROOT + "/block/powder_snow", "step");
+        stepFiles.put(Material.DEEP_SNOW, deep.isEmpty()
+                ? stepFiles.getOrDefault(Material.SNOW, Collections.emptyList()) : deep);
+        digFiles.put(Material.DEEP_SNOW, digFiles.getOrDefault(Material.SNOW, Collections.emptyList()));
         // Glass behaves like stone for stepping and placing; only the
         // destruction is the shatter (random/glass1-3). Walking on glass or
         // placing a pane must NOT shatter — that was the bug.
@@ -63,17 +130,23 @@ public final class Sounds {
     }
 
     public Material materialOf(BlockType b) {
+        return materialOfStatic(b);
+    }
+
+    private static Material materialOfStatic(BlockType b) {
         if (b == null)
             return Material.NONE;
         return switch (b) {
             case GRASS, DIRT, LEAVES -> Material.GRASS;
-            case STONE, COBBLE, BEDROCK -> Material.STONE;
+            case STONE, COBBLE, BEDROCK, COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE -> Material.STONE;
             case SAND -> Material.SAND;
-            case WOOD, PLANKS, TORCH -> Material.WOOD;
+            case WOOD, PLANKS, TORCH, FIRE -> Material.WOOD;
             case GLASS -> Material.GLASS;
-            case STAIRS, DOOR_CLOSED, DOOR_OPEN -> Material.WOOD;
-            case SNOWY_GRASS -> Material.SNOW;
-            case CACTUS -> Material.CLOTH;
+            case ICE -> Material.ICE;
+            case STAIRS, DOOR_CLOSED, DOOR_OPEN, CHEST -> Material.WOOD;
+            case FURNACE -> Material.STONE;
+            case SNOWY_GRASS, SNOW_LAYER -> Material.SNOW;
+            case CACTUS, BEDROLL -> Material.CLOTH;
             default -> Material.NONE;
         };
     }
@@ -92,9 +165,10 @@ public final class Sounds {
      * that {@link #dig(BlockType)} returns for destroying it.
      */
     public List<String> place(BlockType b) {
-        if (materialOf(b) == Material.GLASS)
+        Material m = materialOf(b);
+        if (m == Material.GLASS || m == Material.ICE)
             return stoneDig;
-        return dig(materialOf(b));
+        return dig(m);
     }
 
     public List<String> dig(BlockType b) {
@@ -115,6 +189,11 @@ public final class Sounds {
     public List<String> uiClick() {
         File f = AppPaths.file(ROOT + "/random/click.ogg");
         return f.exists() ? List.of(f.getAbsolutePath()) : Collections.emptyList();
+    }
+
+    /** Тихий щелчок наведения в меню (ui/loom/select_pattern). */
+    public List<String> uiHover() {
+        return listMatching(ROOT + "/ui/loom", "select_pattern");
     }
 
     public List<String> emptyList() {
@@ -160,6 +239,20 @@ public final class Sounds {
         return listMatching(ROOT + "/damage", "hit");
     }
 
+    /**
+     * Звук удара игрока: {@code crit} — в падении, {@code strong} — обычный
+     * полновесный, {@code sweep} — взмах инструментом по воздуху.
+     */
+    public List<String> playerAttack(String kind) {
+        return listMatching(ROOT + "/entity/player/attack", kind);
+    }
+
+    /** Предмет подобран с земли. */
+    public List<String> pickup() {
+        File f = AppPaths.file(ROOT + "/random/pop.ogg");
+        return f.exists() ? List.of(f.getAbsolutePath()) : Collections.emptyList();
+    }
+
     public List<String> playerDeath() {
         File f = AppPaths.file(ROOT + "/random/classic_hurt.ogg");
         return f.exists() ? List.of(f.getAbsolutePath()) : Collections.emptyList();
@@ -182,9 +275,28 @@ public final class Sounds {
     // Покрытие неполное (у овцы нет hurt/death, у коровы нет death, у свиньи нет
     // hurt), поэтому hurt → say, death → hurt → say. Иначе часть мобов молчит.
 
-    /** Периодический «холостой» голос моба (MC-шный say*.ogg). */
+    /** Периодический «холостой» голос моба (MC-шный say*.ogg, у зверей — idle/panting). */
     public List<String> mobSay(MobType t) {
-        return listMatching(ROOT + "/mob/" + t.soundDir, "say");
+        return listMatching(ROOT + "/mob/" + t.soundDir, t.sayPrefix);
+    }
+
+    /**
+     * Голос разозлённого моба: рычание волка. У кого отдельного нет —
+     * обычный голос.
+     */
+    public List<String> mobAngry(MobType t) {
+        List<String> s = listMatching(ROOT + "/mob/" + t.soundDir, "growl");
+        return s.isEmpty() ? mobSay(t) : s;
+    }
+
+    /** Ночной вой волка; у прочих — пусто. */
+    public List<String> mobHowl(MobType t) {
+        return listMatching(ROOT + "/mob/" + t.soundDir, "howl");
+    }
+
+    /** Взмах крыльев при взлёте птицы. */
+    public List<String> mobFly(MobType t) {
+        return listMatching(ROOT + "/mob/" + t.soundDir, "fly");
     }
 
     /** Звук боли; при отсутствии файлов — голос. */
@@ -193,9 +305,55 @@ public final class Sounds {
         return s.isEmpty() ? mobSay(t) : s;
     }
 
+    // ---- фоновая атмосфера -------------------------------------------------
+
+    /** Далёкие звуки в тёмных пещерах. */
+    public List<String> ambientCave() {
+        return listMatching(ROOT + "/ambient/cave", "cave");
+    }
+
+    /** Шум дождя. */
+    public List<String> ambientRain() {
+        return listMatching(ROOT + "/ambient/weather", "rain");
+    }
+
+    /** Раскаты грома. */
+    public List<String> ambientThunder() {
+        return listMatching(ROOT + "/ambient/weather", "thunder");
+    }
+
+    /**
+     * Порыв ветра. Отдельных погодных сэмплов ветра в библиотеке нет;
+     * протяжный вой из долины душ без своего контекста звучит ровно как
+     * метель над пустой равниной.
+     */
+    public List<String> ambientWind() {
+        return listMatching(ROOT + "/ambient/nether/soulsand_valley", "wind");
+    }
+
+    /** Гул под водой. */
+    public List<String> ambientUnderwater() {
+        return listMatching(ROOT + "/ambient/underwater", "underwater");
+    }
+
+    /** Пузыри, киты и прочая мелочь под водой. */
+    public List<String> ambientUnderwaterExtra() {
+        return listMatching(ROOT + "/ambient/underwater/additions", "");
+    }
+
+    /** Всплеск при погружении. */
+    public List<String> waterEnter() {
+        return listMatching(ROOT + "/ambient/underwater", "enter");
+    }
+
+    /** Всплеск при выныривании. */
+    public List<String> waterExit() {
+        return listMatching(ROOT + "/ambient/underwater", "exit");
+    }
+
     /** Шаги моба (step*.ogg) — тихие, играются по пройденному пути. */
     public List<String> mobStep(MobType t) {
-        return listMatching(ROOT + "/mob/" + t.soundDir, "step");
+        return listMatching(ROOT + "/mob/" + t.soundDir, t.stepPrefix);
     }
 
     /** Звук смерти; при отсутствии файлов — боль, затем голос. */

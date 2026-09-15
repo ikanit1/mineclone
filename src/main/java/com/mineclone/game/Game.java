@@ -7,6 +7,17 @@ import com.mineclone.core.Input;
 import com.mineclone.core.KeyBindings;
 import com.mineclone.core.Window;
 import com.mineclone.render.*;
+import com.mineclone.ui.DeathScreen;
+import com.mineclone.ui.LoadingScreen;
+import com.mineclone.ui.MenuAction;
+import com.mineclone.ui.MenuTheme;
+import com.mineclone.ui.PauseScreen;
+import com.mineclone.ui.Screen;
+import com.mineclone.ui.ScreenStack;
+import com.mineclone.ui.SettingsModel;
+import com.mineclone.ui.TitleScreen;
+import com.mineclone.ui.UiInput;
+import com.mineclone.ui.WorldSettings;
 import com.mineclone.world.*;
 import org.joml.FrustumIntersection;
 import org.joml.Matrix4f;
@@ -40,8 +51,6 @@ public class Game {
     private int guiScale; // 0=Auto, 1=Small(1×), 2=Normal(2×), 3=Large(3×)
     /** Раскладка клавиш: один объект на игру, Input читает действия через него. */
     private final KeyBindings keys = new KeyBindings();
-
-    private enum SettingsTab { HUB, VIDEO, CONTROLS, AUDIO }
 
     private enum State {
         MENU, LOADING, PLAYING, PAUSED, CREATIVE_MENU, CHEST_MENU, FURNACE_MENU, DEAD
@@ -143,8 +152,6 @@ public class Game {
 
     private State state = State.MENU;
     private boolean showDebug = false;
-    private boolean inSettings = false;
-    private SettingsTab settingsTab = SettingsTab.HUB;
 
     private static final float TIME_SCALE = 0.005f; // ~21 min real = full day/night cycle (~10.5 min day, ~10.5 min
                                                     // night)
@@ -287,25 +294,33 @@ public class Game {
     private final com.mineclone.save.SaveManager save = new com.mineclone.save.SaveManager();
     private String worldId;
     private String worldDisplayName = "";
-    private boolean inWorldSelect = false;
-    private String pendingDeleteId = null;
-    private String selectedWorldId = null;
-    private String renamingWorldId = null;
-    private final StringBuilder renameBuffer = new StringBuilder();
-    private int worldSelectScroll = 0;
-    private java.util.List<com.mineclone.save.SaveManager.WorldInfo> worldList = java.util.List.of();
+    /** Экраны меню: титул, миры, настройки, загрузка, пауза, смерть. */
+    private final ScreenStack menus = new ScreenStack();
+    private MenuTheme menuTheme;
+    /** Настройки для экранов меню: изменение применяется сразу, запись — при закрытии. */
+    private final SettingsModel settingsModel;
+    private LoadingScreen loadingScreen;
+    /** Доли ближнего радиуса: чанки есть, свет разлит, меши загружены. */
+    private final float[] loadFractions = new float[3];
+    /** Часы интерфейса: идут в любом состоянии, в отличие от мира. */
+    private float uiClock;
+    /** Превью мира для списка миров: снимается с первого кадра после сохранения. */
+    private final Thumbnail thumbnail = new Thumbnail();
+    private boolean iconRequested;
+    /** Автопилот меню ({@code -Dmineclone.autopilot=<папка>}) или null в обычной игре. */
+    private final Autopilot autopilot;
+    private java.nio.file.Path shotDir;
+    private String pendingShot;
+    private int exitCode;
     private static final float AUTOSAVE_INTERVAL = 120f; // seconds
     private static final int RESPAWN_RADIUS = 10;
     private float autosaveTimer = AUTOSAVE_INTERVAL;
     private final Vector3f worldSpawn = new Vector3f(8.5f, 80.0f, 8.5f);
     private final Random respawnRandom = new Random();
     private final MenuBackground menuBackground;
-    private float saveToastTimer = 0f; // seconds remaining for "Saved" toast
     private String commandToast = "";
     private float commandToastTimer = 0f;
     private float commandHelpTimer = 0f;
-    private float loadingProgress = 0f;
-    private float loadingVisualProgress = 0f;
     private float loadingTimer = 0f;
     /**
      * Eat mouseDown/mouseClicked until the user releases LMB. Prevents the
@@ -347,6 +362,27 @@ public class Game {
         this.guiScale        = opts.guiScale;
         this.keys.copyFrom(opts.keys);
         this.input.setBindings(this.keys);
+        this.settingsModel = new SettingsModel(this.keys);
+        this.settingsModel.setListener(new SettingsModel.Listener() {
+            @Override
+            public void changed(SettingsModel m) {
+                applySettings(m);
+            }
+
+            @Override
+            public void committed(SettingsModel m) {
+                save.saveOptions(buildOptions());
+            }
+        });
+        String pilot = System.getProperty("mineclone.autopilot");
+        if (pilot != null && !pilot.isBlank()) {
+            // Прогон идёт на экране игрока: курсор не захватывается.
+            shotDir = java.nio.file.Path.of(pilot);
+            autopilot = new Autopilot(new PilotDriver());
+            input.setGrabAllowed(false);
+        } else {
+            autopilot = null;
+        }
         window.setVSync(this.vsync);
         window.setFullscreen(this.fullscreen);
         this.menuBackground = new MenuBackground(save);
@@ -411,62 +447,89 @@ public class Game {
         return Math.max(1, Math.min(4, h / 720));
     }
 
-    private void drawActiveSettingsTab(int w, int h, double mx, double my,
-            boolean down, boolean clicked) {
-        Hud.MenuAction a = Hud.MenuAction.NONE;
-        switch (settingsTab) {
-            case HUB -> a = hud.drawSettingsHub(w, h, mx, my, clicked);
-            case VIDEO -> {
-                float[] sv = { renderRadius, fovDegrees, brightness,
-                        maxFps == 0 ? 260f : maxFps, guiScale, shaderQuality };
-                boolean[] bt = { vsync, fullscreen, viewBobbing };
-                boolean prevVsync = vsync, prevFull = fullscreen;
-                int prevQuality = shaderQuality;
-                a = hud.drawVideoSettings(w, h, mx, my, down, clicked, sv, bt);
-                renderRadius = Math.round(sv[0]);
-                fovDegrees   = Math.round(sv[1]);
-                brightness   = sv[2];
-                maxFps       = sv[3] >= 255f ? 0 : Math.round(sv[3]);
-                guiScale     = Math.max(0, Math.min(3, Math.round(sv[4])));
-                shaderQuality = Math.max(0, Math.min(2, Math.round(sv[5])));
-                vsync        = bt[0]; fullscreen = bt[1]; viewBobbing = bt[2];
-                if (vsync != prevVsync)  window.setVSync(vsync);
-                if (fullscreen != prevFull) window.setFullscreen(fullscreen);
-                if (shadowMapSize(shaderQuality) != shadowMapSize(prevQuality))
-                    rebuildShadowMap();
-            }
-            case CONTROLS -> {
-                float[] sv = { mouseSensitivity };
-                boolean[] bt = { invertMouseY };
-                a = hud.drawControlsSettings(w, h, mx, my, down, clicked, sv, bt);
-                mouseSensitivity = sv[0];
-                invertMouseY     = bt[0];
-            }
-            case AUDIO -> {
-                float[] sv = { volume, musicVolume, effectsVolume };
-                a = hud.drawAudioSettings(w, h, mx, my, down, clicked, sv);
-                if (sv[0] != volume)        { volume       = sv[0]; sound.setMasterVolume(volume); }
-                if (sv[1] != musicVolume)   { musicVolume   = sv[1]; sound.setMusicVolume(musicVolume); }
-                if (sv[2] != effectsVolume) { effectsVolume = sv[2]; sound.setEffectsVolume(effectsVolume); }
-            }
+    /** Поля игры → модель настроек: F11 меняет полный экран в обход меню. */
+    private void syncSettingsModel() {
+        SettingsModel m = settingsModel;
+        m.renderRadius = renderRadius;
+        m.fov = fovDegrees;
+        m.brightness = brightness;
+        m.maxFps = maxFps;
+        m.guiScale = guiScale;
+        m.shaderQuality = shaderQuality;
+        m.vsync = vsync;
+        m.fullscreen = fullscreen;
+        m.viewBobbing = viewBobbing;
+        m.sensitivity = mouseSensitivity;
+        m.invertY = invertMouseY;
+        m.masterVolume = volume;
+        m.musicVolume = musicVolume;
+        m.effectsVolume = effectsVolume;
+    }
+
+    /** Модель настроек → игра; побочные эффекты — только у сменившихся значений. */
+    private void applySettings(SettingsModel m) {
+        if (renderRadius != m.renderRadius) {
+            renderRadius = m.renderRadius;
+            // Стриминг обходит радиус только при сдвиге игрока: без сброса новая
+            // дальность ждала бы, пока игрок перейдёт в соседний чанк.
+            lastStreamCX = Integer.MIN_VALUE;
         }
-        switch (a) {
-            case SETTINGS_OPEN_VIDEO    -> { settingsTab = SettingsTab.VIDEO;    swallowMouseUntilUp = true; }
-            case SETTINGS_OPEN_CONTROLS -> { settingsTab = SettingsTab.CONTROLS; swallowMouseUntilUp = true; }
-            case SETTINGS_OPEN_AUDIO    -> { settingsTab = SettingsTab.AUDIO;    swallowMouseUntilUp = true; }
-            case SETTINGS_SUB_BACK -> {
-                settingsTab = SettingsTab.HUB;
-                sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
-                swallowMouseUntilUp = true;
-            }
-            case SETTINGS_BACK -> {
-                inSettings = false;
-                settingsTab = SettingsTab.HUB;
-                save.saveOptions(buildOptions());
-                sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
-            }
-            default -> {}
+        fovDegrees = m.fov;
+        brightness = m.brightness;
+        maxFps = m.maxFps;
+        guiScale = m.guiScale;
+        if (shaderQuality != m.shaderQuality) {
+            int prev = shaderQuality;
+            shaderQuality = m.shaderQuality;
+            if (shadowMapSize(shaderQuality) != shadowMapSize(prev))
+                rebuildShadowMap();
         }
+        if (vsync != m.vsync) {
+            vsync = m.vsync;
+            window.setVSync(vsync);
+        }
+        if (fullscreen != m.fullscreen) {
+            fullscreen = m.fullscreen;
+            window.setFullscreen(fullscreen);
+        }
+        viewBobbing = m.viewBobbing;
+        mouseSensitivity = m.sensitivity;
+        invertMouseY = m.invertY;
+        if (volume != m.masterVolume) {
+            volume = m.masterVolume;
+            sound.setMasterVolume(volume);
+        }
+        if (musicVolume != m.musicVolume) {
+            musicVolume = m.musicVolume;
+            sound.setMusicVolume(musicVolume);
+        }
+        if (effectsVolume != m.effectsVolume) {
+            effectsVolume = m.effectsVolume;
+            sound.setEffectsVolume(effectsVolume);
+        }
+    }
+
+    /** Открыть меню с корня: модель настроек и буфер набранных символов — свежие. */
+    private void openMenu(Screen root) {
+        syncSettingsModel();
+        input.pollChars();
+        menus.reset(root);
+    }
+
+    /** Звуки интерфейса: тихий щелчок наведения и полноценный — нажатия. */
+    private MenuTheme.Sounds menuSounds() {
+        java.util.List<String> hover = sounds.uiHover();
+        return new MenuTheme.Sounds() {
+            @Override
+            public void hover() {
+                sound.playOneOf(hover, 0.14f, 1.25f + 0.1f * (float) Math.random());
+            }
+
+            @Override
+            public void click() {
+                sound.playOneOf(sounds.uiClick(), 0.55f, 1.0f);
+            }
+        };
     }
 
     /** Flush level.dat + every loaded chunk whose blocks changed since gen. */
@@ -488,6 +551,8 @@ public class Game {
                 gameTime, selectedSlot, invSnapshot, gameMode, System.currentTimeMillis(),
                 player.health, player.hunger);
         save.saveLevel(worldId, d);
+        // Превью снимет ближайший кадр мира: сейчас идёт обновление, а не отрисовка.
+        iconRequested = true;
         for (com.mineclone.world.Chunk c : world.getLoadedChunks()) {
             saveChunkIfModified(c);
         }
@@ -545,6 +610,9 @@ public class Game {
         itemRenderer = new ItemRenderer();
         ambient = new com.mineclone.audio.AmbientSound(new java.util.Random());
         hud = new Hud(font, smallFont, text, ui, atlas);
+        menuTheme = new MenuTheme(ui, text, font, smallFont, atlas);
+        menuTheme.setSounds(menuSounds());
+        openMenu(new TitleScreen(save, settingsModel));
 
         // Start in menu with the cursor free.
         input.grabCursor(false);
@@ -557,8 +625,11 @@ public class Game {
 
             profiler.beginFrame();
             profiler.begin(FrameProfiler.Phase.UPDATE, frameStart);
+            uiClock += dt;
 
             input.update();
+            if (autopilot != null)
+                autopilot.update(dt);
             if (input.keyPressed(GLFW.GLFW_KEY_F5) && state != State.MENU) {
                 viewMode = switch (viewMode) {
                     case FIRST -> ViewMode.THIRD_BACK;
@@ -589,6 +660,11 @@ public class Game {
             sound.updateListener(player.camera.position, player.camera.forward());
             this.lastDt = dt;
             render();
+            // Свёрнутое окно отдаёт кадр 0×0 — снимок ждёт, пока его развернут.
+            if (pendingShot != null && window.getWidth() > 0 && window.getHeight() > 0) {
+                captureScreenshot(pendingShot);
+                pendingShot = null;
+            }
             sound.tick();
             profiler.end(GLFW.glfwGetTime());
             window.update();
@@ -617,35 +693,7 @@ public class Game {
 
     private void updateMenu(float dt) {
         menuBackground.update(dt);
-        if (saveToastTimer > 0f)
-            saveToastTimer -= dt;
         updateCommandToast(dt);
-
-        if (renamingWorldId != null) {
-            String typed = input.pollChars();
-            for (char c : typed.toCharArray())
-                if (renameBuffer.length() < 32) renameBuffer.append(c);
-            if (input.keyPressed(GLFW.GLFW_KEY_BACKSPACE) && renameBuffer.length() > 0)
-                renameBuffer.deleteCharAt(renameBuffer.length() - 1);
-            if (input.keyPressed(GLFW.GLFW_KEY_ENTER) || input.keyPressed(GLFW.GLFW_KEY_KP_ENTER))
-                applyRename();
-            if (input.keyPressed(GLFW.GLFW_KEY_ESCAPE))
-                renamingWorldId = null;
-        } else if (inWorldSelect) {
-            int delta = (int) input.getScroll();
-            if (delta != 0)
-                worldSelectScroll = Math.max(0, worldSelectScroll - delta);
-        }
-    }
-
-    private void applyRename() {
-        String newName = renameBuffer.toString().trim();
-        if (!newName.isEmpty() && renamingWorldId != null) {
-            save.renameWorld(renamingWorldId, newName);
-            if (renamingWorldId.equals(worldId)) worldDisplayName = newName;
-            worldList = save.listWorlds();
-        }
-        renamingWorldId = null;
     }
 
     private void updateCommandToast(float dt) {
@@ -656,14 +704,13 @@ public class Game {
     }
 
     private void beginLoadingToPlay() {
-        loadingProgress = 0f;
-        loadingVisualProgress = 0f;
         loadingTimer = 0f;
         daylight = computeDaylight();
         player.camera.position.set(player.position.x, player.position.y + Player.EYE_HEIGHT, player.position.z);
         state = State.LOADING;
         input.grabCursor(false);
-        swallowMouseUntilUp = true;
+        loadingScreen = new LoadingScreen(worldDisplayName);
+        openMenu(loadingScreen);
     }
 
     private void startWorld(String id) {
@@ -740,42 +787,18 @@ public class Game {
         beginLoadingToPlay();
     }
 
-    private void createWorld() {
-        String id = com.mineclone.save.SaveFormat.newWorldId();
-
-        // Find lowest free N for display name "World N".
-        java.util.List<com.mineclone.save.SaveManager.WorldInfo> existing = save.listWorlds();
-        java.util.Set<Integer> usedNums = new java.util.HashSet<>();
-        for (com.mineclone.save.SaveManager.WorldInfo wi : existing) {
-            int n = trailingWorldN(wi.displayName);
-            if (n > 0)
-                usedNums.add(n);
-        }
-        int n = 1;
-        while (usedNums.contains(n))
-            n++;
-        String displayName = "World " + n;
-
-        long seed = new java.util.Random().nextLong();
-        Vector3f spawn = findDefaultSpawn(seed);
+    /** Мир по настройкам экрана создания: level.dat с точкой появления — и сразу загрузка. */
+    private void createWorld(WorldSettings ws) {
+        String id = save.uniqueWorldId(com.mineclone.save.SaveFormat.newWorldId());
+        Vector3f spawn = findDefaultSpawn(ws.seed);
         com.mineclone.save.LevelData fresh = new com.mineclone.save.LevelData(
-                displayName, seed,
+                ws.name, ws.seed,
                 spawn.x, spawn.y, spawn.z,
                 spawn.x, spawn.y, spawn.z,
                 0f, 0f, (float) (Math.PI / 6.0), 0,
-                com.mineclone.save.LevelData.emptyInventory(), com.mineclone.world.GameMode.SURVIVAL, System.currentTimeMillis());
+                com.mineclone.save.LevelData.emptyInventory(), ws.mode, System.currentTimeMillis());
         save.saveLevel(id, fresh);
         startWorld(id);
-    }
-
-    private static int trailingWorldN(String displayName) {
-        if (!displayName.startsWith("World "))
-            return -1;
-        try {
-            return Integer.parseInt(displayName.substring(6));
-        } catch (NumberFormatException e) {
-            return -1;
-        }
     }
 
     /**
@@ -811,6 +834,7 @@ public class Game {
         world = null;
         mesher = null;
         loader = null;
+        iconRequested = false;
         // Full GC while we're at the menu: collects the dropped world (tens of MB
         // of chunk arrays) immediately and lets G1 uncommit heap back to the OS,
         // instead of holding it until the next allocation spike.
@@ -820,19 +844,21 @@ public class Game {
     private void updateLoading(float dt) {
         loadingTimer += dt;
         updateCommandToast(dt);
+        // Экран загрузки стоит над живым фоном меню, а не над полусобранным миром.
+        menuBackground.update(dt);
         // На этом экране мир не рисуется, и кадру больше нечем заняться —
         // бюджеты подняты в разы. Это и делает загрузку быстрее, и позволяет
         // ждать большего радиуса, не удлиняя ожидание.
         ensureChunksLoaded(LOADING_UPLOAD_BUDGET_MS, LOADING_LIGHT_FLOODS_PER_FRAME);
         updateDirtyMeshes();
-        loadingProgress = computeLoadingProgress();
-        loadingVisualProgress += (loadingProgress - loadingVisualProgress)
-                * Math.min(1f, dt * 8f);
+        computeLoadingProgress();
+        if (loadingScreen != null)
+            loadingScreen.update(loadStage, loadFractions[0], loadFractions[1], loadFractions[2]);
         if (worldReadyForPlay() && loadingTimer >= 0.45f) {
-            loadingVisualProgress = 1f;
             state = State.PLAYING;
             input.grabCursor(true);
-            swallowMouseUntilUp = false;
+            menus.clear();
+            loadingScreen = null;
         }
     }
 
@@ -866,8 +892,6 @@ public class Game {
             updatePhotoCamera(dt);
         }
         gameTime += dt * TIME_SCALE;
-        if (saveToastTimer > 0f)
-            saveToastTimer -= dt;
         updateCommandToast(dt);
         autosaveTimer -= dt;
         if (autosaveTimer <= 0f) {
@@ -910,10 +934,7 @@ public class Game {
         }
         if (input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
             sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
-            state = State.PAUSED;
-            saveAll();
-            input.grabCursor(false);
-            swallowMouseUntilUp = true; // pause panel pops where cursor is — eat the click
+            pauseGame();
             return;
         }
         if (input.keyPressed(GLFW.GLFW_KEY_F3))
@@ -989,6 +1010,7 @@ public class Game {
             sound.playOneOf(sounds.playerDeath(), 0.9f, 0.95f + 0.1f * (float) Math.random());
             state = State.DEAD;
             input.grabCursor(false);
+            openMenu(new DeathScreen());
             return;
         }
         float hSpeed = (float) Math.sqrt(player.velocity.x * player.velocity.x + player.velocity.z * player.velocity.z);
@@ -1350,27 +1372,9 @@ public class Game {
             player.velocity.y = 3f;
     }
 
+    /** Пауза: Esc и кнопки разбирает стек меню, миру здесь делать нечего. */
     private void updatePaused(float dt) {
-        if (saveToastTimer > 0f)
-            saveToastTimer -= dt;
         updateCommandToast(dt);
-        if (input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
-            if (inSettings) {
-                if (settingsTab != SettingsTab.HUB) {
-                    settingsTab = SettingsTab.HUB;
-                } else {
-                    inSettings = false;
-                    save.saveOptions(buildOptions());
-                }
-            } else if (player.isDead()) {
-                state = State.DEAD;
-                input.grabCursor(false);
-            } else {
-                state = State.PLAYING;
-                input.grabCursor(true);
-            }
-            return;
-        }
     }
 
     private void updateCreativeMenu(float dt) {
@@ -1445,8 +1449,6 @@ public class Game {
     private void updateDead(float dt) {
         gameTime += dt * TIME_SCALE;
         daylight = computeDaylight();
-        if (saveToastTimer > 0f)
-            saveToastTimer -= dt;
         updateCommandToast(dt);
         updateActiveWorld(dt);
     }
@@ -1752,6 +1754,9 @@ public class Game {
         float fGen = generated / (float) total;
         float fLit = lit / (float) total;
         float fBuilt = built / (float) total;
+        loadFractions[0] = fGen;
+        loadFractions[1] = fLit;
+        loadFractions[2] = fBuilt;
         loadStage = fGen < 1f ? com.mineclone.world.LoadStage.GENERATING
                 : fLit < 1f ? com.mineclone.world.LoadStage.LIGHTING
                 : fBuilt < 1f ? com.mineclone.world.LoadStage.BUILDING
@@ -3254,7 +3259,7 @@ public class Game {
             post.resize(sw, sh);
         glViewport(0, 0, sw, sh);
 
-        if (state == State.MENU) {
+        if (state == State.MENU || state == State.LOADING) {
             renderMenu(hdr, sw, sh);
             return;
         }
@@ -3587,8 +3592,22 @@ public class Game {
         if (backdrop != null && ui != null) {
             backdrop.capture(sw, sh);
             ui.setBackdrop(backdrop.texture());
+            captureWorldIcon(sw, sh);
         }
         drawUi();
+    }
+
+    /**
+     * Превью мира для списка миров. Кадр берётся из того же резольва, что и
+     * стекло: мир уже есть, интерфейса ещё нет.
+     */
+    private void captureWorldIcon(int sw, int sh) {
+        if (!iconRequested || world == null || (state != State.PLAYING && state != State.PAUSED))
+            return;
+        iconRequested = false;
+        int[] px = thumbnail.capture(backdrop.resolvedFramebuffer(), sw, sh);
+        if (px != null)
+            save.saveIconAsync(worldId, Thumbnail.WIDTH, Thumbnail.HEIGHT, px);
     }
 
     /**
@@ -4156,8 +4175,6 @@ public class Game {
             glClearColor(sky.x, sky.y, sky.z, 1f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         }
-        if (ui != null)
-            ui.setBackdrop(0);   // панели главного меню каменные, стекла там нет
         menuBackground.render(chunkShader, atlas, window.getAspect(), fovDegrees, menuLighting(hdr));
         if (hdr) {
             postSettings.bloomStrength = shaderQuality >= 1 ? 0.35f : 0f;
@@ -4178,14 +4195,11 @@ public class Game {
             post.resolve();
             post.render(postSettings, null);
         }
-        // Vignette: dark edges. Negative-alpha center quad clamps to 0,
-        // so the visible effect is just the outer dim — reads as a vignette
-        // against the orbiting backdrop without needing a radial shader.
-        ui.begin(sw, sh);
-        ui.quad(0, 0, sw, sh, 0f, 0f, 0f, 0.35f);
-        float fx = sw * 0.18f, fy = sh * 0.18f;
-        ui.quad(fx, fy, sw - 2 * fx, sh - 2 * fy, 0f, 0f, 0f, -0.18f);
-        ui.end();
+        // Меню — такое же стекло, как HUD: размытый фон снимается до интерфейса.
+        if (backdrop != null && ui != null) {
+            backdrop.capture(sw, sh);
+            ui.setBackdrop(backdrop.texture());
+        }
         drawUi();
     }
 
@@ -4216,122 +4230,7 @@ public class Game {
             return;
 
         switch (state) {
-            case MENU -> {
-                boolean clicked = !swallowMouseUntilUp
-                        && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                boolean down = !swallowMouseUntilUp
-                        && input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                double mx = input.getCursorX() / scale, my = input.getCursorY() / scale;
-
-                if (inWorldSelect) {
-                    if (renamingWorldId != null) {
-                        String rdn = renamingWorldId;
-                        for (com.mineclone.save.SaveManager.WorldInfo wi : worldList)
-                            if (wi.id.equals(renamingWorldId)) { rdn = wi.displayName; break; }
-                        Hud.MenuAction ra = hud.drawRenameDialog(vw, vh, rdn,
-                                renameBuffer.toString(), mx, my, clicked);
-                        if (ra == Hud.MenuAction.SAVE)   applyRename();
-                        else if (ra == Hud.MenuAction.CANCEL) renamingWorldId = null;
-                        break;
-                    }
-
-                    if (pendingDeleteId != null) {
-                        String dn = pendingDeleteId;
-                        for (com.mineclone.save.SaveManager.WorldInfo wi : worldList)
-                            if (wi.id.equals(pendingDeleteId)) { dn = wi.displayName; break; }
-                        Hud.MenuAction da = hud.drawConfirm(vw, vh,
-                                "Delete \"" + dn + "\"? This cannot be undone.",
-                                "Delete", mx, my, clicked,
-                                Hud.MenuAction.DELETE_WORLD_CONFIRM);
-                        if (da == Hud.MenuAction.DELETE_WORLD_CONFIRM) {
-                            save.deleteWorld(pendingDeleteId);
-                            pendingDeleteId = null;
-                            selectedWorldId = null;
-                            worldList = save.listWorlds();
-                            worldSelectScroll = 0;
-                        } else if (da == Hud.MenuAction.CANCEL
-                                || input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
-                            pendingDeleteId = null;
-                        }
-                    } else {
-                        int maxScroll = Math.max(0, worldList.size() - 1);
-                        worldSelectScroll = Math.max(0, Math.min(worldSelectScroll, maxScroll));
-                        Hud.WorldSelectAction wa = hud.drawWorldSelect(
-                                vw, vh, mx, my, clicked, worldList, worldSelectScroll, selectedWorldId);
-                        if (wa.playId != null) {
-                            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
-                            inWorldSelect = false;
-                            selectedWorldId = null;
-                            startWorld(wa.playId);
-                        } else if (wa.selectId != null) {
-                            selectedWorldId = wa.selectId;
-                            swallowMouseUntilUp = true;
-                        } else if (wa.renameId != null) {
-                            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
-                            renamingWorldId = wa.renameId;
-                            renameBuffer.setLength(0);
-                            for (com.mineclone.save.SaveManager.WorldInfo wi : worldList)
-                                if (wi.id.equals(wa.renameId)) { renameBuffer.append(wi.displayName); break; }
-                            input.pollChars();
-                            swallowMouseUntilUp = true;
-                        } else if (wa.deleteId != null) {
-                            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
-                            pendingDeleteId = wa.deleteId;
-                            swallowMouseUntilUp = true;
-                        } else if (wa.newWorld) {
-                            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
-                            inWorldSelect = false;
-                            selectedWorldId = null;
-                            createWorld();
-                        } else if (wa.back || input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
-                            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
-                            inWorldSelect = false;
-                            selectedWorldId = null;
-                        }
-                    }
-                    break;
-                }
-
-                if (inSettings) {
-                    drawActiveSettingsTab(vw, vh, mx, my, down, clicked);
-                    if (input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
-                        if (settingsTab != SettingsTab.HUB) {
-                            settingsTab = SettingsTab.HUB;
-                            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
-                        } else {
-                            inSettings = false;
-                            settingsTab = SettingsTab.HUB;
-                            save.saveOptions(buildOptions());
-                            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
-                        }
-                    }
-                    break;
-                }
-
-                Hud.MenuAction a = hud.drawMainMenu(vw, vh, mx, my, clicked);
-                if (a != Hud.MenuAction.NONE)
-                    sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
-                switch (a) {
-                    case SINGLEPLAYER -> {
-                        worldList = save.listWorlds();
-                        worldSelectScroll = 0;
-                        selectedWorldId = null;
-                        inWorldSelect = true;
-                        swallowMouseUntilUp = true;
-                    }
-                    case SETTINGS -> {
-                        inSettings = true;
-                        settingsTab = SettingsTab.HUB;
-                        swallowMouseUntilUp = true;
-                    }
-                    case QUIT -> GLFW.glfwSetWindowShouldClose(window.getHandle(), true);
-                    default -> {
-                    }
-                }
-            }
-            case LOADING -> {
-                hud.drawLoading(vw, vh, loadingVisualProgress, loadingTimer);
-            }
+            case MENU, LOADING -> handleMenuAction(drawMenus(vw, vh, scale));
             case PLAYING -> {
                 if (player.eyeInWater && hud != null)
                     hud.drawWaterOverlay(vw, vh);
@@ -4367,44 +4266,7 @@ public class Game {
                 hud.drawHotbar(vw, vh, inventory, selectedSlot, slotAnim);
                 hud.drawHearts(vw, vh, player.health, healthGhost);
                 hud.drawHunger(vw, vh, player.hunger);
-                boolean clicked = !swallowMouseUntilUp
-                        && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                boolean down = !swallowMouseUntilUp
-                        && input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                double mx = input.getCursorX() / scale, my = input.getCursorY() / scale;
-                if (inSettings) {
-                    drawActiveSettingsTab(vw, vh, mx, my, down, clicked);
-                } else {
-                    Hud.MenuAction a = hud.drawPauseMenu(vw, vh, mx, my, clicked);
-                    if (a != Hud.MenuAction.NONE)
-                        sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
-                    switch (a) {
-                        case RESUME -> {
-                            state = State.PLAYING;
-                            input.grabCursor(true);
-                        }
-                        case SAVE -> {
-                            saveAll();
-                            saveToastTimer = 1.6f;
-                            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
-                        }
-                        case SETTINGS -> {
-                            inSettings = true;
-                            swallowMouseUntilUp = true;
-                        }
-                        case MAIN_MENU -> {
-                            unloadWorld();
-                            saveToastTimer = 1.6f;
-                            inSettings = false;
-                            state = State.MENU;
-                            input.grabCursor(false);
-                            swallowMouseUntilUp = true;
-                        }
-                        case QUIT -> GLFW.glfwSetWindowShouldClose(window.getHandle(), true);
-                        default -> {
-                        }
-                    }
-                }
+                handleMenuAction(drawMenus(vw, vh, scale));
             }
             case CREATIVE_MENU -> {
                 hud.drawHotbar(vw, vh, inventory, selectedSlot, slotAnim);
@@ -4508,36 +4370,14 @@ public class Game {
             case DEAD -> {
                 hud.drawHearts(vw, vh, player.health, healthGhost);
                 hud.drawHunger(vw, vh, player.hunger);
-                boolean clicked = !swallowMouseUntilUp
-                        && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                double mx = input.getCursorX() / scale, my = input.getCursorY() / scale;
-                Hud.MenuAction a = hud.drawDeathScreen(vw, vh, mx, my, clicked);
-                if (a == Hud.MenuAction.RESPAWN) {
-                    respawnPlayer();
-                    state = State.PLAYING;
-                    input.grabCursor(true);
-                    swallowMouseUntilUp = true;
-                }
+                handleMenuAction(drawMenus(vw, vh, scale));
             }
-        }
-
-        if (saveToastTimer > 0f && font != null) {
-            String msg = "Saved";
-            float mw = font.textWidth(msg);
-            float a = Math.min(1f, saveToastTimer / 0.4f);
-            ui.begin(vw, vh);
-            ui.quad(vw / 2f - mw / 2f - 12f, TOAST_Y, mw + 24f, font.getPixelHeight() + 16f,
-                    0f, 0f, 0f, 0.55f * a);
-            ui.end();
-            text.draw(font, msg, vw / 2f - mw / 2f,
-                    TOAST_Y + 18f + font.getPixelHeight() * 0.5f,
-                    vw, vh, 0.55f, 1f, 0.55f, a);
         }
 
         if (commandToastTimer > 0f && font != null && !commandToast.isEmpty()) {
             float mw = font.textWidth(commandToast);
             float a = Math.min(1f, commandToastTimer / 0.35f);
-            float y = saveToastTimer > 0f ? TOAST_Y + 50f : TOAST_Y;
+            float y = TOAST_Y;
             ui.begin(vw, vh);
             ui.quad(vw / 2f - mw / 2f - 12f, y, mw + 24f, font.getPixelHeight() + 16f,
                     0f, 0f, 0f, 0.55f * a);
@@ -4551,8 +4391,179 @@ public class Game {
             drawCommandHelp(vw, vh);
         }
 
-        // always show version label
-        hud.drawVersionLabel(vw, vh);
+        // Метка версии везде, кроме титула: там она уже стоит в подвале экрана.
+        if (state != State.MENU)
+            hud.drawVersionLabel(vw, vh);
+    }
+
+    /** Кадр стека меню: снимок ввода, отрисовка и одно действие наружу. */
+    private MenuAction drawMenus(int vw, int vh, int scale) {
+        if (menuTheme == null || menus.isEmpty())
+            return MenuAction.NONE;
+        menuTheme.begin(vw, vh, menuInput(scale), uiClock, lastDt);
+        MenuAction a = menus.frame(menuTheme);
+        menuTheme.end();
+        return a;
+    }
+
+    /** Ввод этого кадра для меню — без GLFW дальше этой точки. */
+    private UiInput menuInput(int scale) {
+        UiInput.Builder b = UiInput.builder()
+                .at((float) (input.getCursorX() / scale), (float) (input.getCursorY() / scale))
+                .mouseDown(input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT))
+                .mousePressed(input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT))
+                .mouseReleased(input.mouseReleased(GLFW.GLFW_MOUSE_BUTTON_LEFT))
+                .scroll((float) input.getScroll())
+                .typed(input.pollChars());
+        for (int k = GLFW.GLFW_KEY_SPACE; k <= GLFW.GLFW_KEY_LAST; k++) {
+            if (input.keyPressed(k))
+                b.key(k);
+            else if (input.keyDown(k))
+                b.held(k);
+        }
+        boolean ctrl = input.keyDown(GLFW.GLFW_KEY_LEFT_CONTROL) || input.keyDown(GLFW.GLFW_KEY_RIGHT_CONTROL);
+        if (ctrl && input.keyPressed(GLFW.GLFW_KEY_V))
+            b.paste(input.clipboard());
+        return b.build();
+    }
+
+    /** Действие экрана меню, дошедшее до игры. */
+    private void handleMenuAction(MenuAction a) {
+        switch (a.kind) {
+            case PLAY_WORLD -> startWorld(a.worldId);
+            case CREATE_WORLD -> createWorld(a.world);
+            case RESUME, BACK -> {
+                if (state == State.PAUSED)
+                    resumeFromPause();
+            }
+            case SAVE -> saveAll();
+            case MAIN_MENU -> {
+                unloadWorld();
+                state = State.MENU;
+                input.grabCursor(false);
+                openMenu(new TitleScreen(save, settingsModel));
+            }
+            case QUIT -> GLFW.glfwSetWindowShouldClose(window.getHandle(), true);
+            case RESPAWN -> {
+                respawnPlayer();
+                state = State.PLAYING;
+                input.grabCursor(true);
+                menus.clear();
+            }
+            default -> {
+            }
+        }
+    }
+
+    /** Пауза: мир сохраняется сразу — с паузы чаще всего и выходят. */
+    private void pauseGame() {
+        state = State.PAUSED;
+        saveAll();
+        input.grabCursor(false);
+        openMenu(new PauseScreen(worldDisplayName, settingsModel));
+    }
+
+    /** Код выхода процесса: у автопилота ненулевой — провал. */
+    public int exitCode() {
+        return exitCode;
+    }
+
+    /** Кадр целиком, с интерфейсом, в PNG — для автопилота. */
+    private void captureScreenshot(String name) {
+        int w = window.getWidth(), h = window.getHeight();
+        java.nio.ByteBuffer px = org.lwjgl.BufferUtils.createByteBuffer(w * h * 4);
+        glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px);
+        int[] argb = new int[w * h];
+        boolean uniform = true;
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++) {
+                int p = (y * w + x) * 4;
+                int c = 0xff000000 | (px.get(p) & 255) << 16 | (px.get(p + 1) & 255) << 8 | (px.get(p + 2) & 255);
+                argb[(h - 1 - y) * w + x] = c;
+                uniform &= c == argb[(h - 1) * w];
+            }
+        if (uniform)
+            System.err.println("autopilot: " + name + " is a single colour");
+        java.nio.file.Path file = shotDir.resolve(name + ".png");
+        Thread t = new Thread(() -> {
+            try {
+                java.nio.file.Files.createDirectories(shotDir);
+                java.awt.image.BufferedImage img =
+                        new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
+                img.setRGB(0, 0, w, h, argb, 0, w);
+                javax.imageio.ImageIO.write(img, "png", file.toFile());
+                System.out.println("autopilot: " + file);
+            } catch (java.io.IOException e) {
+                System.err.println("autopilot: cannot write " + file + ": " + e.getMessage());
+            }
+        }, "autopilot-shot");
+        t.start();
+    }
+
+    /** Мост автопилота к игре: только то, что нужно прогону. */
+    private final class PilotDriver implements Autopilot.Driver {
+        @Override
+        public String state() {
+            return state.name();
+        }
+
+        @Override
+        public void open(Screen s) {
+            syncSettingsModel();
+            menus.push(s);
+        }
+
+        @Override
+        public void act(MenuAction a) {
+            handleMenuAction(a);
+        }
+
+        @Override
+        public void pause() {
+            pauseGame();
+        }
+
+        @Override
+        public void shot(String name) {
+            pendingShot = name;
+        }
+
+        @Override
+        public boolean shotPending() {
+            return pendingShot != null;
+        }
+
+        @Override
+        public boolean worldHasIcon() {
+            return worldId != null && save.loadIcon(worldId) != null;
+        }
+
+        @Override
+        public void quit(int code) {
+            exitCode = code;
+            GLFW.glfwSetWindowShouldClose(window.getHandle(), true);
+        }
+
+        @Override
+        public com.mineclone.save.SaveManager save() {
+            return save;
+        }
+
+        @Override
+        public SettingsModel settings() {
+            return settingsModel;
+        }
+    }
+
+    private void resumeFromPause() {
+        if (player.isDead()) {
+            state = State.DEAD;
+            openMenu(new DeathScreen());
+            return;
+        }
+        state = State.PLAYING;
+        input.grabCursor(true);
+        menus.clear();
     }
 
     private void drawCommandHelp(int w, int h) {
@@ -4608,6 +4619,9 @@ public class Game {
     }
 
     private void cleanup() {
+        // Экраны закрываются до GL: список миров отпускает текстуры превью.
+        menus.clear();
+        thumbnail.destroy();
         if (loader != null)
             loader.shutdown();
         menuBackground.destroy();

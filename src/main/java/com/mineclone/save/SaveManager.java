@@ -72,7 +72,16 @@ public final class SaveManager {
             });
 
     public SaveManager() {
-        this(AppPaths.file(SaveFormat.SAVES_ROOT));
+        this(defaultRoot());
+    }
+
+    /**
+     * Каталог сейвов. {@code -Dmineclone.savesDir} уводит в сторону и миры, и
+     * options.dat рядом с ними: автопилот не должен трогать миры игрока.
+     */
+    private static File defaultRoot() {
+        String dir = System.getProperty("mineclone.savesDir");
+        return dir != null && !dir.isBlank() ? new File(dir) : AppPaths.file(SaveFormat.SAVES_ROOT);
     }
 
     /** Test seam: point the manager at an arbitrary saves root. */

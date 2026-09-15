@@ -17,6 +17,8 @@ public class Input {
     private final StringBuilder charBuffer = new StringBuilder();
     /** Раскладка, через которую игра спрашивает действия, а не клавиши. */
     private KeyBindings bindings = new KeyBindings();
+    /** Можно ли прятать и запирать курсор; автопилот идёт на чужом экране. */
+    private boolean grabAllowed = true;
 
     public Input(long window) {
         this.window = window;
@@ -81,13 +83,20 @@ public class Input {
     }
     public boolean mouseDown(int b) { return mouseCur[b]; }
     public boolean mousePressed(int b) { return mouseCur[b] && !mousePrev[b]; }
+    public boolean mouseReleased(int b) { return !mouseCur[b] && mousePrev[b]; }
     public double getDx() { return dx; }
     public double getDy() { return dy; }
     public double getScroll() { return scrollThisFrame; }
 
+    public void setGrabAllowed(boolean allowed) {
+        grabAllowed = allowed;
+        if (!allowed)
+            glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+    }
+
     public void grabCursor(boolean grab) {
         cursorGrabbed = grab;
-        glfwSetInputMode(window, GLFW_CURSOR, grab ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+        glfwSetInputMode(window, GLFW_CURSOR, grab && grabAllowed ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
         if (grab) first = true; // avoid a big dx/dy jump on re-grab
     }
 

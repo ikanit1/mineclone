@@ -266,6 +266,14 @@ public final class MenuTheme {
         quad(0, -offsetY, sw, sh, 0f, 0f, 0f, a);
     }
 
+    /** Затемнение снизу экрана полосами — подвал с мелким текстом над ярким миром. */
+    public void shadeBottom(float height, float a) {
+        int steps = 12;
+        float band = height / steps;
+        for (int i = 0; i < steps; i++)
+            quad(0, sh - offsetY - height + i * band, sw, band + 0.5f, 0f, 0f, 0f, a * (i + 1) / steps);
+    }
+
     /**
      * Мягкая виньетка полосами, темнее к краю. Полос много и каждая слабая:
      * при шести ступени читались вложенными рамками.
@@ -353,6 +361,11 @@ public final class MenuTheme {
 
     public void smallRight(String s, float right, float baseline, float[] rgb, float a) {
         enqueue(small, s, right - small.textWidth(s), baseline, rgb, a, PLAIN);
+    }
+
+    /** Мелкий текст с тенью — без панели под ним. */
+    public void smallShadow(String s, float x, float baseline, float[] rgb, float a) {
+        enqueue(small, s, x, baseline, rgb, a, SHADOW);
     }
 
     /** Текст с обводкой — поверх пёстрого фона без панели. */
