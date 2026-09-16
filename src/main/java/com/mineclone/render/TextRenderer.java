@@ -66,6 +66,7 @@ public class TextRenderer {
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glBufferSubData(GL_ARRAY_BUFFER, 0L, cpuBuf);
         glDrawArrays(GL_TRIANGLES, 0, verts);
+        UiRenderer.countDrawCall();
         glBindVertexArray(0);
 
         shader.unbind();

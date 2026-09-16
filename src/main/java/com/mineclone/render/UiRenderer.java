@@ -20,6 +20,12 @@ public class UiRenderer {
     private final FloatBuffer buf; // 6 verts * (x,y,u,v)
 
     private int screenW, screenH;
+    /** Сколько draw call'ов интерфейс сделал с последнего сброса — для F3 и замера. */
+    private static int drawCalls;
+
+    public static int drawCalls() { return drawCalls; }
+    public static void resetDrawCalls() { drawCalls = 0; }
+    static void countDrawCall() { drawCalls++; }
     /** Размытый кадр под стеклом; 0 — стекла нет, панели остаются плоскими. */
     private int backdropTex;
     private final int[] viewport = new int[4];
@@ -90,6 +96,7 @@ public class UiRenderer {
         glActiveTexture(GL_TEXTURE0);
         upload(x, y, w, h, 0, 0, 0, 0);
         glDrawArrays(GL_TRIANGLES, 0, 6);
+        drawCalls++;
     }
 
     public void end() {
@@ -105,6 +112,7 @@ public class UiRenderer {
         shader.setVec4("uColor", r, g, b, a);
         upload(x, y, w, h, 0, 0, 0, 0);
         glDrawArrays(GL_TRIANGLES, 0, 6);
+        drawCalls++;
     }
 
     /** Textured rectangle sampled from the bound atlas, tinted by (r,g,b,a). */
@@ -118,6 +126,7 @@ public class UiRenderer {
         glBindTexture(GL_TEXTURE_2D, texId);
         upload(x, y, w, h, u0, v0, u1, v1);
         glDrawArrays(GL_TRIANGLES, 0, 6);
+        drawCalls++;
     }
 
     /** Заливка по произвольным углам — тень под изометрической иконкой. */
@@ -131,6 +140,7 @@ public class UiRenderer {
         buf.flip();
         glBufferSubData(GL_ARRAY_BUFFER, 0L, buf);
         glDrawArrays(GL_TRIANGLES, 0, 6);
+        drawCalls++;
     }
 
     /**
@@ -157,6 +167,7 @@ public class UiRenderer {
         buf.flip();
         glBufferSubData(GL_ARRAY_BUFFER, 0L, buf);
         glDrawArrays(GL_TRIANGLES, 0, 6);
+        drawCalls++;
     }
 
     private void upload(float x, float y, float w, float h,

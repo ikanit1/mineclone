@@ -60,24 +60,24 @@ src/test/java/com/mineclone/            InventoryTests (новый), правк�
 
 ## Задача 0. Базовая линия замера и снимков
 
-- [ ] `UiRenderer`: статический счётчик `drawCalls` (инкремент у каждого
+- [x] `UiRenderer`: статический счётчик `drawCalls` (инкремент у каждого
       `glDrawArrays`), `resetDrawCalls()`, `drawCalls()`. `TextRenderer` — то же,
       в тот же счётчик. Картинку не меняет.
-- [ ] `tools/BenchUi.java`: скрытое окно 1280×720, атлас, два кегля шрифта,
+- [x] `tools/BenchUi.java`: скрытое окно 1280×720, атлас, два кегля шрифта,
       `UiRenderer`, `TextRenderer`, `Hud`; инвентарь на 20 предметов. Режимы:
       `inventory` (`hud.drawInventory`), `chest` (`hud.drawChest`), `creative`
       (`hud.drawCreativeMenu`). 60 кадров прогрева выбрасываются, затем 300 кадров
       с `glFinish`; печать `mode  ms/frame  draw calls/frame`.
-- [ ] Прогнать: `java -cp "out;libs/*" tools\BenchUi.java`, цифры записать в
+- [x] Прогнать: `java -cp "out;libs/*" tools\BenchUi.java`, цифры записать в
       раздел «Замеры» этого плана.
-- [ ] Снимки старым рендером: `java -cp "out;libs/*" tools\RenderHudPreview.java`,
+- [x] Снимки старым рендером: `java -cp "out;libs/*" tools\RenderHudPreview.java`,
       скопировать `out-test/previews/*.png` в `out-test/previews-baseline/`.
-- [ ] `tools/ComparePreviews.java <base> <new>`: сравнивает одноимённые PNG;
+- [x] `tools/ComparePreviews.java <base> <new>`: сравнивает одноимённые PNG;
       пиксель «разный», если любой канал отличается больше чем на 40; провал,
       если разных пикселей больше 0,3 % кадра или размеры не совпали; печать
       по файлу `name  diff%  OK|FAIL`, код выхода 1 при провале. Кадры, которых
       нет в одной из папок, перечисляются и не валят прогон.
-- [ ] Коммит `chore(ui): draw-call counter, UI bench and preview comparison tools`.
+- [x] Коммит `chore(ui): draw-call counter, UI bench and preview comparison tools`.
 
 ## Задача 1. JSON
 
@@ -782,11 +782,11 @@ public interface WindowContext {
 
 | Что | До | После |
 |---|---|---|
-| Инвентарь, draw calls / кадр | | |
-| Инвентарь, мс / кадр | | |
-| Сундук, draw calls / кадр | | |
-| Креатив, draw calls / кадр | | |
-| Креатив, мс / кадр | | |
+| Инвентарь, draw calls / кадр | 476 | |
+| Инвентарь, мс / кадр | 2,33 | |
+| Сундук, draw calls / кадр (мс) | 633 (3,05) | |
+| Креатив, draw calls / кадр | 355 | |
+| Креатив, мс / кадр | 1,45 | |
 | CheckSaves: миры / чанки / стопки / missing / отказы | — | |
 
 ## Решения, принятые по ходу
