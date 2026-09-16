@@ -181,6 +181,8 @@
   },
   "active": "0e97807b0ee8ad8e",
   "lastOpenFiles": [
+    "architecture/overview.md",
+    "_COMMUNITY_Input System.md",
     "graph.canvas",
     "_COMMUNITY_Ground Movement Plan.md",
     "_COMMUNITY_Game Features Design.md",
@@ -196,7 +198,6 @@
     "_COMMUNITY_Chunk & World Management.md",
     "_COMMUNITY_Game Core & Save.md",
     "_COMMUNITY_Window & OpenGL.md",
-    "_COMMUNITY_Input System.md",
     "_COMMUNITY_Sound Engine Core.md",
     "_COMMUNITY_Sound System.md",
     "New World Flow (Confirm Dialog, Delete Save, Relaunch).md",

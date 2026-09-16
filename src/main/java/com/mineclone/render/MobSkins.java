@@ -98,8 +98,120 @@ public final class MobSkins {
             case SHEEP -> sheep(s, pal);
             case CHICKEN -> chicken(s, pal);
             case ZOMBIE -> zombie(s, pal);
+            case RABBIT -> rabbit(s, pal);
+            case WOLF -> wolf(s, pal);
+            case BIRD -> bird(s, pal);
         }
         return s.toImage(pal.toArray(), TILE);
+    }
+
+    /**
+     * Кролик: серо-коричневый мех комками, светлое брюшко, розовое нутро
+     * ушей. Мех — комки, а не градиент: гладкий кролик выглядит пластмассовым.
+     */
+    private static void rabbit(Sheet s, Pal p) {
+        int fur   = p.ramp("3D3129", "58473A", "74604D", "8E7862", "A99378");
+        int belly = p.ramp("8C8274", "ABA192", "C6BDAE", "DDD6C9", "F2EDE2");
+        int pink  = p.ramp("6A3D44", "8F5760", "B0747A", "C89399", "DDB2B5");
+        int dark  = p.ramp("110D0C", "1C1614", "28201D", "352B27", "443833");
+
+        s.clumps(T_BODY_SIDE, fur, 0.30f, 0.85f, 4, 131);
+        s.rectGrad(T_BODY_SIDE, 0f, 11 * P, 1f, 5 * P, belly, 0.70f, 0.45f, 132);
+        s.ragged(T_BODY_SIDE, 10 * P, 2 * P, fur, 0.55f, 133);
+        s.clumps(T_BODY_TOP, fur, 0.40f, 0.90f, 4, 134);
+
+        // Морда: большие глаза по бокам, светлое пятно носа с раздвоенной губой.
+        s.clumps(T_HEAD_FRONT, fur, 0.40f, 0.90f, 4, 135);
+        s.rectGrad(T_HEAD_FRONT, 5 * P, 8 * P, 6 * P, 6 * P, belly, 0.85f, 0.55f, 136);
+        s.rect(T_HEAD_FRONT, 7 * P, 9 * P, 2 * P, P, pink + 3);
+        s.rect(T_HEAD_FRONT, 7 * P, 11 * P, P, 2 * P, dark + 2);
+        s.rect(T_HEAD_FRONT, 8 * P, 11 * P, P, 2 * P, dark + 2);
+        s.eye(T_HEAD_FRONT, 0f, 5 * P, dark, belly + 4, true);
+        s.eye(T_HEAD_FRONT, 12 * P, 5 * P, dark, belly + 4, false);
+
+        s.clumps(T_HEAD_SIDE, fur, 0.40f, 0.88f, 4, 137);
+        s.rectGrad(T_HEAD_SIDE, 0f, 9 * P, 5 * P, 5 * P, belly, 0.8f, 0.5f, 138);
+        s.eye(T_HEAD_SIDE, 6 * P, 5 * P, dark, belly + 4, true);
+        s.clumps(T_HEAD_TOP, fur, 0.45f, 0.90f, 4, 139);
+
+        // Лапы и хвост-помпон.
+        s.clumps(T_LIMB, fur, 0.30f, 0.75f, 4, 140);
+        s.rectGrad(T_LIMB, 0f, 12 * P, 1f, 4 * P, belly, 0.7f, 0.5f, 141);
+        // Ухо: розовое нутро в меховой кромке.
+        s.clumps(T_ACCENT, fur, 0.45f, 0.85f, 4, 142);
+        s.rectGrad(T_ACCENT, 4 * P, 2 * P, 8 * P, 13 * P, pink, 0.85f, 0.55f, 143);
+        s.clumps(T_SPARE, belly, 0.6f, 1.0f, 4, 144);
+    }
+
+    /**
+     * Волк: серая шерсть с тёмным «чепраком» по хребту и светлой грудью,
+     * жёлтые глаза. Чепрак — главное, что отличает силуэт волка от собаки.
+     */
+    private static void wolf(Sheet s, Pal p) {
+        int fur   = p.ramp("2E3033", "474A4E", "63666A", "7F8285", "9EA09F");
+        int pale  = p.ramp("77756F", "969389", "B3AFA3", "CBC8BC", "E2DFD4");
+        int saddle = p.ramp("18191B", "242629", "313336", "3F4144", "4E5053");
+        int eyeC  = p.ramp("5A3A08", "8A5F12", "B8871E", "D8AA34", "F0CF5C");
+        int dark  = p.ramp("0B0B0C", "141415", "1E1E20", "29292B", "353537");
+
+        s.clumps(T_BODY_SIDE, fur, 0.30f, 0.85f, 4, 151);
+        s.rectGrad(T_BODY_SIDE, 0f, 0f, 1f, 5 * P, saddle, 0.8f, 0.4f, 152);
+        s.ragged(T_BODY_SIDE, 5 * P, 2 * P, saddle, 0.45f, 153);
+        s.rectGrad(T_BODY_SIDE, 0f, 12 * P, 1f, 4 * P, pale, 0.65f, 0.45f, 154);
+        s.clumps(T_BODY_TOP, saddle, 0.35f, 0.85f, 4, 155);
+
+        // Морда: светлая маска вокруг носа, тёмная переносица, жёлтые глаза.
+        s.clumps(T_HEAD_FRONT, fur, 0.40f, 0.90f, 4, 156);
+        s.rectGrad(T_HEAD_FRONT, 3 * P, 9 * P, 10 * P, 7 * P, pale, 0.85f, 0.55f, 157);
+        s.rect(T_HEAD_FRONT, 7 * P, 3 * P, 2 * P, 7 * P, saddle + 2);
+        s.rect(T_HEAD_FRONT, 6 * P, 10 * P, 4 * P, 2 * P, dark + 1);
+        s.eye(T_HEAD_FRONT, 2 * P, 5 * P, dark, eyeC + 3, true);
+        s.eye(T_HEAD_FRONT, 10 * P, 5 * P, dark, eyeC + 3, false);
+
+        s.clumps(T_HEAD_SIDE, fur, 0.40f, 0.88f, 4, 158);
+        s.rectGrad(T_HEAD_SIDE, 0f, 9 * P, 6 * P, 6 * P, pale, 0.80f, 0.50f, 159);
+        s.eye(T_HEAD_SIDE, 6 * P, 5 * P, dark, eyeC + 3, true);
+        s.clumps(T_HEAD_TOP, saddle, 0.40f, 0.85f, 4, 160);
+
+        s.clumps(T_LIMB, fur, 0.35f, 0.80f, 4, 161);
+        s.rectGrad(T_LIMB, 0f, 13 * P, 1f, 3 * P, dark, 0.6f, 0.3f, 162);
+        // Уши и морда-«нос» — тёмная шерсть; хвост — светлый кончик.
+        s.clumps(T_ACCENT, saddle, 0.40f, 0.85f, 4, 163);
+        s.rectGrad(T_ACCENT, 0f, 12 * P, 1f, 4 * P, pale, 0.9f, 0.6f, 164);
+        s.clumps(T_SPARE, pale, 0.55f, 0.95f, 4, 165);
+    }
+
+    /**
+     * Птица: синяя спинка, оранжевая грудка, тёмные маховые перья и
+     * жёлтый клюв. Контраст спины и груди нужен, чтобы в полёте на фоне неба
+     * птица читалась, а не превращалась в тёмную точку.
+     */
+    private static void bird(Sheet s, Pal p) {
+        int back  = p.ramp("15223F", "1F3565", "2C4B8C", "3F66AE", "6189CC");
+        int chest = p.ramp("6B2D10", "9A461A", "C66527", "E28A3E", "F2B267");
+        int wing  = p.ramp("0B1020", "141C33", "1F2A4A", "2C3A61", "3C4D78");
+        int beak  = p.ramp("6E5410", "9A781A", "C49E2A", "E2C04A", "F6E08A");
+        int dark  = p.ramp("080808", "111111", "1A1A1A", "242424", "2F2F2F");
+
+        s.grad(T_BODY_SIDE, back, 0.85f, 0.45f, 171);
+        s.rectGrad(T_BODY_SIDE, 0f, 8 * P, 1f, 8 * P, chest, 0.85f, 0.55f, 172);
+        s.ragged(T_BODY_SIDE, 7 * P, 2 * P, back, 0.60f, 173);
+        s.grad(T_BODY_TOP, back, 0.80f, 0.55f, 174);
+
+        s.grad(T_HEAD_FRONT, back, 0.85f, 0.50f, 175);
+        s.rectGrad(T_HEAD_FRONT, 3 * P, 9 * P, 10 * P, 7 * P, chest, 0.9f, 0.6f, 176);
+        s.eye(T_HEAD_FRONT, P, 5 * P, dark, chest + 4, true);
+        s.eye(T_HEAD_FRONT, 11 * P, 5 * P, dark, chest + 4, false);
+        s.grad(T_HEAD_SIDE, back, 0.85f, 0.50f, 177);
+        s.eye(T_HEAD_SIDE, 5 * P, 5 * P, dark, chest + 4, true);
+        s.grad(T_HEAD_TOP, back, 0.80f, 0.60f, 178);
+
+        s.grad(T_LIMB, beak, 0.75f, 0.45f, 179);
+        // Крыло: маховые полосами, тёмный задний край.
+        s.grad(T_ACCENT, wing, 0.85f, 0.50f, 180);
+        for (int i = 0; i < 4; i++)
+            s.rect(T_ACCENT, P, (2 + i * 3) * P, 14 * P, P, wing + 4);
+        s.grad(T_SPARE, beak, 0.9f, 0.6f, 181);
     }
 
     // -------------------------------------------------------------------------

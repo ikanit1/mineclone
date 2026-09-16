@@ -55,6 +55,7 @@ public class Shader {
     public void setVec2(String name, float x, float y) { glUniform2f(loc(name), x, y); }
     public void setVec4(String name, float[] rgba) { glUniform4f(loc(name), rgba[0], rgba[1], rgba[2], rgba[3]); }
     public void setVec3(String name, Vector3f v) { glUniform3f(loc(name), v.x, v.y, v.z); }
+    public void setVec3(String name, float x, float y, float z) { glUniform3f(loc(name), x, y, z); }
     public void setVec4(String name, Vector4f v) { glUniform4f(loc(name), v.x, v.y, v.z, v.w); }
     public void setVec4(String name, float x, float y, float z, float w) { glUniform4f(loc(name), x, y, z, w); }
     public void setMat4(String name, Matrix4f m) {

@@ -37,16 +37,43 @@ public final class HeldItemRenderer {
     private final Shader blockShader;
     private final Shader armShader;
     private final Map<BlockType, Mesh> blockMeshes = new EnumMap<>(BlockType.class);
+    private final Map<com.mineclone.world.ToolType, Mesh> toolMeshes =
+            new EnumMap<>(com.mineclone.world.ToolType.class);
     private final int armVao, armVbo;
     private final int armTexture;
+
+    private final Shader crackShader;
+    private final Shader trailShader;
+    private final int trailVao, trailVbo;
+    private final java.nio.FloatBuffer trailBuf =
+            org.lwjgl.system.MemoryUtil.memAllocFloat(TRAIL_SAMPLES * 2 * 4);
 
     public HeldItemRenderer() {
         this.blockShader = new Shader(Shaders.CHUNK_VERTEX, Shaders.CHUNK_FRAGMENT);
         this.armShader = new Shader(Shaders.MOB_VERTEX, Shaders.MOB_FRAGMENT);
+        this.crackShader = new Shader(Shaders.CHUNK_VERTEX, Shaders.ITEM_CRACK_FRAGMENT);
+        this.trailShader = new Shader(Shaders.TRAIL_VERTEX, Shaders.TRAIL_FRAGMENT);
         int[] ids = MobRenderer.createCubeVao();
         this.armVao = ids[0];
         this.armVbo = ids[1];
         this.armTexture = MobRenderer.uploadTexture(PlayerSkin.load());
+
+        trailVao = org.lwjgl.opengl.GL30.glGenVertexArrays();
+        trailVbo = org.lwjgl.opengl.GL15.glGenBuffers();
+        org.lwjgl.opengl.GL30.glBindVertexArray(trailVao);
+        glBindBuffer(org.lwjgl.opengl.GL15.GL_ARRAY_BUFFER, trailVbo);
+        org.lwjgl.opengl.GL15.glBufferData(org.lwjgl.opengl.GL15.GL_ARRAY_BUFFER,
+                (long) TRAIL_SAMPLES * 2 * 4 * Float.BYTES, org.lwjgl.opengl.GL15.GL_DYNAMIC_DRAW);
+        org.lwjgl.opengl.GL20.glVertexAttribPointer(0, 3, GL_FLOAT, false, 4 * Float.BYTES, 0L);
+        org.lwjgl.opengl.GL20.glEnableVertexAttribArray(0);
+        org.lwjgl.opengl.GL20.glVertexAttribPointer(1, 1, GL_FLOAT, false, 4 * Float.BYTES, 3L * Float.BYTES);
+        org.lwjgl.opengl.GL20.glEnableVertexAttribArray(1);
+        glBindBuffer(org.lwjgl.opengl.GL15.GL_ARRAY_BUFFER, 0);
+        org.lwjgl.opengl.GL30.glBindVertexArray(0);
+    }
+
+    private static void glBindBuffer(int target, int buffer) {
+        org.lwjgl.opengl.GL15.glBindBuffer(target, buffer);
     }
 
     // -------------------------------------------------------------------------
@@ -62,12 +89,23 @@ public final class HeldItemRenderer {
      */
     public static Matrix4f armPose(float equipProgress, float swingProgress,
                                    float walkDistance, boolean viewBobbing, boolean holding) {
+        return armPose(equipProgress, swingProgress, walkDistance, viewBobbing, holding, 0f);
+    }
+
+    /**
+     * @param inspect 0..1 — насколько игрок сейчас разглядывает предмет: кисть
+     *                уходит ниже, уступая центр кадра самому предмету
+     */
+    public static Matrix4f armPose(float equipProgress, float swingProgress,
+                                   float walkDistance, boolean viewBobbing, boolean holding,
+                                   float inspect) {
         float arc = swingArc(swingProgress);
         float yaw = swingYaw(swingProgress);
         float eq = equipEase(equipProgress);
-        float drop = (1f - eq) * 0.75f;
+        float ins = smooth01(inspect);
+        float drop = (1f - eq) * 0.75f + ins * 0.34f;
         float tilt = (1f - eq) * (float) Math.toRadians(55f);
-        float bobX = bobX(walkDistance, viewBobbing);
+        float bobX = bobX(walkDistance, viewBobbing) - ins * 0.10f;
         float bobY = bobY(walkDistance, viewBobbing);
 
         if (holding) {
@@ -100,20 +138,128 @@ public final class HeldItemRenderer {
      */
     public static Matrix4f itemPose(float equipProgress, float swingProgress,
                                     float walkDistance, boolean viewBobbing) {
-        float arc = swingArc(swingProgress);
-        float yaw = swingYaw(swingProgress);
+        return itemPose(equipProgress, swingProgress, walkDistance, viewBobbing, 0f, 0f);
+    }
+
+    /**
+     * @param inspect 0..1 — переход в позу осмотра: предмет выезжает к центру
+     *                кадра, ближе к глазам, и медленно вращается
+     * @param spin    угол вращения при осмотре, радианы
+     */
+    public static Matrix4f itemPose(float equipProgress, float swingProgress,
+                                    float walkDistance, boolean viewBobbing,
+                                    float inspect, float spin) {
+        float arc = swingArc(swingProgress) * (1f - inspect);
+        float yaw = swingYaw(swingProgress) * (1f - inspect);
         float eq = equipEase(equipProgress);
         float drop = (1f - eq) * 0.62f;
         float tilt = (1f - eq) * (float) Math.toRadians(55f);
+        float k = smooth01(inspect);
 
         return new Matrix4f()
-                .translate(0.27f + bobX(walkDistance, viewBobbing) + arc * 0.08f,
-                           -0.27f - drop + bobY(walkDistance, viewBobbing) - arc * 0.10f,
-                           -0.76f - arc * 0.10f)
-                .rotateY((float) Math.toRadians(48f + yaw * 14f))
-                .rotateX((float) Math.toRadians(-14f - arc * 14f) + tilt * 0.6f)
-                .rotateZ((float) Math.toRadians(6f - arc * 12f))
-                .scale(0.34f);
+                .translate(lerp(0.27f + bobX(walkDistance, viewBobbing) + arc * 0.08f, 0.10f, k),
+                           lerp(-0.27f - drop + bobY(walkDistance, viewBobbing) - arc * 0.10f, -0.13f, k),
+                           lerp(-0.76f - arc * 0.10f, -0.60f, k))
+                .rotateY(lerp((float) Math.toRadians(48f + yaw * 14f), spin, k))
+                .rotateX(lerp((float) Math.toRadians(-14f - arc * 14f) + tilt * 0.6f,
+                        (float) Math.toRadians(-24f), k))
+                .rotateZ(lerp((float) Math.toRadians(6f - arc * 12f), 0f, k))
+                .scale(lerp(0.34f, 0.30f, k));
+    }
+
+    /**
+     * Матрица инструмента.
+     *
+     * Своя, а не общая с блоком: блок — это куб вокруг центра, а инструмент —
+     * плоский спрайт, который держат за рукоять. Общая поза вешала его в
+     * воздухе рядом с кулаком. На спрайте рукоять внизу справа, а головка
+     * сверху слева, поэтому доворачивать его почти не нужно — нужно посадить
+     * правый нижний угол в кулак.
+     */
+    public static Matrix4f toolPose(float equipProgress, float swingProgress,
+                                    float walkDistance, boolean viewBobbing) {
+        return toolPose(equipProgress, swingProgress, walkDistance, viewBobbing, 0f, 0f);
+    }
+
+    public static Matrix4f toolPose(float equipProgress, float swingProgress,
+                                    float walkDistance, boolean viewBobbing,
+                                    float inspect, float spin) {
+        float arc = swingArc(swingProgress) * (1f - inspect);
+        float yaw = swingYaw(swingProgress) * (1f - inspect);
+        float eq = equipEase(equipProgress);
+        float drop = (1f - eq) * 0.62f;
+        float tilt = (1f - eq) * (float) Math.toRadians(55f);
+        float k = smooth01(inspect);
+
+        // Смещения замаха повторяют руку знак в знак: разойдись они — кирка
+        // на пике удара отрывается от кулака и летит отдельно. Сам удар
+        // читается доворотом, а не расхождением.
+        return new Matrix4f()
+                .translate(lerp(0.33f + bobX(walkDistance, viewBobbing) + arc * 0.04f, 0.07f, k),
+                           lerp(-0.26f - drop + bobY(walkDistance, viewBobbing) + arc * 0.10f, -0.10f, k),
+                           lerp(-0.74f - arc * 0.06f, -0.62f, k))
+                .rotateY(lerp((float) Math.toRadians(14f + yaw * 12f), spin, k))
+                .rotateZ(lerp((float) Math.toRadians(-8f - arc * 26f), (float) Math.toRadians(-38f), k))
+                .rotateX(lerp((float) Math.toRadians(-6f - arc * 18f) + tilt * 0.6f,
+                        (float) Math.toRadians(-8f), k))
+                .scale(lerp(0.42f, 0.52f, k));
+    }
+
+    // -------------------------------------------------------------------------
+    //  След взмаха — тоже чистая математика
+    // -------------------------------------------------------------------------
+
+    /** Сколько отсчётов в следе: по два на отсчёт — головка и середина рукояти. */
+    public static final int TRAIL_SAMPLES = 14;
+    /** Насколько назад по фазе замаха тянется след. */
+    public static final float TRAIL_SPAN = 0.42f;
+    /** Головка и середина инструмента в локальных координатах спрайта. */
+    private static final float[] TOOL_HEAD = { -0.58f, 0.58f };
+    private static final float[] TOOL_MID = { -0.05f, 0.05f };
+
+    /**
+     * Лента следа за головкой инструмента, в координатах вида от первого лица.
+     *
+     * Никакой истории кадров: поза — аналитическая функция фазы замаха,
+     * поэтому «где головка была мгновение назад» просто считается по более
+     * ранней фазе. След от этого не рвётся при просадке FPS и не зависит от
+     * того, сколько кадров успело пройти.
+     *
+     * @return {x, y, z, alpha} × (TRAIL_SAMPLES × 2), вершины полосы по порядку;
+     *         пустой массив — следа нет (замах кончился или не начинался)
+     */
+    public static float[] trailStrip(float equipProgress, float swingProgress,
+                                     float walkDistance, boolean viewBobbing) {
+        if (swingProgress <= 0.02f || swingProgress >= 0.995f)
+            return new float[0];
+        float[] out = new float[TRAIL_SAMPLES * 2 * 4];
+        org.joml.Vector4f v = new org.joml.Vector4f();
+        for (int i = 0; i < TRAIL_SAMPLES; i++) {
+            float t = i / (float) (TRAIL_SAMPLES - 1);          // 0 — сейчас, 1 — хвост
+            float phase = Math.min(1f, swingProgress + t * TRAIL_SPAN);
+            Matrix4f pose = toolPose(equipProgress, phase, walkDistance, viewBobbing);
+            // Яркость по скорости головки: медленный возврат следа не оставляет.
+            float speed = Math.abs(swingArc(phase) - swingArc(Math.min(1f, phase + 0.04f))) / 0.04f;
+            float a = (1f - t) * Math.min(1f, speed * 0.35f) * 0.85f;
+            pose.transform(v.set(TOOL_HEAD[0], TOOL_HEAD[1], 0f, 1f));
+            int o = i * 8;
+            out[o] = v.x; out[o + 1] = v.y; out[o + 2] = v.z; out[o + 3] = a;
+            pose.transform(v.set(TOOL_MID[0], TOOL_MID[1], 0f, 1f));
+            out[o + 4] = v.x; out[o + 5] = v.y; out[o + 6] = v.z; out[o + 7] = 0f;
+        }
+        return out;
+    }
+
+    /**
+     * Стадия трещин 0..9 для остатка прочности, или −1 — инструмент ещё цел.
+     * Трещины появляются, когда износ перевалил за треть: новый инструмент
+     * с первой же царапины выглядел бы старым.
+     */
+    public static int crackStage(float condition) {
+        if (condition >= 0.66f)
+            return -1;
+        float wear = (0.66f - Math.max(0f, condition)) / 0.66f;
+        return Math.min(9, (int) (wear * 10f));
     }
 
     /** Проекция вида от первого лица — отдельная от мировой, с узким near. */
@@ -158,21 +304,39 @@ public final class HeldItemRenderer {
     //  Отрисовка
     // -------------------------------------------------------------------------
 
-    public void render(TextureAtlas atlas, BlockType held, float aspect,
-            float fovDegrees, float equipProgress, float swingProgress,
+    public void render(TextureAtlas atlas, BlockType held, com.mineclone.world.ToolType heldTool,
+            float aspect, float fovDegrees, float equipProgress, float swingProgress,
             float walkDistance, boolean underwater, boolean viewBobbing,
-            float daylight, float brightness, float skyFrac, float blockFrac) {
+            float daylight, float brightness, float skyFrac, float blockFrac,
+            float linearOut) {
+        render(atlas, held, heldTool, aspect, fovDegrees, equipProgress, swingProgress,
+                walkDistance, underwater, viewBobbing, daylight, brightness, skyFrac, blockFrac,
+                linearOut, 1f, 0f, 0f);
+    }
 
-        // Единый источник правды по свету — повторяет шейдер чанков:
-        // effectiveLight = max(sky·daylight, blockLight).
-        float ambient = 0.04f + 0.18f * daylight;
+    /**
+     * @param toolCondition остаток прочности инструмента 0..1 — по нему трещины
+     * @param inspect       0..1 — поза осмотра предмета
+     * @param spin          угол вращения предмета при осмотре, радианы
+     */
+    public void render(TextureAtlas atlas, BlockType held, com.mineclone.world.ToolType heldTool,
+            float aspect, float fovDegrees, float equipProgress, float swingProgress,
+            float walkDistance, boolean underwater, boolean viewBobbing,
+            float daylight, float brightness, float skyFrac, float blockFrac,
+            float linearOut, float toolCondition, float inspect, float spin) {
+
+        // Единый источник правды по свету — уровень освещённости там, где стоит
+        // игрок. Рука и предмет берут одну и ту же настройку, поэтому не могут
+        // разъехаться по яркости.
         float effectiveLight = Math.max(skyFrac * daylight, blockFrac);
-        float armLight = (float) Math.pow(Math.max(ambient, effectiveLight), 0.75) * brightness;
+        float handLevel = Math.max(0.10f, effectiveLight);
+        SceneLighting handLight = SceneLighting.firstPerson(brightness, handLevel);
+        handLight.linearOut = linearOut;
 
         Matrix4f projection = projection(aspect, fovDegrees);
         Matrix4f view = new Matrix4f().translate(
                 -0.48f * Math.max(0f, 1f - aspect / (16f / 9f)), 0f, 0f);
-        boolean holding = held != null && held != BlockType.AIR;
+        boolean holding = (held != null && held != BlockType.AIR) || heldTool != null;
 
         // Собственный чистый z-буфер на первый план: без него задние грани
         // бокса руки перекрывают передние (обход вершин куба не гарантирован,
@@ -189,7 +353,7 @@ public final class HeldItemRenderer {
         armShader.setMat4("uProjection", projection);
         armShader.setMat4("uView", view);
         armShader.setMat4("uModel", armPose(equipProgress, swingProgress,
-                walkDistance, viewBobbing, holding));
+                walkDistance, viewBobbing, holding, inspect));
         armShader.setInt("uSkin", 0);
         armShader.setVec2("uTileSize", MobRenderer.TILE_U, MobRenderer.TILE_V);
         armShader.setVec2("uUvFront", MobRenderer.uvX(MobSkins.T_ACCENT),
@@ -198,12 +362,12 @@ public final class HeldItemRenderer {
                 MobRenderer.uvY(MobSkins.T_LIMB));
         armShader.setVec2("uUvTop", MobRenderer.uvX(MobSkins.T_BODY_TOP),
                 MobRenderer.uvY(MobSkins.T_BODY_TOP));
-        armShader.setFloat("uLight", Math.min(1f, armLight));
+        handLight.apply(armShader);
+        // Яркость уже сидит в цветах handLight — видимость здесь единичная.
+        armShader.setFloat("uSkyVis", 1f);
+        armShader.setFloat("uBlockVis", 0f);
         // Под водой рука уходит в холодный синий — как и всё остальное.
         armShader.setVec3("uTint", underwater ? UNDERWATER_TINT : NO_TINT);
-        armShader.setVec3("uFogColor", new Vector3f(0f, 0f, 0f));
-        armShader.setFloat("uFogStart", 100f);
-        armShader.setFloat("uFogEnd", 120f);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, armTexture);
         glBindVertexArray(armVao);
@@ -213,33 +377,149 @@ public final class HeldItemRenderer {
 
         // --- предмет ---------------------------------------------------------
         if (holding) {
-            Mesh mesh = blockMeshes.computeIfAbsent(held, HeldItemRenderer::createItemMesh);
+            Mesh mesh = heldTool != null
+                    ? toolMeshes.computeIfAbsent(heldTool, HeldItemRenderer::createToolMesh)
+                    : blockMeshes.computeIfAbsent(held, HeldItemRenderer::createItemMesh);
             // Факел светит сам — не даём ему потемнеть в руке.
-            float itemLight = held == BlockType.TORCH
-                    ? Math.max(effectiveLight, 0.75f) : effectiveLight;
+            SceneLighting itemLight = held == BlockType.TORCH && heldTool == null
+                    ? SceneLighting.firstPerson(brightness, Math.max(handLevel, 0.85f))
+                    : handLight;
+            itemLight.linearOut = linearOut;
             blockShader.bind();
             blockShader.setMat4("uProjection", projection);
             blockShader.setMat4("uView", view);
             blockShader.setInt("uAtlas", 0);
-            blockShader.setVec3("uFogColor", new Vector3f(0, 0, 0));
-            blockShader.setFloat("uFogStart", 100f);
-            blockShader.setFloat("uFogEnd", 120f);
-            blockShader.setFloat("uAmbient", ambient);
-            blockShader.setFloat("uDaylight", itemLight);
-            blockShader.setFloat("uBrightness", brightness);
+            itemLight.apply(blockShader);
             blockShader.setFloat("uTime", 0f);
+            blockShader.setFloat("uWindSway", 0f);
             atlas.bind(0);
-            blockShader.setMat4("uModel",
-                    itemPose(equipProgress, swingProgress, walkDistance, viewBobbing));
+            Matrix4f pose = heldTool != null
+                    ? toolPose(equipProgress, swingProgress, walkDistance, viewBobbing, inspect, spin)
+                    : itemPose(equipProgress, swingProgress, walkDistance, viewBobbing, inspect, spin);
+            blockShader.setMat4("uModel", pose);
             mesh.render();
             blockShader.unbind();
+
+            if (heldTool != null) {
+                int stage = crackStage(toolCondition);
+                if (stage >= 0)
+                    renderCracks(atlas, mesh, projection, view, pose, heldTool.tile, stage, linearOut);
+                if (inspect < 0.05f)
+                    renderTrail(projection, view, equipProgress, swingProgress, walkDistance,
+                            viewBobbing, handLevel, linearOut);
+            }
         }
 
         glEnable(GL_CULL_FACE);
     }
 
+    /**
+     * Трещины износа поверх инструмента: второй проход той же геометрии с
+     * маской по альфе спрайта. Трещина берётся из тайлов разрушения блока —
+     * ровно тот же язык «оно скоро сломается», что у копаемого блока.
+     */
+    private void renderCracks(TextureAtlas atlas, Mesh mesh, Matrix4f projection, Matrix4f view,
+                              Matrix4f pose, int toolTile, int stage, float linearOut) {
+        float[] tuv = TextureAtlas.uv(toolTile);
+        float[] cuv = TextureAtlas.uv(TextureAtlas.CRACK_TILE_0 + stage);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthFunc(GL_LEQUAL);
+        glDepthMask(false);
+        crackShader.bind();
+        crackShader.setMat4("uProjection", projection);
+        crackShader.setMat4("uView", view);
+        crackShader.setMat4("uModel", pose);
+        crackShader.setInt("uAtlas", 0);
+        crackShader.setFloat("uWindSway", 0f);
+        crackShader.setVec2("uToolUv0", tuv[0], tuv[1]);
+        crackShader.setVec2("uCrackUv0", cuv[0], cuv[1]);
+        crackShader.setVec2("uSpan", tuv[2] - tuv[0], tuv[3] - tuv[1]);
+        crackShader.setFloat("uLinearOut", linearOut);
+        // Чем глубже износ, тем заметнее трещина: на первых стадиях это
+        // царапины, на последних — раскол через весь инструмент.
+        crackShader.setFloat("uAlpha", 0.55f + 0.045f * stage);
+        crackShader.setFloat("uWear", (stage + 1) / 10f);
+        atlas.bind(0);
+        mesh.render();
+        crackShader.unbind();
+        glDepthMask(true);
+        glDepthFunc(GL_LESS);
+        glDisable(GL_BLEND);
+    }
+
+    /** Полупрозрачная лента за головкой инструмента во время замаха. */
+    private void renderTrail(Matrix4f projection, Matrix4f view, float equipProgress,
+                             float swingProgress, float walkDistance, boolean viewBobbing,
+                             float light, float linearOut) {
+        float[] strip = trailStrip(equipProgress, swingProgress, walkDistance, viewBobbing);
+        if (strip.length == 0)
+            return;
+        trailBuf.clear();
+        trailBuf.put(strip).flip();
+        glBindBuffer(org.lwjgl.opengl.GL15.GL_ARRAY_BUFFER, trailVbo);
+        org.lwjgl.opengl.GL15.glBufferSubData(org.lwjgl.opengl.GL15.GL_ARRAY_BUFFER, 0L, trailBuf);
+        glBindBuffer(org.lwjgl.opengl.GL15.GL_ARRAY_BUFFER, 0);
+
+        glEnable(GL_BLEND);
+        // Сложение, а не смешивание: след светится поверх того, что за ним,
+        // а не закрашивает мир мутной плёнкой.
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+        glDepthMask(false);
+        trailShader.bind();
+        trailShader.setMat4("uProjection", projection);
+        trailShader.setMat4("uView", view);
+        float k = 0.35f + 0.65f * light;
+        trailShader.setVec3("uColor", 0.95f * k, 0.97f * k, 1.0f * k);
+        trailShader.setFloat("uLinearOut", linearOut);
+        glBindVertexArray(trailVao);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, strip.length / 4);
+        glBindVertexArray(0);
+        trailShader.unbind();
+        glDepthMask(true);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDisable(GL_BLEND);
+    }
+
     private static final Vector3f NO_TINT = new Vector3f(1f, 1f, 1f);
     private static final Vector3f UNDERWATER_TINT = new Vector3f(0.62f, 0.78f, 1.0f);
+
+    /**
+     * Инструмент в руке — плоский спрайт, а не объёмная модель.
+     *
+     * Спрайт двусторонний и развёрнут по диагонали кадра: иконка нарисована
+     * по диагонали тайла, и ровно поставленный квад выглядел бы как открытка
+     * с картинкой, а не как предмет в кулаке.
+     */
+    private static Mesh createToolMesh(com.mineclone.world.ToolType tool) {
+        List<Float> pos = new ArrayList<>();
+        List<Float> uvs = new ArrayList<>();
+        List<Float> light = new ArrayList<>();
+        List<Float> blockLight = new ArrayList<>();
+        List<Integer> indices = new ArrayList<>();
+        float[] uv = TextureAtlas.uv(tool.tile);
+        float u0 = uv[0], v0 = uv[1], u1 = uv[2], v1 = uv[3];
+        float h = 0.62f;
+        float[][][] planes = {
+            { {-h, -h, 0f}, { h, -h, 0f}, { h, h, 0f}, {-h, h, 0f} },   // лицо
+            { { h, -h, 0f}, {-h, -h, 0f}, {-h, h, 0f}, { h, h, 0f} },   // изнанка
+        };
+        float[][] uvQ = { {u0, v1}, {u1, v1}, {u1, v0}, {u0, v0} };
+        float[][] uvQFlipped = { {u1, v1}, {u0, v1}, {u0, v0}, {u1, v0} };
+        for (int p = 0; p < planes.length; p++) {
+            int base = pos.size() / 3;
+            float[][] q = (p == 0) ? uvQ : uvQFlipped;
+            for (int i = 0; i < 4; i++) {
+                pos.add(planes[p][i][0]); pos.add(planes[p][i][1]); pos.add(planes[p][i][2]);
+                uvs.add(q[i][0]); uvs.add(q[i][1]);
+                light.add(1.0f); blockLight.add(0f);
+            }
+            indices.add(base); indices.add(base + 1); indices.add(base + 2);
+            indices.add(base); indices.add(base + 2); indices.add(base + 3);
+        }
+        return new Mesh(toFloatArray(pos), toFloatArray(uvs), toFloatArray(light),
+                toFloatArray(blockLight), toIntArray(indices));
+    }
 
     /** Dispatches to the correct mesh builder for each block type. */
     private static Mesh createItemMesh(BlockType block) {
@@ -334,6 +614,15 @@ public final class HeldItemRenderer {
         return Math.max(0f, Math.min(1f, v));
     }
 
+    private static float smooth01(float v) {
+        float k = clamp01(v);
+        return k * k * (3f - 2f * k);
+    }
+
+    private static float lerp(float a, float b, float k) {
+        return a + (b - a) * k;
+    }
+
     private static float[] toFloatArray(List<Float> list) {
         float[] arr = new float[list.size()];
         for (int i = 0; i < list.size(); i++)
@@ -355,7 +644,15 @@ public final class HeldItemRenderer {
         glDeleteVertexArrays(armVao);
         glDeleteBuffers(armVbo);
         glDeleteTextures(armTexture);
+        for (Mesh m : toolMeshes.values())
+            m.destroy();
+        toolMeshes.clear();
         blockShader.destroy();
         armShader.destroy();
+        crackShader.destroy();
+        trailShader.destroy();
+        glDeleteVertexArrays(trailVao);
+        glDeleteBuffers(trailVbo);
+        org.lwjgl.system.MemoryUtil.memFree(trailBuf);
     }
 }

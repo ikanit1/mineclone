@@ -34,7 +34,7 @@ import static org.lwjgl.opengl.GL30.*;
  */
 public class MobRenderer {
     /** Как анимируется часть тела. */
-    private enum Anim { NONE, HEAD, LEG_A, LEG_B, ARM, WING }
+    private enum Anim { NONE, HEAD, LEG_A, LEG_B, ARM, WING, TAIL }
 
     /**
      * Часть тела: пивот (точка вращения, в локальных координатах моба),
@@ -173,14 +173,51 @@ public class MobRenderer {
                 new Part(-0.36f, 1.3f, 0f, 0f, -0.3f, 0f, 0.22f, 0.6f, 0.22f, ac, ac, ac, Anim.ARM),
                 new Part( 0.36f, 1.3f, 0f, 0f, -0.3f, 0f, 0.22f, 0.6f, 0.22f, ac, ac, ac, Anim.ARM),
             };
+            // Кролик: пригнутое тело, длинные уши, мощные задние лапы.
+            case RABBIT -> new Part[] {
+                new Part(0f, 0.24f, 0.04f, 0f, 0f, 0f, 0.30f, 0.26f, 0.42f, bs, bs, bt, Anim.NONE),
+                new Part(0f, 0.36f, -0.20f, 0f, 0f, -0.06f, 0.24f, 0.22f, 0.22f, hf, hs, ht, Anim.HEAD),
+                new Part(-0.06f, 0.36f, -0.20f, 0f, 0.20f, -0.02f, 0.06f, 0.22f, 0.04f, ac, ac, lm, Anim.HEAD),
+                new Part( 0.06f, 0.36f, -0.20f, 0f, 0.20f, -0.02f, 0.06f, 0.22f, 0.04f, ac, ac, lm, Anim.HEAD),
+                new Part(-0.08f, 0.14f, -0.12f, 0f, -0.07f, 0f, 0.07f, 0.14f, 0.07f, lm, lm, lm, Anim.LEG_A),
+                new Part( 0.08f, 0.14f, -0.12f, 0f, -0.07f, 0f, 0.07f, 0.14f, 0.07f, lm, lm, lm, Anim.LEG_B),
+                new Part(-0.11f, 0.14f, 0.14f, 0f, -0.07f, 0f, 0.09f, 0.14f, 0.16f, lm, lm, lm, Anim.LEG_B),
+                new Part( 0.11f, 0.14f, 0.14f, 0f, -0.07f, 0f, 0.09f, 0.14f, 0.16f, lm, lm, lm, Anim.LEG_A),
+                new Part(0f, 0.30f, 0.27f, 0f, 0f, 0.03f, 0.10f, 0.10f, 0.08f, MobSkins.T_SPARE, MobSkins.T_SPARE, MobSkins.T_SPARE, Anim.NONE),
+            };
+            // Волк: длинное тело, морда вперёд, уши торчком, хвост на отлёте.
+            case WOLF -> new Part[] {
+                new Part(0f, 0.55f, 0.05f, 0f, 0f, 0f, 0.36f, 0.34f, 0.80f, bs, bs, bt, Anim.NONE),
+                new Part(0f, 0.66f, -0.40f, 0f, 0f, -0.08f, 0.34f, 0.30f, 0.28f, hf, hs, ht, Anim.HEAD),
+                new Part(0f, 0.66f, -0.40f, 0f, -0.06f, -0.29f, 0.16f, 0.13f, 0.16f, ac, ac, ac, Anim.HEAD),
+                new Part(-0.10f, 0.66f, -0.40f, 0f, 0.19f, -0.02f, 0.08f, 0.10f, 0.05f, ac, ac, ac, Anim.HEAD),
+                new Part( 0.10f, 0.66f, -0.40f, 0f, 0.19f, -0.02f, 0.08f, 0.10f, 0.05f, ac, ac, ac, Anim.HEAD),
+                new Part(-0.12f, 0.40f, -0.26f, 0f, -0.20f, 0f, 0.12f, 0.40f, 0.12f, lm, lm, lm, Anim.LEG_A),
+                new Part( 0.12f, 0.40f, -0.26f, 0f, -0.20f, 0f, 0.12f, 0.40f, 0.12f, lm, lm, lm, Anim.LEG_B),
+                new Part(-0.12f, 0.40f,  0.32f, 0f, -0.20f, 0f, 0.12f, 0.40f, 0.12f, lm, lm, lm, Anim.LEG_B),
+                new Part( 0.12f, 0.40f,  0.32f, 0f, -0.20f, 0f, 0.12f, 0.40f, 0.12f, lm, lm, lm, Anim.LEG_A),
+                new Part(0f, 0.62f, 0.44f, 0f, -0.06f, 0.14f, 0.10f, 0.10f, 0.32f, ac, ac, ac, Anim.TAIL),
+            };
+            // Птица: круглое тело, клюв, крылья по бокам и хвост лопаткой.
+            case BIRD -> new Part[] {
+                new Part(0f, 0.17f, 0f, 0f, 0f, 0f, 0.18f, 0.17f, 0.28f, bs, bs, bt, Anim.NONE),
+                new Part(0f, 0.28f, -0.11f, 0f, 0.02f, -0.02f, 0.14f, 0.14f, 0.14f, hf, hs, ht, Anim.HEAD),
+                new Part(0f, 0.28f, -0.11f, 0f, 0.0f, -0.11f, 0.05f, 0.05f, 0.08f, MobSkins.T_SPARE, MobSkins.T_SPARE, MobSkins.T_SPARE, Anim.HEAD),
+                // Крылья длиннее, чем нужно сложенным: в полёте короткая
+                // пластинка читалась как крыша на спине, а не как взмах.
+                new Part(-0.10f, 0.24f, 0f, 0f, -0.085f, 0.01f, 0.03f, 0.17f, 0.22f, ac, ac, ac, Anim.WING),
+                new Part( 0.10f, 0.24f, 0f, 0f, -0.085f, 0.01f, 0.03f, 0.17f, 0.22f, ac, ac, ac, Anim.WING),
+                new Part(0f, 0.18f, 0.15f, 0f, 0f, 0.08f, 0.12f, 0.03f, 0.16f, ac, ac, bt, Anim.TAIL),
+                new Part(-0.04f, 0.09f, 0f, 0f, -0.045f, 0f, 0.03f, 0.09f, 0.03f, lm, lm, lm, Anim.LEG_A),
+                new Part( 0.04f, 0.09f, 0f, 0f, -0.045f, 0f, 0.03f, 0.09f, 0.03f, lm, lm, lm, Anim.LEG_B),
+            };
         };
     }
 
     // -------------------------------------------------------------------------
 
     public void render(Matrix4f proj, Matrix4f view, List<Mob> mobs, World world,
-                       float daylight, float ambient, float brightness,
-                       Vector3f fogColor, float fogStart, float fogEnd) {
+                       float daylight, SceneLighting lighting) {
         if (mobs.isEmpty())
             return;
         glDisable(GL_CULL_FACE);
@@ -188,42 +225,20 @@ public class MobRenderer {
         shader.setMat4("uProjection", proj);
         shader.setMat4("uView", view);
         shader.setInt("uSkin", 0);
-        shader.setVec3("uFogColor", fogColor);
-        shader.setFloat("uFogStart", fogStart);
-        shader.setFloat("uFogEnd", fogEnd);
+        lighting.apply(shader);
         shader.setVec2("uTileSize", TILE_U, TILE_V);
         glBindVertexArray(vao);
 
         for (Mob m : mobs) {
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, textures.get(m.type));
-            shader.setFloat("uLight", lightAt(world, m, daylight, ambient, brightness));
-            shader.setVec3("uTint", m.hurtFlash > 0f ? HURT_TINT : NO_TINT);
+            shader.setFloat("uSkyVis", skyVisAt(world, m) * daylight);
+            shader.setFloat("uBlockVis", blockVisAt(world, m));
+            shader.setVec3("uTint", tintOf(m));
+            shader.setVec3("uGlow", glowOf(m));
 
             for (Part p : models.get(m.type)) {
-                model.identity()
-                     .translate(m.position.x, m.position.y, m.position.z)
-                     .rotateY(m.yaw);
-                // Смерть: моб валится набок за DEATH_TIME, как в MC.
-                if (m.dead)
-                    model.rotateZ((1f - m.deathTimer / Mob.DEATH_TIME) * 1.5708f);
-                else
-                    model.translate(0f, MobAnimation.breathe(m), 0f);
-                model.translate(p.pivX(), p.pivY(), p.pivZ());
-                switch (p.anim()) {
-                    case LEG_A -> model.rotateX(MobAnimation.leg(m));
-                    case LEG_B -> model.rotateX(-MobAnimation.leg(m));
-                    case HEAD -> model.rotateY(MobAnimation.headYaw(m)).rotateX(MobAnimation.headPitch(m));
-                    // Руки зомби вытянуты вперёд (в −Z) + лёгкое покачивание.
-                    // В момент удара замахивается: руки поднимаются и опускаются
-                    // за ATTACK_SWING_TIME — иначе атака визуально не читается.
-                    case ARM -> {
-                        model.rotateX(MobAnimation.arm(m));
-                    }
-                    case WING -> model.rotateZ(Math.signum(p.pivX()) * MobAnimation.wing(m));
-                    case NONE -> { }
-                }
-                model.translate(p.offX(), p.offY(), p.offZ()).scale(p.sx(), p.sy(), p.sz());
+                partMatrix(m, p, model);
                 shader.setMat4("uModel", model);
                 shader.setVec2("uUvFront", uvX(p.front()), uvY(p.front()));
                 shader.setVec2("uUvSide", uvX(p.side()), uvY(p.side()));
@@ -237,16 +252,128 @@ public class MobRenderer {
         glEnable(GL_CULL_FACE);
     }
 
-    /** Тот же тон-курве, что у чанков — моб темнеет ночью и в тени. */
-    private static float lightAt(World world, Mob m, float daylight, float ambient,
-                                 float brightness) {
+    /**
+     * Те же кубы в карту теней. Позы берутся из {@link #partMatrix}, поэтому
+     * тень не может разъехаться с моделью при правке анимации.
+     */
+    public void renderShadow(Shader shadowShader, Matrix4f lightSpace, List<Mob> mobs) {
+        if (mobs.isEmpty())
+            return;
+        shadowShader.bind();
+        shadowShader.setMat4("uLightSpace", lightSpace);
+        shadowShader.setInt("uAtlas", 0);
+        shadowShader.setVec2("uTileSize", TILE_U, TILE_V);
+        glBindVertexArray(vao);
+        for (Mob m : mobs) {
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, textures.get(m.type));
+            for (Part p : models.get(m.type)) {
+                partMatrix(m, p, model);
+                shadowShader.setMat4("uModel", model);
+                shadowShader.setVec2("uUvFront", uvX(p.front()), uvY(p.front()));
+                shadowShader.setVec2("uUvSide", uvX(p.side()), uvY(p.side()));
+                shadowShader.setVec2("uUvTop", uvX(p.top()), uvY(p.top()));
+                glDrawArrays(GL_TRIANGLES, 0, VERTEX_COUNT);
+            }
+        }
+        glBindVertexArray(0);
+        shadowShader.unbind();
+    }
+
+    private final Vector3f tint = new Vector3f();
+    private final Vector3f glow = new Vector3f();
+    private static final Vector3f NO_GLOW = new Vector3f();
+
+    /**
+     * Оттенок моба: вспышка урона, а у взбешённого — пульсация. Пульс, а не
+     * ровный цвет: ровный читался бы как другой вид моба.
+     */
+    private Vector3f tintOf(Mob m) {
+        if (m.hurtFlash > 0f)
+            return HURT_TINT;
+        if (m.elite == com.mineclone.world.entity.MobTactics.Elite.FROST)
+            return tint.set(0.72f, 0.90f, 1.18f);
+        if (m.elite == com.mineclone.world.entity.MobTactics.Elite.VENOMOUS)
+            return tint.set(0.76f, 1.10f, 0.70f);
+        if (m.elite == com.mineclone.world.entity.MobTactics.Elite.BURNING)
+            return tint.set(1.18f, 0.82f, 0.62f);
+        if (m.enraged && !m.dead) {
+            float k = ragePulse(m);
+            return tint.set(1f, 1f - 0.22f * k, 1f - 0.26f * k);
+        }
+        return NO_TINT;
+    }
+
+    /**
+     * Красное свечение ярости. Одним множителем цвета его не сделать: зелёная
+     * кожа зомби почти без красного канала, и умноженная на красный она не
+     * краснеет, а темнеет в оливковый.
+     */
+    private Vector3f glowOf(Mob m) {
+        if (m.dead || m.hurtFlash > 0f)
+            return NO_GLOW;
+        if (m.elite != com.mineclone.world.entity.MobTactics.Elite.NONE) {
+            float pulse = 0.55f + 0.25f * (float) Math.sin(m.animationTime * 5f);
+            return switch (m.elite) {
+                case BURNING -> glow.set(0.32f, 0.08f, 0.01f).mul(pulse);
+                case VENOMOUS -> glow.set(0.04f, 0.28f, 0.02f).mul(pulse);
+                case FROST -> glow.set(0.04f, 0.18f, 0.34f).mul(pulse);
+                default -> NO_GLOW;
+            };
+        }
+        if (!m.enraged)
+            return NO_GLOW;
+        float k = ragePulse(m);
+        return glow.set(0.15f * k, 0.008f * k, 0.003f * k);
+    }
+
+    private static float ragePulse(Mob m) {
+        return 0.5f + 0.5f * (float) Math.sin(m.animationTime * 9f);
+    }
+
+    /** Модельная матрица одной части тела со всей анимацией. */
+    private static void partMatrix(Mob m, Part p, Matrix4f out) {
+        out.identity()
+           .translate(m.position.x, m.position.y, m.position.z);
+        // Смерть: тело валится вокруг оси поперёк смертельного удара — прочь
+        // от того, кто его нанёс, — с отскоком о землю.
+        if (m.dead)
+            out.rotate(m.topple, m.deathAxisX, 0f, m.deathAxisZ);
+        out.rotateY(m.yaw);
+        if (!m.dead)
+            out.translate(0f, MobAnimation.breathe(m), 0f);
+        out.translate(p.pivX(), p.pivY(), p.pivZ());
+        // У трупа конечности обмякают и разъезжаются — пока он падает.
+        float limp = m.dead ? Math.min(1f, m.topple / 1.5708f) : 0f;
+        switch (p.anim()) {
+            case LEG_A -> out.translate(0f, m.legOffsetA, 0f)
+                    .rotateX(MobAnimation.leg(m) - m.legOffsetA * 0.9f + limp * 0.55f);
+            case LEG_B -> out.translate(0f, m.legOffsetB, 0f)
+                    .rotateX(-MobAnimation.leg(m) - m.legOffsetB * 0.9f - limp * 0.35f);
+            case TAIL -> out.rotateY(MobAnimation.tail(m));
+            case HEAD -> out.rotateY(MobAnimation.headYaw(m)).rotateX(MobAnimation.headPitch(m));
+            // Руки зомби вытянуты вперёд (в −Z) + лёгкое покачивание.
+            // В момент удара замахивается: руки поднимаются и опускаются
+            // за ATTACK_SWING_TIME — иначе атака визуально не читается.
+            case ARM -> out.rotateX(MobAnimation.arm(m));
+            case WING -> out.rotateZ(Math.signum(p.pivX()) * MobAnimation.wing(m));
+            case NONE -> { }
+        }
+        out.translate(p.offX(), p.offY(), p.offZ()).scale(p.sx(), p.sy(), p.sz());
+    }
+
+    private static float skyVisAt(World world, Mob m) {
         int bx = (int) Math.floor(m.position.x);
         int by = (int) Math.floor(m.position.y + m.type.height * 0.5f);
         int bz = (int) Math.floor(m.position.z);
-        float skyF = world.getSkyLight(bx, by, bz) / (float) Chunk.MAX_LIGHT;
-        float blkF = world.getBlockLightWorld(bx, by, bz) / (float) Chunk.MAX_LIGHT;
-        float combined = Math.max(skyF * daylight, blkF);
-        return Math.min(1f, (float) Math.pow(Math.max(ambient, combined), 0.75) * brightness);
+        return world.getSkyLight(bx, by, bz) / (float) Chunk.MAX_LIGHT;
+    }
+
+    private static float blockVisAt(World world, Mob m) {
+        int bx = (int) Math.floor(m.position.x);
+        int by = (int) Math.floor(m.position.y + m.type.height * 0.5f);
+        int bz = (int) Math.floor(m.position.z);
+        return world.getBlockLightWorld(bx, by, bz) / (float) Chunk.MAX_LIGHT;
     }
 
     static float uvX(int tile) {

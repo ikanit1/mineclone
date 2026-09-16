@@ -19,6 +19,8 @@ public final class LevelData {
     /** Unix-millisecond timestamp of the last save; 0 for pre-v5 saves. */
     public final long lastPlayed;
     public final float health;
+    /** Сытость 0..20; для сейвов до v9 — полная. */
+    public final float hunger;
 
     public LevelData(long seed, double px, double py, double pz,
                      float yaw, float pitch, float timeOfDay, int selectedSlot) {
@@ -61,6 +63,16 @@ public final class LevelData {
                      double spawnX, double spawnY, double spawnZ,
                      float yaw, float pitch, float timeOfDay, int selectedSlot,
                      ItemStack[] inventory, GameMode gameMode, long lastPlayed, float health) {
+        this(name, seed, px, py, pz, spawnX, spawnY, spawnZ, yaw, pitch, timeOfDay,
+                selectedSlot, inventory, gameMode, lastPlayed, health, 20f);
+    }
+
+    public LevelData(String name, long seed, double px, double py, double pz,
+                     double spawnX, double spawnY, double spawnZ,
+                     float yaw, float pitch, float timeOfDay, int selectedSlot,
+                     ItemStack[] inventory, GameMode gameMode, long lastPlayed, float health,
+                     float hunger) {
+        this.hunger = Float.isFinite(hunger) ? Math.max(0f, Math.min(20f, hunger)) : 20f;
         this.health = Float.isFinite(health) ? Math.max(0f, Math.min(20f, health)) : 20f;
         this.name = name != null ? name : "";
         this.seed = seed;

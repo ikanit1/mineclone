@@ -70,6 +70,7 @@ public final class WaterSimulator {
 
         Set<Long> toRemove = new HashSet<>(256);
         Map<Long, Integer> toAdd = new HashMap<>(256);
+        Map<Long, Integer> toWeaken = new HashMap<>();
         Set<Long> toSource = new HashSet<>(64);
         Set<Long> scan = new HashSet<>(activeChunks);
         activeChunks.clear();
@@ -94,14 +95,16 @@ public final class WaterSimulator {
 
                         // Existing WATER_FLOW with 2+ source neighbours becomes a source.
                         // Skip trySpread — this cell becomes WATER at end of tick; neighbours rescan next tick.
-                        if (b == BlockType.WATER_FLOW && countSourceNeighbors(world, wx, wy, wz, sides) >= 2) {
+                        if (b == BlockType.WATER_FLOW && sourceEligible(world, wx, wy, wz, sides)) {
                             toSource.add(pack(wx, wy, wz));
                             continue;
                         }
 
                         // Flow cells without support are scheduled for removal.
                         if (b == BlockType.WATER_FLOW && !hasSupport(world, wx, wy, wz, myLevel, sides)) {
-                            toRemove.add(pack(wx, wy, wz));
+                            int level = supportedLevel(world, wx, wy, wz, sides);
+                            if (level > 7) toRemove.add(pack(wx, wy, wz));
+                            else toWeaken.put(pack(wx, wy, wz), level);
                             continue;
                         }
 
@@ -112,6 +115,10 @@ public final class WaterSimulator {
             }
         }
 
+        for (Map.Entry<Long, Integer> e : toWeaken.entrySet()) {
+            long pk = e.getKey();
+            setBlockSafe(world, unpackX(pk), unpackY(pk), unpackZ(pk), BlockType.WATER_FLOW, e.getValue().byteValue());
+        }
         // Apply removals first so freed cells can be re-filled in the same tick
         // if a different source still reaches them next pass.
         for (long pk : toRemove) {
@@ -132,7 +139,7 @@ public final class WaterSimulator {
             if (current == BlockType.AIR) {
                 // Newly filled cell: upgrade to source if it has 2+ source neighbours.
                 // toRemove only removes WATER_FLOW cells, so WATER source neighbours are stable here.
-                if (countSourceNeighbors(world, wx, wy, wz, sides) >= 2) {
+                if (sourceEligible(world, wx, wy, wz, sides)) {
                     toSource.add(pk);
                 } else {
                     setBlockSafe(world, wx, wy, wz, BlockType.WATER_FLOW, (byte) newLevel);
@@ -141,7 +148,7 @@ public final class WaterSimulator {
                 int curLevel = world.getBlockMeta(wx, wy, wz) & 0xF;
                 if (newLevel < curLevel) {
                     // Strengthened flow: check for source upgrade before writing.
-                    if (countSourceNeighbors(world, wx, wy, wz, sides) >= 2) {
+                    if (sourceEligible(world, wx, wy, wz, sides)) {
                         toSource.add(pk);
                     } else {
                         setBlockSafe(world, wx, wy, wz, BlockType.WATER_FLOW, (byte) newLevel);
@@ -188,17 +195,23 @@ public final class WaterSimulator {
      *   - a horizontal flow neighbour at a STRICTLY LOWER level (closer to source).
      */
     private static boolean hasSupport(World world, int wx, int wy, int wz, int myLevel, int[][] sides) {
+        return supportedLevel(world, wx, wy, wz, sides) <= myLevel;
+    }
+
+    private static int supportedLevel(World world, int wx, int wy, int wz, int[][] sides) {
         BlockType above = world.getBlock(wx, wy + 1, wz);
-        if (above == BlockType.WATER || above == BlockType.WATER_FLOW) return true;
+        if (above == BlockType.WATER) return 0;
+        if (above == BlockType.WATER_FLOW) return world.getBlockMeta(wx, wy + 1, wz) & 15;
+        int level = 8;
         for (int[] d : sides) {
             BlockType nb = world.getBlock(wx + d[0], wy, wz + d[1]);
-            if (nb == BlockType.WATER) return true;
+            if (nb == BlockType.WATER) return 1;
             if (nb == BlockType.WATER_FLOW) {
                 int nbLevel = world.getBlockMeta(wx + d[0], wy, wz + d[1]) & 0xF;
-                if (nbLevel < myLevel) return true;
+                level = Math.min(level, nbLevel + 1);
             }
         }
-        return false;
+        return level;
     }
 
     /**
@@ -226,6 +239,7 @@ public final class WaterSimulator {
             if (myLevel < belowLevel) canFall = true;
         }
         if (canFall) {
+            if (wy <= 0) return;
             long pk = pack(wx, wy - 1, wz);
             // Preserve level on fall. A source (level 0) creates a level-0 column
             // so the bottom-of-fall pools up to 7 cells horizontally — matches MC.
@@ -234,34 +248,33 @@ public final class WaterSimulator {
             int newLevel = myLevel;
             Integer prev = toAdd.get(pk);
             if (prev == null || newLevel < prev) toAdd.put(pk, newLevel);
+            return;
         }
 
         // Skip sideways spread for any block that is part of a vertical column.
         // Only pool sideways when resting on a solid floor (water above, solid below).
         BlockType above = world.getBlock(wx, wy + 1, wz);
         boolean hasWaterAbove = above == BlockType.WATER || above == BlockType.WATER_FLOW;
-        boolean bottomOfFall = false;
         if (hasWaterAbove) {
             if (canFall) return; // still falling — no sideways arms
             if (below == BlockType.WATER_FLOW || below == BlockType.WATER) return; // mid-column
-            // solid floor below → this IS the bottom of a fall.
-            // MC behavior: bottom-of-fall acts as a fresh source for horizontal spread.
-            bottomOfFall = true;
         }
 
-        // At the bottom of a fall, override level to 0 so the spread reaches 7 blocks
-        // regardless of what level the falling water was. Also schedule a self-update
-        // so the cell's stored level becomes 0 (keeps the support chain consistent).
-        if (bottomOfFall && myLevel > 0) {
-            long selfPk = pack(wx, wy, wz);
-            Integer prevSelf = toAdd.get(selfPk);
-            if (prevSelf == null || 0 < prevSelf) toAdd.put(selfPk, 0);
-            myLevel = 0;
-        }
-
+        // A terrain step must not refill the horizontal spread budget.
+        // Preserve the upstream level at the bottom of every falling column.
         if (myLevel >= 7) return;
         int sideLevel = myLevel + 1;
+        int[] costs = new int[sides.length];
+        int best = 99;
+        for (int i = 0; i < sides.length; i++) {
+            costs[i] = dropDistance(world, wx + sides[i][0], wy, wz + sides[i][1],
+                    wx, wz, Math.min(4, 7 - sideLevel), sides);
+            best = Math.min(best, costs[i]);
+        }
+        int direction = -1;
         for (int[] d : sides) {
+            direction++;
+            if (best < 99 && costs[direction] != best) continue;
             int nx = wx + d[0], nz = wz + d[1];
             BlockType nb = world.getBlock(nx, wy, nz);
             boolean canFill = (nb == BlockType.AIR);
@@ -279,6 +292,7 @@ public final class WaterSimulator {
     }
 
     private static void setBlockSafe(World world, int wx, int wy, int wz, BlockType type, byte meta) {
+        if (wy < 0 || wy >= Chunk.SIZE_Y) return;
         int cx = Math.floorDiv(wx, Chunk.SIZE_X);
         int cz = Math.floorDiv(wz, Chunk.SIZE_Z);
         Chunk c = world.getChunkIfExists(cx, cz);
@@ -287,7 +301,7 @@ public final class WaterSimulator {
         int lz = Math.floorMod(wz, Chunk.SIZE_Z);
         c.set(lx, wy, lz, type);
         c.setMeta(lx, wy, lz, meta);
-        c.dirty = true;
+        c.markDirty();
         c.modified = true;
         activateAround(world, wx, wz);
         // Edge cells: neighbouring chunk needs a rebuild too so its mesh sees the change.
@@ -299,7 +313,7 @@ public final class WaterSimulator {
 
     private static void markNeighbourDirty(World world, int cx, int cz) {
         Chunk c = world.getChunkIfExists(cx, cz);
-        if (c != null) c.dirty = true;
+        if (c != null) c.markDirty();
     }
 
     private static long pack(int wx, int wy, int wz) {
@@ -314,5 +328,31 @@ public final class WaterSimulator {
         for (int[] d : sides)
             if (world.getBlock(wx + d[0], wy, wz + d[1]) == BlockType.WATER) n++;
         return n;
+    }
+
+    /** Find the nearest reachable drop without flowing through solid terrain. */
+    private static int dropDistance(World world, int x, int y, int z, int previousX,
+                                    int previousZ, int remaining, int[][] sides) {
+        if (y <= 0 || world.getChunkIfExists(Math.floorDiv(x, Chunk.SIZE_X),
+                Math.floorDiv(z, Chunk.SIZE_Z)) == null) return 99;
+        BlockType cell = world.getBlock(x, y, z);
+        if (cell != BlockType.AIR && cell != BlockType.WATER_FLOW) return 99;
+        BlockType below = world.getBlock(x, y - 1, z);
+        if (below == BlockType.AIR || below == BlockType.WATER_FLOW) return 0;
+        if (remaining <= 0) return 99;
+        int best = 99;
+        for (int[] d : sides) {
+            int nx = x + d[0], nz = z + d[1];
+            if (nx == previousX && nz == previousZ) continue;
+            int cost = dropDistance(world, nx, y, nz, x, z, remaining - 1, sides);
+            if (cost < 99) best = Math.min(best, cost + 1);
+        }
+        return best;
+    }
+
+    private static boolean sourceEligible(World world, int x, int y, int z, int[][] sides) {
+        BlockType below = world.getBlock(x, y - 1, z);
+        return (below.solid || below == BlockType.WATER)
+                && countSourceNeighbors(world, x, y, z, sides) >= 2;
     }
 }

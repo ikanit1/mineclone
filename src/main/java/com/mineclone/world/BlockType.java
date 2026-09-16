@@ -19,7 +19,63 @@ public enum BlockType {
     STAIRS      (true,  false, true,  11, 11, 11, 0.60f, 0.45f, 0.27f, 0,  1.5f),
     WATER_FLOW  (false, true,  false,  8,  8,  8, 0.16f, 0.35f, 0.78f, 0,  0f),
     SNOWY_GRASS (true,  false, false, 48, 47,  2, 0.92f, 0.94f, 0.96f, 0,  0.6f),
-    CACTUS      (true,  false, false, 49, 50, 50, 0.20f, 0.55f, 0.25f, 0,  0.4f);
+    CACTUS      (true,  false, false, 49, 50, 50, 0.20f, 0.55f, 0.25f, 0,  0.4f),
+    // Руды. Новые значения добавляются СТРОГО В КОНЕЦ: порядковый номер
+    // enum-константы лежит в сейвах как id блока, вставка в середину
+    // переименует блоки во всех сохранённых мирах.
+    COAL_ORE    (true,  false, false, 51, 51, 51, 0.16f, 0.16f, 0.18f, 0,  9.0f),
+    IRON_ORE    (true,  false, false, 52, 52, 52, 0.66f, 0.55f, 0.44f, 0, 11.0f),
+    GOLD_ORE    (true,  false, false, 53, 53, 53, 0.86f, 0.72f, 0.28f, 0, 11.0f),
+    DIAMOND_ORE (true,  false, false, 54, 54, 54, 0.40f, 0.85f, 0.87f, 0, 13.0f),
+    // Огонь: не твёрдый, свет почти как у факела, ломается мгновенно.
+    FIRE        (false, true,  false, 55, 55, 55, 1.00f, 0.55f, 0.10f, 14, 0.0f),
+    /**
+     * Снежный покров: не твёрдый, поэтому сквозь него ходят, а высота слоя
+     * живёт в meta (0..7). Твёрдым делать нельзя — коллизия в движке
+     * кубическая, и слой в 1/8 блока стал бы ступенькой в полный блок.
+     */
+    SNOW_LAYER  (false, true,  false, 56, 56, 56, 0.92f, 0.95f, 0.99f, 0,  0.1f),
+    /**
+     * Сундук. Твёрдый, как и положено мебели; содержимое живёт не в блоке, а
+     * в чанке ({@code Chunk.getChest}) — в id блока помещается один байт, а
+     * в сундук двадцать семь стопок.
+     */
+    CHEST       (true,  false, false, 76, 77, 76, 0.55f, 0.40f, 0.22f, 0,  2.5f),
+    /**
+     * Печь. Лицевая грань отличается от боков тайлом, но сторона света не
+     * хранится: поворот потребовал бы meta и пересборки меша при повороте,
+     * а печь и так опознаётся по жерлу с любой стороны обзора.
+     */
+    FURNACE     (true,  false, false, 79, 81, 81, 0.42f, 0.38f, 0.35f, 0,  6.0f),
+    /**
+     * Лёд: замёрзшая вода тундры. Твёрдый и скользкий; разбитый, снова
+     * становится водой — иначе замёрзшее озеро превращалось бы в яму.
+     */
+    ICE         (true,  false, false, 86, 86, 86, 0.70f, 0.84f, 0.97f, 0,  0.6f),
+    // Advanced environment blocks. They deliberately reuse existing atlas art:
+    // IDs remain save-safe and no generated placeholder may leak into a world.
+    MUD         (true,  false, false,  2,  2,  2, 0.24f, 0.17f, 0.12f, 0,  0.8f),
+    ASH         (true,  false, false,  3,  3,  3, 0.20f, 0.20f, 0.21f, 0,  0.2f),
+    MOSSY_COBBLE(true,  false, false, 10, 10, 10, 0.28f, 0.42f, 0.25f, 0,  6.5f),
+    LAVA        (false, true,  false, 55, 55, 55, 1.00f, 0.27f, 0.03f, 15, 0f),
+    OBSIDIAN    (true,  false, false,  9,  9,  9, 0.12f, 0.08f, 0.18f, 0, 24f),
+    THIN_ICE    (true,  true,  false, 86, 86, 86, 0.76f, 0.90f, 1.00f, 0, 0.18f),
+    ROPE        (false, true,  true,  11, 11, 11, 0.54f, 0.37f, 0.18f, 0, 0.15f),
+    CHAIN       (false, true,  true,  52, 52, 52, 0.48f, 0.51f, 0.55f, 0, 1.2f),
+    WEB         (false, true,  true,  14, 14, 14, 0.82f, 0.84f, 0.86f, 0, 0.1f),
+    JOURNAL     (false, true,  true,  11, 11, 11, 0.50f, 0.31f, 0.17f, 0, 0.05f),
+    /**
+     * Спальник: пропускает ночь и переносит точку возрождения.
+     *
+     * Один блок, а не два, как кровать в MC: вторая половина существует там
+     * ради рисунка, а не ради механики, зато тянет за собой мету поворота,
+     * согласованную постановку, согласованную ломку и поворот текстуры в
+     * мешере. Механика «переспать» ровно та же.
+     *
+     * Не твёрдый и низкий: по нему ходят, как по снежному слою, и рисуется
+     * он тем же {@code emitLayer} — высота живёт в meta.
+     */
+    BEDROLL     (false, true,  false, 88, 87, 87, 0.62f, 0.24f, 0.22f, 0,  0.3f);
 
     public final boolean solid;
     public final boolean transparent;
@@ -45,6 +101,64 @@ public enum BlockType {
 
     public static final BlockType[] VALUES = values();
 
+    /**
+     * Рисуется двумя пересекающимися плоскостями, а не кубом.
+     * Отдельным полем делать не стали: это свойство модели, а не блока, и
+     * ради двух значений пришлось бы править конструктор у всех констант.
+     */
+    public boolean isCross() {
+        return this == TORCH || this == FIRE || this == ROPE || this == CHAIN
+                || this == WEB || this == JOURNAL;
+    }
+
+    /**
+     * Каким инструментом блок положено копать. Влияет только на скорость —
+     * что вообще поддаётся, решает {@link #requiredToolLevel()}.
+     */
+    public ToolType.Kind preferredTool() {
+        return switch (this) {
+            case STONE, COBBLE, MOSSY_COBBLE, COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE,
+                    BEDROCK, ICE, THIN_ICE, OBSIDIAN, CHAIN
+                    -> ToolType.Kind.PICKAXE;
+            case WOOD, PLANKS, STAIRS, DOOR_CLOSED, DOOR_OPEN, LEAVES, ROPE -> ToolType.Kind.AXE;
+            case DIRT, GRASS, SAND, SNOWY_GRASS, SNOW_LAYER, MUD, ASH -> ToolType.Kind.SHOVEL;
+            default -> null;
+        };
+    }
+
+    /**
+     * Минимальный уровень инструмента, при котором блок вообще даёт дроп.
+     * Ноль — берётся руками. Это и есть вертикаль прогресса: дерево пускает
+     * к камню, камень к железу, железо к алмазу.
+     */
+    public int requiredToolLevel() {
+        return switch (this) {
+            case STONE, COBBLE, MOSSY_COBBLE, COAL_ORE -> 1;
+            case IRON_ORE -> 2;
+            case GOLD_ORE, DIAMOND_ORE, OBSIDIAN -> 3;
+            default -> 0;
+        };
+    }
+
+    /** Высота блока задаётся meta, а не единичным кубом. */
+    public boolean isLayered() {
+        return this == SNOW_LAYER || this == BEDROLL;
+    }
+
+    /**
+     * Насколько блок скользкий под ногами: доля обычного сцепления с землёй.
+     * Единица — обычный грунт; лёд держит вчетверо хуже, и разгон и торможение
+     * на нём растягиваются в скольжение.
+     */
+    public float grip() {
+        return this == ICE || this == THIN_ICE ? 0.22f : this == MUD ? 0.58f : 1f;
+    }
+
+    /** Горит и может быть съеден огнём. */
+    public boolean isFlammable() {
+        return this == WOOD || this == PLANKS || this == LEAVES || this == ROPE || this == JOURNAL;
+    }
+
     public static BlockType byId(byte id) {
         int i = id & 0xFF;
         // Out-of-range ids only occur from a corrupt/foreign/truncated chunk file.
@@ -57,7 +171,8 @@ public enum BlockType {
         return switch (this) {
             case STONE -> COBBLE;
             case GRASS, SNOWY_GRASS -> DIRT;
-            case LEAVES, WATER, WATER_FLOW, AIR, DOOR_OPEN, TORCH -> AIR;
+            case LEAVES, WATER, WATER_FLOW, LAVA, AIR, DOOR_OPEN, TORCH, FIRE, SNOW_LAYER,
+                    ICE, THIN_ICE, WEB, JOURNAL -> AIR;
             default -> this;
         };
     }

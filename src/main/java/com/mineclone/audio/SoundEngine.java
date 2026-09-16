@@ -2,6 +2,8 @@ package com.mineclone.audio;
 
 import org.lwjgl.openal.AL;
 import org.lwjgl.openal.AL10;
+import org.lwjgl.openal.AL11;
+import org.lwjgl.openal.EXTEfx;
 import org.lwjgl.openal.ALC;
 import org.lwjgl.openal.ALC10;
 import org.lwjgl.openal.ALCCapabilities;
@@ -15,6 +17,7 @@ import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.nio.ShortBuffer;
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -23,20 +26,55 @@ import java.util.Random;
 
 /** Minimal OpenAL wrapper: load OGG via stb_vorbis, fire one-shots, GC finished sources. */
 public class SoundEngine {
+    /** Distance curve shared by every world-space sound. */
+    public static final float SPATIAL_REFERENCE_DISTANCE = 1.25f;
+    public static final float SPATIAL_MAX_DISTANCE = 24f;
+
+    private static final class LoopingSource {
+        final int source;
+
+        LoopingSource(int source) {
+            this.source = source;
+        }
+    }
+
     private long device;
     private long context;
     private boolean ok;
 
+    // --- реверберация ---
+    /**
+     * Слот вспомогательного эффекта и сам эффект реверберации.
+     *
+     * EFX есть не у каждого драйвера, поэтому всё это опционально: не
+     * собралось — {@link #efx} остаётся false, источники играют как раньше и
+     * ни одна строчка выше по стеку об этом не знает.
+     */
+    private boolean efx;
+    private int effectSlot = -1;
+    private int reverbEffect = -1;
+    /** Текущая влажность 0..1 — сколько сигнала уходит в эффект. */
+    private float reverbWet;
+    /**
+     * Фильтр нижних частот для звуков из-за стен. Один объект на все
+     * источники: при подключении к источнику OpenAL копирует его параметры,
+     * так что перенастраивать его под каждый звук безопасно.
+     */
+    private int lowpass = -1;
+
     private final Map<String, Integer> buffers = new HashMap<>();
     private final List<Integer> activeSources = new ArrayList<>();
+    /** Reusing native sources avoids driver allocations on every footstep or particle hit. */
+    private final ArrayDeque<Integer> freeSources = new ArrayDeque<>();
+    private static final int MAX_POOLED_SOURCES = 48;
+    /** Long-lived ambient sources (water, fire, machinery), addressed by a stable game key. */
+    private final Map<String, LoopingSource> loopingSources = new HashMap<>();
     private final Random rng = new Random();
     private float masterVolume = 1.0f;
     private float effectsVolume = 1.0f;
-    private float musicVolume = 1.0f;
 
     public void setMasterVolume(float v) { masterVolume = Math.max(0f, Math.min(1f, v)); }
     public void setEffectsVolume(float v) { effectsVolume = Math.max(0f, Math.min(1f, v)); }
-    public void setMusicVolume(float v) { musicVolume = Math.max(0f, Math.min(1f, v)); }
 
     public void init() {
         try {
@@ -47,14 +85,97 @@ public class SoundEngine {
             if (context == 0L) { System.err.println("OpenAL: no context, sound off"); return; }
             ALC10.alcMakeContextCurrent(context);
             AL.createCapabilities(alcCaps);
-            AL10.alDistanceModel(AL10.AL_INVERSE_DISTANCE_CLAMPED);
+            // Inverse clamped never becomes silent: beyond max distance it
+            // keeps an audible floor. Linear clamped gives a readable ramp
+            // while approaching and reaches true silence at max distance.
+            AL10.alDistanceModel(AL11.AL_LINEAR_DISTANCE_CLAMPED);
             AL10.alListener3f(AL10.AL_POSITION, 0f, 0f, 0f);
             AL10.alListener3f(AL10.AL_VELOCITY, 0f, 0f, 0f);
             ok = true;
+            initReverb(alcCaps);
         } catch (Throwable t) {
             System.err.println("OpenAL init failed: " + t.getMessage());
             ok = false;
         }
+    }
+
+    /**
+     * Поднимает реверберацию, если драйвер её умеет.
+     *
+     * Молча выключается при любой осечке: звук без эха лучше, чем игра,
+     * падающая из-за звуковой карты.
+     */
+    private void initReverb(ALCCapabilities alcCaps) {
+        try {
+            if (!alcCaps.ALC_EXT_EFX) {
+                System.out.println("OpenAL: no ALC_EXT_EFX, reverb off");
+                return;
+            }
+            effectSlot = EXTEfx.alGenAuxiliaryEffectSlots();
+            reverbEffect = EXTEfx.alGenEffects();
+            EXTEfx.alEffecti(reverbEffect, EXTEfx.AL_EFFECT_TYPE, EXTEfx.AL_EFFECT_REVERB);
+            if (AL10.alGetError() != AL10.AL_NO_ERROR)
+                throw new IllegalStateException("reverb effect unsupported");
+            applyReverbShape(0f);
+            EXTEfx.alAuxiliaryEffectSloti(effectSlot, EXTEfx.AL_EFFECTSLOT_EFFECT, reverbEffect);
+            EXTEfx.alAuxiliaryEffectSlotf(effectSlot, EXTEfx.AL_EFFECTSLOT_GAIN, 0f);
+            efx = AL10.alGetError() == AL10.AL_NO_ERROR;
+            if (efx) {
+                lowpass = EXTEfx.alGenFilters();
+                EXTEfx.alFilteri(lowpass, EXTEfx.AL_FILTER_TYPE, EXTEfx.AL_FILTER_LOWPASS);
+                if (AL10.alGetError() != AL10.AL_NO_ERROR) {
+                    EXTEfx.alDeleteFilters(lowpass);
+                    lowpass = -1;   // эхо есть, заглушения нет — тоже рабочий вариант
+                }
+            }
+            System.out.println("OpenAL: reverb " + (efx ? "on" : "unavailable"));
+        } catch (Throwable t) {
+            efx = false;
+            System.err.println("OpenAL EFX unavailable, reverb off: " + t.getMessage());
+        }
+    }
+
+    /** Умеет ли текущий драйвер реверберацию. */
+    public boolean hasReverb() {
+        return efx;
+    }
+
+    /**
+     * Настраивает эхо под замкнутость 0..1.
+     *
+     * Один непрерывный переход вместо набора пресетов: между полем и пещерой
+     * игрок ходит плавно, и переключение «комната → пещера» ступенькой
+     * слышно как щелчок.
+     */
+    public void setEnclosure(float enclosure) {
+        if (!efx)
+            return;
+        float e = Math.max(0f, Math.min(1f, enclosure));
+        if (Math.abs(e - reverbWet) < 0.01f)
+            return;
+        reverbWet = e;
+        applyReverbShape(e);
+        EXTEfx.alAuxiliaryEffectSloti(effectSlot, EXTEfx.AL_EFFECTSLOT_EFFECT, reverbEffect);
+        EXTEfx.alAuxiliaryEffectSlotf(effectSlot, EXTEfx.AL_EFFECTSLOT_GAIN, e * 0.9f);
+    }
+
+    private void applyReverbShape(float e) {
+        // Время затухания от 0.4 с (комната) до 4.2 с (каменный зал).
+        EXTEfx.alEffectf(reverbEffect, EXTEfx.AL_REVERB_DECAY_TIME, 0.4f + e * 3.8f);
+        EXTEfx.alEffectf(reverbEffect, EXTEfx.AL_REVERB_DENSITY, 0.55f + e * 0.45f);
+        EXTEfx.alEffectf(reverbEffect, EXTEfx.AL_REVERB_DIFFUSION, 0.7f + e * 0.3f);
+        EXTEfx.alEffectf(reverbEffect, EXTEfx.AL_REVERB_GAIN, 0.22f + e * 0.30f);
+        // Камень глушит верх: чем теснее, тем глуше хвост.
+        EXTEfx.alEffectf(reverbEffect, EXTEfx.AL_REVERB_GAINHF, 0.92f - e * 0.55f);
+        EXTEfx.alEffectf(reverbEffect, EXTEfx.AL_REVERB_REFLECTIONS_DELAY, 0.007f + e * 0.02f);
+        EXTEfx.alEffectf(reverbEffect, EXTEfx.AL_REVERB_LATE_REVERB_DELAY, 0.011f + e * 0.05f);
+    }
+
+    /** Подключает источник к эху. Без EFX — пустышка. */
+    private void routeToReverb(int src) {
+        if (!efx)
+            return;
+        AL11.alSource3i(src, EXTEfx.AL_AUXILIARY_SEND_FILTER, effectSlot, 0, EXTEfx.AL_FILTER_NULL);
     }
 
     /** Returns AL buffer id or -1 on failure. Cached. */
@@ -128,7 +249,11 @@ public class SoundEngine {
         }
     }
 
-    /** Picks a random variant from the provided paths and plays once. */
+    /**
+     * Непозиционный 2D-звук: UI, собственный урон, подбор и погодный фон.
+     * Он всегда сухой — пещерная посылка предназначена только источникам,
+     * имеющим координату в мире. Иначе щелчок меню звучит как из тоннеля.
+     */
     public void playOneOf(List<String> paths, float volume, float pitch) {
         if (!ok || paths == null || paths.isEmpty()) return;
         String chosen = paths.get(rng.nextInt(paths.size()));
@@ -139,7 +264,7 @@ public class SoundEngine {
         if (!ok) return;
         int buffer = loadBuffer(path);
         if (buffer == -1) return;
-        int src = AL10.alGenSources();
+        int src = acquireSource();
         AL10.alSourcei(src, AL10.AL_BUFFER, buffer);
         AL10.alSourcei(src, AL10.AL_SOURCE_RELATIVE, AL10.AL_TRUE);
         AL10.alSource3f(src, AL10.AL_POSITION, 0f, 0f, 0f);
@@ -151,27 +276,142 @@ public class SoundEngine {
 
     /** Picks a random variant and plays it from a world-space position. */
     public void playOneOfAt(List<String> paths, Vector3f position, float volume, float pitch) {
+        playOneOfAt(paths, position, volume, pitch, 0f);
+    }
+
+    /**
+     * @param muffle 0..1 — насколько звук глухой из-за стен (см.
+     *               {@link SoundOcclusion#muffle}); без EFX игнорируется
+     */
+    public void playOneOfAt(List<String> paths, Vector3f position, float volume, float pitch,
+                            float muffle) {
         if (!ok || paths == null || paths.isEmpty()) return;
         String chosen = paths.get(rng.nextInt(paths.size()));
-        playAt(chosen, position, volume, pitch);
+        playAt(chosen, position, volume, pitch, muffle);
     }
 
     public void playAt(String path, Vector3f position, float volume, float pitch) {
+        playAt(path, position, volume, pitch, 0f);
+    }
+
+    public void playAt(String path, Vector3f position, float volume, float pitch, float muffle) {
         if (!ok) return;
         int buffer = loadBuffer(path, true);
         if (buffer == -1) return;
-        int src = AL10.alGenSources();
+        int src = acquireSource();
         AL10.alSourcei(src, AL10.AL_BUFFER, buffer);
+        configureSpatialSource(src, position, volume, pitch, muffle);
+        routeToReverb(src);
+        AL10.alSourcePlay(src);
+        activeSources.add(src);
+    }
+
+    /**
+     * Keeps one ambient sound alive at a world position. Repeated calls move
+     * the same OpenAL source instead of restarting a short clip, so its gain
+     * follows the listener continuously while they approach or walk away.
+     */
+    public void updateLoopOneOfAt(String key, List<String> paths, Vector3f position,
+                                  float volume, float pitch, float muffle) {
+        if (!ok || key == null || paths == null || paths.isEmpty() || position == null)
+            return;
+        LoopingSource loop = loopingSources.get(key);
+        if (loop == null) {
+            String chosen = paths.get(rng.nextInt(paths.size()));
+            int buffer = loadBuffer(chosen, true);
+            if (buffer == -1)
+                return;
+            int src = acquireSource();
+            AL10.alSourcei(src, AL10.AL_BUFFER, buffer);
+            AL10.alSourcei(src, AL10.AL_LOOPING, AL10.AL_TRUE);
+            routeToReverb(src);
+            loop = new LoopingSource(src);
+            loopingSources.put(key, loop);
+        }
+        configureSpatialSource(loop.source, position, volume, pitch, muffle);
+        if (AL10.alGetSourcei(loop.source, AL10.AL_SOURCE_STATE) != AL10.AL_PLAYING)
+            AL10.alSourcePlay(loop.source);
+    }
+
+    /** Stops and releases a keyed ambient source. */
+    public void stopLoop(String key) {
+        if (!ok || key == null)
+            return;
+        LoopingSource loop = loopingSources.remove(key);
+        if (loop != null) {
+            recycleSource(loop.source);
+        }
+    }
+
+    /** Stops all persistent world ambience when leaving a world. */
+    public void stopAllLoops() {
+        if (!ok)
+            return;
+        for (LoopingSource loop : loopingSources.values()) {
+            recycleSource(loop.source);
+        }
+        loopingSources.clear();
+    }
+
+    private void configureSpatialSource(int src, Vector3f position, float volume,
+                                        float pitch, float muffle) {
         AL10.alSourcei(src, AL10.AL_SOURCE_RELATIVE, AL10.AL_FALSE);
         AL10.alSource3f(src, AL10.AL_POSITION, position.x, position.y, position.z);
         AL10.alSource3f(src, AL10.AL_VELOCITY, 0f, 0f, 0f);
-        AL10.alSourcef(src, AL10.AL_REFERENCE_DISTANCE, 1.25f);
-        AL10.alSourcef(src, AL10.AL_MAX_DISTANCE, 24f);
-        AL10.alSourcef(src, AL10.AL_ROLLOFF_FACTOR, 0.9f);
+        AL10.alSourcef(src, AL10.AL_REFERENCE_DISTANCE, SPATIAL_REFERENCE_DISTANCE);
+        AL10.alSourcef(src, AL10.AL_MAX_DISTANCE, SPATIAL_MAX_DISTANCE);
+        AL10.alSourcef(src, AL10.AL_ROLLOFF_FACTOR, 1f);
         AL10.alSourcef(src, AL10.AL_GAIN, volume * masterVolume * effectsVolume);
         AL10.alSourcef(src, AL10.AL_PITCH, pitch);
-        AL10.alSourcePlay(src);
-        activeSources.add(src);
+        if (lowpass >= 0 && muffle > 0.01f) {
+            // За стеной верх пропадает раньше громкости: камень глушит, а не
+            // только ослабляет. Нижняя граница — чтобы гул всё же читался.
+            EXTEfx.alFilterf(lowpass, EXTEfx.AL_LOWPASS_GAIN, 1f);
+            EXTEfx.alFilterf(lowpass, EXTEfx.AL_LOWPASS_GAINHF, Math.max(0.04f, 1f - 0.93f * muffle));
+            AL10.alSourcei(src, EXTEfx.AL_DIRECT_FILTER, lowpass);
+        } else if (lowpass >= 0) {
+            AL10.alSourcei(src, EXTEfx.AL_DIRECT_FILTER, EXTEfx.AL_FILTER_NULL);
+        }
+    }
+
+    /** Pure counterpart of the OpenAL linear distance model, used by tests and tuning UI. */
+    public static float spatialGain(float distance) {
+        if (!Float.isFinite(distance))
+            return 0f;
+        if (distance <= SPATIAL_REFERENCE_DISTANCE)
+            return 1f;
+        if (distance >= SPATIAL_MAX_DISTANCE)
+            return 0f;
+        return 1f - (distance - SPATIAL_REFERENCE_DISTANCE)
+                / (SPATIAL_MAX_DISTANCE - SPATIAL_REFERENCE_DISTANCE);
+    }
+
+    private int acquireSource() {
+        Integer pooled = freeSources.pollFirst();
+        int src = pooled != null ? pooled : AL10.alGenSources();
+        // A source may previously have been positional/reverberant/looping.
+        // Reset everything that can leak into its next short sound.
+        AL10.alSourceStop(src);
+        AL10.alSourcei(src, AL10.AL_BUFFER, 0);
+        AL10.alSourcei(src, AL10.AL_LOOPING, AL10.AL_FALSE);
+        AL10.alSourcei(src, AL10.AL_SOURCE_RELATIVE, AL10.AL_FALSE);
+        AL10.alSourcef(src, AL10.AL_GAIN, 1f);
+        AL10.alSourcef(src, AL10.AL_PITCH, 1f);
+        if (lowpass >= 0)
+            AL10.alSourcei(src, EXTEfx.AL_DIRECT_FILTER, EXTEfx.AL_FILTER_NULL);
+        if (efx)
+            AL11.alSource3i(src, EXTEfx.AL_AUXILIARY_SEND_FILTER,
+                    EXTEfx.AL_EFFECTSLOT_NULL, 0, EXTEfx.AL_FILTER_NULL);
+        return src;
+    }
+
+    private void recycleSource(int src) {
+        AL10.alSourceStop(src);
+        AL10.alSourcei(src, AL10.AL_BUFFER, 0);
+        if (freeSources.size() < MAX_POOLED_SOURCES)
+            freeSources.addLast(src);
+        else
+            AL10.alDeleteSources(src);
     }
 
     /** Call once per frame to free sources that finished playback. */
@@ -182,7 +422,7 @@ public class SoundEngine {
             int s = it.next();
             int state = AL10.alGetSourcei(s, AL10.AL_SOURCE_STATE);
             if (state != AL10.AL_PLAYING) {
-                AL10.alDeleteSources(s);
+                recycleSource(s);
                 it.remove();
             }
         }
@@ -190,10 +430,21 @@ public class SoundEngine {
 
     public void destroy() {
         if (!ok) return;
+        stopAllLoops();
         for (int s : activeSources) AL10.alDeleteSources(s);
         activeSources.clear();
+        for (int s : freeSources) AL10.alDeleteSources(s);
+        freeSources.clear();
         for (int b : buffers.values()) AL10.alDeleteBuffers(b);
         buffers.clear();
+        if (efx) {
+            EXTEfx.alDeleteAuxiliaryEffectSlots(effectSlot);
+            EXTEfx.alDeleteEffects(reverbEffect);
+            if (lowpass >= 0)
+                EXTEfx.alDeleteFilters(lowpass);
+            lowpass = -1;
+            efx = false;
+        }
         if (context != 0L) { ALC10.alcMakeContextCurrent(0L); ALC10.alcDestroyContext(context); }
         if (device != 0L) ALC10.alcCloseDevice(device);
         ok = false;

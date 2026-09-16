@@ -84,6 +84,25 @@ public class TextureAtlas {
             "snowy_grass_side", // 48
             "cactus_side",      // 49
             "cactus_top",       // 50
+            "coal_ore",         // 51
+            "iron_ore",         // 52
+            "gold_ore",         // 53
+            "diamond_ore",      // 54
+            "fire",             // 55
+            "snow",             // 56
+            // Инструменты 57..68: порядок совпадает с ToolType.tile.
+            "wood_pickaxe", "stone_pickaxe", "iron_pickaxe", "diamond_pickaxe",   // 57..60
+            "wood_axe", "stone_axe", "iron_axe", "diamond_axe",                   // 61..64
+            "wood_shovel", "stone_shovel", "iron_shovel", "diamond_shovel",       // 65..68
+            // Еда 69..72: порядок совпадает с FoodType.tile.
+            "raw_beef", "raw_pork", "raw_chicken", "raw_mutton",                  // 69..72
+            "hunger_full", "hunger_empty",                                        // 73..74
+            "footprint",                                                          // 75
+            "chest_side", "chest_top", "chest_front",                             // 76..78
+            "furnace_side", "furnace_front", "furnace_top",                       // 79..81
+            "cooked_beef", "cooked_pork", "cooked_chicken", "cooked_mutton",      // 82..85
+            "ice",                                                                // 86
+            "bedroll_top", "bedroll_side",                                        // 87..88
     };
 
     /** First tile index of the water_flow animation strip (16 frames). */

@@ -2,7 +2,12 @@ package com.mineclone.world;
 
 import java.util.Random;
 
-/** Classic Perlin 2D noise (Ken Perlin's improved). Deterministic per seed. */
+/**
+ * Classic Perlin noise (Ken Perlin's improved), 2D and 3D. Deterministic per seed.
+ *
+ * 2D питает рельеф, 3D — пещеры. Таблица перестановок общая, поэтому одна
+ * инстанция даёт согласованные поля и по горизонтали, и по вертикали.
+ */
 public class PerlinNoise {
     private final int[] p = new int[512];
 
@@ -37,6 +42,34 @@ public class PerlinNoise {
                 lerp(grad(p[A], x, y), grad(p[B], x - 1, y), u),
                 lerp(grad(p[A + 1], x, y - 1), grad(p[B + 1], x - 1, y - 1), u),
                 v);
+    }
+
+    private static double grad3(int hash, double x, double y, double z) {
+        int h = hash & 15;
+        double u = h < 8 ? x : y;
+        double v = h < 4 ? y : (h == 12 || h == 14 ? x : z);
+        return ((h & 1) == 0 ? u : -u) + ((h & 2) == 0 ? v : -v);
+    }
+
+    /** 3D-шум в диапазоне примерно [-1, 1]. Нужен пещерам: они объёмные. */
+    public double noise(double x, double y, double z) {
+        int X = (int) Math.floor(x) & 255;
+        int Y = (int) Math.floor(y) & 255;
+        int Z = (int) Math.floor(z) & 255;
+        x -= Math.floor(x);
+        y -= Math.floor(y);
+        z -= Math.floor(z);
+        double u = fade(x), v = fade(y), w = fade(z);
+        int A = p[X] + Y, AA = p[A] + Z, AB = p[A + 1] + Z;
+        int B = p[X + 1] + Y, BA = p[B] + Z, BB = p[B + 1] + Z;
+        return lerp(
+                lerp(
+                    lerp(grad3(p[AA], x, y, z), grad3(p[BA], x - 1, y, z), u),
+                    lerp(grad3(p[AB], x, y - 1, z), grad3(p[BB], x - 1, y - 1, z), u), v),
+                lerp(
+                    lerp(grad3(p[AA + 1], x, y, z - 1), grad3(p[BA + 1], x - 1, y, z - 1), u),
+                    lerp(grad3(p[AB + 1], x, y - 1, z - 1), grad3(p[BB + 1], x - 1, y - 1, z - 1), u), v),
+                w);
     }
 
     public double fbm(double x, double y, int octaves, double lacunarity, double gain) {

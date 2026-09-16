@@ -81,6 +81,22 @@ public class TextRenderer {
         draw(font, text, x, y, screenW, screenH, r, g, b, 1f);
     }
 
+    /**
+     * Текст с чёрной обводкой со всех сторон.
+     *
+     * Одной тени вниз-вправо хватает на панели, но не поверх иконки: счётчик
+     * стопки ложится прямо на текстуру блока, и там светлая цифра теряется на
+     * светлом пикселе, а тень — на тёмном.
+     */
+    public void drawOutlined(Font font, String text, float x, float y, int screenW, int screenH,
+                             float r, float g, float b) {
+        for (int dx = -1; dx <= 1; dx++)
+            for (int dy = -1; dy <= 1; dy++)
+                if (dx != 0 || dy != 0)
+                    draw(font, text, x + dx, y + dy, screenW, screenH, 0f, 0f, 0f, 0.85f);
+        draw(font, text, x, y, screenW, screenH, r, g, b, 1f);
+    }
+
     public void destroy() {
         glDeleteBuffers(vbo);
         glDeleteVertexArrays(vao);

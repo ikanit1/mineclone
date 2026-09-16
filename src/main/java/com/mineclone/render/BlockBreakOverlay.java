@@ -35,7 +35,7 @@ public class BlockBreakOverlay {
 
     /** Render crack overlay for block at (bx,by,bz), stage 0..9. */
     public void render(Matrix4f proj, Matrix4f view, int bx, int by, int bz,
-                       int stage, TextureAtlas atlas) {
+                       int stage, TextureAtlas atlas, float linearOut) {
         float[] uv = TextureAtlas.uv(TextureAtlas.CRACK_TILE_0 + stage);
         float u0 = uv[0], v0 = uv[1], u1 = uv[2], v1 = uv[3];
         float x = bx, y = by, z = bz;
@@ -81,6 +81,7 @@ public class BlockBreakOverlay {
         shader.setMat4("uProjection", proj);
         shader.setMat4("uView", view);
         shader.setInt("uAtlas", 0);
+        shader.setFloat("uLinearOut", linearOut);
         atlas.bind(0);
         glBindVertexArray(vao);
         glDrawArrays(GL_TRIANGLES, 0, VERTEX_COUNT);

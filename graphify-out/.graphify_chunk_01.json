@@ -1,0 +1,1341 @@
+{
+  "nodes": [
+    {
+      "id": "readme_knowledge_base",
+      "label": "Mineclone Knowledge Base",
+      "file_type": "document",
+      "source_file": "knowledge/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "arch_overview",
+      "label": "Architecture Overview",
+      "file_type": "document",
+      "source_file": "knowledge/architecture/overview.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "adr_chunk_loading",
+      "label": "ADR: Chunk Loading Strategy",
+      "file_type": "document",
+      "source_file": "knowledge/decisions/chunk-loading-strategy.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": "admin",
+      "rationale": "Chunk generation is CPU-heavy and cannot block the game loop. GPU upload requires main thread (OpenGL is not thread-safe), so results flow as Ready records from background threads to Game on main thread."
+    },
+    {
+      "id": "adr_rendering",
+      "label": "ADR: Chunk Rendering Approach",
+      "file_type": "document",
+      "source_file": "knowledge/decisions/rendering-approach.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": "admin",
+      "rationale": "GLSL inlined as Java strings avoids path issues at different CWDs and keeps diffs readable in git. centroid out vec2 vUv prevents MSAA UV extrapolation bleeding. Atlas uses GL_NEAREST without mipmaps because tiles are edge-to-edge."
+    },
+    {
+      "id": "plan_creative_foundation",
+      "label": "Plan: Creative Foundation",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-15-creative-foundation.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": "2026-05-15",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "plan_game_feel",
+      "label": "Plan: Game Feel (Particles, Day/Night, Torch)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-15-game-feel.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": "2026-05-15",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "plan_water_rendering",
+      "label": "Plan: Water Rendering",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-16-water-rendering.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": "2026-05-16",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "plan_world_persistence",
+      "label": "Plan: World Persistence",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-16-world-persistence.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": "2026-05-16",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "plan_ground_movement",
+      "label": "Plan: MC-Like Ground Movement",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-17-ground-movement.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": "2026-05-17",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "plan_main_menu_revamp",
+      "label": "Plan: Main Menu Revamp + Settings Persistence",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-17-main-menu-revamp.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": "2026-05-17",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "plan_water_physics_0517",
+      "label": "Plan: Water Physics (MC-style, 2026-05-17)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-17-water-physics.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": "2026-05-17",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "plan_mlg_water_health",
+      "label": "Plan: MLG Water Bucket & Health System",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-19-mlg-water-health.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": "2026-05-19",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "plan_underwater_effects",
+      "label": "Plan: Underwater Effects",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-19-underwater-effects.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": "2026-05-19",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "plan_water_physics_0519",
+      "label": "Plan: Water Physics MC-style (2026-05-19)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-19-water-physics.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": "2026-05-19",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "spec_creative_foundation",
+      "label": "Spec: Creative Foundation Design",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-15-creative-foundation-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": "2026-05-15",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "spec_game_feel",
+      "label": "Spec: Game Feel Design",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-15-game-feel-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": "2026-05-15",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "spec_save_menu_revamp",
+      "label": "Spec: Save System and Menu Revamp Design",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-16-save-system-and-menu-revamp-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": "2026-05-16",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "spec_water_rendering",
+      "label": "Spec: Water Rendering Design",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-16-water-rendering-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": "2026-05-16",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "spec_mlg_water_health",
+      "label": "Spec: MLG Water Bucket & Health System Design",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-19-mlg-water-health-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": "2026-05-19",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "spec_underwater_effects",
+      "label": "Spec: Underwater Effects Design",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-19-underwater-effects-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": "2026-05-19",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "spec_water_physics",
+      "label": "Spec: Water Physics MC-style Design",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-19-water-physics-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": "2026-05-19",
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_chunk_loading",
+      "label": "Chunk Loading (Background Thread Pool)",
+      "file_type": "document",
+      "source_file": "knowledge/decisions/chunk-loading-strategy.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_render_pipeline",
+      "label": "Render Pipeline (Opaque + Water Passes)",
+      "file_type": "document",
+      "source_file": "knowledge/architecture/overview.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_block_metadata",
+      "label": "Block Metadata System (byte[] meta per Chunk)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-15-creative-foundation-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_water_simulator",
+      "label": "WaterSimulator (BFS Tick)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-15-creative-foundation.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_dual_mesh",
+      "label": "Dual-Mesh Transparent Water Pass",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-16-water-rendering-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Dual-mesh approach chosen over world-wide water buffer (complex cache invalidation) and separate WaterRenderer (over-engineered). Reuses existing chunkShader with blend enabled."
+    },
+    {
+      "id": "concept_save_package",
+      "label": "com.mineclone.save Package (SaveManager, LevelData, ChunkSnapshot, Options)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-16-save-system-and-menu-revamp-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "All disk I/O isolated in one package so engine depends only on API. Whole-chunk snapshot chosen over per-block delta to eliminate cross-chunk water re-simulation ordering hazard."
+    },
+    {
+      "id": "concept_bfs_flood_fill",
+      "label": "BFS Flood-Fill Block Light",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-15-game-feel-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_day_night_cycle",
+      "label": "Day/Night Cycle (uDaylight Uniform)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-15-game-feel-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Approach B: existing aLight bakes AO+face+sky; new aBlockLight float attribute carries torch light; uDaylight uniform (0-1) scales sky so nights go dark without rebuilding meshes."
+    },
+    {
+      "id": "concept_swimming_physics",
+      "label": "Swimming Physics (Buoyancy + Paddle)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-15-creative-foundation.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_health_system",
+      "label": "Health System (HP, Fall Damage, MLG, Regen)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-19-mlg-water-health-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Approach A: all health/fall logic in Player.java. Game.java only reads player.isDead() and changes state to DEAD."
+    },
+    {
+      "id": "concept_ground_movement",
+      "label": "MC-Like Ground Movement (Exponential Accel)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-17-ground-movement.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Exponential approach (1 - exp(-rate*dt)) is dt-independent and gives GROUND_ACCEL=14 for ground and AIR_ACCEL=2.5 for air, matching MC feel."
+    },
+    {
+      "id": "concept_menu_background",
+      "label": "MenuBackground (Dedicated Mini-World + Orbit Camera)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-17-main-menu-revamp.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Fixed MENU_SEED world with orbit camera that samples terrainTop height so camera never clips even if seed or generator changes."
+    },
+    {
+      "id": "concept_save_manager",
+      "label": "SaveManager (Disk I/O, GZIP, Background Executor)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-16-world-persistence.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_options_persistence",
+      "label": "Options Persistence (options.dat)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-17-main-menu-revamp.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_creative_menu",
+      "label": "Creative Inventory Menu (E key, Block Grid)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-15-creative-foundation-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_water_infinite_source",
+      "label": "Infinite Source Creation (2x2 Pool Rule)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-19-water-physics-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_waterfall_counter_reset",
+      "label": "Waterfall Level Counter Reset on Fall",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-19-water-physics-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_underwater_fov",
+      "label": "Underwater FOV Reduction (Smooth Interpolation)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-19-underwater-effects-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_water_surface_doublesided",
+      "label": "Water Surface Visible From Below (Disable Backface Culling)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-19-underwater-effects-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_stair_collision",
+      "label": "Stair AABB Collision (Auto-Step, Half-Block)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-15-creative-foundation-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_door_mechanics",
+      "label": "Door Open/Close Toggle (Camera-Facing Meta)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-15-creative-foundation-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_particle_textures",
+      "label": "Textured Block-Break Particles (Atlas UV)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-15-game-feel-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_chunk_modified_flag",
+      "label": "Chunk Modified Flag (Post-Generation Edits)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-16-world-persistence.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Single modified boolean preferred over per-block delta to avoid cross-chunk water re-simulation ordering hazards. Generation uses Chunk.set directly so generated chunks stay modified=false."
+    },
+    {
+      "id": "concept_death_screen",
+      "label": "Death Screen and Respawn State (DEAD)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-19-mlg-water-health-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_stone_buttons",
+      "label": "Stone-Textured Beveled Menu Buttons",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-17-main-menu-revamp.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Uses atlas STONE tile + tint factor instead of separate PNG files, keeping atlas as source of truth and avoiding extra assets."
+    },
+    {
+      "id": "concept_mineclone_title",
+      "label": "Layered MINECLONE Title (Gold Fill, Outline, Shadow)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-17-main-menu-revamp.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_autosave",
+      "label": "Autosave (Pause/Periodic/Quit + Manual Save Button)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-16-save-system-and-menu-revamp-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_water_variable_height",
+      "label": "Variable-Height Water Rendering (Level-Based topY)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-15-creative-foundation-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_mc_water_physics",
+      "label": "MC-Accurate Water Fluid Drag (Continuous Force Model)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/specs/2026-05-19-mlg-water-health-design.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_new_world_flow",
+      "label": "New World Flow (Confirm Dialog, Delete Save, Relaunch)",
+      "file_type": "document",
+      "source_file": "docs/superpowers/plans/2026-05-17-main-menu-revamp.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "rationale": "Forced relaunch chosen over hot-swapping World instance mid-process to avoid de-finalizing 4-5 fields in Game and tearing down mesh maps."
+    }
+  ],
+  "edges": [
+    {
+      "source": "arch_overview",
+      "target": "adr_chunk_loading",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "knowledge/architecture/overview.md",
+      "source_location": "[[decisions/chunk-loading-strategy]]",
+      "weight": 1.0
+    },
+    {
+      "source": "arch_overview",
+      "target": "adr_rendering",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "knowledge/architecture/overview.md",
+      "source_location": "[[decisions/rendering-approach]]",
+      "weight": 1.0
+    },
+    {
+      "source": "adr_chunk_loading",
+      "target": "arch_overview",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "knowledge/decisions/chunk-loading-strategy.md",
+      "source_location": "[[architecture/overview]]",
+      "weight": 1.0
+    },
+    {
+      "source": "adr_rendering",
+      "target": "arch_overview",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "knowledge/decisions/rendering-approach.md",
+      "source_location": "[[architecture/overview]]",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_knowledge_base",
+      "target": "arch_overview",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "knowledge/README.md",
+      "source_location": "[[architecture/]]",
+      "weight": 1.0
+    },
+    {
+      "source": "readme_knowledge_base",
+      "target": "adr_chunk_loading",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "knowledge/README.md",
+      "source_location": "[[decisions/]]",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_creative_foundation",
+      "target": "spec_creative_foundation",
+      "relation": "implements",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "docs/superpowers/plans/2026-05-15-creative-foundation.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "plan_game_feel",
+      "target": "spec_game_feel",
+      "relation": "implements",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "docs/superpowers/plans/2026-05-15-game-feel.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "plan_water_rendering",
+      "target": "spec_water_rendering",
+      "relation": "implements",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "docs/superpowers/plans/2026-05-16-water-rendering.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "plan_world_persistence",
+      "target": "spec_save_menu_revamp",
+      "relation": "implements",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": "docs/superpowers/plans/2026-05-16-world-persistence.md",
+      "source_location": "Spec: docs/superpowers/specs/2026-05-16-save-system-and-menu-revamp-design.md (Sections 1-7, 11-13)",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_main_menu_revamp",
+      "target": "spec_save_menu_revamp",
+      "relation": "implements",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": "docs/superpowers/plans/2026-05-17-main-menu-revamp.md",
+      "source_location": "Sections 8-10 of spec",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_mlg_water_health",
+      "target": "spec_mlg_water_health",
+      "relation": "implements",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "docs/superpowers/plans/2026-05-19-mlg-water-health.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "plan_underwater_effects",
+      "target": "spec_underwater_effects",
+      "relation": "implements",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "docs/superpowers/plans/2026-05-19-underwater-effects.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "plan_water_physics_0519",
+      "target": "spec_water_physics",
+      "relation": "implements",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "docs/superpowers/plans/2026-05-19-water-physics.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "spec_creative_foundation",
+      "target": "concept_block_metadata",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-15-creative-foundation-design.md",
+      "source_location": "Section 1",
+      "weight": 1.0
+    },
+    {
+      "source": "spec_creative_foundation",
+      "target": "concept_water_simulator",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-15-creative-foundation-design.md",
+      "source_location": "Section 3",
+      "weight": 1.0
+    },
+    {
+      "source": "spec_creative_foundation",
+      "target": "concept_door_mechanics",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-15-creative-foundation-design.md",
+      "source_location": "Section 4",
+      "weight": 1.0
+    },
+    {
+      "source": "spec_creative_foundation",
+      "target": "concept_stair_collision",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-15-creative-foundation-design.md",
+      "source_location": "Section 5",
+      "weight": 1.0
+    },
+    {
+      "source": "spec_creative_foundation",
+      "target": "concept_creative_menu",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-15-creative-foundation-design.md",
+      "source_location": "Section 6",
+      "weight": 1.0
+    },
+    {
+      "source": "spec_creative_foundation",
+      "target": "concept_water_variable_height",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-15-creative-foundation-design.md",
+      "source_location": "Section 3",
+      "weight": 1.0
+    },
+    {
+      "source": "spec_game_feel",
+      "target": "concept_particle_textures",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-15-game-feel-design.md",
+      "source_location": "Feature 1",
+      "weight": 1.0
+    },
+    {
+      "source": "spec_game_feel",
+      "target": "concept_day_night_cycle",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-15-game-feel-design.md",
+      "source_location": "Feature 2",
+      "weight": 1.0
+    },
+    {
+      "source": "spec_game_feel",
+      "target": "concept_bfs_flood_fill",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-15-game-feel-design.md",
+      "source_location": "Feature 3",
+      "weight": 1.0
+    },
+    {
+      "source": "spec_water_rendering",
+      "target": "concept_dual_mesh",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-16-water-rendering-design.md",
+      "source_location": "Approach",
+      "weight": 1.0
+    },
+    {
+      "source": "spec_save_menu_revamp",
+      "target": "concept_save_package",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-16-save-system-and-menu-revamp-design.md",
+      "source_location": "Section 5",
+      "weight": 1.0
+    },
+    {
+      "source": "spec_save_menu_revamp",
+      "target": "concept_autosave",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-16-save-system-and-menu-revamp-design.md",
+      "source_location": "Section 7",
+      "weight": 1.0
+    },
+    {
+      "source": "spec_save_menu_revamp",
+      "target": "concept_menu_background",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-16-save-system-and-menu-revamp-design.md",
+      "source_location": "Section 8",
+      "weight": 1.0
+    },
+    {
+      "source": "spec_save_menu_revamp",
+      "target": "concept_options_persistence",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-16-save-system-and-menu-revamp-design.md",
+      "source_location": "Section 10",
+      "weight": 1.0
+    },
+    {
+      "source": "spec_mlg_water_health",
+      "target": "concept_health_system",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-19-mlg-water-health-design.md",
+      "source_location": "Section 1",
+      "weight": 1.0
+    },
+    {
+      "source": "spec_mlg_water_health",
+      "target": "concept_mc_water_physics",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-19-mlg-water-health-design.md",
+      "source_location": "Section 2",
+      "weight": 1.0
+    },
+    {
+      "source": "spec_mlg_water_health",
+      "target": "concept_death_screen",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-19-mlg-water-health-design.md",
+      "source_location": "Section 4",
+      "weight": 1.0
+    },
+    {
+      "source": "spec_underwater_effects",
+      "target": "concept_water_surface_doublesided",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-19-underwater-effects-design.md",
+      "source_location": "Feature 1",
+      "weight": 1.0
+    },
+    {
+      "source": "spec_underwater_effects",
+      "target": "concept_underwater_fov",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-19-underwater-effects-design.md",
+      "source_location": "Feature 2",
+      "weight": 1.0
+    },
+    {
+      "source": "spec_water_physics",
+      "target": "concept_waterfall_counter_reset",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-19-water-physics-design.md",
+      "source_location": "Change 1",
+      "weight": 1.0
+    },
+    {
+      "source": "spec_water_physics",
+      "target": "concept_water_infinite_source",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-19-water-physics-design.md",
+      "source_location": "Change 2",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_creative_foundation",
+      "target": "concept_water_simulator",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-15-creative-foundation.md",
+      "source_location": "Task 4",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_creative_foundation",
+      "target": "concept_block_metadata",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-15-creative-foundation.md",
+      "source_location": "Task 1",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_creative_foundation",
+      "target": "concept_swimming_physics",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-15-creative-foundation.md",
+      "source_location": "Task 6",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_game_feel",
+      "target": "concept_day_night_cycle",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-15-game-feel.md",
+      "source_location": "Task 2",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_game_feel",
+      "target": "concept_bfs_flood_fill",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-15-game-feel.md",
+      "source_location": "Task 7",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_water_rendering",
+      "target": "concept_dual_mesh",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-16-water-rendering.md",
+      "source_location": "Task 2, Task 4",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_world_persistence",
+      "target": "concept_save_manager",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-16-world-persistence.md",
+      "source_location": "Task 3",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_world_persistence",
+      "target": "concept_chunk_modified_flag",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-16-world-persistence.md",
+      "source_location": "Task 5, Task 6, Task 6.5",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_world_persistence",
+      "target": "concept_autosave",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-16-world-persistence.md",
+      "source_location": "Task 8",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_main_menu_revamp",
+      "target": "concept_menu_background",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-17-main-menu-revamp.md",
+      "source_location": "Task 8, Task 9",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_main_menu_revamp",
+      "target": "concept_stone_buttons",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-17-main-menu-revamp.md",
+      "source_location": "Task 4",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_main_menu_revamp",
+      "target": "concept_mineclone_title",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-17-main-menu-revamp.md",
+      "source_location": "Task 6",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_main_menu_revamp",
+      "target": "concept_options_persistence",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-17-main-menu-revamp.md",
+      "source_location": "Task 1, 2, 3",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_main_menu_revamp",
+      "target": "concept_new_world_flow",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-17-main-menu-revamp.md",
+      "source_location": "Task 9, Step 5",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_mlg_water_health",
+      "target": "concept_health_system",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-19-mlg-water-health.md",
+      "source_location": "Task 1, Task 2",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_mlg_water_health",
+      "target": "concept_death_screen",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-19-mlg-water-health.md",
+      "source_location": "Task 3, Task 4",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_underwater_effects",
+      "target": "concept_water_surface_doublesided",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-19-underwater-effects.md",
+      "source_location": "Task 1",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_underwater_effects",
+      "target": "concept_underwater_fov",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-19-underwater-effects.md",
+      "source_location": "Task 2",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_water_physics_0519",
+      "target": "concept_waterfall_counter_reset",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-19-water-physics.md",
+      "source_location": "Task 1",
+      "weight": 1.0
+    },
+    {
+      "source": "plan_water_physics_0519",
+      "target": "concept_water_infinite_source",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/plans/2026-05-19-water-physics.md",
+      "source_location": "Task 2",
+      "weight": 1.0
+    },
+    {
+      "source": "concept_water_simulator",
+      "target": "concept_water_variable_height",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "docs/superpowers/plans/2026-05-15-creative-foundation.md",
+      "source_location": "Task 4, Task 5",
+      "weight": 0.8
+    },
+    {
+      "source": "concept_water_simulator",
+      "target": "concept_waterfall_counter_reset",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": "docs/superpowers/specs/2026-05-19-water-physics-design.md",
+      "source_location": null,
+      "weight": 0.9
+    },
+    {
+      "source": "concept_water_simulator",
+      "target": "concept_water_infinite_source",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": "docs/superpowers/specs/2026-05-19-water-physics-design.md",
+      "source_location": null,
+      "weight": 0.9
+    },
+    {
+      "source": "concept_dual_mesh",
+      "target": "concept_water_surface_doublesided",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "docs/superpowers/specs/2026-05-19-underwater-effects-design.md",
+      "source_location": null,
+      "weight": 0.7
+    },
+    {
+      "source": "concept_swimming_physics",
+      "target": "concept_mc_water_physics",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "docs/superpowers/specs/2026-05-19-mlg-water-health-design.md",
+      "source_location": "Section 2: replaces earlier stub",
+      "weight": 0.8
+    },
+    {
+      "source": "concept_health_system",
+      "target": "concept_swimming_physics",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "docs/superpowers/specs/2026-05-19-mlg-water-health-design.md",
+      "source_location": "MLG — fall into water negates damage",
+      "weight": 0.7
+    },
+    {
+      "source": "concept_chunk_modified_flag",
+      "target": "concept_save_manager",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": "docs/superpowers/plans/2026-05-16-world-persistence.md",
+      "source_location": "Task 5 drives Task 3",
+      "weight": 0.9
+    },
+    {
+      "source": "concept_autosave",
+      "target": "concept_save_manager",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": "docs/superpowers/plans/2026-05-16-world-persistence.md",
+      "source_location": "Task 8",
+      "weight": 0.9
+    },
+    {
+      "source": "concept_menu_background",
+      "target": "concept_chunk_loading",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "docs/superpowers/plans/2026-05-17-main-menu-revamp.md",
+      "source_location": "MenuBackground has its own ChunkLoader",
+      "weight": 0.7
+    },
+    {
+      "source": "concept_bfs_flood_fill",
+      "target": "concept_water_simulator",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.7,
+      "source_file": "docs/superpowers/plans/2026-05-15-creative-foundation.md",
+      "source_location": "Both use BFS queue-based propagation",
+      "weight": 0.6
+    },
+    {
+      "source": "plan_water_physics_0517",
+      "target": "plan_water_physics_0519",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "docs/superpowers/plans/2026-05-17-water-physics.md",
+      "source_location": "Same domain: MC-style water physics in Player.java",
+      "weight": 0.8
+    },
+    {
+      "source": "concept_ground_movement",
+      "target": "concept_swimming_physics",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.7,
+      "source_file": "docs/superpowers/plans/2026-05-17-ground-movement.md",
+      "source_location": "Both are movement-physics branches in Player.update()",
+      "weight": 0.65
+    },
+    {
+      "source": "concept_save_package",
+      "target": "concept_save_manager",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-16-save-system-and-menu-revamp-design.md",
+      "source_location": "Section 5",
+      "weight": 1.0
+    },
+    {
+      "source": "concept_save_package",
+      "target": "concept_options_persistence",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docs/superpowers/specs/2026-05-16-save-system-and-menu-revamp-design.md",
+      "source_location": "Section 5 Options DTO",
+      "weight": 1.0
+    },
+    {
+      "source": "adr_chunk_loading",
+      "target": "concept_chunk_loading",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "knowledge/decisions/chunk-loading-strategy.md",
+      "source_location": null,
+      "weight": 0.9
+    },
+    {
+      "source": "adr_rendering",
+      "target": "concept_render_pipeline",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "knowledge/decisions/rendering-approach.md",
+      "source_location": null,
+      "weight": 0.9
+    },
+    {
+      "source": "concept_render_pipeline",
+      "target": "concept_dual_mesh",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "docs/superpowers/specs/2026-05-16-water-rendering-design.md",
+      "source_location": "Dual-mesh extends existing render pipeline",
+      "weight": 0.8
+    }
+  ],
+  "hyperedges": [
+    {
+      "id": "water_system_triad",
+      "label": "Water System: Simulator + Variable Rendering + Physics",
+      "nodes": [
+        "concept_water_simulator",
+        "concept_water_variable_height",
+        "concept_dual_mesh"
+      ],
+      "relation": "form",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "docs/superpowers/plans/2026-05-15-creative-foundation.md"
+    },
+    {
+      "id": "save_system_triad",
+      "label": "Save System: SaveManager + Modified Flag + Autosave",
+      "nodes": [
+        "concept_save_manager",
+        "concept_chunk_modified_flag",
+        "concept_autosave"
+      ],
+      "relation": "implement",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": "docs/superpowers/plans/2026-05-16-world-persistence.md"
+    },
+    {
+      "id": "menu_revamp_triad",
+      "label": "Menu Revamp: Background World + Stone Buttons + Title",
+      "nodes": [
+        "concept_menu_background",
+        "concept_stone_buttons",
+        "concept_mineclone_title"
+      ],
+      "relation": "form",
+      "confidence": "INFERRED",
+      "confidence_score": 0.88,
+      "source_file": "docs/superpowers/plans/2026-05-17-main-menu-revamp.md"
+    }
+  ],
+  "input_tokens": 0,
+  "output_tokens": 0
+}

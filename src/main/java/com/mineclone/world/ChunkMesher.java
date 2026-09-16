@@ -61,7 +61,7 @@ public class ChunkMesher {
                     if (b == BlockType.AIR)
                         continue;
 
-                    if (b == BlockType.TORCH) {
+                    if (b.isCross()) {
                         emitCross(chunk, positions, uvs, light, blockLightList, indices, x, y, z, baseX, baseZ, b);
                         continue;
                     }
@@ -74,6 +74,12 @@ public class ChunkMesher {
 
                     if (b == BlockType.DOOR_CLOSED || b == BlockType.DOOR_OPEN) {
                         emitDoor(chunk, positions, uvs, light, blockLightList, indices, x, y, z, baseX, baseZ, b);
+                        continue;
+                    }
+
+                    if (b.isLayered()) {
+                        emitLayer(chunk, positions, uvs, light, blockLightList, indices,
+                                x, y, z, baseX, baseZ, b);
                         continue;
                     }
 
@@ -422,6 +428,20 @@ public class ChunkMesher {
         emitBox(chunk, pos, uvs, light, bl, idx, x, y, z, baseX, baseZ, b.sideTile, x0, 0.5f, z0, x1, 1f, z1, 1 << 5);
     }
 
+    /**
+     * Слой переменной высоты (снег). Высота живёт в meta: 0 — самый тонкий
+     * слой в 1/8 блока, 7 — почти полный блок. Нижняя грань пропускается:
+     * слой всегда лежит на чём-то твёрдом, и рисовать её незачем.
+     */
+    private void emitLayer(Chunk chunk, List<Float> pos, List<Float> uvs, List<Float> light,
+            List<Float> bl, List<Integer> idx, int x, int y, int z, int baseX, int baseZ,
+            BlockType b) {
+        int level = chunk.getMeta(x, y, z) & 0x7;
+        float h = (level + 1) / 8f;
+        emitBox(chunk, pos, uvs, light, bl, idx, x, y, z, baseX, baseZ, b.topTile,
+                0f, 0f, 0f, 1f, h, 1f, 1 << 5);
+    }
+
     private void emitBox(Chunk chunk, List<Float> pos, List<Float> uvs, List<Float> light, List<Float> bl,
             List<Integer> idx,
             int x, int y, int z, int baseX, int baseZ, int tileIndex,
@@ -676,7 +696,9 @@ public class ChunkMesher {
             int x, int y, int z, int baseX, int baseZ, BlockType b) {
         float[] uv = TextureAtlas.uv(b.sideTile);
         float u0 = uv[0], v0 = uv[1], u1 = uv[2], v1 = uv[3];
-        float h = 10f / 16f; // torch height in block units
+        // Высота креста зависит от блока: факел — короткий фитиль, огонь
+        // занимает клетку целиком, иначе пламя лежит на земле лужицей.
+        float h = b == BlockType.FIRE ? 1f : 10f / 16f;
 
         int skyRaw = skyAt(chunk, x, y + 1, z, baseX, baseZ);
         float skyFrac = skyRaw / (float) Chunk.MAX_LIGHT;

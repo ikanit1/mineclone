@@ -29,6 +29,10 @@ import java.util.Random;
  *
  * Run from the repo root:  java tools\GenBlockTextures.java
  *
+ * Дописывает только недостающие спрайты. Уже лежащие в папке не трогает:
+ * часть из них перерисована руками и в большем разрешении, и слепой прогон
+ * затирал их процедурными 16x16. Перегенерировать весь набор — {@code --force}.
+ *
  * Side outputs: assets/atlas.png (debug dump of the packed atlas) and
  * docs/textures.html (256x256 pixelated preview + the index matrices).
  */
@@ -50,6 +54,20 @@ public class GenBlockTextures {
     // from cold (violet/blue) to warm (gold).
     // =====================================================================
 
+    /** Спальник: крашеная шерсть, тёплый красный. */
+    static final int[] R_BEDROLL = pal("3A1418", "5A1F22", "7C2E2C", "9E4438", "BC6149");
+    /** Подстилка спальника: светлая холстина. */
+    static final int[] R_LINEN  = pal("4A4238", "6B6154", "8C8072", "AEA292", "CFC5B4");
+    /** Печь: обожжённый камень, теплее и темнее обычного булыжника. */
+    static final int[] R_KILN   = pal("2E2A2B", "423C39", "575049", "6E6459", "877C6C");
+    /** Жерло печи: копоть с углями. */
+    static final int[] R_SOOT   = pal("14100F", "231B18", "342722", "4A342B", "634434");
+    /** Жареное мясо: корочка, а не сырая мякоть. */
+    static final int[] R_ROAST  = pal("2E1710", "4A2415", "68361C", "8A4E28", "AB6B38");
+    /** Оковка и замок сундука: тёмный металл с тёплым бликом. */
+    static final int[] R_IRONBIT = pal("22201C", "38342C", "514B3E", "6E6553", "8E8269");
+    /** След на снегу и песке: холодная тень, а не чёрная клякса. */
+    static final int[] R_STEP   = pal("1A2130", "222B3B", "2C3647", "374252", "44505F");
     static final int[] R_STONE  = pal("3F414D", "55565F", "6B6B70", "81807C", "9A968A");
     static final int[] R_COBBLE = pal("2A2C37", "44464F", "5E5F66", "7A7975", "96938C");
     static final int[] R_DIRT   = pal("39292E", "4C3628", "61452C", "785634", "8F6D3D");
@@ -62,11 +80,36 @@ public class GenBlockTextures {
     static final int[] R_WATER  = pal("1B3B7C", "24509F", "2E63BE", "4079D4", "63A6E8");
     static final int[] R_BED    = pal("15151E", "25252F", "383842", "4B4A51", "605E5A");
     static final int[] R_SNOW   = pal("A6B3CC", "C0CBDE", "D8E0ED", "EDF2F8", "FFFDF6");
+    /** Лёд: глубокий холодный синий в тенях, почти белый блик на гранях трещин. */
+    static final int[] R_ICE    = pal("3E5E96", "5F86BB", "86ABD6", "B3D2EC", "E6F5FF");
     static final int[] R_CACTUS = pal("143620", "1D4A27", "285F30", "367539", "7FA455");
     static final int[] R_GLASS  = pal("62808F", "94B2BC", "BFD5DB", "E0EEF1", "FFFFFF");
     static final int[] R_TORCH  = pal("32251E", "6B4E2C", "C4802F", "F2C043", "FFF6BE");
+    // Пламя горячее факела: нижний стоп уже оранжевый, верхний почти белый.
+    static final int[] R_FIRE   = pal("6E1A06", "B33C08", "E4700F", "F9AE22", "FFE58A");
     static final int[] R_HEART  = pal("140A10", "3A2632", "A31E28", "E23A38", "FF938A");
     static final int[] R_WHITE  = pal("97A0B8", "C2CAD8", "DFE4EC", "F2F4F8", "FFFFFF");
+    // Рампы вкраплений руды. Ложатся поверх R_STONE как вторая рампа (5..9),
+    // поэтому холодные тени / тёплые блики считаются от них, а не от камня.
+    static final int[] R_COAL    = pal("07070B", "121218", "1E1E26", "2D2D37", "45454F");
+    static final int[] R_IRON    = pal("5B3C28", "7E5638", "A2764F", "C2986E", "E0BE95");
+    static final int[] R_GOLD    = pal("6A4710", "976D19", "C49829", "E8C24C", "FFE9A0");
+    static final int[] R_DIAMOND = pal("0E4E58", "18787F", "2BA3A6", "58CCCA", "A6F1EA");
+    /** Рукоять инструмента: та же древесина, что у досок, но темнее и суше. */
+    static final int[] R_HANDLE = pal("2E2018", "43301F", "5A4229", "715635", "8A6E45");
+    /** Головка каменного инструмента — светлее камня, иначе сливается с ним. */
+    static final int[] R_TOOLSTONE = pal("4A4C56", "63646C", "7C7C80", "979691", "B3B0A6");
+    static final int[] R_TOOLIRON  = pal("6B6B72", "8D8D93", "AFAFB2", "CBCBCB", "E8E8E6");
+    // Мясо: тёмная мякоть и светлый жир. Оттенки разведены по видам, иначе
+    // четыре куска в хотбаре неразличимы.
+    static final int[] R_BEEF    = pal("4A1418", "6E1E22", "94302E", "B8493F", "D2705F");
+    static final int[] R_PORK    = pal("6B3038", "8E4A4E", "AE6A68", "C98A86", "E0ABA4");
+    static final int[] R_CHICKEN = pal("7A5A34", "9E7947", "BE9A62", "D7B884", "ECD5AC");
+    static final int[] R_MUTTON  = pal("55202A", "78303A", "9B4A4C", "BB6A65", "D69086");
+    static final int[] R_FAT     = pal("8E8878", "AEA894", "C8C2AC", "DEDAC6", "F2EFE0");
+    /** Окорочок в шкале сытости: тёплый коричневый, заметный на тёмном хотбаре. */
+    static final int[] R_HUNGER  = pal("1A0C05", "5A2E12", "8A4A1E", "B87434", "E0A55C");
+    static final int[] R_BONE    = pal("1A0C05", "8A8270", "B5AD98", "D8D1BC", "F2EEDC");
 
     /** Crack overlay: greyscale with baked alpha (0 = deepest, 4 = faintest). */
     static final int[] R_CRACK = { 0xD2000000, 0xB4090A0F, 0x8C1A1B22, 0x64303039, 0x3C4A4A54 };
@@ -111,13 +154,66 @@ public class GenBlockTextures {
         tiles.add(new Tile("snowy_grass_side", merge(R_DIRT, R_SNOW), snowSide()));
         tiles.add(new Tile("cactus_side", R_CACTUS, cactusSide()));
         tiles.add(new Tile("cactus_top",  R_CACTUS, cactusTop()));
+        tiles.add(new Tile("coal_ore",    merge(R_STONE, R_COAL),    ore(311)));
+        tiles.add(new Tile("iron_ore",    merge(R_STONE, R_IRON),    ore(457)));
+        tiles.add(new Tile("gold_ore",    merge(R_STONE, R_GOLD),    ore(613)));
+        tiles.add(new Tile("diamond_ore", merge(R_STONE, R_DIAMOND), ore(769)));
+        tiles.add(new Tile("fire",        R_FIRE,  fire()));
+        tiles.add(new Tile("snow",        R_SNOW,  snowLayer()));
+        // Инструменты: три формы на четырёх материалах. Головка живёт во
+        // второй рампе (индексы 5..9), рукоять — в первой.
+        int[][] heads = { R_WOOD, R_TOOLSTONE, R_TOOLIRON, R_DIAMOND };
+        String[] mats = { "wood", "stone", "iron", "diamond" };
+        String[] kinds = { "pickaxe", "axe", "shovel" };
+        for (int k = 0; k < kinds.length; k++)
+            for (int m = 0; m < mats.length; m++)
+                tiles.add(new Tile(mats[m] + "_" + kinds[k],
+                        merge(R_HANDLE, heads[m]), tool(k)));
+        tiles.add(new Tile("raw_beef",    merge(R_BEEF, R_FAT),    meat(11)));
+        tiles.add(new Tile("raw_pork",    merge(R_PORK, R_FAT),    meat(29)));
+        tiles.add(new Tile("raw_chicken", merge(R_CHICKEN, R_FAT), meat(47)));
+        tiles.add(new Tile("raw_mutton",  merge(R_MUTTON, R_FAT),  meat(63)));
+        tiles.add(new Tile("hunger_full",  merge(R_HUNGER, R_BONE), hunger(true)));
+        tiles.add(new Tile("hunger_empty", merge(R_BED, R_BED),      hunger(false)));
+        tiles.add(new Tile("footprint",   R_STEP, footprint()));
+        tiles.add(new Tile("chest_side",  merge(R_PLANK, R_IRONBIT), chest(false, false)));
+        tiles.add(new Tile("chest_top",   merge(R_PLANK, R_IRONBIT), chest(true,  false)));
+        tiles.add(new Tile("chest_front", merge(R_PLANK, R_IRONBIT), chest(false, true)));
+        tiles.add(new Tile("furnace_side",  merge(R_KILN, R_SOOT), furnace(false)));
+        tiles.add(new Tile("furnace_front", merge(R_KILN, R_SOOT), furnace(true)));
+        tiles.add(new Tile("furnace_top",   merge(R_KILN, R_SOOT), furnaceTop()));
+        tiles.add(new Tile("cooked_beef",    merge(R_ROAST, R_FAT), meat(17)));
+        tiles.add(new Tile("cooked_pork",    merge(R_ROAST, R_FAT), meat(35)));
+        tiles.add(new Tile("cooked_chicken", merge(R_ROAST, R_FAT), meat(53)));
+        tiles.add(new Tile("cooked_mutton",  merge(R_ROAST, R_FAT), meat(71)));
+        tiles.add(new Tile("ice",            R_ICE, ice()));
+        tiles.add(new Tile("bedroll_top",  merge(R_BEDROLL, R_LINEN), bedrollTop()));
+        tiles.add(new Tile("bedroll_side", merge(R_BEDROLL, R_LINEN), bedrollSide()));
 
-        for (Tile t : tiles)
-            ImageIO.write(t.toImage(), "png", new File(BLOCKS, t.name + ".png"));
-        System.out.println("wrote " + tiles.size() + " sprites to " + BLOCKS.getPath());
+        // По умолчанию генератор дописывает недостающее и не трогает то,
+        // что уже лежит в папке. Источник правды по текстурам — папка
+        // ассетов, а не этот код: часть спрайтов перерисована руками и в
+        // большем разрешении, и слепой прогон затирал их процедурными 16x16.
+        boolean force = args.length > 0 && args[0].equals("--force");
+        int written = 0, skipped = 0;
+        for (Tile t : tiles) {
+            File f = new File(BLOCKS, t.name + ".png");
+            if (f.exists() && !force) {
+                skipped++;
+                continue;
+            }
+            ImageIO.write(t.toImage(), "png", f);
+            written++;
+        }
+        System.out.println("wrote " + written + " sprites to " + BLOCKS.getPath()
+                + (skipped > 0 ? ", kept " + skipped + " existing (--force overwrites)" : ""));
 
-        writeAtlasDump(tiles, new File("assets/atlas.png"));
-        writePreview(tiles, new File("docs/textures.html"));
+        // Дамп атласа и HTML-превью описывают процедурный набор, а не то, что
+        // реально лежит в папке, — поэтому обновляются только при --force.
+        if (force) {
+            writeAtlasDump(tiles, new File("assets/atlas.png"));
+            writePreview(tiles, new File("docs/textures.html"));
+        }
     }
 
     // =====================================================================
@@ -267,6 +363,222 @@ public class GenBlockTextures {
         int[] cx = { 4, 12, 8 }, cy = { 6, 4, 12 };
         for (int i = 0; i < cx.length; i++)
             m[cy[i]][cx[i]] = 4;
+        return m;
+    }
+
+    /**
+     * Инструмент: рукоять по диагонали и головка сверху.
+     *
+     * Диагональ, а не вертикаль: в 16x16 вертикальная палка читается как
+     * столб, а по диагонали силуэт узнаётся даже в слоте хотбара размером
+     * с ноготь. Свет, как и везде, падает сверху-слева.
+     *
+     * @param kind 0 — кирка, 1 — топор, 2 — лопата
+     */
+    static int[][] tool(int kind) {
+        int[][] m = blank(-1);
+        // Рукоять: диагональ из нижнего правого угла в верхний левый.
+        // Верхний конец приходится на (2,2) — именно туда и садится головка.
+        for (int i = 0; i < 12; i++) {
+            int x = 13 - i, y = 13 - i;
+            put(m, x, y, 2);
+            put(m, x + 1, y, 1);      // тень справа
+            put(m, x - 1, y - 1, 3);  // блик сверху-слева
+        }
+
+        // Головка — вторая рампа, индексы 5..9.
+        switch (kind) {
+            case 0 -> {               // кирка: дуга поперёк верха рукояти
+                for (int i = 0; i <= 9; i++) {
+                    int y = 1 + (int) Math.round(Math.abs(i - 4.5) * 0.55);
+                    put(m, i, y, i < 5 ? 9 : 8);
+                    put(m, i, y + 1, 6);
+                }
+                put(m, 0, 4, 5);
+                put(m, 9, 4, 5);
+            }
+            case 1 -> {               // топор: клин слева от рукояти
+                for (int y = 0; y <= 7; y++)
+                    for (int x = 0; x <= 6; x++) {
+                        int edge = Math.abs(y - 3);
+                        if (x > 6 - edge * 2) continue;
+                        put(m, x, y, x <= 1 ? 9 : (edge == 0 ? 8 : 6));
+                    }
+            }
+            default -> {              // лопата: прямоугольный совок
+                for (int y = 0; y <= 5; y++)
+                    for (int x = 0; x <= 5; x++)
+                        put(m, x, y, (y == 0 || x == 0) ? 9 : ((y == 5 || x == 5) ? 6 : 7));
+            }
+        }
+        return m;
+    }
+
+    /**
+     * Кусок сырого мяса: скруглённый ломоть с прожилками жира.
+     *
+     * Форма важнее анатомии: в шестнадцати пикселях узнаётся силуэт, а не
+     * детали, поэтому это скруглённый прямоугольник с тёмным контуром и
+     * двумя-тремя светлыми прожилками второй рампой.
+     *
+     * @param seed сдвигает прожилки, чтобы четыре вида не совпали
+     */
+    static int[][] meat(int seed) {
+        int[][] m = blank(-1);
+        int x0 = 2, x1 = 13, y0 = 3, y1 = 12;
+        for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++) {
+                // Срезаем углы: прямоугольный кусок читается как кирпич.
+                boolean corner = (x <= x0 + 1 && y <= y0 + 1) || (x >= x1 - 1 && y <= y0 + 1)
+                        || (x <= x0 + 1 && y >= y1 - 1) || (x >= x1 - 1 && y >= y1 - 1);
+                if (corner && Math.abs(x - (x <= 7 ? x0 : x1)) + Math.abs(y - (y <= 7 ? y0 : y1)) < 2)
+                    continue;
+                boolean edge = x == x0 || x == x1 || y == y0 || y == y1;
+                float n = fbm(x, y, seed, new int[] { 4, 8 }, new float[] { 0.6f, 0.4f });
+                m[y][x] = edge ? 0 : q(0.35f + 0.5f * n, x, y);
+            }
+        // Прожилки жира — вторая рампа (5..9).
+        for (int i = 0; i < 3; i++) {
+            int fy = y0 + 2 + i * 3;
+            int fx = x0 + 1 + (int) (h(i, i, 5, seed) * 3);
+            int len = 4 + (int) (h(i, 0, 4, seed + 7) * 4);
+            for (int d = 0; d < len && fx + d <= x1 - 1; d++)
+                put(m, fx + d, fy + (d > len / 2 ? 1 : 0), 7 + (d % 2));
+        }
+        return m;
+    }
+
+    /**
+     * Значок голода: окорочок на кости. Пустой — тот же силуэт в серых тонах,
+     * чтобы полоска читалась как одна шкала, а не как два разных значка.
+     */
+    static int[][] hunger(boolean full) {
+        int[][] m = blank(-1);
+        // Мякоть — крупный круг, почти во весь тайл: в шкале значок
+        // показывается в 14 пикселей, и мелкая деталь там пропадает.
+        for (int y = 0; y <= 12; y++)
+            for (int x = 0; x <= 12; x++) {
+                float dx = (x - 6f) / 6.2f, dy = (y - 6f) / 6.2f;
+                float d = dx * dx + dy * dy;
+                if (d > 1f) continue;
+                m[y][x] = d > 0.78f ? 0 : (full ? q(0.30f + 0.65f * (1f - d), x, y) : 1);
+            }
+        // Кость — короткая ножка вправо-вниз, второй рампой (5..9).
+        for (int i = 0; i < 5; i++) {
+            int bx = 10 + i, by = 10 + i / 2;
+            put(m, bx, by, full ? 8 : 5);
+            put(m, bx, by + 1, full ? 6 : 5);
+            put(m, bx, by + 2, 5);
+        }
+        put(m, 14, 13, full ? 9 : 5);
+        put(m, 15, 13, 5);
+        return m;
+    }
+
+    /** Ставит индекс, молча игнорируя выход за тайл. */
+    static void put(int[][] m, int x, int y, int idx) {
+        if (x < 0 || y < 0 || x >= S || y >= S) return;
+        m[y][x] = idx;
+    }
+
+    /**
+     * Свежий снег: почти ровное белое поле с редким холодным крапом.
+     *
+     * Соблазн навалить шума велик, но снег на расстоянии обязан читаться как
+     * сплошная белая плоскость — иначе поле превращается в шипящий телевизор.
+     * Поэтому основная масса сидит на двух верхних стопах рампы, а нижние
+     * появляются редкими одиночными пикселями.
+     */
+    static int[][] snowLayer() {
+        int[][] m = new int[S][S];
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++) {
+                float n = fbm(x, y, 404, new int[] { 4, 8 }, new float[] { 0.6f, 0.4f });
+                m[y][x] = q(0.62f + 0.36f * n, x, y);
+            }
+        // Редкие голубоватые впадины — след ветра, а не шум.
+        int[] dx = { 3, 11, 6, 14 }, dy = { 5, 2, 12, 9 };
+        for (int i = 0; i < dx.length; i++) {
+            m[wrap(dy[i])][wrap(dx[i])] = 1;
+            m[wrap(dy[i])][wrap(dx[i] + 1)] = 2;
+        }
+        return m;
+    }
+
+    /**
+     * Пламя: язык огня с прозрачным фоном, горячий у основания и рваный
+     * сверху. Рисуется как крест (две плоскости), поэтому силуэт важнее
+     * объёма — читаться должен с любой стороны.
+     *
+     * Бесшовность здесь не нужна и вредна: огонь стоит отдельным спрайтом,
+     * а не тайлится, поэтому по краям он обязан уходить в прозрачность.
+     */
+    static int[][] fire() {
+        int[][] m = blank(-1);
+        for (int y = 0; y < S; y++) {
+            // v — высота от основания: 0 внизу тайла, 1 наверху.
+            float v = (S - 1 - y) / (float) (S - 1);
+            // Ширина языка сужается кверху, но не линейно: у основания
+            // пламя лежит широкой лужей, к вершине собирается в острие.
+            float half = (0.46f - 0.40f * v * v) * S;
+            // Две волны разной частоты гуляют по оси: без них язык выходит
+            // симметричной каплей и читается как лист, а не как огонь.
+            float sway = (float) (Math.sin(v * 7.0) * 1.5 + Math.sin(v * 3.1 + 1.2) * 1.0);
+            float cx = S * 0.5f + sway;
+            for (int x = 0; x < S; x++) {
+                float d = Math.abs(x + 0.5f - cx) / Math.max(0.6f, half);
+                if (d > 1f)
+                    continue;
+                // Ядро горячее краёв, основание горячее вершины: в пламени
+                // самая горячая точка внизу, а кверху оно остывает и рвётся.
+                float heat = (1f - d * d) * (1.05f - 0.55f * v);
+                // Крап по краю: ровная кромка выглядит пластиковой.
+                heat += (h(x, y, 16, 909) - 0.5f) * 0.22f;
+                if (heat < 0.10f)
+                    continue;
+                m[y][x] = q(Math.min(0.99f, heat), x, y);
+            }
+        }
+        return m;
+    }
+
+    /**
+     * Руда: камень плюс несколько вкраплений второй рампой.
+     *
+     * Каждое вкрапление — не пятно одного цвета, а маленький объём: тёмный
+     * контур, светлое ядро, блик со стороны света (сверху-слева, как у всех
+     * остальных тайлов). Иначе на расстоянии руда читается как грязь.
+     *
+     * Всё считается по тору через wrap(), поэтому тайл остаётся бесшовным.
+     *
+     * @param seed сдвигает раскладку вкраплений, чтобы четыре руды не совпали
+     */
+    static int[][] ore(int seed) {
+        int[][] m = stone();
+        // Дрожащая решётка 2x2 вместо чистого хэша: хэш кучкует вкрапления
+        // в одном углу и оставляет половину тайла голой.
+        int G = 2, cell = S / G;
+        for (int i = 0; i < G * G; i++) {
+            int gx = i % G, gy = i / G;
+            int cx = gx * cell + (int) (h(gx, gy, 8, seed) * cell);
+            int cy = gy * cell + (int) (h(gy, gx, 8, seed + 31) * cell);
+            int r = 1 + (int) (h(i, i, 3, seed + 57) * 2);   // радиус 1..2
+            for (int dy = -r - 1; dy <= r + 1; dy++)
+                for (int dx = -r - 1; dx <= r + 1; dx++) {
+                    int d2 = dx * dx + dy * dy;
+                    if (d2 > (r + 1) * (r + 1))
+                        continue;
+                    int X = wrap(cx + dx), Y = wrap(cy + dy);
+                    int idx;
+                    if (d2 > r * r)
+                        idx = 5;                       // тёмный контур
+                    else if (dx <= 0 && dy <= 0)
+                        idx = d2 <= 1 ? 9 : 8;         // блик со стороны света
+                    else
+                        idx = d2 <= 1 ? 7 : 6;
+                    m[Y][X] = idx;
+                }
+        }
         return m;
     }
 
@@ -693,6 +1005,39 @@ public class GenBlockTextures {
         return m;
     }
 
+    /**
+     * Лёд: гладкое поле средних стопов с глубокими пятнами и сетью трещин.
+     *
+     * Трещина — это пара пикселей: тёмная щель и светлый скол рядом, иначе на
+     * шестнадцати пикселях она читается как грязь. Линии идут наискось и
+     * заворачивают через край тайла, чтобы замёрзшее озеро не складывалось в
+     * клетку. Пузырьки воздуха — одиночные светлые точки.
+     */
+    static int[][] ice() {
+        int[][] m = new int[S][S];
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++) {
+                float n = fbm(x, y, 1777, new int[] { 4, 8 }, new float[] { 0.65f, 0.35f });
+                m[y][x] = q(0.38f + 0.42f * n, x, y);
+            }
+        // Две длинные трещины наискось через весь тайл, с заворотом по краю.
+        int[][] cracks = { { 0, 3, 1, 1 }, { 5, 15, 1, -1 } };
+        for (int[] c : cracks) {
+            int x = c[0], y = c[1];
+            for (int i = 0; i < 18; i++) {
+                m[wrap(y)][wrap(x)] = 0;
+                m[wrap(y + 1)][wrap(x)] = 4;
+                x += c[2];
+                if (i % 3 == 2)
+                    y += c[3];
+            }
+        }
+        int[] bx = { 3, 12, 9, 6 }, by = { 11, 6, 13, 2 };
+        for (int i = 0; i < bx.length; i++)
+            m[by[i]][bx[i]] = 4;
+        return m;
+    }
+
     /** Glass pane: bright frame, corner shadows, one diagonal glint. */
     static int[][] glass() {
         int[][] m = blank(T);
@@ -868,6 +1213,173 @@ public class GenBlockTextures {
             out[stage] = m;
         }
         return out;
+    }
+
+    /**
+     * Спальник сверху: свёрнутая скатка с подушкой по центру.
+     *
+     * Рисунок симметричен по обеим осям намеренно. Мешер не умеет крутить
+     * текстуру по мете, и у несимметричного узора подушка оказывалась бы
+     * поперёк спальника, стоило положить его другой стороной.
+     */
+    static int[][] bedrollTop() {
+        int[][] m = blank(0);
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++) {
+                float n = fbm(x, y, 33, new int[] { 4, 8 }, new float[] { 0.6f, 0.4f });
+                m[y][x] = q(0.35f + 0.5f * n, x, y);
+            }
+        // Кайма по краю — край скатки.
+        for (int i = 0; i < S; i++) {
+            put(m, i, 0, 0);
+            put(m, i, S - 1, 0);
+            put(m, 0, i, 0);
+            put(m, S - 1, i, 0);
+        }
+        // Подушка: светлый прямоугольник ровно по центру.
+        for (int y = 5; y <= 10; y++)
+            for (int x = 4; x <= 11; x++) {
+                boolean rim = y == 5 || y == 10 || x == 4 || x == 11;
+                put(m, x, y, RAMP_B + (rim ? 1 : 3));
+            }
+        return m;
+    }
+
+    /** Спальник сбоку: полоса ткани с подстилкой понизу. */
+    static int[][] bedrollSide() {
+        int[][] m = blank(0);
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++) {
+                float n = fbm(x, y, 41, new int[] { 4, 8 }, new float[] { 0.6f, 0.4f });
+                // Нижняя четверть — холстина, выше — шерсть.
+                m[y][x] = y >= 12 ? RAMP_B + q(0.3f + 0.5f * n, x, y) / 2
+                        : q(0.35f + 0.5f * n, x, y);
+            }
+        for (int x = 0; x < S; x++)
+            put(m, x, 11, 0);
+        return m;
+    }
+
+    /**
+     * Печь: кладка из обожжённого камня.
+     *
+     * У лицевой грани — жерло с решёткой. Без него печь неотличима от куска
+     * стены, и непонятно, с какой стороны она «работает».
+     */
+    static int[][] furnace(boolean front) {
+        int[][] m = blank(0);
+        // Кладка: ряды кирпича со смещением через ряд.
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++) {
+                int row = y / 4;
+                int shift = (row % 2) * 2;
+                boolean mortar = (y % 4 == 0) || ((x + shift) % 8 == 0);
+                float n = fbm(x, y, 21, new int[] { 4, 8 }, new float[] { 0.6f, 0.4f });
+                m[y][x] = mortar ? 1 : q(0.4f + 0.5f * n, x, y);
+            }
+        if (!front)
+            return m;
+        // Жерло: тёмный проём с двумя перекладинами решётки.
+        for (int y = 6; y <= 12; y++)
+            for (int x = 3; x <= 12; x++) {
+                boolean rim = y == 6 || y == 12 || x == 3 || x == 12;
+                put(m, x, y, RAMP_B + (rim ? 2 : 0));
+            }
+        for (int x = 4; x <= 11; x++) {
+            put(m, x, 8, RAMP_B + 3);
+            put(m, x, 11, RAMP_B + 3);
+        }
+        return m;
+    }
+
+    /** Крышка печи: та же кладка, но с закопчённым устьем по центру. */
+    static int[][] furnaceTop() {
+        int[][] m = furnace(false);
+        for (int y = 5; y <= 10; y++)
+            for (int x = 5; x <= 10; x++) {
+                boolean rim = y == 5 || y == 10 || x == 5 || x == 10;
+                put(m, x, y, RAMP_B + (rim ? 3 : 1));
+            }
+        return m;
+    }
+
+    /**
+     * Сундук: доски с оковкой.
+     *
+     * Крышка отделена полосой оковки по горизонтали — по ней сундук
+     * опознаётся с любой стороны. У лицевой грани сверх того замок по центру,
+     * иначе перед и бок неразличимы, и непонятно, куда смотреть.
+     */
+    static int[][] chest(boolean top, boolean front) {
+        int[][] m = blank(0);
+        // Доски: три горизонтальных полосы с щелями между ними.
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++) {
+                int band = (y / 5) % 2;
+                int idx = band == 0 ? 2 : 3;
+                if (y % 5 == 0) idx = 0;                 // щель между досками
+                if (x == 0 || x == S - 1) idx = 1;       // тёмный край
+                m[y][x] = idx;
+            }
+        // Оковка по краям — рамка в один пиксель.
+        for (int i = 0; i < S; i++) {
+            put(m, i, 0, RAMP_B + 1);
+            put(m, i, S - 1, RAMP_B + 1);
+            put(m, 0, i, RAMP_B + 1);
+            put(m, S - 1, i, RAMP_B + 1);
+        }
+        if (top) {
+            // Крышка: оковка двумя полосами поперёк, как петли.
+            for (int y = 0; y < S; y++) {
+                put(m, 3, y, RAMP_B + 2);
+                put(m, 4, y, RAMP_B + 1);
+                put(m, 11, y, RAMP_B + 2);
+                put(m, 12, y, RAMP_B + 1);
+            }
+            return m;
+        }
+        // Бока и перёд: линия раздела крышки и короба.
+        for (int x = 0; x < S; x++) {
+            put(m, x, 5, RAMP_B);
+            put(m, x, 6, RAMP_B + 3);
+        }
+        if (front) {
+            // Замок: накладка с язычком по центру, чуть ниже раздела.
+            for (int y = 4; y <= 9; y++)
+                for (int x = 7; x <= 8; x++)
+                    put(m, x, y, RAMP_B + 2);
+            put(m, 7, 5, RAMP_B + 4);
+            put(m, 8, 8, RAMP_B);
+        }
+        return m;
+    }
+
+    /**
+     * Отпечаток подошвы, носком вверх.
+     *
+     * Рисуется тенью: декаль кладётся поверх снега или песка с обычным
+     * смешиванием, и тёмный силуэт работает на любом грунте. Носок и пятка
+     * разделены — иначе след читается овалом, а не обувью.
+     */
+    static int[][] footprint() {
+        return fromArt(new String[] {
+                "................",
+                "......0000......",
+                ".....001100.....",
+                "....00111100....",
+                "....01122110....",
+                "....01122110....",
+                "....00111100....",
+                ".....001100.....",
+                "......0110......",
+                "......0110......",
+                ".....001100.....",
+                "....00111100....",
+                "....01122110....",
+                ".....001100.....",
+                "......0000......",
+                "................",
+        });
     }
 
     // =====================================================================
