@@ -1,144 +1,221 @@
 package com.mineclone.world;
 
+import com.mineclone.item.AttackSpec;
+import com.mineclone.item.ComponentType;
+import com.mineclone.item.Components;
+import com.mineclone.item.FoodSpec;
+import com.mineclone.item.Item;
+import com.mineclone.item.ItemComponents;
+import com.mineclone.item.Items;
+import com.mineclone.item.ToolSpec;
+
 /**
  * Стопка одинаковых предметов.
  *
- * Предмет — это блок, инструмент или еда; ровно одно из полей {@code type},
- * {@code tool} и {@code food} не null. Блоки и еда стопкуются до
- * {@link #MAX_STACK}, инструменты — никогда: у каждого свой износ, и слить
- * два в одну стопку значит потерять одну из прочностей.
+ * <p>Предмет — ссылка на запись реестра, а не одно из трёх полей «блок,
+ * инструмент, еда»: блок, инструмент и еда перестали быть тремя разными
+ * видами стопки и стали необязательными частями одного предмета. Проверка
+ * «это инструмент» — вопрос к предмету ({@code tool() != null}), а не к
+ * форме стопки.
+ *
+ * <p>Всё, что отличает две стопки одного предмета — износ, своё имя, начинка
+ * сундука, — живёт в {@link ItemComponents}: они и решают, сливаются ли
+ * стопки. Изнашиваемый предмет не стопкуется вовсе ({@code maxStack == 1}),
+ * поэтому две кирки с разным износом не могут потерять одну из прочностей.
  */
 public final class ItemStack {
-    public static final int MAX_STACK = 64;
 
-    /** Блок, если это блочная стопка; null у инструмента. */
-    public BlockType type;
-    /** Инструмент, если это он; null иначе. */
-    public final ToolType tool;
-    /** Еда, если это она; null иначе. */
-    public final FoodType food;
+    /** Запись реестра: одна на все стопки этого предмета. */
+    public final Item item;
     public int count;
-    /** Сколько блоков инструмент уже сломал. Для блоков всегда 0. */
-    public int damage;
 
-    public ItemStack(BlockType type, int count) {
-        if (type == null) throw new IllegalArgumentException("ItemStack type must not be null");
-        this.type = type;
-        this.tool = null;
-        this.food = null;
-        this.count = Math.max(1, Math.min(MAX_STACK, count));
+    private ItemComponents components = ItemComponents.EMPTY;
+
+    public ItemStack(Item item, int count) {
+        if (item == null)
+            throw new IllegalArgumentException("ItemStack item must not be null");
+        this.item = item;
+        this.count = Math.max(1, Math.min(item.maxStack, count));
     }
 
-    public ItemStack(ToolType tool) {
-        if (tool == null) throw new IllegalArgumentException("ItemStack tool must not be null");
-        this.type = null;
-        this.tool = tool;
-        this.food = null;
-        this.count = 1;
+    /** Стопка блока. Технический блок предметом не бывает — это ошибка кода. */
+    public ItemStack(BlockType block, int count) {
+        this(requireItem(block), count);
     }
 
-    public ItemStack(FoodType food, int count) {
-        if (food == null) throw new IllegalArgumentException("ItemStack food must not be null");
-        this.type = null;
-        this.tool = null;
-        this.food = food;
-        this.count = Math.max(1, Math.min(MAX_STACK, count));
+    private static Item requireItem(BlockType block) {
+        if (block == null)
+            throw new IllegalArgumentException("ItemStack block must not be null");
+        Item item = Items.get().forBlock(block);
+        if (item == null)
+            throw new IllegalArgumentException("no item for block " + block);
+        return item;
     }
 
-    public boolean isTool() {
-        return tool != null;
+    public static ItemStack of(String id) {
+        return of(id, 1);
     }
 
-    public boolean isFood() {
-        return food != null;
+    public static ItemStack of(String id, int count) {
+        return new ItemStack(Items.get().require(id), count);
     }
 
-    /** Остаток прочности 0..1. Для блоков всегда 1. */
+    // ----------------------------------------------------------- что это
+
+    public BlockType block() {
+        return item.block;
+    }
+
+    public ToolSpec tool() {
+        return item.tool;
+    }
+
+    public FoodSpec food() {
+        return item.food;
+    }
+
+    public AttackSpec attack() {
+        return item.attack;
+    }
+
+    public boolean hasDurability() {
+        return item.durability > 0;
+    }
+
+    public int maxStack() {
+        return item.maxStack;
+    }
+
+    // -------------------------------------------------------- компоненты
+
+    public ItemComponents components() {
+        return components;
+    }
+
+    public void setComponents(ItemComponents c) {
+        components = c == null ? ItemComponents.EMPTY : c;
+    }
+
+    public <T> T get(ComponentType<T> type) {
+        return components.get(type);
+    }
+
+    /** Меняет стопку на месте и возвращает её же — чтобы писать цепочкой. */
+    public <T> ItemStack set(ComponentType<T> type, T value) {
+        components = components.with(type, value);
+        return this;
+    }
+
+    public int damage() {
+        Integer d = components.get(Components.DAMAGE);
+        return d == null ? 0 : d;
+    }
+
+    public void setDamage(int d) {
+        components = components.with(Components.DAMAGE, d <= 0 ? null : d);
+    }
+
+    /** Остаток прочности 0..1. У предмета без износа всегда 1. */
     public float condition() {
-        if (tool == null) return 1f;
-        return Math.max(0f, 1f - damage / (float) tool.durability);
+        if (item.durability <= 0)
+            return 1f;
+        return Math.max(0f, 1f - damage() / (float) item.durability);
     }
 
     /**
      * Сносит одно очко прочности.
      *
-     * @return true, если инструмент после этого сломался
+     * @return true, если предмет после этого сломался
      */
     public boolean wear() {
-        if (tool == null) return false;
-        return ++damage >= tool.durability;
+        if (item.durability <= 0 || Boolean.TRUE.equals(components.get(Components.UNBREAKABLE)))
+            return false;
+        int d = damage() + 1;
+        setDamage(d);
+        return d >= item.durability;
     }
 
-    /** Тайл атласа для иконки. Трава показывается верхней гранью, как в хотбаре. */
-    public int iconTile() {
-        if (tool != null) return tool.tile;
-        if (food != null) return food.tile;
-        return type == BlockType.GRASS ? type.topTile : type.sideTile;
-    }
+    // ------------------------------------------------------------- показ
 
     public String displayName() {
-        if (tool != null) return tool.displayName;
-        if (food != null) return food.displayName;
-        return type.name();
+        String custom = components.get(Components.CUSTOM_NAME);
+        return custom != null ? custom : item.name;
     }
 
     /**
-     * Можно ли долить {@code other} в эту стопку. Инструменты не стопкуются
-     * никогда — у каждого свой износ.
+     * Тайл плоской иконки. У блока-куба своего тайла нет — иконка собирается
+     * из граней, — но спросить всё равно могут, и ответ должен быть разумным.
+     */
+    public int iconTile() {
+        if (item.iconTile >= 0)
+            return item.iconTile;
+        BlockType b = item.block;
+        if (b == null)
+            return 0;
+        return b == BlockType.GRASS || b == BlockType.SNOWY_GRASS ? b.topTile : b.sideTile;
+    }
+
+    // ------------------------------------------------------------ слияние
+
+    /**
+     * Можно ли долить {@code other} в эту стопку: тот же предмет, те же
+     * компоненты и предмет вообще стопкуется.
      */
     public boolean stacksWith(ItemStack other) {
-        if (other == null) return false;
-        if (tool != null || other.tool != null) return false;
-        if (food != null || other.food != null) return food == other.food;
-        return type == other.type;
+        return other != null && item == other.item && item.maxStack > 1
+                && components.equals(other.components);
     }
 
     public boolean isFull() {
-        return tool != null || count >= MAX_STACK;
+        return count >= item.maxStack;
     }
 
-    /** Adds up to {@code amount} items, capped at MAX_STACK.
-     *  @return the leftover that did not fit. */
+    /**
+     * Доливает до {@code amount} предметов, не переполняя стопку.
+     *
+     * @return остаток, который не влез
+     */
     public int addUpTo(int amount) {
-        if (amount <= 0) return 0;
-        if (tool != null) return amount;   // инструмент не доливается
-        int space = MAX_STACK - count;
-        int added = Math.min(space, amount);
+        if (amount <= 0)
+            return 0;
+        int added = Math.min(item.maxStack - count, amount);
+        if (added <= 0)
+            return amount;
         count += added;
         return amount - added;
     }
 
+    public ItemStack copy() {
+        return copyWithCount(count);
+    }
+
+    public ItemStack copyWithCount(int n) {
+        ItemStack s = new ItemStack(item, n);
+        s.components = components;
+        return s;
+    }
+
     /**
-     * Совпадает ли содержимое двух стопок целиком: предмет, число и износ.
+     * Совпадает ли содержимое двух стопок целиком: предмет, число, компоненты.
      *
      * <p>Не {@code equals}: стопка изменяема и живёт в массивах слотов, где
      * сравнение по тождеству и есть то, что нужно. Содержимое сравнивается
-     * отдельным вопросом — его задаёт снимок блока и проверка сейва.
+     * отдельным вопросом — его задают снимок блока и проверка сейва.
      */
     public boolean contentEquals(ItemStack o) {
-        if (o == null) return false;
-        if (this == o) return true;
-        return type == o.type && tool == o.tool && food == o.food
-                && count == o.count && damage == o.damage;
+        if (this == o)
+            return true;
+        return o != null && item == o.item && count == o.count
+                && components.equals(o.components);
     }
 
     /** Хеш того же содержимого, что сравнивает {@link #contentEquals}. */
     public int contentHash() {
-        int h = type == null ? 0 : type.ordinal() + 1;
-        h = h * 31 + (tool == null ? 0 : tool.ordinal() + 1);
-        h = h * 31 + (food == null ? 0 : food.ordinal() + 1);
-        h = h * 31 + count;
-        return h * 31 + damage;
+        return (item.id.hashCode() * 31 + count) * 31 + components.hashCode();
     }
 
-    public ItemStack copy() {
-        if (tool != null) {
-            ItemStack s = new ItemStack(tool);
-            s.damage = damage;
-            return s;
-        }
-        if (food != null)
-            return new ItemStack(food, count);
-        return new ItemStack(type, count);
+    @Override
+    public String toString() {
+        return count + "x" + item.id + (components.isEmpty() ? "" : components.toString());
     }
 }

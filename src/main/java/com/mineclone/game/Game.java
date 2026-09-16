@@ -440,7 +440,7 @@ public class Game {
 
     private BlockType currentBlock() {
         com.mineclone.world.ItemStack s = inventory.get(selectedSlot);
-        return s == null || s.isTool() ? BlockType.AIR : s.type;
+        return s == null || s.block() == null ? BlockType.AIR : s.block();
     }
 
     private com.mineclone.save.Options buildOptions() {
@@ -2041,11 +2041,11 @@ public class Game {
     private void giveMobDrop(com.mineclone.world.entity.Mob m) {
         if (gameMode != com.mineclone.world.GameMode.SURVIVAL)
             return;
-        com.mineclone.world.FoodType drop = m.type.drop();
+        String drop = m.type.drop();
         // Задранного волком съели — мяса с него нет.
         if (drop == null || m.eaten || m.type.dropCount() <= 0)
             return;
-        dropItem(new com.mineclone.world.ItemStack(drop, m.type.dropCount()),
+        dropItem(com.mineclone.world.ItemStack.of(drop, m.type.dropCount()),
                 m.position.x, m.position.y + m.type.height * 0.5f, m.position.z);
     }
 
@@ -2112,17 +2112,7 @@ public class Game {
      * каждую россыпь у ног в дрожащий рой.
      */
     private boolean canTake(com.mineclone.world.ItemStack s) {
-        if (s.isTool() || s.isFood()) {
-            for (int i = 0; i < inventory.size(); i++) {
-                com.mineclone.world.ItemStack t = inventory.get(i);
-                if (t == null)
-                    return true;
-                if (s.isFood() && t.isFood() && t.food == s.food && !t.isFull())
-                    return true;
-            }
-            return false;
-        }
-        return inventory.canAdd(s.type, 1);
+        return inventory.canAdd(s, 1);
     }
 
     /**
@@ -2214,7 +2204,7 @@ public class Game {
     private int giveStack(com.mineclone.world.ItemStack s) {
         if (s == null || s.count <= 0)
             return 0;
-        if (s.isTool()) {
+        if (s.maxStack() <= 1) {
             for (int i = 0; i < inventory.size(); i++)
                 if (inventory.get(i) == null) {
                     inventory.set(i, s.copy());
@@ -2222,9 +2212,7 @@ public class Game {
                 }
             return s.count;
         }
-        if (s.isFood())
-            return inventory.addFood(s.food, s.count);
-        return inventory.add(s.type, s.count);
+        return inventory.add(s);
     }
 
     /**
@@ -2536,11 +2524,11 @@ public class Game {
 
     private boolean tryEat() {
         com.mineclone.world.ItemStack held = inventory.get(selectedSlot);
-        if (held == null || !held.isFood())
+        if (held == null || held.food() == null)
             return false;   // не еда — правый клик идёт по обычному пути
         if (!player.canEat())
             return true;    // сыт: клик гасится, но ничего не тратит
-        player.eat(held.food.nutrition);
+        player.eat(held.food().nutrition());
         startHandSwing();
         sound.playOneOf(sounds.uiClick(), 0.5f, 0.75f + 0.1f * (float) Math.random());
         if (gameMode == com.mineclone.world.GameMode.SURVIVAL)
@@ -2595,7 +2583,7 @@ public class Game {
      */
     private com.mineclone.world.ItemStack heldTool() {
         com.mineclone.world.ItemStack s = inventory.get(selectedSlot);
-        return s != null && s.isTool() ? s : null;
+        return s != null && s.tool() != null ? s : null;
     }
 
     /**
@@ -2606,9 +2594,9 @@ public class Game {
      */
     private float miningSpeed(BlockType target) {
         com.mineclone.world.ItemStack tool = heldTool();
-        if (tool == null || !tool.tool.suits(target))
+        if (tool == null || !tool.tool().suits(target))
             return 1f;
-        return tool.tool.speed;
+        return tool.tool().speed();
     }
 
     /**
@@ -2620,7 +2608,7 @@ public class Game {
         if (need <= 0)
             return true;
         com.mineclone.world.ItemStack tool = heldTool();
-        return tool != null && tool.tool.suits(target) && tool.tool.level >= need;
+        return tool != null && tool.tool().suits(target) && tool.tool().level() >= need;
     }
 
     /** Сносит очко прочности и убирает инструмент, если он развалился. */
@@ -2633,7 +2621,7 @@ public class Game {
         if (tool.wear()) {
             inventory.set(selectedSlot, null);
             sound.playOneOf(sounds.uiClick(), 0.7f, 0.7f);
-            showCommandToast(tool.tool.displayName + " сломалась");
+            showCommandToast(tool.displayName() + " сломалась");
         }
     }
 
@@ -3616,14 +3604,11 @@ public class Game {
             // рука рисуется поверх чистого z-буфера и в третьем лице висела
             // бы отдельным куском мяса посреди экрана.
             if (viewMode == ViewMode.FIRST) {
-                com.mineclone.world.ItemStack heldStack = inventory.get(selectedSlot);
-                com.mineclone.world.ToolType heldTool =
-                        heldStack != null && heldStack.isTool() ? heldStack.tool : null;
-                heldItemRenderer.render(atlas, currentBlock(), heldTool,
+                heldItemRenderer.render(atlas, inventory.get(selectedSlot),
                         window.getAspect(), currentFov,
                         equipProgress, handSwing, walkedDistance, player.eyeInWater, viewBobbing,
                         daylight, brightness, skyFrac, blockFrac, hdr ? 1f : 0f,
-                        heldStack != null ? heldStack.condition() : 1f, inspect, inspectSpin);
+                        inspect, inspectSpin);
                 handDrawn = true;
             }
         }
@@ -4377,13 +4362,10 @@ public class Game {
                 if (gameMode == com.mineclone.world.GameMode.CREATIVE) {
                     com.mineclone.world.ItemStack picked =
                             hud.drawCreativeMenu(vw, vh, mx, my, clicked, inventory, selectedSlot);
-                    if (picked != null
-                            && (picked.isTool() || picked.isFood() || picked.type != BlockType.AIR)) {
+                    if (picked != null) {
                         // Блоки в творческом выдаются полной стопкой,
                         // инструмент — ровно один: он и так не стопкуется.
-                        if (!picked.isTool())
-                            picked.count = com.mineclone.world.ItemStack.MAX_STACK;
-                        inventory.set(selectedSlot, picked);
+                        inventory.set(selectedSlot, picked.copyWithCount(picked.maxStack()));
                         equipProgress = 0f;
                         sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
                     }

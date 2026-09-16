@@ -47,17 +47,17 @@ public class RenderHudPreview {
         Hud hud = new Hud(font, small, text, ui, atlas);
 
         Inventory inv = new Inventory();
-        inv.set(0, new ItemStack(ToolType.IRON_PICKAXE));
-        inv.get(0).damage = (int) (ToolType.IRON_PICKAXE.durability * 0.45f);
-        inv.set(1, new ItemStack(ToolType.WOOD_AXE));
-        inv.get(1).damage = (int) (ToolType.WOOD_AXE.durability * 0.85f);
-        inv.set(2, new ItemStack(FoodType.RAW_BEEF, 5));
+        inv.set(0, ItemStack.of("iron_pickaxe"));
+        inv.get(0).setDamage((int) (inv.get(0).item.durability * 0.45f));
+        inv.set(1, ItemStack.of("wooden_axe"));
+        inv.get(1).setDamage((int) (inv.get(1).item.durability * 0.85f));
+        inv.set(2, ItemStack.of("beef", 5));
         inv.set(3, new ItemStack(BlockType.COBBLE, 64));
         inv.set(4, new ItemStack(BlockType.TORCH, 12));
         inv.set(5, new ItemStack(BlockType.DIAMOND_ORE, 3));
         inv.set(6, new ItemStack(BlockType.PLANKS, 30));
         inv.set(9, new ItemStack(BlockType.IRON_ORE, 8));
-        inv.set(10, new ItemStack(FoodType.RAW_CHICKEN, 2));
+        inv.set(10, ItemStack.of("chicken", 2));
         inv.set(11, new ItemStack(BlockType.WOOD, 16));
 
         Files.createDirectories(Path.of("out-test/previews"));
@@ -91,8 +91,8 @@ public class RenderHudPreview {
         ItemStack[] chest = new ItemStack[com.mineclone.world.Chunk.CHEST_SLOTS];
         chest[0] = new ItemStack(BlockType.COBBLE, 64);
         chest[1] = new ItemStack(BlockType.COAL_ORE, 23);
-        chest[2] = new ItemStack(ToolType.DIAMOND_PICKAXE);
-        chest[4] = new ItemStack(FoodType.RAW_MUTTON, 3);
+        chest[2] = ItemStack.of("diamond_pickaxe");
+        chest[4] = ItemStack.of("mutton", 3);
         chest[9] = new ItemStack(BlockType.PLANKS, 48);
         chest[10] = new ItemStack(BlockType.GLASS, 7);
         chest[17] = new ItemStack(BlockType.TORCH, 31);
@@ -102,9 +102,9 @@ public class RenderHudPreview {
 
         // Кадр: печь на середине работы — пламя горит, стрелка заполнена.
         var furnace = new com.mineclone.world.Furnace();
-        furnace.input = new ItemStack(FoodType.RAW_BEEF, 6);
+        furnace.input = ItemStack.of("beef", 6);
         furnace.fuel = new ItemStack(BlockType.COAL_ORE, 12);
-        furnace.output = new ItemStack(FoodType.COOKED_BEEF, 3);
+        furnace.output = ItemStack.of("cooked_beef", 3);
         furnace.burnMax = com.mineclone.world.Smelting.COOK_TIME * 8f;
         furnace.burnLeft = furnace.burnMax * 0.62f;
         furnace.cook = com.mineclone.world.Smelting.COOK_TIME * 0.45f;

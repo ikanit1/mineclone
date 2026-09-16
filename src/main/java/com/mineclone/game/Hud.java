@@ -160,7 +160,7 @@ public class Hud {
             ui.quad(x, y0, slot, slot, 0.16f, 0.18f, 0.23f, 0.42f);
             ui.quad(x, y0, slot, 1f, 1f, 1f, 1f, 0.10f);
             com.mineclone.world.ItemStack stack = hotbar.get(i);
-            if (stack != null && (stack.isTool() || stack.isFood() || stack.type != BlockType.AIR)) {
+            if (stack != null) {
                 float inset = 6;
                 drawItemIcon(stack, x + inset, y0 + inset, slot - 2 * inset, 1f, i == selected);
             }
@@ -730,7 +730,7 @@ public class Hud {
                 invX, craftY - 8f, w, h, 0.72f, 0.77f, 0.86f, 1f);
 
         if (hovered != null) {
-            String name = hovered.isTool() ? hovered.displayName() : displayName(hovered.type);
+            String name = hovered.displayName();
             float twd = font.textWidth(name);
             float tx = Math.min(w - twd - 12f, Math.max(8f, hoverX + 4f));
             text.drawShadowed(font, name, tx, hoverY - 8f, w, h, 1f, 1f, 1f);
@@ -880,7 +880,7 @@ public class Hud {
         text.drawShadowed(font, "Chest", panelX + 22f, panelY + 36f, w, h, 1f, 0.94f, 0.82f);
         text.draw(small, "Inventory", gridX, invLabelY, w, h, 0.72f, 0.77f, 0.86f, 1f);
         if (hovered != null) {
-            String name = hovered.isTool() ? hovered.displayName() : displayName(hovered.type);
+            String name = hovered.displayName();
             float twd = font.textWidth(name);
             float tx = Math.min(w - twd - 12f, Math.max(8f, hoverX + 4f));
             text.drawShadowed(font, name, tx, hoverY - 8f, w, h, 1f, 1f, 1f);
@@ -1039,7 +1039,7 @@ public class Hud {
         text.drawShadowed(font, "Furnace", panelX + 22f, panelY + 36f, w, h, 1f, 0.94f, 0.82f);
         text.draw(small, "Inventory", gridX, invLabelY, w, h, 0.72f, 0.77f, 0.86f, 1f);
         if (hovered != null) {
-            String name = hovered.isTool() ? hovered.displayName() : displayName(hovered.type);
+            String name = hovered.displayName();
             float twd = font.textWidth(name);
             float tx = Math.min(w - twd - 12f, Math.max(8f, hoverX + 4f));
             text.drawShadowed(font, name, tx, hoverY - 8f, w, h, 1f, 1f, 1f);
@@ -1150,15 +1150,6 @@ public class Hud {
         text.drawOutlined(small, s, tx, ty, sw, sh, 1f, 1f, 1f);
     }
 
-    private void drawItemIcon(BlockType b, float x, float y, float size, float alpha) {
-        if (b == null || b == BlockType.AIR)
-            return;
-        if (isCubeIcon(b))
-            drawBlockIcon(b, x, y, size, alpha);
-        else
-            drawTileIcon(b == BlockType.GRASS ? b.topTile : b.sideTile, x, y, size, alpha);
-    }
-
     private void drawItemIcon(com.mineclone.world.ItemStack s, float x, float y,
             float size, float alpha) {
         drawItemIcon(s, x, y, size, alpha, false);
@@ -1171,11 +1162,11 @@ public class Hud {
             float size, float alpha, boolean spin) {
         if (s == null)
             return;
-        if (!s.isTool() && !s.isFood() && isCubeIcon(s.type))
-            drawBlockIcon(s.type, x, y, size, alpha, spin ? ICON_YAW + time * ICON_SPIN : ICON_YAW);
+        if (isCubeIcon(s.block()))
+            drawBlockIcon(s.block(), x, y, size, alpha, spin ? ICON_YAW + time * ICON_SPIN : ICON_YAW);
         else
             drawTileIcon(s.iconTile(), x, y, size, alpha);
-        if (s.isTool())
+        if (s.hasDurability())
             drawDurabilityBar(s, x, y, size);
     }
 
@@ -1323,39 +1314,21 @@ public class Hud {
         ui.quad(x, by, size * k, barH, 1f - k, 0.15f + 0.75f * k, 0.12f, 1f);
     }
 
-    private static String displayName(BlockType b) {
-        String raw = b.name().toLowerCase().replace('_', ' ');
-        StringBuilder sb = new StringBuilder(raw.length());
-        boolean cap = true;
-        for (int i = 0; i < raw.length(); i++) {
-            char ch = raw.charAt(i);
-            if (cap && ch >= 'a' && ch <= 'z') {
-                sb.append((char) (ch - 32));
-                cap = false;
-            } else {
-                sb.append(ch);
-                cap = ch == ' ';
-            }
-        }
-        return sb.toString();
-    }
-
     /**
-     * Творческое меню: сначала все блоки, следом все инструменты.
+     * Творческое меню: все предметы реестра в порядке файлов данных.
+     *
+     * <p>Скрытые не показываются: заглушка снесённого мода в креативе — это
+     * предложение выдать себе то, чего в игре нет.
      *
      * @return выбранная стопка или null
      */
     public com.mineclone.world.ItemStack drawCreativeMenu(int w, int h, double mx, double my,
             boolean clicked, com.mineclone.world.Inventory inv, int selectedSlot) {
-        // AIR в список не идёт: ставить его нельзя, а тайла у него нет —
-        // в слоте показывалась чужая текстура.
-        BlockType[] all = BlockType.values();
-        BlockType[] blocks = new BlockType[all.length - 1];
-        for (int i = 1; i < all.length; i++)
-            blocks[i - 1] = all[i];
-        com.mineclone.world.ToolType[] tools = com.mineclone.world.ToolType.VALUES;
-        com.mineclone.world.FoodType[] foods = com.mineclone.world.FoodType.VALUES;
-        int total = blocks.length + tools.length + foods.length;
+        java.util.List<com.mineclone.item.Item> items = new java.util.ArrayList<>();
+        for (com.mineclone.item.Item it : com.mineclone.item.Items.get().all())
+            if (!it.hidden)
+                items.add(it);
+        int total = items.size();
         int cols = 9;
         int rows = (int) Math.ceil((double) total / cols);
         float sw = 50f, gap = 8f;
@@ -1372,11 +1345,7 @@ public class Hud {
         float hx = 0, hy = 0, hw = 0;
 
         for (int i = 0; i < total; i++) {
-            boolean isTool = i >= blocks.length && i < blocks.length + tools.length;
-            boolean isFood = i >= blocks.length + tools.length;
-            int tile = isFood ? foods[i - blocks.length - tools.length].tile
-                     : isTool ? tools[i - blocks.length].tile
-                     : blocks[i].sideTile;
+            com.mineclone.world.ItemStack sample = new com.mineclone.world.ItemStack(items.get(i), 1);
             int c = i % cols;
             int r = i / cols;
             float x = startX + c * (sw + gap);
@@ -1386,25 +1355,15 @@ public class Hud {
             drawSlotBack(x, y, sw, hov);
 
             float p = 6f; // padding inside slot
-            if (isTool || isFood)
-                drawTileIcon(tile, x + p, y + p, sw - p * 2, 1f);
-            else
-                drawItemIcon(blocks[i], x + p, y + p, sw - p * 2, 1f);
+            drawItemIcon(sample, x + p, y + p, sw - p * 2, 1f);
 
             if (hov) {
-                hovered = isFood ? foods[i - blocks.length - tools.length].displayName
-                         : isTool ? tools[i - blocks.length].displayName
-                         : displayName(blocks[i]);
+                hovered = sample.displayName();
                 hx = x;
                 hy = y;
                 hw = sw;
                 if (clicked)
-                    picked = isFood
-                            ? new com.mineclone.world.ItemStack(
-                                    foods[i - blocks.length - tools.length], 1)
-                            : isTool
-                            ? new com.mineclone.world.ItemStack(tools[i - blocks.length])
-                            : new com.mineclone.world.ItemStack(blocks[i], 1);
+                    picked = sample;
             }
         }
 

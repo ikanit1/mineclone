@@ -97,8 +97,8 @@ public final class ItemRenderer {
 
     private void setTiles(ItemStack s, boolean cube) {
         if (cube) {
-            float[] side = TextureAtlas.uv(s.type.sideTile);
-            float[] top = TextureAtlas.uv(s.type.topTile);
+            float[] side = TextureAtlas.uv(s.block().sideTile);
+            float[] top = TextureAtlas.uv(s.block().topTile);
             shader.setVec2("uUvFront", side[0], side[1]);
             shader.setVec2("uUvSide", side[0], side[1]);
             shader.setVec2("uUvTop", top[0], top[1]);
@@ -112,9 +112,7 @@ public final class ItemRenderer {
 
     /** Кубиком рисуются настоящие блоки; факел, огонь и слои — плоско. */
     private static boolean isCube(ItemStack s) {
-        if (s.isTool() || s.isFood())
-            return false;
-        BlockType b = s.type;
+        BlockType b = s.block();
         return b != null && !b.isCross() && !b.isLayered()
                 && b != BlockType.WATER && b != BlockType.WATER_FLOW && b != BlockType.LAVA;
     }

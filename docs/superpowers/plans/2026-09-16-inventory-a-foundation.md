@@ -388,14 +388,14 @@ public final class ItemStack {
     `RenderAtmospherePreview`, `RenderMobPreview` — на `ItemStack.of(...)`.
     Смысл каждого теста сохраняется; утверждения про `ToolType.X.level` —
     через `Items.get().require("x").tool.level()`.
-- [ ] Удалить `world/ToolType.java`, `world/FoodType.java`.
-- [ ] Тесты (новые): `stacks merge only with equal components`,
+- [x] Удалить `world/ToolType.java`, `world/FoodType.java`.
+- [x] Тесты (новые): `stacks merge only with equal components`,
       `unbreakable tools never wear`, `custom name overrides the item name`,
       `inventory add keeps components apart`, `content hash changes when a count changes`.
 - [ ] Полный `.\run-tests.ps1` зелёный; игра запускается, в выживании ломается
       блок, выпадает дроп, крафтится кирка, плавится мясо (ручная проверка
       автопилотом не нужна — это делает задача 14).
-- [ ] Коммит `refactor(item): stacks reference registry items; ToolType and FoodType retired`.
+- [x] Коммит `refactor(item): stacks reference registry items; ToolType and FoodType retired`.
 
 ## Задача 6. Сохранения
 

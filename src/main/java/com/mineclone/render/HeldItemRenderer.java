@@ -37,8 +37,9 @@ public final class HeldItemRenderer {
     private final Shader blockShader;
     private final Shader armShader;
     private final Map<BlockType, Mesh> blockMeshes = new EnumMap<>(BlockType.class);
-    private final Map<com.mineclone.world.ToolType, Mesh> toolMeshes =
-            new EnumMap<>(com.mineclone.world.ToolType.class);
+    // Ключ — сам предмет, а не его тайл: два предмета с одной иконкой
+    // остаются двумя предметами, и делить меш между ними незачем.
+    private final Map<com.mineclone.item.Item, Mesh> toolMeshes = new java.util.HashMap<>();
     private final int armVao, armVbo;
     private final int armTexture;
 
@@ -304,26 +305,27 @@ public final class HeldItemRenderer {
     //  Отрисовка
     // -------------------------------------------------------------------------
 
-    public void render(TextureAtlas atlas, BlockType held, com.mineclone.world.ToolType heldTool,
+    public void render(TextureAtlas atlas, com.mineclone.world.ItemStack held,
             float aspect, float fovDegrees, float equipProgress, float swingProgress,
             float walkDistance, boolean underwater, boolean viewBobbing,
             float daylight, float brightness, float skyFrac, float blockFrac,
             float linearOut) {
-        render(atlas, held, heldTool, aspect, fovDegrees, equipProgress, swingProgress,
+        render(atlas, held, aspect, fovDegrees, equipProgress, swingProgress,
                 walkDistance, underwater, viewBobbing, daylight, brightness, skyFrac, blockFrac,
-                linearOut, 1f, 0f, 0f);
+                linearOut, 0f, 0f);
     }
 
     /**
-     * @param toolCondition остаток прочности инструмента 0..1 — по нему трещины
-     * @param inspect       0..1 — поза осмотра предмета
-     * @param spin          угол вращения предмета при осмотре, радианы
+     * @param inspect 0..1 — поза осмотра предмета
+     * @param spin    угол вращения предмета при осмотре, радианы
      */
-    public void render(TextureAtlas atlas, BlockType held, com.mineclone.world.ToolType heldTool,
+    public void render(TextureAtlas atlas, com.mineclone.world.ItemStack held,
             float aspect, float fovDegrees, float equipProgress, float swingProgress,
             float walkDistance, boolean underwater, boolean viewBobbing,
             float daylight, float brightness, float skyFrac, float blockFrac,
-            float linearOut, float toolCondition, float inspect, float spin) {
+            float linearOut, float inspect, float spin) {
+        BlockType heldBlock = held == null ? null : held.block();
+        com.mineclone.item.Item heldTool = held != null && held.tool() != null ? held.item : null;
 
         // Единый источник правды по свету — уровень освещённости там, где стоит
         // игрок. Рука и предмет берут одну и ту же настройку, поэтому не могут
@@ -336,7 +338,7 @@ public final class HeldItemRenderer {
         Matrix4f projection = projection(aspect, fovDegrees);
         Matrix4f view = new Matrix4f().translate(
                 -0.48f * Math.max(0f, 1f - aspect / (16f / 9f)), 0f, 0f);
-        boolean holding = (held != null && held != BlockType.AIR) || heldTool != null;
+        boolean holding = (heldBlock != null && heldBlock != BlockType.AIR) || heldTool != null;
 
         // Собственный чистый z-буфер на первый план: без него задние грани
         // бокса руки перекрывают передние (обход вершин куба не гарантирован,
@@ -379,9 +381,9 @@ public final class HeldItemRenderer {
         if (holding) {
             Mesh mesh = heldTool != null
                     ? toolMeshes.computeIfAbsent(heldTool, HeldItemRenderer::createToolMesh)
-                    : blockMeshes.computeIfAbsent(held, HeldItemRenderer::createItemMesh);
+                    : blockMeshes.computeIfAbsent(heldBlock, HeldItemRenderer::createItemMesh);
             // Факел светит сам — не даём ему потемнеть в руке.
-            SceneLighting itemLight = held == BlockType.TORCH && heldTool == null
+            SceneLighting itemLight = heldBlock == BlockType.TORCH && heldTool == null
                     ? SceneLighting.firstPerson(brightness, Math.max(handLevel, 0.85f))
                     : handLight;
             itemLight.linearOut = linearOut;
@@ -401,9 +403,9 @@ public final class HeldItemRenderer {
             blockShader.unbind();
 
             if (heldTool != null) {
-                int stage = crackStage(toolCondition);
+                int stage = crackStage(held.condition());
                 if (stage >= 0)
-                    renderCracks(atlas, mesh, projection, view, pose, heldTool.tile, stage, linearOut);
+                    renderCracks(atlas, mesh, projection, view, pose, held.iconTile(), stage, linearOut);
                 if (inspect < 0.05f)
                     renderTrail(projection, view, equipProgress, swingProgress, walkDistance,
                             viewBobbing, handLevel, linearOut);
@@ -491,13 +493,13 @@ public final class HeldItemRenderer {
      * по диагонали тайла, и ровно поставленный квад выглядел бы как открытка
      * с картинкой, а не как предмет в кулаке.
      */
-    private static Mesh createToolMesh(com.mineclone.world.ToolType tool) {
+    private static Mesh createToolMesh(com.mineclone.item.Item tool) {
         List<Float> pos = new ArrayList<>();
         List<Float> uvs = new ArrayList<>();
         List<Float> light = new ArrayList<>();
         List<Float> blockLight = new ArrayList<>();
         List<Integer> indices = new ArrayList<>();
-        float[] uv = TextureAtlas.uv(tool.tile);
+        float[] uv = TextureAtlas.uv(tool.iconTile);
         float u0 = uv[0], v0 = uv[1], u1 = uv[2], v1 = uv[3];
         float h = 0.62f;
         float[][][] planes = {

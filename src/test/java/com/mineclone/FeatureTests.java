@@ -7,7 +7,6 @@ import com.mineclone.game.SoundIndicators;
 import com.mineclone.render.OutlineAnimator;
 import com.mineclone.world.Biome;
 import com.mineclone.world.BlockType;
-import com.mineclone.world.FoodType;
 import com.mineclone.world.ItemStack;
 import com.mineclone.world.NightSky;
 import com.mineclone.world.Weather;
@@ -688,8 +687,8 @@ final class FeatureTests {
         ItemEntity b = lying(new ItemStack(BlockType.COBBLE, 50), 8.8f, 8.5f);
         ItemEntity dirt = lying(new ItemStack(BlockType.DIRT, 5), 8.6f, 8.5f);
         ItemEntity distant = lying(new ItemStack(BlockType.COBBLE, 5), 12f, 8.5f);
-        ItemEntity pick1 = lying(new ItemStack(com.mineclone.world.ToolType.WOOD_PICKAXE), 8.5f, 9f);
-        ItemEntity pick2 = lying(new ItemStack(com.mineclone.world.ToolType.WOOD_PICKAXE), 8.5f, 9.1f);
+        ItemEntity pick1 = lying(ItemStack.of("wooden_pickaxe"), 8.5f, 9f);
+        ItemEntity pick2 = lying(ItemStack.of("wooden_pickaxe"), 8.5f, 9.1f);
         a.age = 100f;
         b.age = 5f;
         java.util.List<ItemEntity> list = new java.util.ArrayList<>(
@@ -702,8 +701,8 @@ final class FeatureTests {
         assertTrue("tools never merge", pick1.stack.count == 1 && pick2.stack.count == 1);
         assertEq("a merged stack takes the younger age", 5f, a.age);
 
-        ItemEntity meat1 = lying(new ItemStack(FoodType.RAW_BEEF, 2), 3.5f, 3.5f);
-        ItemEntity meat2 = lying(new ItemStack(FoodType.RAW_BEEF, 3), 3.7f, 3.6f);
+        ItemEntity meat1 = lying(ItemStack.of("beef", 2), 3.5f, 3.5f);
+        ItemEntity meat2 = lying(ItemStack.of("beef", 3), 3.7f, 3.6f);
         java.util.List<ItemEntity> food = new java.util.ArrayList<>(java.util.List.of(meat1, meat2));
         ItemEntity.mergeNearby(food);
         assertEq("food merges whole", 5, meat1.stack.count);
@@ -725,12 +724,12 @@ final class FeatureTests {
         com.mineclone.save.SaveManager sm = new com.mineclone.save.SaveManager(new java.io.File(root, "saves"));
         byte[] blocks = new byte[com.mineclone.save.SaveFormat.CHUNK_VOLUME];
         byte[] meta = new byte[com.mineclone.save.SaveFormat.CHUNK_VOLUME];
-        ItemStack pick = new ItemStack(com.mineclone.world.ToolType.STONE_PICKAXE);
-        pick.damage = 17;
+        ItemStack pick = ItemStack.of("stone_pickaxe");
+        pick.setDamage(17);
         java.util.List<com.mineclone.world.DroppedItem> dropped = java.util.List.of(
                 new com.mineclone.world.DroppedItem(new ItemStack(BlockType.COBBLE, 42), 3.5f, 61.25f, -7.75f, 12.5f),
                 new com.mineclone.world.DroppedItem(pick, 4f, 60f, -6f, 200f),
-                new com.mineclone.world.DroppedItem(new ItemStack(FoodType.RAW_BEEF, 3), 5f, 60f, -5f, 0f));
+                new com.mineclone.world.DroppedItem(ItemStack.of("beef", 3), 5f, 60f, -5f, 0f));
         sm.saveChunkAsync("w1", new com.mineclone.save.ChunkSnapshot(0, -1, blocks, meta,
                 new java.util.HashMap<>(), new java.util.HashMap<>(), dropped));
         sm.flushAndAwait();
@@ -738,12 +737,13 @@ final class FeatureTests {
         assertTrue("chunk loaded", out != null);
         assertEq("all items came back", 3, out.items.size());
         com.mineclone.world.DroppedItem cobble = out.items.get(0);
-        assertEq("block stack", BlockType.COBBLE, cobble.stack.type);
+        assertEq("block stack", BlockType.COBBLE, cobble.stack.block());
         assertEq("its count", 42, cobble.stack.count);
         assertTrue("its place", cobble.x == 3.5f && cobble.y == 61.25f && cobble.z == -7.75f);
         assertEq("its age", 12.5f, cobble.age);
-        assertEq("tool keeps its wear", 17, out.items.get(1).stack.damage);
-        assertEq("food keeps its kind", FoodType.RAW_BEEF, out.items.get(2).stack.food);
+        assertEq("tool keeps its wear", 17, out.items.get(1).stack.damage());
+        assertEq("food keeps its kind", "mineclone:beef",
+                out.items.get(2).stack.item.id.toString());
 
         // Чанк отдаёт предметы в мир один раз, но помнит их для записи.
         com.mineclone.world.Chunk c = new com.mineclone.world.Chunk(0, -1);
@@ -1105,7 +1105,7 @@ final class FeatureTests {
         assertEq("furnace uses the right button", ContextHint.RMB,
                 ContextHint.forTarget(BlockType.FURNACE, null, true, false).key());
         assertTrue("stone needs no hint", ContextHint.forTarget(BlockType.STONE, null, true, false) == null);
-        ItemStack beef = new ItemStack(FoodType.COOKED_BEEF, 3);
+        ItemStack beef = ItemStack.of("cooked_beef", 3);
         assertTrue("food in hand suggests eating",
                 ContextHint.forTarget(BlockType.STONE, beef, true, false).action().startsWith("съесть"));
         assertTrue("a full stomach suggests nothing",

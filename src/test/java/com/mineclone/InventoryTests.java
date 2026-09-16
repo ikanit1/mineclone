@@ -18,6 +18,7 @@ import com.mineclone.item.Tag;
 import com.mineclone.item.TagRegistry;
 import com.mineclone.item.ToolClass;
 import com.mineclone.world.BlockType;
+import com.mineclone.world.Inventory;
 import com.mineclone.world.ItemStack;
 
 import java.util.List;
@@ -56,6 +57,97 @@ final class InventoryTests {
         r.run("component codec round-trips every known type", InventoryTests::testComponentCodecs);
         r.run("unknown components survive a round trip byte for byte", InventoryTests::testUnknownComponents);
         r.run("with null removes a component", InventoryTests::testComponentRemoval);
+        r.run("stacks merge only with equal components", InventoryTests::testStackMerging);
+        r.run("unbreakable tools never wear", InventoryTests::testUnbreakable);
+        r.run("custom name overrides the item name", InventoryTests::testCustomName);
+        r.run("inventory add keeps components apart", InventoryTests::testInventoryComponents);
+        r.run("content hash changes when a count changes", InventoryTests::testContentHash);
+    }
+
+    // ---------------------------------------------------------------- стопки
+
+    private static void testStackMerging() {
+        ItemStack a = ItemStack.of("cobblestone", 10);
+        ItemStack b = ItemStack.of("cobblestone", 10);
+        assertTrue("same item stacks", a.stacksWith(b));
+        b.set(Components.CUSTOM_NAME, "Особый булыжник");
+        assertTrue("a named stack keeps to itself", !a.stacksWith(b));
+        assertTrue("and the other way round", !b.stacksWith(a));
+        b.set(Components.CUSTOM_NAME, null);
+        assertTrue("removing it lets them merge again", a.stacksWith(b));
+        assertTrue("another item never stacks", !a.stacksWith(ItemStack.of("stone", 1)));
+        // Изнашиваемое не стопкуется вовсе: иначе два кайла с разным износом
+        // слились бы в одно и одна из прочностей пропала бы.
+        ItemStack pick = ItemStack.of("iron_pickaxe");
+        assertTrue("tools never stack", !pick.stacksWith(ItemStack.of("iron_pickaxe")));
+        assertEq("tools do not stack at all", 1, pick.maxStack());
+    }
+
+    private static void testUnbreakable() {
+        ItemStack pick = ItemStack.of("wooden_pickaxe");
+        pick.set(Components.UNBREAKABLE, true);
+        for (int i = 0; i < 500; i++)
+            assertTrue("never breaks", !pick.wear());
+        assertEq("and never takes damage", 0, pick.damage());
+        assertEq("so it stays whole", 1f, pick.condition());
+
+        ItemStack plain = ItemStack.of("wooden_pickaxe");
+        int uses = 0;
+        while (!plain.wear() && uses < 10000)
+            uses++;
+        assertEq("a plain one lasts its durability", plain.item.durability - 1, uses);
+        // Блок износом не интересуется даже с компонентом прочности.
+        assertTrue("blocks never wear", !ItemStack.of("stone", 1).wear());
+    }
+
+    private static void testCustomName() {
+        ItemStack s = ItemStack.of("stone", 1);
+        assertEq("plain name comes from the registry", "Камень", s.displayName());
+        s.set(Components.CUSTOM_NAME, "Первый камень");
+        assertEq("custom name wins", "Первый камень", s.displayName());
+        assertEq("the item itself is untouched", "Камень", s.item.name);
+        s.set(Components.CUSTOM_NAME, null);
+        assertEq("and it comes back", "Камень", s.displayName());
+    }
+
+    private static void testInventoryComponents() {
+        Inventory inv = new Inventory();
+        ItemStack plain = ItemStack.of("cobblestone", 30);
+        ItemStack named = ItemStack.of("cobblestone", 30).set(Components.CUSTOM_NAME, "Метка");
+        assertEq("plain fits", 0, inv.add(plain));
+        assertEq("named fits too", 0, inv.add(named));
+
+        int plainSlots = 0, namedSlots = 0;
+        for (int i = 0; i < inv.size(); i++) {
+            ItemStack s = inv.get(i);
+            if (s == null)
+                continue;
+            if ("Метка".equals(s.get(Components.CUSTOM_NAME)))
+                namedSlots++;
+            else
+                plainSlots++;
+        }
+        assertEq("the named one did not merge in", 1, namedSlots);
+        assertEq("nor the plain one", 1, plainSlots);
+
+        // Добавление кладёт копию: стопка на руках у вызывающего не должна
+        // оказаться той же самой, что легла в слот.
+        assertTrue("a copy went in, not the stack itself", inv.get(0) != plain);
+        assertEq("and the copy carries the count", 30, inv.get(0).count);
+    }
+
+    private static void testContentHash() {
+        Inventory inv = new Inventory();
+        inv.set(0, ItemStack.of("stone", 4));
+        int before = inv.contentHash();
+        inv.get(0).count = 5;
+        assertTrue("count shows up in the hash", before != inv.contentHash());
+        inv.get(0).count = 4;
+        assertEq("and back", before, inv.contentHash());
+        inv.get(0).set(Components.CUSTOM_NAME, "Метка");
+        assertTrue("components show up too", before != inv.contentHash());
+        inv.set(0, ItemStack.of("dirt", 4));
+        assertTrue("so does the item", before != inv.contentHash());
     }
 
     // ----------------------------------------------------------- компоненты

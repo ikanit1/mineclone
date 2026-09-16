@@ -82,12 +82,12 @@ public enum MobType {
      * темноте становится выгоднее, чем строить дом. Волк и птица тоже пусты:
      * охота на них — не способ прокормиться.
      */
-    public com.mineclone.world.FoodType drop() {
+    public String drop() {
         return switch (this) {
-            case COW -> com.mineclone.world.FoodType.RAW_BEEF;
-            case PIG -> com.mineclone.world.FoodType.RAW_PORK;
-            case CHICKEN, RABBIT -> com.mineclone.world.FoodType.RAW_CHICKEN;
-            case SHEEP -> com.mineclone.world.FoodType.RAW_MUTTON;
+            case COW -> "beef";
+            case PIG -> "porkchop";
+            case CHICKEN, RABBIT -> "chicken";
+            case SHEEP -> "mutton";
             default -> null;
         };
     }

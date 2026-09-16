@@ -39,8 +39,8 @@ public final class ContextHint {
                 default -> { }
             }
         }
-        if (held != null && held.isFood() && canEat)
-            return new Hint(RMB, "съесть " + held.food.displayName.toLowerCase());
+        if (held != null && held.food() != null && canEat)
+            return new Hint(RMB, "съесть " + held.displayName().toLowerCase());
         if (mobInReach)
             return new Hint(LMB, "ударить");
         return null;

@@ -18,35 +18,16 @@ public final class Inventory {
     }
     public int size() { return SIZE; }
 
-    public boolean canAdd(BlockType type, int amount) {
+    /** Влезет ли ещё {@code amount} таких же предметов. */
+    public boolean canAdd(ItemStack sample, int amount) {
+        if (sample == null || amount <= 0) return true;
+        int max = sample.maxStack();
         for (ItemStack s : slots) {
-            if (s == null) amount -= ItemStack.MAX_STACK;
-            else if (!s.isTool() && !s.isFood() && s.type == type)
-                amount -= ItemStack.MAX_STACK - s.count;
+            if (s == null) amount -= max;
+            else if (s.stacksWith(sample)) amount -= max - s.count;
             if (amount <= 0) return true;
         }
         return amount <= 0;
-    }
-
-    /**
-     * Добавляет еду, сливая в подходящие стопки, потом в пустые слоты.
-     * @return остаток, который не влез
-     */
-    public int addFood(FoodType food, int amount) {
-        if (food == null || amount <= 0) return 0;
-        for (int i = 0; i < SIZE && amount > 0; i++) {
-            ItemStack s = slots[i];
-            if (s != null && s.isFood() && s.food == food && !s.isFull())
-                amount = s.addUpTo(amount);
-        }
-        for (int i = 0; i < SIZE && amount > 0; i++) {
-            if (slots[i] == null) {
-                int put = Math.min(ItemStack.MAX_STACK, amount);
-                slots[i] = new ItemStack(food, put);
-                amount -= put;
-            }
-        }
-        return amount;
     }
 
     /** Кладёт предмет в первый свободный слот. @return true, если влез. */
@@ -60,21 +41,28 @@ public final class Inventory {
         return false;
     }
 
-    /** Adds items, merging into matching stacks first, then into empty slots.
-     *  @return leftover that did not fit. */
-    public int add(BlockType type, int amount) {
-        if (type == null || type == BlockType.AIR || amount <= 0) return 0;
-        // pass 1: top up existing stacks of this type
+    /**
+     * Добавляет стопку, сливая в подходящие, потом в пустые слоты.
+     *
+     * <p>Кладёт копии, а не саму {@code s}: вызывающий отдаёт содержимое, а не
+     * ссылку, и оставшаяся у него на руках стопка не должна оказаться той же
+     * самой, что лежит теперь в инвентаре.
+     *
+     * @return остаток, который не влез
+     */
+    public int add(ItemStack s) {
+        if (s == null || s.count <= 0) return 0;
+        int amount = s.count;
+        int max = s.maxStack();
         for (int i = 0; i < SIZE && amount > 0; i++) {
-            ItemStack s = slots[i];
-            if (s != null && !s.isTool() && !s.isFood() && s.type == type && !s.isFull())
-                amount = s.addUpTo(amount);
+            ItemStack in = slots[i];
+            if (in != null && in.stacksWith(s) && !in.isFull())
+                amount = in.addUpTo(amount);
         }
-        // pass 2: fill empty slots
         for (int i = 0; i < SIZE && amount > 0; i++) {
             if (slots[i] == null) {
-                int put = Math.min(ItemStack.MAX_STACK, amount);
-                slots[i] = new ItemStack(type, put);
+                int put = Math.min(max, amount);
+                slots[i] = s.copyWithCount(put);
                 amount -= put;
             }
         }
@@ -89,6 +77,17 @@ public final class Inventory {
         if (--s.count <= 0) slots[slot] = null;
     }
 
+    /**
+     * Хеш содержимого целиком. Нужен там, где надо заметить, что инвентарь
+     * изменился, не сравнивая его со снимком: предметы, числа и компоненты.
+     */
+    public int contentHash() {
+        int h = 1;
+        for (ItemStack s : slots)
+            h = h * 31 + (s == null ? 0 : s.contentHash());
+        return h;
+    }
+
     /** Left-click interaction. Returns the new cursor stack (may be null). */
     public ItemStack leftClick(int slot, ItemStack cursor) {
         return leftClick(slots, slot, cursor);
@@ -97,10 +96,10 @@ public final class Inventory {
     /**
      * То же самое, но над произвольным массивом слотов.
      *
-     * Правила слияния стопок нетривиальны (инструмент не делится, еда не
-     * смешивается с блоками, остаток остаётся на курсоре), и второй копии у
-     * них быть не должно: сундук обязан вести себя ровно как инвентарь, иначе
-     * игрок обнаруживает разницу в самый неподходящий момент.
+     * Правила слияния стопок нетривиальны (нестопкуемое не делится, разные
+     * компоненты не смешиваются, остаток остаётся на курсоре), и второй копии
+     * у них быть не должно: сундук обязан вести себя ровно как инвентарь,
+     * иначе игрок обнаруживает разницу в самый неподходящий момент.
      */
     public static ItemStack leftClick(ItemStack[] slots, int slot, ItemStack cursor) {
         if (slots == null || slot < 0 || slot >= slots.length) return cursor;
@@ -119,7 +118,7 @@ public final class Inventory {
             cursor.count = leftover;
             return cursor;
         }
-        // different types: swap
+        // different items: swap
         slots[slot] = cursor;
         return s;
     }
@@ -135,28 +134,26 @@ public final class Inventory {
         ItemStack s = slots[slot];
         if (cursor == null) {        // take half (ceil) onto cursor
             if (s == null) return null;
-            if (s.isTool()) {        // инструмент не делится — забираем целиком
+            if (s.maxStack() <= 1) { // нестопкуемое не делится — забираем целиком
                 slots[slot] = null;
                 return s;
             }
             int half = (s.count + 1) / 2;
-            ItemStack taken = s.isFood() ? new ItemStack(s.food, half)
-                                         : new ItemStack(s.type, half);
+            ItemStack taken = s.copyWithCount(half);
             s.count -= half;
             if (s.count <= 0) slots[slot] = null;
             return taken;
         }
         if (s == null) {             // deposit one into empty slot
-            if (cursor.isTool()) {   // инструмент кладётся целиком
+            if (cursor.maxStack() <= 1) {   // нестопкуемое кладётся целиком
                 slots[slot] = cursor;
                 return null;
             }
-            slots[slot] = cursor.isFood() ? new ItemStack(cursor.food, 1)
-                                          : new ItemStack(cursor.type, 1);
+            slots[slot] = cursor.copyWithCount(1);
             if (--cursor.count <= 0) return null;
             return cursor;
         }
-        if (s.stacksWith(cursor) && !s.isFull()) { // deposit one onto same type
+        if (s.stacksWith(cursor) && !s.isFull()) { // deposit one onto the same item
             s.count++;
             if (--cursor.count <= 0) return null;
             return cursor;
@@ -165,7 +162,7 @@ public final class Inventory {
             slots[slot] = cursor;
             return s;
         }
-        return cursor;               // same type but full: no-op
+        return cursor;               // same item but full: no-op
     }
 
     /** True when the selected slot has something placeable. */

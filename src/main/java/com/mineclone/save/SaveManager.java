@@ -355,8 +355,9 @@ public final class SaveManager {
                 for (int i = 0; i < n; i++) {
                     int blockId = in.readUnsignedByte();
                     int count = in.readShort();
-                    if (count > 0 && blockId > 0 && blockId < BlockType.VALUES.length)
-                        tmp[i] = new com.mineclone.world.ItemStack(BlockType.VALUES[blockId], count);
+                    com.mineclone.item.Item item = com.mineclone.item.LegacyItems.block(blockId);
+                    if (count > 0 && item != null)
+                        tmp[i] = new com.mineclone.world.ItemStack(item, count);
                 }
                 inventory = tmp;
             } else if (version >= 3) {
@@ -366,8 +367,9 @@ public final class SaveManager {
                         new com.mineclone.world.ItemStack[Math.max(com.mineclone.world.Inventory.SIZE, n)];
                 for (int i = 0; i < n; i++) {
                     int blockId = in.readUnsignedByte();
-                    if (blockId > 0 && blockId < BlockType.VALUES.length)
-                        tmp[i] = new com.mineclone.world.ItemStack(BlockType.VALUES[blockId], 1);
+                    com.mineclone.item.Item item = com.mineclone.item.LegacyItems.block(blockId);
+                    if (item != null)
+                        tmp[i] = new com.mineclone.world.ItemStack(item, 1);
                 }
                 inventory = tmp;
             }
@@ -391,45 +393,58 @@ public final class SaveManager {
             throws IOException {
         if (s == null) {
             o.writeByte(SLOT_EMPTY);
-        } else if (s.isTool()) {
-            o.writeByte(SLOT_TOOL);
-            o.writeByte(s.tool.ordinal());
-            o.writeShort(Math.min(Short.MAX_VALUE, s.damage));
-        } else if (s.isFood()) {
-            o.writeByte(SLOT_FOOD);
-            o.writeByte(s.food.ordinal());
-            o.writeShort(s.count);
-        } else {
-            o.writeByte(SLOT_BLOCK);
-            o.writeByte(s.type.ordinal());
-            o.writeShort(s.count);
+            return;
         }
+        int tool = com.mineclone.item.LegacyItems.toolIndex(s.item);
+        if (tool >= 0) {
+            o.writeByte(SLOT_TOOL);
+            o.writeByte(tool);
+            o.writeShort(Math.min(Short.MAX_VALUE, s.damage()));
+            return;
+        }
+        int food = com.mineclone.item.LegacyItems.foodIndex(s.item);
+        if (food >= 0) {
+            o.writeByte(SLOT_FOOD);
+            o.writeByte(food);
+            o.writeShort(s.count);
+            return;
+        }
+        if (s.block() != null) {
+            o.writeByte(SLOT_BLOCK);
+            o.writeByte(s.block().ordinal());
+            o.writeShort(s.count);
+            return;
+        }
+        // Предмет, которого в этом формате не бывает. Записать его нечем,
+        // а врать про содержимое слота нельзя — слот пуст.
+        o.writeByte(SLOT_EMPTY);
     }
 
     /** Одна стопка из потока; null — пустой слот или неизвестный предмет. */
     static com.mineclone.world.ItemStack readStack(DataInputStream in) throws IOException {
         int kind = in.readUnsignedByte();
         if (kind == SLOT_TOOL) {
-            com.mineclone.world.ToolType t =
-                    com.mineclone.world.ToolType.byId(in.readUnsignedByte());
+            com.mineclone.item.Item t =
+                    com.mineclone.item.LegacyItems.tool(in.readUnsignedByte());
             int dmg = in.readShort();
             if (t == null)
                 return null;
-            com.mineclone.world.ItemStack st = new com.mineclone.world.ItemStack(t);
-            st.damage = Math.max(0, dmg);
+            com.mineclone.world.ItemStack st = new com.mineclone.world.ItemStack(t, 1);
+            st.setDamage(Math.max(0, dmg));
             return st;
         }
         if (kind == SLOT_FOOD) {
-            com.mineclone.world.FoodType f =
-                    com.mineclone.world.FoodType.byId(in.readUnsignedByte());
+            com.mineclone.item.Item f =
+                    com.mineclone.item.LegacyItems.food(in.readUnsignedByte());
             int count = in.readShort();
             return (f != null && count > 0) ? new com.mineclone.world.ItemStack(f, count) : null;
         }
         if (kind == SLOT_BLOCK) {
             int blockId = in.readUnsignedByte();
             int count = in.readShort();
-            if (count > 0 && blockId > 0 && blockId < BlockType.VALUES.length)
-                return new com.mineclone.world.ItemStack(BlockType.VALUES[blockId], count);
+            com.mineclone.item.Item b = com.mineclone.item.LegacyItems.block(blockId);
+            if (count > 0 && b != null)
+                return new com.mineclone.world.ItemStack(b, count);
         }
         return null;
     }

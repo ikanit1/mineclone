@@ -147,9 +147,10 @@ public final class ItemEntity {
 
     /** Relative density: below one floats, above one sinks. */
     public static float density(ItemStack s) {
-        if (s.isFood()) return 0.82f;
-        if (s.isTool()) return 2.4f;
-        return switch (s.type) {
+        if (s.food() != null) return 0.82f;
+        if (s.hasDurability()) return 2.4f;
+        if (s.block() == null) return 1f;
+        return switch (s.block()) {
             case WOOD, PLANKS, LEAVES, ROPE, CHEST, JOURNAL -> 0.58f;
             case TORCH, WEB -> 0.72f;
             case STONE, COBBLE, MOSSY_COBBLE, BEDROCK, COAL_ORE, IRON_ORE,

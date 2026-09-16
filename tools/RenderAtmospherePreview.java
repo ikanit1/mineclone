@@ -113,8 +113,8 @@ public class RenderAtmospherePreview {
         List<com.mineclone.world.entity.ItemEntity> items = new ArrayList<>();
         Object[][] drops = {
                 { new ItemStack(BlockType.COBBLE, 24), 21.4f, 20.6f, 0.4f },
-                { new ItemStack(ToolType.IRON_PICKAXE), 23.3f, 20.9f, 1.9f },
-                { new ItemStack(FoodType.RAW_BEEF, 2), 22.3f, 21.5f, 3.1f },
+                { ItemStack.of("iron_pickaxe"), 23.3f, 20.9f, 1.9f },
+                { ItemStack.of("beef", 2), 22.3f, 21.5f, 3.1f },
                 { new ItemStack(BlockType.WOOD, 1), 24.1f, 19.8f, 0.9f },
                 { new ItemStack(BlockType.TORCH, 3), 20.6f, 21.4f, 2.4f },
         };
@@ -310,8 +310,10 @@ public class RenderAtmospherePreview {
                 ps.dofFocus = 0.3f;
                 ps.dofRange = 0.25f;
                 post.resolveDepth();
-                hand.render(atlas, null, ToolType.IRON_PICKAXE, (float) W / H, 70f, 1f, s.x.swing(),
-                        0f, false, false, daylight, 1f, 1f, 0f, 1f, s.x.condition(), s.x.inspect(), 0.9f);
+                ItemStack inHand = ItemStack.of("iron_pickaxe");
+                inHand.setDamage((int) ((1f - s.x.condition()) * inHand.item.durability));
+                hand.render(atlas, inHand, (float) W / H, 70f, 1f, s.x.swing(),
+                        0f, false, false, daylight, 1f, 1f, 0f, 1f, s.x.inspect(), 0.9f);
                 if (ps.dofStrength > 0f)
                     post.resolveHandDepth();
                 post.resolveColor();

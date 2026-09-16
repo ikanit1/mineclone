@@ -80,8 +80,9 @@ public class RenderMobPreview {
                         mobs, world, 1f, lighting);
                 // Третий кадр — рука с инструментом: поза у него своя, и
                 // ломалась она молча, пока превью не собиралось.
-                hand.render(atlas, frame == 2 ? BlockType.GRASS : null,
-                        frame == 3 ? com.mineclone.world.ToolType.IRON_PICKAXE : null,
+                hand.render(atlas,
+                        frame == 2 ? new ItemStack(BlockType.GRASS, 1)
+                                : frame == 3 ? ItemStack.of("iron_pickaxe") : null,
                         (float) width / height, 70f, 1f,
                         frame == 1 ? 0.65f : (frame == 3 ? 0.35f : 0f), 0f,
                         false, false, 1f, 1f, 1f, 0f, 0f);
