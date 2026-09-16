@@ -268,7 +268,7 @@ public final class Items {
   `Set<Item> members(ResourceId)`; `List<Tag> find(String prefix)` — начало
   пути id, имени или псевдонима, без регистра, «ё» = «е»; `#`-ссылки внутри
   `values` разрешаются рекурсивно, цикл — ошибка.
-- [ ] Тесты: `every placeable block has exactly one item`,
+- [x] Тесты: `every placeable block has exactly one item`,
       `technical blocks have no item`,
       `tools keep their old level, speed and durability` (таблица прежних
       значений `ToolType` прямо в тесте),
@@ -278,7 +278,7 @@ public final class Items {
       `tag includes resolve and a cycle is an error`,
       `registry rejects an unknown property with its path`,
       `missing items are cached placeholders`.
-- [ ] Коммит `feat(item): data-driven item registry, categories and tags`.
+- [x] Коммит `feat(item): data-driven item registry, categories and tags`.
 
 ## Задача 4. Компоненты
 

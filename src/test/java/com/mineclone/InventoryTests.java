@@ -5,6 +5,14 @@ import com.mineclone.data.JsonException;
 import com.mineclone.data.JsonObject;
 import com.mineclone.data.DataPack;
 import com.mineclone.data.ResourceId;
+import com.mineclone.item.Categories;
+import com.mineclone.item.Item;
+import com.mineclone.item.ItemRegistry;
+import com.mineclone.item.Items;
+import com.mineclone.item.Tag;
+import com.mineclone.item.TagRegistry;
+import com.mineclone.item.ToolClass;
+import com.mineclone.world.BlockType;
 
 import java.util.List;
 import java.util.Map;
@@ -29,6 +37,190 @@ final class InventoryTests {
         r.run("resource ids parse with and without a namespace", InventoryTests::testResourceIdParse);
         r.run("resource ids reject upper case and spaces", InventoryTests::testResourceIdRejects);
         r.run("data pack lists files by kind in a stable order", InventoryTests::testDataPackListing);
+        r.run("every placeable block has exactly one item", InventoryTests::testBlockItems);
+        r.run("technical blocks have no item", InventoryTests::testTechnicalBlocks);
+        r.run("tools keep their old level, speed and durability", InventoryTests::testToolNumbers);
+        r.run("food keeps its old nutrition", InventoryTests::testFoodNumbers);
+        r.run("computed tags find light sources and durable items", InventoryTests::testComputedTags);
+        r.run("tag search matches russian aliases and treats yo as ye", InventoryTests::testTagSearch);
+        r.run("tag includes resolve and a cycle is an error", InventoryTests::testTagIncludes);
+        r.run("registry rejects an unknown property with its path", InventoryTests::testRegistryStrict);
+        r.run("missing items are cached placeholders", InventoryTests::testMissingItems);
+    }
+
+    // -------------------------------------------------------------- реестр
+
+    /** Блоки без предмета: существуют внутри мира, но в руки не берутся. */
+    private static final java.util.Set<BlockType> TECHNICAL =
+            java.util.Set.of(BlockType.AIR, BlockType.WATER_FLOW, BlockType.DOOR_OPEN);
+
+    private static void testBlockItems() {
+        ItemRegistry reg = Items.get();
+        Categories cats = reg.categories();
+        for (BlockType b : BlockType.VALUES) {
+            if (TECHNICAL.contains(b))
+                continue;
+            Item item = reg.forBlock(b);
+            assertTrue("item for " + b, item != null);
+            assertEq("block round trip " + b, b, item.block);
+            assertTrue("name of " + b, !item.name.isBlank());
+            assertTrue("category of " + b + " is known", cats.has(item.category));
+        }
+        int blockItems = 0;
+        for (Item i : reg.all())
+            if (i.block != null)
+                blockItems++;
+        assertEq("one item per placeable block", BlockType.VALUES.length - TECHNICAL.size(), blockItems);
+    }
+
+    private static void testTechnicalBlocks() {
+        ItemRegistry reg = Items.get();
+        for (BlockType b : TECHNICAL)
+            assertTrue("no item for " + b, reg.forBlock(b) == null);
+    }
+
+    private static void testToolNumbers() {
+        // Таблица прежних значений ToolType. Числа стоят прямо здесь, а не
+        // берутся из кода: перенос в данные не имел права тронуть баланс, и
+        // сверять данные с ними же самими смысла нет.
+        Object[][] table = {
+                { "wooden_pickaxe",  ToolClass.PICKAXE, 1, 2.2f,  60 },
+                { "stone_pickaxe",   ToolClass.PICKAXE, 2, 4.0f, 132 },
+                { "iron_pickaxe",    ToolClass.PICKAXE, 3, 6.5f, 251 },
+                { "diamond_pickaxe", ToolClass.PICKAXE, 4, 9.0f, 900 },
+                { "wooden_axe",      ToolClass.AXE,     1, 2.2f,  60 },
+                { "stone_axe",       ToolClass.AXE,     2, 4.0f, 132 },
+                { "iron_axe",        ToolClass.AXE,     3, 6.5f, 251 },
+                { "diamond_axe",     ToolClass.AXE,     4, 9.0f, 900 },
+                { "wooden_shovel",   ToolClass.SHOVEL,  1, 2.2f,  60 },
+                { "stone_shovel",    ToolClass.SHOVEL,  2, 4.0f, 132 },
+                { "iron_shovel",     ToolClass.SHOVEL,  3, 6.5f, 251 },
+                { "diamond_shovel",  ToolClass.SHOVEL,  4, 9.0f, 900 },
+        };
+        ItemRegistry reg = Items.get();
+        for (Object[] row : table) {
+            Item t = reg.require((String) row[0]);
+            assertTrue("tool spec " + row[0], t.tool != null);
+            assertEq("class " + row[0], row[1], t.tool.toolClass());
+            assertEq("level " + row[0], row[2], t.tool.level());
+            assertEq("speed " + row[0], row[3], t.tool.speed());
+            assertEq("durability " + row[0], row[4], t.durability);
+            assertEq("tools do not stack " + row[0], 1, t.maxStack);
+            assertTrue("no fuel from a tool " + row[0], t.fuelSeconds == 0f);
+        }
+        assertTrue("pickaxe suits stone", reg.require("iron_pickaxe").tool.suits(BlockType.STONE));
+        assertTrue("pickaxe does not suit dirt", !reg.require("iron_pickaxe").tool.suits(BlockType.DIRT));
+    }
+
+    private static void testFoodNumbers() {
+        Object[][] table = {
+                { "beef", 3 }, { "porkchop", 3 }, { "chicken", 2 }, { "mutton", 2 },
+                { "cooked_beef", 7 }, { "cooked_porkchop", 7 },
+                { "cooked_chicken", 5 }, { "cooked_mutton", 5 },
+        };
+        ItemRegistry reg = Items.get();
+        for (Object[] row : table) {
+            Item f = reg.require((String) row[0]);
+            assertTrue("food spec " + row[0], f.food != null);
+            assertEq("nutrition " + row[0], row[1], f.food.nutrition());
+        }
+    }
+
+    private static void testComputedTags() {
+        ItemRegistry reg = Items.get();
+        assertTrue("torch is a light source", reg.require("torch").hasTag(ResourceId.of("light")));
+        assertTrue("stone is not a light source", !reg.require("stone").hasTag(ResourceId.of("light")));
+        assertTrue("pickaxe is durable", reg.require("iron_pickaxe").hasTag(ResourceId.of("durable")));
+        assertTrue("coal ore is fuel", reg.require("coal_ore").hasTag(ResourceId.of("fuel")));
+        assertTrue("stone is not fuel", !reg.require("stone").hasTag(ResourceId.of("fuel")));
+        assertTrue("beef is food", reg.require("beef").hasTag(ResourceId.of("food")));
+        assertTrue("planks burn", reg.require("planks").hasTag(ResourceId.of("flammable")));
+        // Вычисляемый тег обязан попадать и в состав: иначе его не перечислить.
+        assertTrue("computed tag is listed",
+                !reg.tags().members(ResourceId.of("light")).isEmpty());
+    }
+
+    private static void testTagSearch() {
+        TagRegistry tags = Items.get().tags();
+        assertTrue("by id prefix", named(tags.find("wooden_to"), "mineclone:wooden_tools"));
+        assertTrue("by russian name", named(tags.find("дерев"), "mineclone:wood"));
+        assertTrue("by alias", named(tags.find("древес"), "mineclone:wood"));
+        assertTrue("case is ignored", named(tags.find("ДЕРЕВ"), "mineclone:wood"));
+        assertTrue("yo reads as ye", named(tags.find("брев"), "mineclone:logs"));
+        assertTrue("ye reads as yo", named(tags.find("брёв"), "mineclone:logs"));
+        assertTrue("nothing matches", tags.find("zzz").isEmpty());
+    }
+
+    private static boolean named(List<Tag> found, String id) {
+        for (Tag t : found)
+            if (t.id().toString().equals(id))
+                return true;
+        return false;
+    }
+
+    private static void testTagIncludes() throws Exception {
+        ItemRegistry reg = Items.get();
+        java.util.Set<Item> wood = reg.tags().members(ResourceId.of("wood"));
+        assertTrue("include pulled the wooden pickaxe in", wood.contains(reg.require("wooden_pickaxe")));
+        assertTrue("direct value", wood.contains(reg.require("planks")));
+        assertTrue("stone stayed out", !wood.contains(reg.require("stone")));
+        assertTrue("wooden pickaxe knows the tag", reg.require("wooden_pickaxe").hasTag(ResourceId.of("wood")));
+
+        java.nio.file.Path root = java.nio.file.Files.createTempDirectory("tagcycle");
+        write(root.resolve("mineclone/categories.json"), CATEGORIES_MISC);
+        write(root.resolve("mineclone/items/a.json"), STONE_ITEM);
+        write(root.resolve("mineclone/tags/items/a.json"), "{\"name\": \"a\", \"values\": [\"#mineclone:b\"]}");
+        write(root.resolve("mineclone/tags/items/b.json"), "{\"name\": \"b\", \"values\": [\"#mineclone:a\"]}");
+        try {
+            ItemRegistry.load(new DataPack(root));
+            throw new AssertionError("a tag cycle loaded");
+        } catch (JsonException expected) {
+            assertTrue("cycle is named: " + expected.getMessage(),
+                    expected.getMessage().contains("cycle"));
+        }
+    }
+
+    private static final String CATEGORIES_MISC =
+            "{\"categories\": [{\"id\": \"misc\", \"name\": \"m\"}]}";
+    private static final String STONE_ITEM =
+            "{\"stone\": {\"name\": \"s\", \"category\": \"misc\", \"block\": \"stone\"}}";
+
+    private static void testRegistryStrict() throws Exception {
+        java.nio.file.Path root = java.nio.file.Files.createTempDirectory("strict");
+        write(root.resolve("mineclone/categories.json"), CATEGORIES_MISC);
+        write(root.resolve("mineclone/items/a.json"),
+                "{\"stone\": {\"name\": \"s\", \"category\": \"misc\", \"block\": \"stone\", \"masss\": 1}}");
+        try {
+            ItemRegistry.load(new DataPack(root));
+            throw new AssertionError("a typo loaded");
+        } catch (JsonException e) {
+            assertTrue("file named: " + e.getMessage(), e.getMessage().contains("mineclone/items/a.json"));
+            assertTrue("key path named: " + e.getMessage(), e.getMessage().contains("stone.masss"));
+        }
+
+        java.nio.file.Path bad = java.nio.file.Files.createTempDirectory("strict2");
+        write(bad.resolve("mineclone/categories.json"), CATEGORIES_MISC);
+        write(bad.resolve("mineclone/items/a.json"),
+                "{\"stone\": {\"name\": \"s\", \"category\": \"nope\", \"block\": \"stone\"}}");
+        try {
+            ItemRegistry.load(new DataPack(bad));
+            throw new AssertionError("an unknown category loaded");
+        } catch (JsonException e) {
+            assertTrue("category named: " + e.getMessage(), e.getMessage().contains("nope"));
+        }
+    }
+
+    private static void testMissingItems() {
+        ItemRegistry reg = Items.get();
+        assertTrue("absent id is null", reg.get("mineclone:no_such_item") == null);
+        Item a = reg.missing(ResourceId.of("no_such_item"));
+        Item b = reg.missing(ResourceId.of("no_such_item"));
+        assertTrue("placeholder is cached", a == b);
+        assertTrue("placeholder is marked", a.missing);
+        assertTrue("placeholder is hidden from creative", a.hidden);
+        assertEq("placeholder stacks like a block", 64, a.maxStack);
+        assertTrue("placeholder has no block", a.block == null);
+        assertEq("placeholder keeps its id", "mineclone:no_such_item", a.id.toString());
     }
 
     // ------------------------------------------------------------------ JSON

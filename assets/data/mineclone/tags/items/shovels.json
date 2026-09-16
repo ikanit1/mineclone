@@ -1,0 +1,2 @@
+{ "name": "лопаты", "aliases": ["shovels"],
+  "values": ["wooden_shovel", "stone_shovel", "iron_shovel", "diamond_shovel"] }

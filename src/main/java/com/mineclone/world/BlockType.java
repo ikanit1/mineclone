@@ -1,5 +1,7 @@
 package com.mineclone.world;
 
+import com.mineclone.item.ToolClass;
+
 public enum BlockType {
     AIR         (false, true,  false, -1, -1, -1, 0f,    0f,    0f,    0,  0f),
     GRASS       (true,  false, false,  1,  0,  2, 0.40f, 0.55f, 0.28f, 0,  0.6f),
@@ -115,13 +117,13 @@ public enum BlockType {
      * Каким инструментом блок положено копать. Влияет только на скорость —
      * что вообще поддаётся, решает {@link #requiredToolLevel()}.
      */
-    public ToolType.Kind preferredTool() {
+    public ToolClass preferredTool() {
         return switch (this) {
             case STONE, COBBLE, MOSSY_COBBLE, COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE,
                     BEDROCK, ICE, THIN_ICE, OBSIDIAN, CHAIN
-                    -> ToolType.Kind.PICKAXE;
-            case WOOD, PLANKS, STAIRS, DOOR_CLOSED, DOOR_OPEN, LEAVES, ROPE -> ToolType.Kind.AXE;
-            case DIRT, GRASS, SAND, SNOWY_GRASS, SNOW_LAYER, MUD, ASH -> ToolType.Kind.SHOVEL;
+                    -> ToolClass.PICKAXE;
+            case WOOD, PLANKS, STAIRS, DOOR_CLOSED, DOOR_OPEN, LEAVES, ROPE -> ToolClass.AXE;
+            case DIRT, GRASS, SAND, SNOWY_GRASS, SNOW_LAYER, MUD, ASH -> ToolClass.SHOVEL;
             default -> null;
         };
     }

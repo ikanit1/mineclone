@@ -1,0 +1,2 @@
+{ "name": "деревянные инструменты", "aliases": ["wooden_tools"],
+  "values": ["wooden_pickaxe", "wooden_axe", "wooden_shovel"] }

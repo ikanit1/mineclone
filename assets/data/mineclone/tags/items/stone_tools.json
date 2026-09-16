@@ -1,0 +1,2 @@
+{ "name": "каменные инструменты", "aliases": ["stone_tools"],
+  "values": ["stone_pickaxe", "stone_axe", "stone_shovel"] }

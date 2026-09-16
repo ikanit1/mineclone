@@ -1,0 +1,45 @@
+// Предметы-блоки. Ключ — id предмета, поле block — константа BlockType.
+//
+// Технических блоков здесь нет: AIR, WATER_FLOW и DOOR_OPEN существуют внутри
+// мира, но в руки не берутся, и предмета у них быть не должно.
+//
+// Масса нужна ItemEntity: от неё пляшет, как лежащий предмет подпрыгивает.
+// Топливо (fuel) — секунды горения в печи; одна переплавка занимает восемь.
+{
+  "grass":             { "name": "Трава",              "category": "building",  "mass": 1.5, "block": "grass" },
+  "dirt":              { "name": "Земля",              "category": "building",  "mass": 1.5, "block": "dirt" },
+  "stone":             { "name": "Камень",             "category": "building",  "mass": 2.5, "block": "stone" },
+  "sand":              { "name": "Песок",              "category": "building",  "mass": 1.5, "block": "sand" },
+  "log":               { "name": "Бревно",             "category": "building",  "mass": 1.0, "block": "wood",   "fuel": 12 },
+  "leaves":            { "name": "Листва",             "category": "decor",     "mass": 0.2, "block": "leaves" },
+  "water":             { "name": "Вода",               "category": "misc",      "mass": 1.0, "block": "water" },
+  "bedrock":           { "name": "Коренная порода",    "category": "building",  "mass": 2.5, "block": "bedrock" },
+  "cobblestone":       { "name": "Булыжник",           "category": "building",  "mass": 2.5, "block": "cobble" },
+  "planks":            { "name": "Доски",              "category": "building",  "mass": 1.0, "block": "planks", "fuel": 8 },
+  "torch":             { "name": "Факел",              "category": "decor",     "mass": 0.1, "block": "torch" },
+  "glass":             { "name": "Стекло",             "category": "building",  "mass": 1.0, "block": "glass" },
+  "door":              { "name": "Дверь",              "category": "mechanics", "mass": 1.0, "block": "door_closed" },
+  "stairs":            { "name": "Ступени",            "category": "building",  "mass": 1.0, "block": "stairs", "fuel": 8 },
+  "snowy_grass":       { "name": "Заснеженная трава",  "category": "building",  "mass": 1.5, "block": "snowy_grass" },
+  "cactus":            { "name": "Кактус",             "category": "decor",     "mass": 0.5, "block": "cactus" },
+  "coal_ore":          { "name": "Угольная руда",      "category": "building",  "mass": 2.5, "block": "coal_ore", "fuel": 64 },
+  "iron_ore":          { "name": "Железная руда",      "category": "building",  "mass": 2.5, "block": "iron_ore" },
+  "gold_ore":          { "name": "Золотая руда",       "category": "building",  "mass": 2.5, "block": "gold_ore" },
+  "diamond_ore":       { "name": "Алмазная руда",      "category": "building",  "mass": 2.5, "block": "diamond_ore" },
+  "fire":              { "name": "Огонь",              "category": "misc",      "mass": 1.0, "block": "fire" },
+  "snow":              { "name": "Снег",               "category": "decor",     "mass": 0.2, "block": "snow_layer" },
+  "chest":             { "name": "Сундук",             "category": "mechanics", "mass": 4.0, "block": "chest" },
+  "furnace":           { "name": "Печь",               "category": "mechanics", "mass": 4.0, "block": "furnace" },
+  "ice":               { "name": "Лёд",                "category": "building",  "mass": 1.0, "block": "ice" },
+  "mud":               { "name": "Грязь",              "category": "building",  "mass": 1.5, "block": "mud" },
+  "ash":               { "name": "Пепел",              "category": "building",  "mass": 0.2, "block": "ash" },
+  "mossy_cobblestone": { "name": "Замшелый булыжник",  "category": "building",  "mass": 2.5, "block": "mossy_cobble" },
+  "lava":              { "name": "Лава",               "category": "misc",      "mass": 1.0, "block": "lava" },
+  "obsidian":          { "name": "Обсидиан",           "category": "building",  "mass": 2.5, "block": "obsidian" },
+  "thin_ice":          { "name": "Тонкий лёд",         "category": "building",  "mass": 1.0, "block": "thin_ice" },
+  "rope":              { "name": "Верёвка",            "category": "mechanics", "mass": 0.3, "block": "rope" },
+  "chain":             { "name": "Цепь",               "category": "mechanics", "mass": 1.2, "block": "chain" },
+  "cobweb":            { "name": "Паутина",            "category": "decor",     "mass": 0.2, "block": "web" },
+  "journal":           { "name": "Дневник",            "category": "decor",     "mass": 0.3, "block": "journal" },
+  "bedroll":           { "name": "Спальник",           "category": "mechanics", "mass": 1.0, "block": "bedroll" }
+}

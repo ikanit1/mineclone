@@ -1,0 +1,20 @@
+// Инструменты: три класса на четырёх материалах.
+//
+// Класс решает, что копается быстро, уровень — что вообще даёт дроп. Числа те
+// же, что были в ToolType: перенос в данные не должен менять баланс.
+{
+  "wooden_pickaxe":  { "name": "Деревянная кирка", "category": "tools", "mass": 1.5, "icon": "wood_pickaxe",    "durability": 60,  "tool": { "class": "pickaxe", "level": 1, "speed": 2.2 } },
+  "stone_pickaxe":   { "name": "Каменная кирка",   "category": "tools", "mass": 1.5, "icon": "stone_pickaxe",   "durability": 132, "tool": { "class": "pickaxe", "level": 2, "speed": 4.0 } },
+  "iron_pickaxe":    { "name": "Железная кирка",   "category": "tools", "mass": 1.5, "icon": "iron_pickaxe",    "durability": 251, "tool": { "class": "pickaxe", "level": 3, "speed": 6.5 } },
+  "diamond_pickaxe": { "name": "Алмазная кирка",   "category": "tools", "mass": 1.5, "icon": "diamond_pickaxe", "durability": 900, "tool": { "class": "pickaxe", "level": 4, "speed": 9.0 } },
+
+  "wooden_axe":      { "name": "Деревянный топор", "category": "tools", "mass": 1.5, "icon": "wood_axe",        "durability": 60,  "tool": { "class": "axe", "level": 1, "speed": 2.2 } },
+  "stone_axe":       { "name": "Каменный топор",   "category": "tools", "mass": 1.5, "icon": "stone_axe",       "durability": 132, "tool": { "class": "axe", "level": 2, "speed": 4.0 } },
+  "iron_axe":        { "name": "Железный топор",   "category": "tools", "mass": 1.5, "icon": "iron_axe",        "durability": 251, "tool": { "class": "axe", "level": 3, "speed": 6.5 } },
+  "diamond_axe":     { "name": "Алмазный топор",   "category": "tools", "mass": 1.5, "icon": "diamond_axe",     "durability": 900, "tool": { "class": "axe", "level": 4, "speed": 9.0 } },
+
+  "wooden_shovel":   { "name": "Деревянная лопата", "category": "tools", "mass": 1.0, "icon": "wood_shovel",    "durability": 60,  "tool": { "class": "shovel", "level": 1, "speed": 2.2 } },
+  "stone_shovel":    { "name": "Каменная лопата",   "category": "tools", "mass": 1.0, "icon": "stone_shovel",   "durability": 132, "tool": { "class": "shovel", "level": 2, "speed": 4.0 } },
+  "iron_shovel":     { "name": "Железная лопата",   "category": "tools", "mass": 1.0, "icon": "iron_shovel",    "durability": 251, "tool": { "class": "shovel", "level": 3, "speed": 6.5 } },
+  "diamond_shovel":  { "name": "Алмазная лопата",   "category": "tools", "mass": 1.0, "icon": "diamond_shovel", "durability": 900, "tool": { "class": "shovel", "level": 4, "speed": 9.0 } }
+}

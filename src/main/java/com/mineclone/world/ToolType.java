@@ -1,5 +1,7 @@
 package com.mineclone.world;
 
+import com.mineclone.item.ToolClass;
+
 /**
  * Инструменты: три класса на четырёх материалах.
  *
@@ -12,25 +14,23 @@ package com.mineclone.world;
  */
 public enum ToolType {
     //             класс         уровень  скорость  прочность  тайл
-    WOOD_PICKAXE   (Kind.PICKAXE, 1, 2.2f,  60,  57, "Деревянная кирка"),
-    STONE_PICKAXE  (Kind.PICKAXE, 2, 4.0f, 132,  58, "Каменная кирка"),
-    IRON_PICKAXE   (Kind.PICKAXE, 3, 6.5f, 251,  59, "Железная кирка"),
-    DIAMOND_PICKAXE(Kind.PICKAXE, 4, 9.0f, 900,  60, "Алмазная кирка"),
+    WOOD_PICKAXE   (ToolClass.PICKAXE, 1, 2.2f,  60,  57, "Деревянная кирка"),
+    STONE_PICKAXE  (ToolClass.PICKAXE, 2, 4.0f, 132,  58, "Каменная кирка"),
+    IRON_PICKAXE   (ToolClass.PICKAXE, 3, 6.5f, 251,  59, "Железная кирка"),
+    DIAMOND_PICKAXE(ToolClass.PICKAXE, 4, 9.0f, 900,  60, "Алмазная кирка"),
 
-    WOOD_AXE       (Kind.AXE,     1, 2.2f,  60,  61, "Деревянный топор"),
-    STONE_AXE      (Kind.AXE,     2, 4.0f, 132,  62, "Каменный топор"),
-    IRON_AXE       (Kind.AXE,     3, 6.5f, 251,  63, "Железный топор"),
-    DIAMOND_AXE    (Kind.AXE,     4, 9.0f, 900,  64, "Алмазный топор"),
+    WOOD_AXE       (ToolClass.AXE,     1, 2.2f,  60,  61, "Деревянный топор"),
+    STONE_AXE      (ToolClass.AXE,     2, 4.0f, 132,  62, "Каменный топор"),
+    IRON_AXE       (ToolClass.AXE,     3, 6.5f, 251,  63, "Железный топор"),
+    DIAMOND_AXE    (ToolClass.AXE,     4, 9.0f, 900,  64, "Алмазный топор"),
 
-    WOOD_SHOVEL    (Kind.SHOVEL,  1, 2.2f,  60,  65, "Деревянная лопата"),
-    STONE_SHOVEL   (Kind.SHOVEL,  2, 4.0f, 132,  66, "Каменная лопата"),
-    IRON_SHOVEL    (Kind.SHOVEL,  3, 6.5f, 251,  67, "Железная лопата"),
-    DIAMOND_SHOVEL (Kind.SHOVEL,  4, 9.0f, 900,  68, "Алмазная лопата");
+    WOOD_SHOVEL    (ToolClass.SHOVEL,  1, 2.2f,  60,  65, "Деревянная лопата"),
+    STONE_SHOVEL   (ToolClass.SHOVEL,  2, 4.0f, 132,  66, "Каменная лопата"),
+    IRON_SHOVEL    (ToolClass.SHOVEL,  3, 6.5f, 251,  67, "Железная лопата"),
+    DIAMOND_SHOVEL (ToolClass.SHOVEL,  4, 9.0f, 900,  68, "Алмазная лопата");
 
     /** Что инструмент умеет: кирка — камень, топор — дерево, лопата — рыхлое. */
-    public enum Kind { PICKAXE, AXE, SHOVEL }
-
-    public final Kind kind;
+    public final ToolClass kind;
     /** Уровень материала 1..4. Блок поддаётся, если уровень не ниже требуемого. */
     public final int level;
     /** Во сколько раз быстрее голых рук по «своему» материалу. */
@@ -40,7 +40,7 @@ public enum ToolType {
     public final int tile;
     public final String displayName;
 
-    ToolType(Kind kind, int level, float speed, int durability, int tile, String displayName) {
+    ToolType(ToolClass kind, int level, float speed, int durability, int tile, String displayName) {
         this.kind = kind;
         this.level = level;
         this.speed = speed;
