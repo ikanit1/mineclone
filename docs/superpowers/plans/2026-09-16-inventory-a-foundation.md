@@ -111,12 +111,12 @@ public final class JsonObject {
 
 - Разбор: строгий JSON плюс `//`-комментарии до конца строки и висячая запятая
   перед `]` и `}`. Экранирование `\" \\ \/ \b \f \n \r \t \uXXXX`.
-- [ ] Тесты: `json parses nested objects, arrays and escapes`,
+- [x] Тесты: `json parses nested objects, arrays and escapes`,
       `json allows line comments and trailing commas`,
       `json errors carry file, line and column`,
       `json object accessors report the key path`,
       `json allowOnly rejects a typo`.
-- [ ] Коммит `feat(data): JSON parser with comments, trailing commas and precise errors`.
+- [x] Коммит `feat(data): JSON parser with comments, trailing commas and precise errors`.
 
 ## Задача 2. Идентификаторы и пакет данных
 
