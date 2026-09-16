@@ -3,6 +3,8 @@ package com.mineclone;
 import com.mineclone.data.Json;
 import com.mineclone.data.JsonException;
 import com.mineclone.data.JsonObject;
+import com.mineclone.data.DataPack;
+import com.mineclone.data.ResourceId;
 
 import java.util.List;
 import java.util.Map;
@@ -24,6 +26,9 @@ final class InventoryTests {
         r.run("json errors carry file, line and column", InventoryTests::testJsonErrors);
         r.run("json object accessors report the key path", InventoryTests::testJsonAccessors);
         r.run("json allowOnly rejects a typo", InventoryTests::testJsonAllowOnly);
+        r.run("resource ids parse with and without a namespace", InventoryTests::testResourceIdParse);
+        r.run("resource ids reject upper case and spaces", InventoryTests::testResourceIdRejects);
+        r.run("data pack lists files by kind in a stable order", InventoryTests::testDataPackListing);
     }
 
     // ------------------------------------------------------------------ JSON
@@ -112,6 +117,55 @@ final class InventoryTests {
             assertTrue("typo named: " + e.getMessage(), e.getMessage().contains("pick.categroy"));
         }
         o.allowOnly("name", "categroy");
+    }
+
+    // ----------------------------------------------------------- ids and pack
+
+    private static void testResourceIdParse() {
+        ResourceId a = ResourceId.parse("stone", "mineclone");
+        assertEq("default namespace", new ResourceId("mineclone", "stone"), a);
+        assertEq("printed form", "mineclone:stone", a.toString());
+        ResourceId b = ResourceId.parse("mymod:blocks/ruby_ore", "mineclone");
+        assertEq("namespace", "mymod", b.namespace());
+        assertEq("path", "blocks/ruby_ore", b.path());
+    }
+
+    private static void testResourceIdRejects() {
+        for (String bad : new String[] { "Stone", "my mod:x", "mineclone:", ":stone", "a:b:c", "" }) {
+            try {
+                ResourceId.parse(bad, "mineclone");
+                throw new AssertionError("accepted " + bad);
+            } catch (IllegalArgumentException expected) {
+                // ok
+            }
+        }
+    }
+
+    private static void testDataPackListing() throws Exception {
+        java.nio.file.Path root = java.nio.file.Files.createTempDirectory("pack");
+        write(root.resolve("mineclone/items/tools.json"), "{\"items\": {}}");
+        write(root.resolve("mineclone/items/blocks.json"), "{\"items\": {}}");
+        write(root.resolve("mineclone/items/sub/extra.json"), "{\"items\": {}}");
+        write(root.resolve("aaa/items/one.json"), "{\"items\": {}}");
+        write(root.resolve("mineclone/tags/items/logs.json"), "{\"values\": []}");
+        write(root.resolve("mineclone/categories.json"), "{\"categories\": []}");
+        DataPack pack = new DataPack(root);
+        List<String> seen = new java.util.ArrayList<>();
+        for (DataPack.Entry e : pack.files("items"))
+            seen.add(e.namespace() + ":" + e.relPath());
+        assertEq("sorted by namespace then path",
+                List.of("aaa:one.json", "mineclone:blocks.json", "mineclone:sub/extra.json", "mineclone:tools.json"),
+                seen);
+        assertEq("nested kind", 1, pack.files("tags/items").size());
+        assertTrue("root file", pack.root("mineclone", "categories.json") != null);
+        assertTrue("absent root file", pack.root("mineclone", "nope.json") == null);
+        assertEq("source names the file", "mineclone/items/tools.json",
+                pack.files("items").get(3).json().source());
+    }
+
+    private static void write(java.nio.file.Path p, String text) throws java.io.IOException {
+        java.nio.file.Files.createDirectories(p.getParent());
+        java.nio.file.Files.writeString(p, text);
     }
 
     // --------------------------------------------------------------- helpers

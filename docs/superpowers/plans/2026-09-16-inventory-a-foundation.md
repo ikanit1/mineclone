@@ -120,19 +120,19 @@ public final class JsonObject {
 
 ## Задача 2. Идентификаторы и пакет данных
 
-- [ ] `data/ResourceId.java`: `record ResourceId(String namespace, String path)`;
+- [x] `data/ResourceId.java`: `record ResourceId(String namespace, String path)`;
       `static ResourceId parse(String s, String defaultNamespace)` (без `:` —
       пространство по умолчанию); проверка `[a-z0-9_]+` для пространства и
       `[a-z0-9_./]+` для пути, иначе `IllegalArgumentException`;
       `toString()` → `ns:path`.
-- [ ] `data/DataPack.java`: корень `assets/data`.
+- [x] `data/DataPack.java`: корень `assets/data`.
       `List<Entry> files(String kind)` — все `<ns>/<kind>/**/*.json`, по
       пространству и пути; `record Entry(String namespace, String relPath, JsonObject json)`.
       `JsonObject root(String ns, String fileName)` — файл верхнего уровня или null.
-- [ ] Тесты: `resource ids parse with and without a namespace`,
+- [x] Тесты: `resource ids parse with and without a namespace`,
       `resource ids reject upper case and spaces`,
       `data pack lists files by kind in a stable order` (временная папка).
-- [ ] Коммит `feat(data): resource ids and data pack scanning`.
+- [x] Коммит `feat(data): resource ids and data pack scanning`.
 
 ## Задача 3. Предметы, категории, теги — только то, что уже есть в игре
 
