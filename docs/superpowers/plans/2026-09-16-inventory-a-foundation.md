@@ -1,13 +1,13 @@
 ---
 tags: [plan, ui, inventory, data]
-status: in-progress
+status: done
 date: 2026-09-16
 spec: docs/superpowers/specs/2026-09-16-inventory-survival-creative-design.md
 ---
 
 # План A: фундамент меню выживания и креатива
 
-> Исполняется в этой же сессии по `superpowers:executing-plans`. Формат —
+> Исполнен целиком в одной сессии по `superpowers:executing-plans`. Формат —
 > как у недавних планов проекта: задачи с точными файлами, сигнатурами,
 > форматами и именами тестов; дизайн и «почему» — в спеке, здесь не
 > повторяются. Галочки ставятся по ходу.
@@ -22,6 +22,7 @@ spec: docs/superpowers/specs/2026-09-16-inventory-survival-creative-design.md
 (`run.ps1` / компиляция из CLAUDE.md), выживание играбельно — в том числе крафт.
 
 **Базовая линия (13e2c24):** 226 тестов, 0 упавших.
+**Итог:** 290 тестов, 0 упавших; 15 коммитов; автопилот и все снимки зелёные.
 
 ## Карта файлов
 
@@ -392,7 +393,7 @@ public final class ItemStack {
 - [x] Тесты (новые): `stacks merge only with equal components`,
       `unbreakable tools never wear`, `custom name overrides the item name`,
       `inventory add keeps components apart`, `content hash changes when a count changes`.
-- [ ] Полный `.\run-tests.ps1` зелёный; игра запускается, в выживании ломается
+- [x] Полный `.\run-tests.ps1` зелёный; игра запускается, в выживании ломается
       блок, выпадает дроп, крафтится кирка, плавится мясо (ручная проверка
       автопилотом не нужна — это делает задача 14).
 - [x] Коммит `refactor(item): stacks reference registry items; ToolType and FoodType retired`.
@@ -765,16 +766,16 @@ public interface WindowContext {
 
 ## Задача 14. Документы
 
-- [ ] ADR `knowledge/decisions/item-registry-and-components.md`: данные,
+- [x] ADR `knowledge/decisions/item-registry-and-components.md`: данные,
       компоненты, формат стопки и секции `level.dat`, миграция, итог `CheckSaves`.
-- [ ] ADR `knowledge/decisions/inventory-windows.md`: пакетный рендер (цифры
+- [x] ADR `knowledge/decisions/inventory-windows.md`: пакетный рендер (цифры
       `BenchUi` до/после), каркас окон, правила кликов, анимации, пипетка, F3+H.
-- [ ] `CLAUDE.md`: разделы «Предметы и данные», «Окна инвентаря»; раздел про
+- [x] `CLAUDE.md`: разделы «Предметы и данные», «Окна инвентаря»; раздел про
       `ItemStack` и `ToolType` переписан; ручки настройки (`ContainerScreen`
       размеры слота, `Spring` окна, `ItemFlights` длительность, `TooltipLayout`
       поля); команды `BenchUi`, `ComparePreviews`, `CheckSaves`.
-- [ ] План: статус `done`, замеры и отступления.
-- [ ] Коммит `docs: item registry and inventory windows ADRs, CLAUDE.md`.
+- [x] План: статус `done`, замеры и отступления.
+- [x] Коммит `docs: item registry and inventory windows ADRs, CLAUDE.md`.
 
 ---
 
