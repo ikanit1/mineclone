@@ -118,6 +118,15 @@ final class Autopilot {
         });
     }
 
+    /**
+     * Расширенные подсказки до сочетания F3+H.
+     *
+     * <p>Значение приезжает из options.dat и переживает прогон, поэтому
+     * проверять надо переключение, а не «стало включено»: второй запуск
+     * подряд иначе падал бы на собственном следе.
+     */
+    private boolean tooltipsBefore;
+
     /** Позиция трека на прошлом замере — чтобы проверить, что музыка идёт, а не стоит. */
     private float musicMark = -1f;
     private String musicMarkTrack;
@@ -293,15 +302,17 @@ final class Autopilot {
             }),
 
             // --- F3 и его сочетания ---------------------------------------
+            step("remember the tooltip setting", 0.2f, d -> tooltipsBefore = d.advancedTooltips()),
             step("hold F3", 0.2f, d -> d.holdKey(GLFW_KEY_F3, true)),
             step("press H", 0.2f, d -> d.pressKey(GLFW_KEY_H)),
             step("release F3", 0.3f, d -> d.holdKey(GLFW_KEY_F3, false)),
-            step("F3+H turned advanced tooltips on, not the debug screen", 0.4f, d -> {
-                if (!d.advancedTooltips())
-                    throw new IllegalStateException("advanced tooltips are still off");
+            step("F3+H flipped the tooltips, not the debug screen", 0.4f, d -> {
+                if (d.advancedTooltips() == tooltipsBefore)
+                    throw new IllegalStateException("advanced tooltips did not change");
                 if (d.debugShown())
                     throw new IllegalStateException("the debug screen came on as well");
-                System.out.println("autopilot: ok - F3+H without the debug screen");
+                System.out.println("autopilot: ok - F3+H flipped tooltips to "
+                        + d.advancedTooltips() + " without the debug screen");
             }),
 
             // --- творческое окно -------------------------------------------
