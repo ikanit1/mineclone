@@ -16,6 +16,10 @@ import static org.lwjgl.glfw.GLFW.*;
 public final class UiInput {
     public final float mouseX, mouseY;
     public final boolean mouseDown, mousePressed, mouseReleased;
+    /** Правая кнопка: в окнах она кладёт по одному и делит стопку пополам. */
+    public final boolean rightDown, rightPressed, rightReleased;
+    /** Средняя кнопка: пипетка в игре и полная стопка в креативе. */
+    public final boolean middlePressed;
     /** Колесо в щелчках; плюс — от себя, то есть вверх по списку. */
     public final float scroll;
     /** Символы, набранные в этом кадре. */
@@ -34,6 +38,10 @@ public final class UiInput {
         mouseDown = b.down;
         mousePressed = b.pressed;
         mouseReleased = b.released;
+        rightDown = b.rightDown;
+        rightPressed = b.rightPressed;
+        rightReleased = b.rightReleased;
+        middlePressed = b.middlePressed;
         scroll = b.scroll;
         typed = b.typed;
         paste = b.paste;
@@ -62,6 +70,14 @@ public final class UiInput {
         return held(GLFW_KEY_LEFT_CONTROL) || held(GLFW_KEY_RIGHT_CONTROL);
     }
 
+    public boolean shift() {
+        return held(GLFW_KEY_LEFT_SHIFT) || held(GLFW_KEY_RIGHT_SHIFT);
+    }
+
+    public boolean alt() {
+        return held(GLFW_KEY_LEFT_ALT) || held(GLFW_KEY_RIGHT_ALT);
+    }
+
     public boolean enter() {
         return pressed(GLFW_KEY_ENTER) || pressed(GLFW_KEY_KP_ENTER);
     }
@@ -77,6 +93,7 @@ public final class UiInput {
     public static final class Builder {
         private float x = -1f, y = -1f;
         private boolean down, pressed, released;
+        private boolean rightDown, rightPressed, rightReleased, middlePressed;
         private float scroll;
         private String typed = "", paste = "";
         private final BitSet keys = new BitSet();
@@ -108,6 +125,33 @@ public final class UiInput {
         public Builder click() {
             pressed = true;
             released = true;
+            return this;
+        }
+
+        public Builder rightDown(boolean v) {
+            rightDown = v;
+            return this;
+        }
+
+        public Builder rightPressed(boolean v) {
+            rightPressed = v;
+            return this;
+        }
+
+        public Builder rightReleased(boolean v) {
+            rightReleased = v;
+            return this;
+        }
+
+        /** Полный правый клик за один кадр — удобно предпросмотру и тестам. */
+        public Builder rightClick() {
+            rightPressed = true;
+            rightReleased = true;
+            return this;
+        }
+
+        public Builder middleClick() {
+            middlePressed = true;
             return this;
         }
 

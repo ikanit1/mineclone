@@ -42,20 +42,38 @@ public class BenchUi {
         TextRenderer text = new TextRenderer(ui);
         ui.setAtlas(atlas.getTextureId());
         ui.registerFonts(font, small);
-        Hud hud = new Hud(font, small, text, ui, atlas);
+        com.mineclone.ui.MenuTheme theme =
+                new com.mineclone.ui.MenuTheme(ui, text, font, small, atlas);
 
         Inventory inv = sampleInventory();
         ItemStack[] chest = new ItemStack[Chunk.CHEST_SLOTS];
         for (int i = 0; i < chest.length; i += 2)
             chest[i] = new ItemStack(BlockType.COBBLE, 1 + i * 2);
 
+        com.mineclone.ui.container.PreviewContext ctx = new com.mineclone.ui.container.PreviewContext(inv);
+        var inventoryScreen = new com.mineclone.ui.container.InventoryScreen(ctx);
+        var chestScreen = new com.mineclone.ui.container.ChestScreen(ctx, chest, null, null);
+        com.mineclone.ui.container.PreviewContext creativeCtx = new com.mineclone.ui.container.PreviewContext(inv);
+        creativeCtx.mode = com.mineclone.world.GameMode.CREATIVE;
+        var creativeScreen = new com.mineclone.ui.container.CreativeScreen(creativeCtx);
+
         System.out.printf("%-10s %10s %12s%n", "window", "ms/frame", "draws/frame");
-        bench("inventory", window, () -> hud.drawInventory(W, H, 640, 360, false, false, inv, 3, null));
-        bench("chest", window, () -> hud.drawChest(W, H, 640, 360, false, false, chest, inv, 3, null));
-        bench("creative", window, () -> hud.drawCreativeMenu(W, H, 640, 360, false, inv, 3));
+        bench("inventory", window, () -> frame(theme, inventoryScreen));
+        bench("chest", window, () -> frame(theme, chestScreen));
+        bench("creative", window, () -> frame(theme, creativeScreen));
 
         glfwDestroyWindow(window);
         glfwTerminate();
+    }
+
+    /** One window frame with no input: the same path the game takes. */
+    private static void frame(com.mineclone.ui.MenuTheme theme,
+            com.mineclone.ui.container.ContainerScreen screen) {
+        theme.begin(W, H, com.mineclone.ui.UiInput.builder().at(640f, 360f).build(), 0f, 1f / 60f);
+        theme.beginScreen(1f, 0f, true);
+        screen.draw(theme);
+        theme.endScreen();
+        theme.end();
     }
 
     private static Inventory sampleInventory() {

@@ -85,9 +85,13 @@ public class RenderHudPreview {
             shot("hud-compass-" + names[k], () -> hud.drawCompass(W, H, yaws[k], times[k]));
         }
 
-        // Кадр 2: экран инвентаря с полкой крафта.
-        shot("hud-inventory", () ->
-                hud.drawInventory(W, H, 0, 0, false, false, inv, 3, null));
+        // Frame: inventory window on the container framework.
+        com.mineclone.ui.MenuTheme windowTheme =
+                new com.mineclone.ui.MenuTheme(ui, text, font, small, atlas);
+        com.mineclone.ui.container.PreviewContext ctx = new com.mineclone.ui.container.PreviewContext(inv);
+        ctx.selected = 3;
+        var inventoryScreen = new com.mineclone.ui.container.InventoryScreen(ctx);
+        shot("hud-inventory", () -> windowFrame(windowTheme, inventoryScreen, at(-1f, -1f)));
 
         // Кадр: экран сундука — его слоты сверху, инвентарь игрока снизу.
         ItemStack[] chest = new ItemStack[com.mineclone.world.Chunk.CHEST_SLOTS];
@@ -99,8 +103,8 @@ public class RenderHudPreview {
         chest[10] = new ItemStack(BlockType.GLASS, 7);
         chest[17] = new ItemStack(BlockType.TORCH, 31);
         chest[26] = new ItemStack(BlockType.DIAMOND_ORE, 2);
-        shot("hud-chest", () ->
-                hud.drawChest(W, H, 0, 0, false, false, chest, inv, 3, null));
+        var chestScreen = new com.mineclone.ui.container.ChestScreen(ctx, chest, null, null);
+        shot("hud-chest", () -> windowFrame(windowTheme, chestScreen, at(-1f, -1f)));
 
         // Кадр: печь на середине работы — пламя горит, стрелка заполнена.
         var furnace = new com.mineclone.world.Furnace();
@@ -110,12 +114,49 @@ public class RenderHudPreview {
         furnace.burnMax = com.mineclone.world.Smelting.COOK_TIME * 8f;
         furnace.burnLeft = furnace.burnMax * 0.62f;
         furnace.cook = com.mineclone.world.Smelting.COOK_TIME * 0.45f;
-        shot("hud-furnace", () ->
-                hud.drawFurnace(W, H, 0, 0, false, false, furnace, inv, 3, null));
+        var furnaceScreen = new com.mineclone.ui.container.FurnaceScreen(ctx, furnace, null);
+        shot("hud-furnace", () -> windowFrame(windowTheme, furnaceScreen, at(-1f, -1f)));
 
-        // Кадр 3: творческое меню — блоки, инструменты и еда в одной сетке.
-        shot("hud-creative", () ->
-                hud.drawCreativeMenu(W, H, 0, 0, false, inv, 3));
+        // Frame: the creative window, one grid of every registry item.
+        com.mineclone.ui.container.PreviewContext creativeCtx = new com.mineclone.ui.container.PreviewContext(inv);
+        creativeCtx.mode = com.mineclone.world.GameMode.CREATIVE;
+        var creativeScreen = new com.mineclone.ui.container.CreativeScreen(creativeCtx);
+        shot("hud-creative", () -> windowFrame(windowTheme, creativeScreen, at(-1f, -1f)));
+
+        // Frame: a drag in progress, with the promised counts drawn faintly.
+        Inventory dragInv = new Inventory();
+        dragInv.set(9, new ItemStack(BlockType.COBBLE, 9));
+        com.mineclone.ui.container.PreviewContext dragCtx = new com.mineclone.ui.container.PreviewContext(dragInv);
+        var dragScreen = new com.mineclone.ui.container.InventoryScreen(dragCtx);
+        shot("window-drag-split", () -> {
+            windowFrame(windowTheme, dragScreen, at(-1f, -1f));
+            float[] a = dragScreen.slotCenter("main", 0);
+            windowFrame(windowTheme, dragScreen,
+                    com.mineclone.ui.UiInput.builder().at(a[0], a[1]).click().build());
+            float[] b = dragScreen.slotCenter("main", 1);
+            windowFrame(windowTheme, dragScreen,
+                    com.mineclone.ui.UiInput.builder().at(b[0], b[1]).mousePressed(true).mouseDown(true).build());
+            float[] c = dragScreen.slotCenter("main", 2);
+            windowFrame(windowTheme, dragScreen,
+                    com.mineclone.ui.UiInput.builder().at(c[0], c[1]).mouseDown(true).build());
+            float[] d = dragScreen.slotCenter("main", 3);
+            windowFrame(windowTheme, dragScreen,
+                    com.mineclone.ui.UiInput.builder().at(d[0], d[1]).mouseDown(true).build());
+        });
+
+        // Frame: advanced tooltip at the bottom-right corner, where it flips.
+        Inventory tipInv = new Inventory();
+        tipInv.set(35, ItemStack.of("iron_pickaxe"));
+        tipInv.get(35).setDamage(51);
+        com.mineclone.ui.container.PreviewContext tipCtx = new com.mineclone.ui.container.PreviewContext(tipInv);
+        tipCtx.advanced = true;
+        var tipScreen = new com.mineclone.ui.container.InventoryScreen(tipCtx);
+        shot("window-advanced-tooltip", () -> {
+            windowFrame(windowTheme, tipScreen, at(-1f, -1f));
+            float[] p = tipScreen.slotCenter("main", 26);
+            windowFrame(windowTheme, tipScreen, at(p[0], p[1]));
+            windowFrame(windowTheme, tipScreen, at(p[0], p[1]));
+        });
 
         // Frame: icon shapes. Stairs, snow and a bedroll are not cubes, and
         // drawing them as cubes lies about what the player is holding.
@@ -375,6 +416,16 @@ public class RenderHudPreview {
         theme.endScreen();
         theme.end();
         menuUi.setBackdrop(0);
+    }
+
+    /** One window frame: the same path the game takes, with a given input. */
+    private static void windowFrame(com.mineclone.ui.MenuTheme theme,
+            com.mineclone.ui.container.ContainerScreen screen, com.mineclone.ui.UiInput in) {
+        theme.begin(W, H, in, 0.6f, 1f / 60f);
+        theme.beginScreen(1f, 0f, true);
+        screen.draw(theme);
+        theme.endScreen();
+        theme.end();
     }
 
     private static void menuShot(String name, Backdrop backdrop, com.mineclone.ui.MenuTheme theme,

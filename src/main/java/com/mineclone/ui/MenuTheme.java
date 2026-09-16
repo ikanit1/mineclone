@@ -74,13 +74,14 @@ public final class MenuTheme {
     /** Постоянная пружины наведения, 1/с. */
     static final float HOVER_RATE = 16f;
     /** Окно двойного клика, секунды. */
-    static final float DOUBLE_CLICK = 0.35f;
+    public static final float DOUBLE_CLICK = 0.35f;
 
     private final UiRenderer ui;
     private final TextRenderer text;
     private final Font font;
     private final Font small;
     private final TextureAtlas atlas;
+    private com.mineclone.render.ItemIcons icons;
     private Sounds sounds = Sounds.SILENT;
 
     private int sw, sh;
@@ -207,6 +208,36 @@ public final class MenuTheme {
 
     public TextureAtlas atlas() {
         return atlas;
+    }
+
+    /**
+     * Иконки предметов той же темы.
+     *
+     * <p>Окна рисуют предмет не сами: хотбар, сундук и креатив обязаны
+     * показывать одну и ту же вещь одинаково, иначе интерфейс разъезжается по
+     * мелочам, которые никто не замечает поодиночке.
+     */
+    public com.mineclone.render.ItemIcons icons() {
+        if (icons == null) {
+            icons = new com.mineclone.render.ItemIcons(ui, atlas);
+            icons.setFont(small);
+        }
+        return icons;
+    }
+
+    /**
+     * Иконка предмета с учётом всплытия экрана и его прозрачности.
+     *
+     * <p>Идёт мимо {@link #quad}, потому что рисует сама, — поэтому сдвиг и
+     * альфу ей надо передать руками.
+     */
+    public void itemIcon(com.mineclone.world.ItemStack s, float x, float y, float size,
+            float a, float yawDeg) {
+        float fa = a * alpha;
+        if (s == null || fa <= 0.002f)
+            return;
+        ensureUi();
+        icons().draw(s, x, y + offsetY, size, fa, yawDeg);
     }
 
     public float alpha() {

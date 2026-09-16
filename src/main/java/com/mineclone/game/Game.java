@@ -53,7 +53,7 @@ public class Game {
     private final KeyBindings keys = new KeyBindings();
 
     private enum State {
-        MENU, LOADING, PLAYING, PAUSED, CREATIVE_MENU, CHEST_MENU, FURNACE_MENU, DEAD
+        MENU, LOADING, PLAYING, PAUSED, WINDOW, DEAD
     }
 
     private final Window window;
@@ -298,7 +298,6 @@ public class Game {
     private int selectedSlot = 0;
     private com.mineclone.world.Inventory inventory = new com.mineclone.world.Inventory();
     private com.mineclone.world.GameMode gameMode = com.mineclone.world.GameMode.SURVIVAL;
-    private com.mineclone.world.ItemStack cursorItem = null;
     /**
      * Секции level.dat, которых игра не знает: пришли с загрузкой и уходят
      * обратно нетронутыми. Мир, открытый старой сборкой, не имеет права
@@ -317,6 +316,73 @@ public class Game {
     private String worldDisplayName = "";
     /** Экраны меню: титул, миры, настройки, загрузка, пауза, смерть. */
     private final ScreenStack menus = new ScreenStack();
+    /**
+     * Окна инвентаря — свой стек, а не общий с меню: меню живёт поверх
+     * размытого мира и ставит игру, окно стоит в игре, и время в нём идёт.
+     */
+    private final ScreenStack windows = new ScreenStack();
+    private com.mineclone.ui.container.ContainerScreen activeWindow;
+    /** В кадре, где окно открылось, его ввод пустой — как и у меню. */
+    private boolean windowInputBlocked;
+
+    /**
+     * Всё, что окна знают об игре.
+     *
+     * <p>Экран не видит {@code Game}: он умеет положить предмет игроку,
+     * бросить его, щёлкнуть и спросить настройку. Поэтому окно поднимается в
+     * тесте с заглушкой на десять строк, а не с половиной игры.
+     */
+    private final com.mineclone.ui.container.WindowContext windowContext =
+            new com.mineclone.ui.container.WindowContext() {
+        @Override
+        public com.mineclone.world.Inventory inventory() {
+            return inventory;
+        }
+
+        @Override
+        public int selectedSlot() {
+            return selectedSlot;
+        }
+
+        @Override
+        public com.mineclone.world.GameMode mode() {
+            return gameMode;
+        }
+
+        @Override
+        public void throwStack(com.mineclone.world.ItemStack s) {
+            Game.this.throwStack(s);
+        }
+
+        @Override
+        public void give(com.mineclone.world.ItemStack s) {
+            if (s == null || s.count <= 0)
+                return;
+            int leftover = giveStack(s);
+            if (leftover > 0)
+                Game.this.throwStack(s.copyWithCount(leftover));
+        }
+
+        @Override
+        public void click(float volume, float pitch) {
+            sound.playOneOf(sounds.uiClick(), volume, pitch + 0.1f * (float) Math.random());
+        }
+
+        @Override
+        public void toast(String text) {
+            showCommandToast(text);
+        }
+
+        @Override
+        public boolean advancedTooltips() {
+            return advancedTooltips;
+        }
+
+        @Override
+        public KeyBindings keys() {
+            return keys;
+        }
+    };
     private MenuTheme menuTheme;
     /** Настройки для экранов меню: изменение применяется сразу, запись — при закрытии. */
     private final SettingsModel settingsModel;
@@ -597,8 +663,7 @@ public class Game {
                 player.health, player.hunger,
                 // Курсор — это предметы игрока, просто ни в одном слоте.
                 // Класть их в инвентарь на записи поздно: он мог быть полон.
-                cursorItem == null ? null
-                        : new com.mineclone.world.ItemStack[] { cursorItem.copy() },
+                windowCursor(),
                 levelExtraSections);
         save.saveLevel(worldId, d);
         // Превью снимет ближайший кадр мира: сейчас идёт обновление, а не отрисовка.
@@ -706,9 +771,7 @@ public class Game {
                 case LOADING -> updateLoading(dt);
                 case PLAYING -> updatePlaying(dt);
                 case PAUSED -> updatePaused(dt);
-                case CREATIVE_MENU -> updateCreativeMenu(dt);
-                case CHEST_MENU -> updateChestMenu(dt);
-                case FURNACE_MENU -> updateFurnaceMenu(dt);
+                case WINDOW -> updateWindow(dt);
                 case DEAD -> updateDead(dt);
             }
             updateMusic(dt);
@@ -848,7 +911,6 @@ public class Game {
         player.velocity.set(0, 0, 0);
         player.lastFallDistance = 0f;
         lastHeldBlock = currentBlock();
-        cursorItem = null;
         player.flying = false;
         player.flySpeed = Player.FLY_SPEED;
 
@@ -994,8 +1056,9 @@ public class Game {
 
         if (input.pressed(KeyBindings.Action.INVENTORY)) {
             sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
-            state = State.CREATIVE_MENU;
-            input.grabCursor(false);
+            openWindow(gameMode == com.mineclone.world.GameMode.CREATIVE
+                    ? new com.mineclone.ui.container.CreativeScreen(windowContext)
+                    : new com.mineclone.ui.container.InventoryScreen(windowContext));
             return;
         }
         if (input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
@@ -1458,22 +1521,19 @@ public class Game {
         updateCommandToast(dt);
     }
 
-    private void updateCreativeMenu(float dt) {
+    /**
+     * Окно открыто: мир живёт дальше, игрок стоит.
+     *
+     * <p>Окно инвентаря не останавливает время суток и мобов — иначе им можно
+     * пользоваться как паузой, и ночь пережидается в сундуке.
+     */
+    private void updateWindow(float dt) {
         updateCommandToast(dt);
-        if (input.pressed(KeyBindings.Action.INVENTORY) || input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
-            if (cursorItem != null) {
-                // Стопка с курсора возвращается в инвентарь, а что не влезло —
-                // на землю. Раньше здесь был inventory.add по блоку, и инструмент
-                // или еда на курсоре при закрытии просто исчезали.
-                cursorItem.count = giveStack(cursorItem);
-                throwStack(cursorItem);
-                cursorItem = null;
-            }
-            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
-            state = State.PLAYING;
-            input.grabCursor(true);
+        if (activeWindow == null || !activeWindow.valid()) {
+            closeWindow();
             return;
         }
+        activeWindow.tick(uiClock);
         updateHeldItem(dt);
         player.update(dt, world, input, false);
         wasInWater = player.inWater;
@@ -1482,49 +1542,40 @@ public class Game {
     }
 
     /**
-     * Сундук открыт: мир живёт дальше, игрок стоит. Ровно как в творческом
-     * меню — окно инвентаря не должно останавливать время суток и мобов,
-     * иначе им можно пользоваться как паузой.
+     * Открывает окно поверх игры.
+     *
+     * <p>Ввод первого кадра гасится: клавиша, открывшая окно, в том же кадре
+     * закрывала бы его обратно.
      */
-    private void updateChestMenu(float dt) {
-        updateCommandToast(dt);
-        // Сундук мог исчезнуть, пока окно открыто: его сломал огонь, или
-        // чанк выгрузился. Окно в этом случае обязано закрыться само.
-        if (openChest == null || world == null
-                || world.getBlock(chestX, chestY, chestZ) != BlockType.CHEST) {
-            closeChest();
-            return;
-        }
-        if (input.pressed(KeyBindings.Action.INVENTORY) || input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
-            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
-            closeChest();
-            return;
-        }
-        updateHeldItem(dt);
-        player.update(dt, world, input, false);
-        wasInWater = player.inWater;
-        updateFootsteps();
-        updateActiveWorld(dt);
+    private void openWindow(com.mineclone.ui.container.ContainerScreen screen) {
+        activeWindow = screen;
+        windows.reset(screen);
+        state = State.WINDOW;
+        windowInputBlocked = true;
+        swallowMouseUntilUp = true;
+        input.grabCursor(false);
     }
 
-    /** Печь открыта: мир живёт дальше, как и при открытом сундуке. */
-    private void updateFurnaceMenu(float dt) {
-        updateCommandToast(dt);
-        if (openFurnace == null || world == null
-                || world.getBlock(furnaceX, furnaceY, furnaceZ) != BlockType.FURNACE) {
-            closeFurnace();
-            return;
-        }
-        if (input.pressed(KeyBindings.Action.INVENTORY) || input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
-            sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
-            closeFurnace();
-            return;
-        }
-        updateHeldItem(dt);
-        player.update(dt, world, input, false);
-        wasInWater = player.inWater;
-        updateFootsteps();
-        updateActiveWorld(dt);
+    /**
+     * Стопка на курсоре открытого окна — её сохраняет level.dat.
+     *
+     * <p>Это предметы игрока, просто ни в одном слоте; класть их в инвентарь
+     * при записи поздно — он мог быть полон.
+     */
+    private com.mineclone.world.ItemStack[] windowCursor() {
+        if (activeWindow == null || activeWindow.menu().cursor() == null)
+            return null;
+        return new com.mineclone.world.ItemStack[] { activeWindow.menu().cursor().copy() };
+    }
+
+    /** Закрывает окно: курсор и остатки возвращаются игроку через closed(). */
+    private void closeWindow() {
+        windows.clear();
+        activeWindow = null;
+        openChest = null;
+        openFurnace = null;
+        state = State.PLAYING;
+        input.grabCursor(true);
     }
 
     private void updateDead(float dt) {
@@ -2295,58 +2346,13 @@ public class Game {
         chestX = x;
         chestY = y;
         chestZ = z;
-        state = State.CHEST_MENU;
-        input.grabCursor(false);
-        swallowMouseUntilUp = true;
+        final int cx = x, cy = y, cz = z;
+        openWindow(new com.mineclone.ui.container.ChestScreen(windowContext, slots,
+                i -> world.markChestDirty(cx, cz),
+                () -> world != null && world.getBlock(cx, cy, cz) == BlockType.CHEST));
         emitNoise(x + 0.5f, y + 0.5f, z + 0.5f, NOISE_PLACE);
         sound.playOneOfAt(sounds.doorToggle(), blockSoundPosition(x, y, z),
                 0.5f, 1.25f + 0.1f * (float) Math.random());
-    }
-
-    /**
-     * Закрывает сундук. То, что осталось на курсоре, возвращается в мир:
-     * сначала в инвентарь, что не влезло — обратно в сундук, а остаток — на
-     * землю. Молча уничтожать предмет при закрытии окна нельзя.
-     */
-    private void closeChest() {
-        if (cursorItem != null) {
-            int leftover = giveStack(cursorItem);
-            if (leftover > 0) {
-                cursorItem.count = leftover;
-                if (openChest != null)
-                    addToChest(cursorItem);
-                throwStack(cursorItem);
-            }
-            cursorItem = null;
-        }
-        if (openChest != null)
-            sound.playOneOfAt(sounds.doorToggle(),
-                    blockSoundPosition(chestX, chestY, chestZ),
-                    0.5f, 1.05f + 0.1f * (float) Math.random());
-        openChest = null;
-        state = State.PLAYING;
-        input.grabCursor(true);
-    }
-
-    /**
-     * Клик по слоту печи.
-     *
-     * Выходной слот только отдаёт: положить туда что-то значило бы получить
-     * из печи предмет, который она не плавила.
-     */
-    private com.mineclone.world.ItemStack clickFurnaceSlot(int slot, boolean right) {
-        com.mineclone.world.ItemStack[] box = {
-                openFurnace.input, openFurnace.fuel, openFurnace.output };
-        if (slot == Hud.FURNACE_OUTPUT && cursorItem != null
-                && (box[slot] == null || !box[slot].stacksWith(cursorItem)))
-            return cursorItem;
-        com.mineclone.world.ItemStack out = right
-                ? com.mineclone.world.Inventory.rightClick(box, slot, cursorItem)
-                : com.mineclone.world.Inventory.leftClick(box, slot, cursorItem);
-        openFurnace.input = box[0];
-        openFurnace.fuel = box[1];
-        openFurnace.output = box[2];
-        return out;
     }
 
     /** Высота спальника в meta: (3 + 1) / 8 — половина блока. */
@@ -2410,33 +2416,11 @@ public class Game {
         furnaceX = x;
         furnaceY = y;
         furnaceZ = z;
-        state = State.FURNACE_MENU;
-        input.grabCursor(false);
-        swallowMouseUntilUp = true;
+        final int fx = x, fy = y, fz = z;
+        openWindow(new com.mineclone.ui.container.FurnaceScreen(windowContext, f,
+                () -> world != null && world.getBlock(fx, fy, fz) == BlockType.FURNACE));
         sound.playOneOfAt(sounds.doorToggle(), blockSoundPosition(x, y, z),
                 0.45f, 0.8f + 0.1f * (float) Math.random());
-    }
-
-    /**
-     * Закрывает печь. То, что осталось на курсоре, уходит игроку, что не
-     * влезло — во входной слот, если он пуст, а иначе на землю: молча
-     * уничтожать предмет нельзя.
-     */
-    private void closeFurnace() {
-        if (cursorItem != null) {
-            int leftover = giveStack(cursorItem);
-            if (leftover > 0) {
-                cursorItem.count = leftover;
-                if (openFurnace != null && openFurnace.input == null)
-                    openFurnace.input = cursorItem;
-                else
-                    throwStack(cursorItem);
-            }
-            cursorItem = null;
-        }
-        openFurnace = null;
-        state = State.PLAYING;
-        input.grabCursor(true);
     }
 
     /**
@@ -2569,23 +2553,6 @@ public class Game {
      * @return true, если еда пошла в дело — тогда правый клик на этом и
      *         заканчивается и не пытается ничего поставить
      */
-
-    /** Кладёт стопку в открытый сундук; возвращает неразместившийся остаток. */
-    private int addToChest(com.mineclone.world.ItemStack s) {
-        if (openChest == null || s == null)
-            return s == null ? 0 : s.count;
-        for (int i = 0; i < openChest.length && s.count > 0; i++) {
-            if (openChest[i] != null && openChest[i].stacksWith(s))
-                s.count = openChest[i].addUpTo(s.count);
-        }
-        for (int i = 0; i < openChest.length && s.count > 0; i++) {
-            if (openChest[i] == null) {
-                openChest[i] = s.copy();
-                s.count = 0;
-            }
-        }
-        return s.count;
-    }
 
     private boolean tryEat() {
         com.mineclone.world.ItemStack held = inventory.get(selectedSlot);
@@ -3654,8 +3621,7 @@ public class Game {
         if (hdr)
             post.resolveDepth();
 
-        boolean menuOpen = state == State.PAUSED || state == State.CREATIVE_MENU
-                || state == State.CHEST_MENU || state == State.FURNACE_MENU;
+        boolean menuOpen = state == State.PAUSED || state == State.WINDOW;
         float blurStep = lastDt / 0.25f;
         menuBlur = menuOpen ? Math.min(1f, menuBlur + blurStep) : Math.max(0f, menuBlur - blurStep);
         boolean handDrawn = false;
@@ -4421,100 +4387,15 @@ public class Game {
                 hud.drawHunger(vw, vh, player.hunger);
                 handleMenuAction(drawMenus(vw, vh, scale));
             }
-            case CREATIVE_MENU -> {
-                hud.drawHotbar(vw, vh, inventory, selectedSlot, slotAnim);
+            case WINDOW -> {
                 hud.drawHearts(vw, vh, player.health, healthGhost);
                 hud.drawHunger(vw, vh, player.hunger);
-                boolean clicked = input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                boolean rightClicked = input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
-                double mx = input.getCursorX() / scale, my = input.getCursorY() / scale;
-                if (gameMode == com.mineclone.world.GameMode.CREATIVE) {
-                    com.mineclone.world.ItemStack picked =
-                            hud.drawCreativeMenu(vw, vh, mx, my, clicked, inventory, selectedSlot);
-                    if (picked != null) {
-                        // Блоки в творческом выдаются полной стопкой,
-                        // инструмент — ровно один: он и так не стопкуется.
-                        inventory.set(selectedSlot, picked.copyWithCount(picked.maxStack()));
-                        equipProgress = 0f;
-                        sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
-                    }
-                } else {
-                    Hud.SlotClick sc = hud.drawInventory(vw, vh, mx, my, clicked, rightClicked,
-                            inventory, selectedSlot, cursorItem);
-                    if (sc.trash) {
-                        cursorItem = null;
-                        sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
-                    } else if (sc.recipe >= 0) {
-                        // Список пересобирается тем же вызовом, что его и
-                        // нарисовал, поэтому индекс валиден ровно сейчас.
-                        var list = com.mineclone.world.Recipes.available(inventory);
-                        if (sc.recipe < list.size()) {
-                            var r = list.get(sc.recipe);
-                            if (com.mineclone.world.Recipes.craft(inventory, r)) {
-                                showCommandToast("Собрано: " + r.resultName());
-                                sound.playOneOf(sounds.uiClick(), 0.5f, 0.9f);
-                            }
-                        }
-                    } else if (sc.slot >= 0) {
-                        cursorItem = sc.right
-                                ? inventory.rightClick(sc.slot, cursorItem)
-                                : inventory.leftClick(sc.slot, cursorItem);
-                        equipProgress = 0f;
-                        sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
-                    }
-                }
-            }
-            case CHEST_MENU -> {
-                hud.drawHearts(vw, vh, player.health, healthGhost);
-                hud.drawHunger(vw, vh, player.hunger);
-                boolean clicked = !swallowMouseUntilUp
-                        && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                boolean rightClicked = !swallowMouseUntilUp
-                        && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
-                double mx = input.getCursorX() / scale, my = input.getCursorY() / scale;
-                if (openChest != null) {
-                    Hud.SlotClick sc = hud.drawChest(vw, vh, mx, my, clicked, rightClicked,
-                            openChest, inventory, selectedSlot, cursorItem);
-                    if (sc.slot >= 0) {
-                        // Одни и те же правила слияния на оба хранилища —
-                        // статические методы Inventory, а не вторая копия.
-                        cursorItem = sc.container
-                                ? (sc.right
-                                        ? com.mineclone.world.Inventory.rightClick(openChest, sc.slot, cursorItem)
-                                        : com.mineclone.world.Inventory.leftClick(openChest, sc.slot, cursorItem))
-                                : (sc.right
-                                        ? inventory.rightClick(sc.slot, cursorItem)
-                                        : inventory.leftClick(sc.slot, cursorItem));
-                        if (sc.container)
-                            world.markChestDirty(chestX, chestZ);
-                        equipProgress = 0f;
-                        sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
-                    }
-                }
-            }
-            case FURNACE_MENU -> {
-                hud.drawHearts(vw, vh, player.health, healthGhost);
-                hud.drawHunger(vw, vh, player.hunger);
-                boolean clicked = !swallowMouseUntilUp
-                        && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT);
-                boolean rightClicked = !swallowMouseUntilUp
-                        && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT);
-                double mx = input.getCursorX() / scale, my = input.getCursorY() / scale;
-                if (openFurnace != null) {
-                    Hud.SlotClick sc = hud.drawFurnace(vw, vh, mx, my, clicked, rightClicked,
-                            openFurnace, inventory, selectedSlot, cursorItem);
-                    if (sc.slot >= 0 && sc.container) {
-                        cursorItem = clickFurnaceSlot(sc.slot, sc.right);
-                        world.markChestDirty(furnaceX, furnaceZ);
-                        equipProgress = 0f;
-                        sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
-                    } else if (sc.slot >= 0) {
-                        cursorItem = sc.right
-                                ? inventory.rightClick(sc.slot, cursorItem)
-                                : inventory.leftClick(sc.slot, cursorItem);
-                        equipProgress = 0f;
-                        sound.playOneOf(sounds.uiClick(), 0.4f, 1.1f + 0.1f * (float) Math.random());
-                    }
+                // Хотбар не рисуется: он внутри окна, и вторая копия внизу
+                // экрана спорила бы с той, по которой игрок кликает.
+                MenuAction wa = drawWindows(vw, vh, scale);
+                if (wa.kind == MenuAction.Kind.BACK) {
+                    sound.playOneOf(sounds.uiClick(), 1.0f, 1.0f);
+                    closeWindow();
                 }
             }
             case DEAD -> {
@@ -4567,6 +4448,26 @@ public class Game {
         return a;
     }
 
+    /** Кадр стека окон: тот же снимок ввода, что у меню, и одно действие наружу. */
+    private MenuAction drawWindows(int vw, int vh, int scale) {
+        if (menuTheme == null || windows.isEmpty())
+            return MenuAction.NONE;
+        UiInput in;
+        if (windowInputBlocked || swallowMouseUntilUp) {
+            in = UiInput.builder()
+                    .at((float) (input.getCursorX() / scale), (float) (input.getCursorY() / scale))
+                    .build();
+            input.pollChars();
+            windowInputBlocked = false;
+        } else {
+            in = menuInput(scale);
+        }
+        menuTheme.begin(vw, vh, in, uiClock, lastDt);
+        MenuAction a = windows.frame(menuTheme);
+        menuTheme.end();
+        return a;
+    }
+
     /** Ввод этого кадра для меню — без GLFW дальше этой точки. */
     private UiInput menuInput(int scale) {
         UiInput.Builder b = UiInput.builder()
@@ -4574,6 +4475,9 @@ public class Game {
                 .mouseDown(input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT))
                 .mousePressed(input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT))
                 .mouseReleased(input.mouseReleased(GLFW.GLFW_MOUSE_BUTTON_LEFT))
+                .rightDown(input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_RIGHT))
+                .rightPressed(input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT))
+                .rightReleased(input.mouseReleased(GLFW.GLFW_MOUSE_BUTTON_RIGHT))
                 .scroll((float) input.getScroll())
                 .typed(input.pollChars());
         for (int k = GLFW.GLFW_KEY_SPACE; k <= GLFW.GLFW_KEY_LAST; k++) {
@@ -4582,6 +4486,8 @@ public class Game {
             else if (input.keyDown(k))
                 b.held(k);
         }
+        if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_MIDDLE))
+            b.middleClick();
         boolean ctrl = input.keyDown(GLFW.GLFW_KEY_LEFT_CONTROL) || input.keyDown(GLFW.GLFW_KEY_RIGHT_CONTROL);
         if (ctrl && input.keyPressed(GLFW.GLFW_KEY_V))
             b.paste(input.clipboard());

@@ -706,13 +706,13 @@ public interface WindowContext {
   Furnace/CreativeMenu` удаляются; `Hud.SlotClick`, `drawInventory`,
   `drawChest`, `drawFurnace`, `drawCreativeMenu`, `drawSlotBack` удаляются.
 - Размытие мира под окном (`menuOpen`) — по `State.WINDOW`.
-- [ ] `RenderHudPreview`: кадры `hud-inventory`, `hud-chest`, `hud-furnace`,
+- [x] `RenderHudPreview`: кадры `hud-inventory`, `hud-chest`, `hud-furnace`,
       `hud-creative` рисуются экранами через заглушку `WindowContext`;
       новые кадры `window-drag-split` (протяжка с числами), `window-tooltip-edge`
       (подсказка у правого нижнего края), `window-advanced-tooltip`.
-- [ ] `BenchUi` переводится на экраны; цифры «после» в «Замеры». Цель — не
+- [x] `BenchUi` переводится на экраны; цифры «после» в «Замеры». Цель — не
       больше 3 draw call на инвентарь и 4 на креатив.
-- [ ] Коммит `feat(ui): inventory, chest, furnace and creative windows on the container framework`.
+- [x] Коммит `feat(ui): inventory, chest, furnace and creative windows on the container framework`.
 
 ## Задача 12. Пипетка и F3-сочетания
 
@@ -782,11 +782,11 @@ public interface WindowContext {
 
 | Что | До | После |
 |---|---|---|
-| Инвентарь, draw calls / кадр | 476 | 25 |
-| Инвентарь, мс / кадр | 2,33 | 0,50 |
-| Сундук, draw calls / кадр (мс) | 633 (3,05) | 36 (0,68) |
-| Креатив, draw calls / кадр | 355 | 3 |
-| Креатив, мс / кадр | 1,45 | 0,15 |
+| Инвентарь, draw calls / кадр | 476 | 25 → **1** (задача 11) |
+| Инвентарь, мс / кадр | 2,33 | 0,50 → **0,16** |
+| Сундук, draw calls / кадр (мс) | 633 (3,05) | 36 (0,68) → **1 (0,10)** |
+| Креатив, draw calls / кадр | 355 | 3 → **1** |
+| Креатив, мс / кадр | 1,45 | 0,15 → **0,11** |
 | CheckSaves: миры / чанки / стопки / missing / отказы | — | 13 / 1588 / 132 / 0 / 0 |
 
 ## Решения, принятые по ходу
