@@ -143,8 +143,9 @@ public final class TestMain {
         run("bedroll is craftable, layered and save-safe", TestMain::testBedroll);
         run("bedroll meshes half a block tall", TestMain::testBedrollHeight);
         run("cave ambience is rare and only underground", TestMain::testAmbientCave);
-        run("water and rain ambience take priority over the cave",
+        run("water drowns out the cave, rain above never reaches it",
                 TestMain::testAmbientPriority);
+        run("rain is heard only as far as the sky reaches", TestMain::testRainNeedsSky);
         run("every ambient cue has files behind it", TestMain::testAmbientAssets);
         run("a cave sounds more enclosed than a field", TestMain::testAcousticProbe);
         run("spatial sound grows smoothly while approaching", TestMain::testSpatialSoundGain);
@@ -1120,7 +1121,8 @@ public final class TestMain {
         assertEq("leaving water splashes once",
                 com.mineclone.audio.AmbientSound.Cue.WATER_EXIT, a.tick(0.05f, false, false, 0f));
 
-        // Дождь громче далёкого шороха в темноте.
+        // Под толщей породы ливня наверху не слышно, и пещера звучит как всегда.
+        // Раньше дождь шёл по осадкам биома и перебивал пещеру даже в глубине.
         var b = ambient(9L);
         b.tick(0.05f, true, false, 1f);
         int rain = 0, thunder = 0, cave = 0;
@@ -1130,9 +1132,9 @@ public final class TestMain {
             if (cue == com.mineclone.audio.AmbientSound.Cue.THUNDER) thunder++;
             if (cue == com.mineclone.audio.AmbientSound.Cue.CAVE) cave++;
         }
-        assertTrue("rain is heard (" + rain + ")", rain > 20);
-        assertTrue("a storm rumbles (" + thunder + ")", thunder > 0);
-        assertEq("and the cave stays quiet while it pours", 0, cave);
+        assertEq("no rain in the depths of a cave", 0, rain);
+        assertEq("no thunder there either", 0, thunder);
+        assertTrue("the cave speaks up while it pours above (" + cave + ")", cave >= 2);
 
         // Слабый дождь не звучит вовсе.
         var c = ambient(13L);
@@ -1144,6 +1146,47 @@ public final class TestMain {
                     != com.mineclone.audio.AmbientSound.Cue.NONE)
                 drizzle++;
         assertEq("a drizzle below the threshold is silent", 0, drizzle);
+    }
+
+    /**
+     * Дождь слышен настолько, насколько над головой открыто небо. Осадки идут
+     * по биому и одинаковы в пещере и на поверхности над ней — раньше ливень
+     * наверху звучал в глубине пещеры, даже освещённой факелами.
+     */
+    private static void testRainNeedsSky() {
+        assertEq("open sky hears all of it", 1f, com.mineclone.audio.AmbientSound.heardRain(1f, 15));
+        assertEq("a tree crown barely muffles it", 1f, com.mineclone.audio.AmbientSound.heardRain(1f, 13));
+        assertEq("the depths of a cave hear none", 0f, com.mineclone.audio.AmbientSound.heardRain(1f, 0));
+        assertEq("nor does the dark edge", 0f, com.mineclone.audio.AmbientSound.heardRain(1f,
+                com.mineclone.audio.AmbientSound.RAIN_SKY_SILENT));
+        float prev = -1f;
+        for (int sky = 0; sky <= Chunk.MAX_LIGHT; sky++) {
+            float h = com.mineclone.audio.AmbientSound.heardRain(0.8f, sky);
+            assertTrue("rain fades in step by step toward the cave mouth (sky " + sky + ")", h >= prev);
+            prev = h;
+        }
+
+        int[] cues = rainCues(15, false);
+        assertTrue("a downpour under the open sky is heard (" + cues[0] + ")", cues[0] > 20);
+        assertTrue("and it thunders (" + cues[1] + ")", cues[1] > 0);
+        assertTrue("under a crown it still is (" + rainCues(13, false)[0] + ")", rainCues(13, false)[0] > 20);
+        int[] lit = rainCues(0, false);
+        assertEq("a torch-lit cave hears no rain, though it is not dark", 0, lit[0]);
+        assertEq("and no thunder", 0, lit[1]);
+        int mouth = rainCues(6, false)[0];
+        assertTrue("a cave mouth still hears a downpour (" + mouth + ")", mouth > 20);
+    }
+
+    /** {дождь, гром} за десять минут ливня с грозой при заданном небесном свете. */
+    private static int[] rainCues(int skyLight, boolean dark) {
+        var a = ambient(21L);
+        int rain = 0, thunder = 0;
+        for (int i = 0; i < 20 * 600; i++) {
+            var cue = a.tick(0.05f, dark, false, 1f, 1f, 0f, false, skyLight);
+            if (cue == com.mineclone.audio.AmbientSound.Cue.RAIN) rain++;
+            if (cue == com.mineclone.audio.AmbientSound.Cue.THUNDER) thunder++;
+        }
+        return new int[] { rain, thunder };
     }
 
     /**

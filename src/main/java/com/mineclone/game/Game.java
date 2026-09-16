@@ -2372,7 +2372,8 @@ public class Game {
         int ex = (int) Math.floor(player.camera.position.x);
         int ey = (int) Math.floor(player.camera.position.y);
         int ez = (int) Math.floor(player.camera.position.z);
-        boolean dark = world.getSkyLight(ex, ey, ez) <= 3
+        int skyLight = world.getSkyLight(ex, ey, ez);
+        boolean dark = skyLight <= 3
                 && world.getBlockLightWorld(ex, ey, ez) <= 7;
         boolean outdoors = com.mineclone.audio.AcousticProbe.freeRun(
                 world, ex, ey, ez, 0, 1, 0) >= com.mineclone.audio.AcousticProbe.MAX_DISTANCE;
@@ -2393,7 +2394,7 @@ public class Game {
         // Гремит только гроза, а не метель: в снег грома не бывает.
         float thunderStorm = atmosphere.storm * (1f - atmosphere.snow);
         var cue = ambient.tick(dt, dark, player.eyeInWater, atmosphere.rain(), thunderStorm,
-                atmosphere.windSpeed(), outdoors);
+                atmosphere.windSpeed(), outdoors, skyLight);
         switch (cue) {
             case CAVE -> {
                 Vector3f spot = caveSoundSpot();
@@ -2401,8 +2402,8 @@ public class Game {
                         0.75f, 0.92f + 0.16f * (float) Math.random());
                 cueSound(spot, 0.35f, false);
             }
-            case RAIN -> sound.playOneOf(sounds.ambientRain(),
-                    0.35f * Math.min(1f, atmosphere.rain()), 1f);
+            case RAIN -> sound.playOneOf(sounds.ambientRain(), 0.35f * Math.min(1f,
+                    com.mineclone.audio.AmbientSound.heardRain(atmosphere.rain(), skyLight)), 1f);
             case WIND -> sound.playOneOf(sounds.ambientWind(),
                     Math.min(0.55f, 0.12f + atmosphere.windSpeed() * 0.07f),
                     0.85f + 0.2f * (float) Math.random());
