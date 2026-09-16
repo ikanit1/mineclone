@@ -758,10 +758,10 @@ public interface WindowContext {
   3. Esc — окно закрыто, курсор вернулся в инвентарь (всего 10 булыжника);
   4. F3 зажать, H нажать, F3 отпустить — `advancedTooltips == true`, отладка не показана;
   5. `/gamemode creative`, E — открыт креатив, снимок `window-creative`, Esc.
-- [ ] Прогон:
+- [x] Прогон:
       `java -Dmineclone.autopilot=out-test/autopilot/shots -Dmineclone.savesDir=out-test/autopilot/saves -cp "out;libs/*" com.mineclone.Main`
       — код 0.
-- [ ] Коммит `test(ui): autopilot drives the inventory, drag split, F3+H and creative window`.
+- [x] Коммит `test(ui): autopilot drives the inventory, drag split, F3+H and creative window`.
 
 ## Задача 14. Документы
 

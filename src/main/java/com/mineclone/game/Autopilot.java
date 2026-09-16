@@ -13,7 +13,10 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_E;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_F3;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_H;
 
 /**
  * Автопилот меню в настоящей игре: {@code -Dmineclone.autopilot=<папка>}.
@@ -70,6 +73,49 @@ final class Autopilot {
 
         /** Как {@code /music next}: погасить трек и начать другой. */
         void musicNext();
+
+        /** Поставить курсор в виртуальные координаты интерфейса. */
+        void mouseAt(float vx, float vy);
+
+        /** Нажать или отпустить кнопку мыши. */
+        void mouseButton(int button, boolean down);
+
+        /** Зажать или отпустить клавишу — для сочетаний вроде F3+H. */
+        void holdKey(int key, boolean down);
+
+        /** Центр слота открытого окна в виртуальных координатах или null. */
+        float[] windowSlotCenter(String groupId, int index);
+
+        com.mineclone.world.Inventory inventory();
+
+        boolean debugShown();
+
+        boolean advancedTooltips();
+
+        /** Переключить режим в творческий — окно креатива открывается только в нём. */
+        void setCreative();
+    }
+
+    /** Сколько предметов этого вида лежит в инвентаре — для проверок окна. */
+    private static int count(Driver d, String id) {
+        com.mineclone.world.Inventory inv = d.inventory();
+        int n = 0;
+        for (int i = 0; i < inv.size(); i++) {
+            com.mineclone.world.ItemStack s = inv.get(i);
+            if (s != null && s.item.id.toString().equals("mineclone:" + id))
+                n += s.count;
+        }
+        return n;
+    }
+
+    /** Ставит курсор в центр слота окна; падает, если слота нет. */
+    private static Step toSlot(String name, float delay, String group, int index) {
+        return step(name, delay, d -> {
+            float[] c = d.windowSlotCenter(group, index);
+            if (c == null)
+                throw new IllegalStateException(name + ": no slot " + group + "#" + index);
+            d.mouseAt(c[0], c[1]);
+        });
     }
 
     /** Позиция трека на прошлом замере — чтобы проверить, что музыка идёт, а не стоит. */
@@ -201,7 +247,74 @@ final class Autopilot {
                             GameMode.SURVIVAL)))),
             when("random-seed world loads", 8f,
                     d -> in(d, "PLAYING"),
-                    d -> System.out.println("autopilot: ok - random-seed world loaded")));
+                    d -> System.out.println("autopilot: ok - random-seed world loaded")),
+
+            // --- окна инвентаря ------------------------------------------
+            step("stock the inventory", 0.2f, d -> {
+                d.inventory().set(9, com.mineclone.world.ItemStack.of("cobblestone", 10));
+                System.out.println("autopilot: ok - ten cobblestone in storage");
+            }),
+            step("open the inventory", 0.2f, d -> d.pressKey(GLFW_KEY_E)),
+            expect("E opens the inventory window", 0.5f, "WINDOW"),
+            step("shoot the window", 0.4f, d -> d.shot("10-window-inventory")),
+
+            toSlot("cursor on the stack", 0.2f, "main", 0),
+            step("pick the stack up", 0.2f, d -> d.mouseButton(0, true)),
+            step("release", 0.1f, d -> d.mouseButton(0, false)),
+            step("the stack is on the cursor", 0.2f, d -> {
+                if (d.inventory().get(9) != null)
+                    throw new IllegalStateException("the slot did not empty");
+                System.out.println("autopilot: ok - ten cobblestone on the cursor");
+            }),
+            toSlot("drag start", 0.1f, "main", 1),
+            step("press and hold", 0.1f, d -> d.mouseButton(0, true)),
+            toSlot("drag over the second slot", 0.15f, "main", 2),
+            toSlot("drag over the third slot", 0.15f, "main", 3),
+            step("release the drag", 0.15f, d -> d.mouseButton(0, false)),
+            step("the drag split evenly", 0.3f, d -> {
+                com.mineclone.world.Inventory inv = d.inventory();
+                for (int i = 10; i <= 12; i++) {
+                    com.mineclone.world.ItemStack s = inv.get(i);
+                    if (s == null || s.count != 3)
+                        throw new IllegalStateException("slot " + i + " got "
+                                + (s == null ? "nothing" : s.count + "") + ", expected 3");
+                }
+                System.out.println("autopilot: ok - three slots took three each");
+            }),
+            step("shoot the drag", 0.3f, d -> d.shot("11-window-drag")),
+
+            step("Esc closes the window", 0.2f, d -> d.pressKey(GLFW_KEY_ESCAPE)),
+            expect("Esc returns to the game", 0.6f, "PLAYING"),
+            step("the cursor came back", 0.2f, d -> {
+                int total = count(d, "cobblestone");
+                if (total != 10)
+                    throw new IllegalStateException("cobblestone: " + total + ", expected 10");
+                System.out.println("autopilot: ok - nothing was lost on close");
+            }),
+
+            // --- F3 и его сочетания ---------------------------------------
+            step("hold F3", 0.2f, d -> d.holdKey(GLFW_KEY_F3, true)),
+            step("press H", 0.2f, d -> d.pressKey(GLFW_KEY_H)),
+            step("release F3", 0.3f, d -> d.holdKey(GLFW_KEY_F3, false)),
+            step("F3+H turned advanced tooltips on, not the debug screen", 0.4f, d -> {
+                if (!d.advancedTooltips())
+                    throw new IllegalStateException("advanced tooltips are still off");
+                if (d.debugShown())
+                    throw new IllegalStateException("the debug screen came on as well");
+                System.out.println("autopilot: ok - F3+H without the debug screen");
+            }),
+
+            // --- творческое окно -------------------------------------------
+            step("switch to creative", 0.2f,
+                    d -> d.inventory().set(0, com.mineclone.world.ItemStack.of("stone", 1))),
+            step("open the creative window", 0.3f, d -> {
+                d.setCreative();
+                d.pressKey(GLFW_KEY_E);
+            }),
+            expect("E opens the creative window", 0.5f, "WINDOW"),
+            step("shoot creative", 0.5f, d -> d.shot("12-window-creative")),
+            step("Esc closes creative", 0.3f, d -> d.pressKey(GLFW_KEY_ESCAPE)),
+            expect("Esc leaves the creative window", 0.6f, "PLAYING"));
 
     private final Driver d;
     private float clock;

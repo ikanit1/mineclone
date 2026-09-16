@@ -4708,6 +4708,49 @@ public class Game {
         }
 
         @Override
+        public void mouseAt(float vx, float vy) {
+            int scale = effectiveGuiScale();
+            input.overrideCursor(vx * scale, vy * scale);
+        }
+
+        @Override
+        public void mouseButton(int button, boolean down) {
+            input.injectMouseButton(button, down);
+            // Первый кадр окна глушит мышь; автопилот кликает уже после него.
+            swallowMouseUntilUp = false;
+        }
+
+        @Override
+        public void holdKey(int key, boolean down) {
+            input.holdKey(key, down);
+        }
+
+        @Override
+        public float[] windowSlotCenter(String groupId, int index) {
+            return activeWindow == null ? null : activeWindow.slotCenter(groupId, index);
+        }
+
+        @Override
+        public com.mineclone.world.Inventory inventory() {
+            return inventory;
+        }
+
+        @Override
+        public boolean debugShown() {
+            return showDebug;
+        }
+
+        @Override
+        public boolean advancedTooltips() {
+            return advancedTooltips;
+        }
+
+        @Override
+        public void setCreative() {
+            gameMode = com.mineclone.world.GameMode.CREATIVE;
+        }
+
+        @Override
         public void setMenuTime(float t) {
             menuBackground.setGameTime(t);
         }
