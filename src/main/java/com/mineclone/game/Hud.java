@@ -1,6 +1,7 @@
 package com.mineclone.game;
 
 import com.mineclone.render.Font;
+import com.mineclone.render.ItemIcons;
 import com.mineclone.render.TextRenderer;
 import com.mineclone.render.TextureAtlas;
 import com.mineclone.render.UiRenderer;
@@ -52,12 +53,21 @@ public class Hud {
      *              подпись версии. Один кегль на весь интерфейс не работает —
      *              цифра «64» основным шрифтом закрывала полслота.
      */
+    private final ItemIcons icons;
+
     public Hud(Font font, Font small, TextRenderer text, UiRenderer ui, TextureAtlas atlas) {
         this.font = font;
         this.small = small != null ? small : font;
         this.text = text;
         this.ui = ui;
         this.atlas = atlas;
+        this.icons = new ItemIcons(ui, atlas);
+        this.icons.setFont(this.small);
+    }
+
+    /** Иконки предметов — их же рисуют окна инвентаря. */
+    public ItemIcons icons() {
+        return icons;
     }
 
     // ---------------- F3 debug overlay ----------------
@@ -1148,12 +1158,14 @@ public class Hud {
 
     /** Draws a stack-count number at the bottom-right of a slot, when count > 1. */
     private void drawCount(int sw, int sh, int count, float slotX, float slotY, float slotSize) {
-        if (count <= 1) return;
-        String s = Integer.toString(count);
-        float cw = small.textWidth(s);
-        float tx = slotX + slotSize - cw - 2f;
-        float ty = slotY + slotSize - 3f;
-        text.drawOutlined(small, s, tx, ty, sw, sh, 1f, 1f, 1f);
+        icons.drawCount(text, small, count, slotX, slotY, slotSize, sw, sh);
+    }
+
+    /** @param spin кубик вращается — выбранный слот или предмет под курсором */
+    private void drawItemIcon(com.mineclone.world.ItemStack s, float x, float y,
+            float size, float alpha, boolean spin) {
+        icons.draw(s, x, y, size, alpha,
+                spin ? ItemIcons.ICON_YAW + time * ItemIcons.ICON_SPIN : ItemIcons.ICON_YAW);
     }
 
     private void drawItemIcon(com.mineclone.world.ItemStack s, float x, float y,
@@ -1161,163 +1173,11 @@ public class Hud {
         drawItemIcon(s, x, y, size, alpha, false);
     }
 
-    /**
-     * @param spin кубик вращается — выбранный слот или предмет под курсором
-     */
-    private void drawItemIcon(com.mineclone.world.ItemStack s, float x, float y,
-            float size, float alpha, boolean spin) {
-        if (s == null)
-            return;
-        if (isCubeIcon(s.block()))
-            drawBlockIcon(s.block(), x, y, size, alpha, spin ? ICON_YAW + time * ICON_SPIN : ICON_YAW);
-        else
-            drawTileIcon(s.iconTile(), x, y, size, alpha);
-        if (s.hasDurability())
-            drawDurabilityBar(s, x, y, size);
-    }
-
     /** Часы интерфейса — по ним вращаются кубики. */
     private float time;
 
     public void setTime(float seconds) {
         this.time = seconds;
-    }
-
-    private void drawTileIcon(int tile, float x, float y, float size, float alpha) {
-        float[] uv = TextureAtlas.uv(tile);
-        ui.quad(x + 3f, y + 4f, size, size, 0f, 0f, 0f, 0.25f * alpha);
-        ui.texQuad(x, y, size, size, atlas.getTextureId(),
-                uv[0], uv[1], uv[2], uv[3], 1f, 1f, 1f, alpha);
-    }
-
-    /**
-     * Блок в слоте — изометрическим кубиком, а не плоской гранью.
-     *
-     * Три параллелограмма: крышка ромбом, левая и правая грани. Яркость
-     * граней взята из того же профиля, что печёт мешер
-     * ({@code FACE_LIGHT}), поэтому кубик в интерфейсе освещён так же, как
-     * блок в мире, и они не выглядят из разных игр.
-     *
-     * Плоская грань остаётся у всего, что кубом не является: у инструментов,
-     * еды, факела и прочих крестов объём только испортил бы силуэт.
-     */
-    private void drawBlockIcon(BlockType b, float x, float y, float size, float alpha) {
-        drawBlockIcon(b, x, y, size, alpha, ICON_YAW);
-    }
-
-    /** Поворот кубика в покое: ровно та косая проекция 2:1, что была. */
-    public static final float ICON_YAW = 45f;
-    /** Скорость вращения кубика в выбранном слоте и под курсором, градусы в секунду. */
-    public static final float ICON_SPIN = 55f;
-    /** Высота боковой грани и подъём крышки в долях ребра — пропорции прежней иконки. */
-    private static final float ICON_SIDE_H = 0.643f, ICON_TILT = 0.5f;
-
-    /**
-     * Видимые грани кубика, повёрнутого на {@code yawDeg} вокруг вертикали, в
-     * единицах ребра относительно центра иконки (y вниз, как на экране).
-     *
-     * @return массив граней: {x0,y0, x1,y1, x2,y2, x3,y3, яркость, 0 — крышка / 1 — бок};
-     *         углы по кругу, первый — левый верхний угол текстуры
-     */
-    public static float[][] isoCubeFaces(float yawDeg) {
-        double a = Math.toRadians(yawDeg);
-        float c = (float) Math.cos(a), s = (float) Math.sin(a);
-        float[][] corner = new float[4][];                  // углы крышки по кругу
-        float[][] local = { { -0.5f, -0.5f }, { 0.5f, -0.5f }, { 0.5f, 0.5f }, { -0.5f, 0.5f } };
-        for (int i = 0; i < 4; i++) {
-            float rx = local[i][0] * c + local[i][1] * s;
-            float rz = -local[i][0] * s + local[i][1] * c;
-            corner[i] = new float[] { rx, rz };
-        }
-        java.util.List<float[]> faces = new java.util.ArrayList<>();
-        // Бок: ребро между соседними углами крышки, видно, если нормаль
-        // смотрит к зрителю (в +Z после поворота).
-        for (int i = 0; i < 4; i++) {
-            float[] p = corner[i], q = corner[(i + 1) % 4];
-            float nx = q[1] - p[1], nz = -(q[0] - p[0]);    // внешняя нормаль ребра
-            if (nz <= 1e-4f)
-                continue;
-            float len = (float) Math.hypot(nx, nz);
-            // Свет слева: грань, повёрнутая влево, ярче — как FACE_LIGHT в
-            // мире. Нормировка на 45° даёт ровно прежние 0.80 и 0.62.
-            float t = Math.max(0f, Math.min(1f, 0.5f - 0.5f * (nx / len) / 0.7071f));
-            float light = 0.62f + 0.18f * t;
-            // Дальние углы выше на экране, ближние ниже.
-            float yTopP = -ICON_SIDE_H * 0.5f + p[1] * ICON_TILT;
-            float yTopQ = -ICON_SIDE_H * 0.5f + q[1] * ICON_TILT;
-            // У видимой грани обход p→q идёт справа налево: левый верхний
-            // угол текстуры — это q, иначе бока выходят зеркальными.
-            faces.add(new float[] {
-                    q[0], yTopQ, p[0], yTopP,
-                    p[0], yTopP + ICON_SIDE_H, q[0], yTopQ + ICON_SIDE_H,
-                    light, 1f });
-        }
-        // Крышка последней: она всегда сверху и всегда видна.
-        float[] top = new float[10];
-        for (int i = 0; i < 4; i++) {
-            top[i * 2] = corner[i][0];
-            top[i * 2 + 1] = -ICON_SIDE_H * 0.5f + corner[i][1] * ICON_TILT;
-        }
-        top[8] = 1f;
-        top[9] = 0f;
-        faces.add(top);
-        return faces.toArray(new float[0][]);
-    }
-
-    /**
-     * Блок в слоте — изометрическим кубиком, а не плоской гранью.
-     *
-     * При {@link #ICON_YAW} это ровно прежняя иконка: ромб крышки и две боковые
-     * грани с яркостью из профиля мира. В выбранном слоте и под курсором кубик
-     * медленно вращается — объём читается, даже если грани одного цвета.
-     */
-    private void drawBlockIcon(BlockType b, float x, float y, float size, float alpha, float yawDeg) {
-        int tid = atlas.getTextureId();
-        float[] topUv = TextureAtlas.uv(b.topTile);
-        float[] sideUv = TextureAtlas.uv(b.sideTile);
-        // Кубик чуть уже слота, чтобы остались поля и цифра количества не
-        // наезжала на грань. Масштаб не зависит от поворота — иначе кубик
-        // «дышал» бы по ширине, вращаясь.
-        float scale = size * 0.88f / (float) Math.sqrt(2.0);
-        float cx = x + size / 2f, cy = y + size * 0.46f;
-
-        // Контактная тень: приплюснутый ромб под кубиком.
-        float bottom = y + size * 0.88f;
-        float rise = size * 0.88f * 0.25f, hw = size * 0.44f;
-        float sy = bottom - rise * 0.30f, sh = rise * 0.42f, sw = hw * 1.08f;
-        ui.quad4(new float[] { cx - sw, sy, cx, sy - sh, cx + sw, sy, cx, sy + sh },
-                0f, 0f, 0f, 0.26f * alpha);
-
-        for (float[] f : isoCubeFaces(yawDeg)) {
-            float[] quad = new float[8];
-            for (int i = 0; i < 4; i++) {
-                quad[i * 2] = cx + f[i * 2] * scale;
-                quad[i * 2 + 1] = cy + f[i * 2 + 1] * scale;
-            }
-            float[] uv = f[9] == 0f ? topUv : sideUv;
-            float l = f[8];
-            ui.texQuad4(quad, tid, uv[0], uv[1], uv[2], uv[3], l, l, l, alpha);
-        }
-    }
-
-    /** Куб ли это. Кресты и слои объёмной иконкой только испортишь. */
-    private static boolean isCubeIcon(BlockType b) {
-        return b != null && b != BlockType.AIR && !b.isCross() && !b.isLayered()
-                && b != BlockType.WATER && b != BlockType.WATER_FLOW;
-    }
-
-    /**
-     * Полоска прочности под иконкой инструмента. Цвет едет от зелёного к
-     * красному: числом износ читать некогда, а цветом — мгновенно.
-     */
-    private void drawDurabilityBar(com.mineclone.world.ItemStack s, float x, float y, float size) {
-        float k = s.condition();
-        if (k >= 1f)
-            return;
-        float barH = Math.max(2f, size * 0.10f);
-        float by = y + size - barH;
-        ui.quad(x, by, size, barH, 0.10f, 0.10f, 0.10f, 0.9f);
-        ui.quad(x, by, size * k, barH, 1f - k, 0.15f + 0.75f * k, 0.12f, 1f);
     }
 
     /**

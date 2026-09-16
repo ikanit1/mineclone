@@ -75,6 +75,81 @@ final class InventoryTests {
         r.run("options v5 load with default inventory preferences", InventoryTests::testOptionsV5);
         r.run("options v6 round-trip", InventoryTests::testOptionsV6);
         r.run("batch transform scales around its pivot", InventoryTests::testBatchTransform);
+        r.run("box faces of a cube match the old iso cube at 45 degrees",
+                InventoryTests::testCubeFaces);
+        r.run("stairs icon has more faces than a cube", InventoryTests::testStairsFaces);
+        r.run("box faces write into the caller buffer without allocating",
+                InventoryTests::testFacesBuffer);
+    }
+
+    // --------------------------------------------------------------- иконки
+
+    private static final int FACE = com.mineclone.render.ItemIcons.FLOATS_PER_FACE;
+
+    private static void testCubeFaces() {
+        float[] out = new float[com.mineclone.render.ItemIcons.MAX_FACES * FACE];
+        int n = com.mineclone.render.ItemIcons.boxFaces(0f, 0f, 0f, 1f, 1f, 1f, 45f, out, 0);
+        // Ровно прежняя иконка: две боковые грани и крышка.
+        assertEq("a cube at 45 degrees shows three faces", 3, n);
+        assertEq("right side is a side", 1f, out[9]);
+        assertEq("left side is a side", 1f, out[FACE + 9]);
+        assertEq("the top comes last", 0f, out[2 * FACE + 9]);
+        // Яркость — из того же профиля, что печёт мешер.
+        near("right side keeps 0.62", 0.62f, out[8]);
+        near("left side keeps 0.80", 0.80f, out[FACE + 8]);
+        near("the top stays full", 1.00f, out[2 * FACE + 8]);
+
+        // Крышка — ромб: два угла на горизонтали, два по вертикали.
+        float half = (float) (0.5 * Math.sqrt(2.0));
+        int t = 2 * FACE;
+        near("left corner", -half, out[t]);
+        near("far corner", 0f, out[t + 2]);
+        near("right corner", half, out[t + 4]);
+        near("near corner", 0f, out[t + 6]);
+    }
+
+    private static void testStairsFaces() {
+        float[] cube = new float[com.mineclone.render.ItemIcons.MAX_FACES * FACE];
+        float[] stairs = new float[com.mineclone.render.ItemIcons.MAX_FACES * FACE];
+        int cubeFaces = com.mineclone.render.ItemIcons.shapeFaces(BlockType.STONE, 45f, cube);
+        int stairFaces = com.mineclone.render.ItemIcons.shapeFaces(BlockType.STAIRS, 45f, stairs);
+        assertEq("a cube is three faces", 3, cubeFaces);
+        assertTrue("stairs need more than a cube", stairFaces > cubeFaces);
+        assertTrue("and fit in the buffer",
+                stairFaces <= com.mineclone.render.ItemIcons.MAX_FACES);
+
+        // Слой ниже куба: его крышка стоит на экране ниже крышки куба.
+        float[] snow = new float[com.mineclone.render.ItemIcons.MAX_FACES * FACE];
+        int snowFaces = com.mineclone.render.ItemIcons.shapeFaces(BlockType.SNOW_LAYER, 45f, snow);
+        float snowTop = snow[(snowFaces - 1) * FACE + 1];
+        float cubeTop = cube[(cubeFaces - 1) * FACE + 1];
+        assertTrue("a snow layer sits lower than a full cube", snowTop > cubeTop);
+        assertTrue("a bedroll sits between them",
+                bedrollTop() > cubeTop && bedrollTop() < snowTop);
+    }
+
+    private static float bedrollTop() {
+        float[] out = new float[com.mineclone.render.ItemIcons.MAX_FACES * FACE];
+        int n = com.mineclone.render.ItemIcons.shapeFaces(BlockType.BEDROLL, 45f, out);
+        return out[(n - 1) * FACE + 1];
+    }
+
+    private static void testFacesBuffer() {
+        float[] out = new float[com.mineclone.render.ItemIcons.MAX_FACES * FACE];
+        java.util.Arrays.fill(out, 7f);
+        int first = com.mineclone.render.ItemIcons.boxFaces(0f, 0f, 0f, 1f, 1f, 1f, 30f, out, 0);
+        int second = com.mineclone.render.ItemIcons.boxFaces(0f, 0f, 0f, 1f, 1f, 1f, 30f,
+                out, first);
+        assertEq("the same box gives the same face count", first, second);
+        for (int i = 0; i < first * FACE; i++)
+            assertEq("face " + i + " is written identically", out[i], out[first * FACE + i]);
+        // За своими гранями функция ничего не трогает — там остался маркер.
+        assertEq("nothing beyond the written faces", 7f, out[(first + second) * FACE]);
+    }
+
+    private static void near(String what, float expected, float actual) {
+        if (Math.abs(expected - actual) > 1e-4f)
+            throw new AssertionError(what + ": expected <" + expected + "> but was <" + actual + ">");
     }
 
     private static void testBatchTransform() {

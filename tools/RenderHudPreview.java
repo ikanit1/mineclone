@@ -117,6 +117,19 @@ public class RenderHudPreview {
         shot("hud-creative", () ->
                 hud.drawCreativeMenu(W, H, 0, 0, false, inv, 3));
 
+        // Frame: icon shapes. Stairs, snow and a bedroll are not cubes, and
+        // drawing them as cubes lies about what the player is holding.
+        Inventory shapes = new Inventory();
+        String[] shapeIds = { "stairs", "snow", "bedroll", "stone", "torch", "water",
+                "lava", "cobweb", "iron_pickaxe" };
+        for (int i = 0; i < shapeIds.length; i++)
+            shapes.set(i, ItemStack.of(shapeIds[i], i == 3 ? 42 : 1));
+        shapes.get(8).setDamage(shapes.get(8).item.durability / 3);
+        shot("hud-icon-shapes", () -> {
+            hud.drawHotbar(W, H, shapes, 0, 0f);
+            hud.drawHotbar(W, H, shapes, 4, 0f);
+        });
+
         // Кадр: стекло поверх пёстрого «мира», подсказка у прицела на
         // кириллице, дуги звука и повёрнутый кубик в выбранном слоте. Пёстрые
         // полосы нужны, чтобы размытие под стеклом было видно глазом.

@@ -523,13 +523,13 @@ public static int boxFaces(float x0, float y0, float z0, float x1, float y1, flo
 - Полоска прочности — прежняя; вращение выбранного слота — прежнее.
 - `Hud.drawHotbar` и старые окна `Hud` переходят на `ItemIcons`;
   `Hud.isoCubeFaces` удаляется (тест `testIsoCubeFaces`, если есть, — на `boxFaces`).
-- [ ] Тесты: `box faces of a cube match the old iso cube at 45 degrees`,
+- [x] Тесты: `box faces of a cube match the old iso cube at 45 degrees`,
       `stairs icon has more faces than a cube`,
       `box faces write into the caller buffer without allocating` (сравнение
       результата двух вызовов в один буфер).
-- [ ] `ComparePreviews` — кадры с кубиками OK; ступени и слои в новом кадре
+- [x] `ComparePreviews` — кадры с кубиками OK; ступени и слои в новом кадре
       `hud-icon-shapes` (новый кадр `RenderHudPreview`).
-- [ ] Коммит `feat(ui): item icons by block shape, shared by hotbar and windows`.
+- [x] Коммит `feat(ui): item icons by block shape, shared by hotbar and windows`.
 
 ## Задача 9. Логика окон
 
