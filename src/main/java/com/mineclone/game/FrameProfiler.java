@@ -143,4 +143,15 @@ public final class FrameProfiler {
         }
         return sb.toString();
     }
+
+    /** Raw phase times for a spike report; unlike F3 this is not smoothed. */
+    public String rawBreakdown() {
+        StringBuilder sb = new StringBuilder();
+        for (Phase p : PHASES) {
+            if (sb.length() > 0) sb.append(" ");
+            sb.append(p.label).append("=")
+                    .append(String.format(java.util.Locale.ROOT, "%.2f", current[p.ordinal()] * 1000.0));
+        }
+        return sb.toString();
+    }
 }

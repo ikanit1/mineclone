@@ -172,6 +172,7 @@ public class Game {
      * ничего — нужно видеть худший кадр и то, в какой фазе он застрял.
      */
     private final FrameProfiler profiler = new FrameProfiler();
+    private final com.mineclone.world.entity.MobSpatialGrid collisionGrid = new com.mineclone.world.entity.MobSpatialGrid();
 
     private float stepDistance = 0f;
     /** Левая или правая нога игрока: следы идут в две дорожки, а не в колею. */
@@ -290,6 +291,8 @@ public class Game {
 
     private final Map<Long, Mesh> chunkMeshes = new HashMap<>();
     private final Map<Long, Mesh> waterMeshes = new HashMap<>();
+    private com.mineclone.render.OcclusionCuller occlusion;
+    private final java.util.ArrayList<java.util.Map.Entry<Long, Mesh>> visibleChunkMeshes = new java.util.ArrayList<>();
     private final FrustumIntersection frustum = new FrustumIntersection();
     private final Matrix4f scratchModel = new Matrix4f();
     private int selectedSlot = 0;
@@ -394,6 +397,7 @@ public class Game {
         window.setFullscreen(this.fullscreen);
         this.menuBackground = new MenuBackground(save);
         this.atlas = new TextureAtlas(TextureAtlas.DEFAULT_PATH, regenAtlas);
+        this.occlusion = new com.mineclone.render.OcclusionCuller();
         this.chunkShader = new Shader(Shaders.CHUNK_VERTEX, Shaders.CHUNK_FRAGMENT);
         this.heldItemRenderer = new HeldItemRenderer();
         this.crosshair = new Crosshair();
@@ -672,6 +676,7 @@ public class Game {
             }
             updateMusic(dt);
 
+            audioEvents.flush(this::playOccludedNow);
             sound.updateListener(player.camera.position, player.camera.forward());
             this.lastDt = dt;
             render();
@@ -682,8 +687,16 @@ public class Game {
             }
             sound.tick();
             profiler.end(GLFW.glfwGetTime());
+            double beforeSwap = GLFW.glfwGetTime();
             window.update();
-            profiler.endFrame(GLFW.glfwGetTime(), GLFW.glfwGetTime() - frameStart);
+            double afterSwap = GLFW.glfwGetTime();
+            profiler.endFrame(afterSwap, afterSwap - frameStart);
+            double workMs = (beforeSwap - frameStart) * 1000.0;
+            double frameMs = (afterSwap - frameStart) * 1000.0;
+            if (workMs > 40.0 || frameMs > 80.0)
+                System.err.printf(java.util.Locale.ROOT,
+                        "FRAME_SPIKE state=%s work=%.1fms frame=%.1fms %s%n",
+                        state, workMs, frameMs, profiler.rawBreakdown());
 
             if (!vsync && maxFps > 0) {
                 double target = 1.0 / maxFps;
@@ -736,6 +749,14 @@ public class Game {
         this.world = new World(seed);
         this.mesher = new ChunkMesher(world);
         this.loader = new ChunkLoader(world, mesher, save, id);
+        // The streaming centre belongs to the loader/world, not to the Game
+        // instance.  After returning to the title screen and reopening a save,
+        // the player commonly starts in the same chunk as before.  Keeping the
+        // old centre then made ensureChunksLoaded() see neither movement nor
+        // pending work, so it never scheduled anything outside the synchronous
+        // 3x3 spawn preload and the loading screen waited forever.
+        lastStreamCX = Integer.MIN_VALUE;
+        lastStreamCZ = Integer.MIN_VALUE;
 
         // Preload spawn 3x3 so the player has ground under their feet immediately.
         for (int dx = -1; dx <= 1; dx++)
@@ -883,6 +904,7 @@ public class Game {
     }
 
     private void updatePlaying(float dt) {
+        long updateProbe = System.nanoTime();
         player.statusSpeedMultiplier = advancedFeedback.movementMultiplier();
         if (photoMode) {
             updatePhotoCamera(dt);
@@ -956,7 +978,9 @@ public class Game {
             player.flying = false;
         // В фоторежиме игрок заморожен: управление уходит свободной камере,
         // и пропускать его сюда значило бы двигать заодно и его.
+        long playerProbe = System.nanoTime();
         player.update(dt, world, input, !photoMode, mouseSensitivity, invertMouseY);
+        playerProbe = System.nanoTime() - playerProbe;
         if (player.justJumped) {
             int jbx = (int) Math.floor(player.position.x);
             int jby = (int) Math.floor(player.position.y - 0.1f);
@@ -1031,8 +1055,18 @@ public class Game {
         // Стриминга здесь нет намеренно: его делает updateActiveWorld ниже,
         // а два вызова за кадр удваивали бы бюджет загрузки мешей на GPU.
         handleInteraction(dt);
+        long activeProbe = System.nanoTime();
         updateActiveWorld(dt);
+        activeProbe = System.nanoTime() - activeProbe;
+        long mobsProbe = System.nanoTime();
         updateMobs(dt);
+        mobsProbe = System.nanoTime() - mobsProbe;
+        long updateElapsed = System.nanoTime() - updateProbe;
+        if (updateElapsed > 30_000_000L)
+            System.err.printf(java.util.Locale.ROOT,
+                    "UPDATE_SPIKE total=%.1fms player=%.1fms active=%.1fms mobs=%.1fms count=%d%n",
+                    updateElapsed / 1e6, playerProbe / 1e6, activeProbe / 1e6,
+                    mobsProbe / 1e6, mobs.size());
     }
 
     private void updateActiveWorld(float dt) {
@@ -1221,7 +1255,7 @@ public class Game {
         while (it.hasNext()) {
             com.mineclone.world.entity.Mob m = it.next();
             m.setPlayerTorch(torchInHand);
-            m.update(world, player.position, dt, daylight, hostileEnabled);
+            if (!m.updateLod(world, player.position, dt, daylight, hostileEnabled)) continue;
 
             if (m.justIdleSound) {
                 boolean danger = m.type.hostile || m.isAngry();
@@ -1332,10 +1366,14 @@ public class Game {
 
         // Расталкивание: без него стадо слипается в одну точку, а моб спокойно
         // стоит внутри игрока. Игрока не двигаем — свою физику он считает сам.
+        collisionGrid.rebuild(mobs);
+        java.util.IdentityHashMap<com.mineclone.world.entity.Mob, Integer> collisionOrder = new java.util.IdentityHashMap<>();
+        for (int i = 0; i < mobs.size(); i++) collisionOrder.put(mobs.get(i), i);
         for (int i = 0; i < mobs.size(); i++) {
             com.mineclone.world.entity.Mob a = mobs.get(i);
-            for (int j = i + 1; j < mobs.size(); j++) {
-                com.mineclone.world.entity.Mob b = mobs.get(j);
+            for (com.mineclone.world.entity.Mob b : collisionGrid.nearby(a, 2.0f)) {
+                if (b == a || collisionOrder.getOrDefault(b, Integer.MAX_VALUE) <= i)
+                    continue;
                 com.mineclone.world.entity.EntityPhysics.separate(
                         a.position, a.type.width, a.type.height, 0.25f,
                         b.position, b.type.width, b.type.height, 0.25f);
@@ -1612,14 +1650,10 @@ public class Game {
      */
     private void uploadReadyMeshes(double budgetMs) {
         double deadline = GLFW.glfwGetTime() + budgetMs / 1000.0;
-        while (true) {
-            java.util.List<ChunkLoader.Ready> batch = loader.drainReady(4);
-            if (batch.isEmpty())
-                break;
-            for (ChunkLoader.Ready r : batch)
-                uploadMesh(r);
-            if (GLFW.glfwGetTime() >= deadline)
-                break;
+        while (GLFW.glfwGetTime() < deadline) {
+            java.util.List<ChunkLoader.Ready> batch = loader.drainReady(1);
+            if (batch.isEmpty()) break;
+            uploadMesh(batch.get(0));
         }
     }
 
@@ -2940,7 +2974,11 @@ public class Game {
      * глушат его. Без этого зомби за каменной стеной слышно так же громко,
      * как зомби в коридоре, и по звуку невозможно понять, открыт ли путь.
      */
+    private final com.mineclone.audio.DeferredAudio audioEvents = new com.mineclone.audio.DeferredAudio();
     private void playOccluded(java.util.List<String> paths, Vector3f at, float volume, float pitch) {
+        audioEvents.add(paths, at, volume, pitch);
+    }
+    private void playOccludedNow(java.util.List<String> paths, Vector3f at, float volume, float pitch) {
         int walls = world == null ? 0
                 : com.mineclone.audio.SoundOcclusion.solidBetween(world, player.camera.position, at);
         float gain = com.mineclone.audio.SoundOcclusion.gainFor(walls);
@@ -3404,18 +3442,36 @@ public class Game {
         proj.mul(view, scratchModel);
         frustum.set(scratchModel);
         drawnChunks = 0;
-        for (int cx = pcx - renderRadius; cx <= pcx + renderRadius; cx++) {
-            for (int cz = pcz - renderRadius; cz <= pcz + renderRadius; cz++) {
-                float wx = cx * Chunk.SIZE_X, wz = cz * Chunk.SIZE_Z;
-                if (!frustum.testAab(wx, 0, wz, wx + Chunk.SIZE_X, Chunk.SIZE_Y, wz + Chunk.SIZE_Z))
-                    continue;
-                Mesh mesh = chunkMeshes.get(World.key(cx, cz));
-                if (mesh == null)
-                    continue;
+        occlusion.begin(proj, view);
+        visibleChunkMeshes.clear();
+        for (var entry : chunkMeshes.entrySet()) {
+            int cx = (int)(entry.getKey() >> 32), cz = (int)(long)entry.getKey();
+            if (Math.abs(cx - pcx) > renderRadius || Math.abs(cz - pcz) > renderRadius) continue;
+            float wx = cx * Chunk.SIZE_X, wz = cz * Chunk.SIZE_Z;
+            if (frustum.testAab(wx, 0, wz, wx + Chunk.SIZE_X, Chunk.SIZE_Y, wz + Chunk.SIZE_Z))
+                visibleChunkMeshes.add(entry);
+        }
+        visibleChunkMeshes.sort(java.util.Comparator.comparingDouble(entry -> {
+            double dx = (int)(entry.getKey() >> 32) * 16 + 8 - player.camera.position.x;
+            double dz = (int)(long)entry.getKey() * 16 + 8 - player.camera.position.z;
+            return dx * dx + dz * dz;
+        }));
+        for (var entry : visibleChunkMeshes) {
+            float wx = (int)(entry.getKey() >> 32) * Chunk.SIZE_X;
+            float wz = (int)(long)entry.getKey() * Chunk.SIZE_Z;
+            Mesh mesh = entry.getValue();
                 chunkShader.setMat4("uModel", scratchModel.translation(wx, 0, wz));
+                // A box containing the eye intersects the near plane: always draw it.
+                boolean query = !wireframe && !Boolean.getBoolean("mineclone.noOcclusion")
+                        && (player.camera.position.x < wx - 1 || player.camera.position.x > wx + Chunk.SIZE_X + 1
+                        || player.camera.position.z < wz - 1 || player.camera.position.z > wz + Chunk.SIZE_Z + 1);
+                if (query) {
+                    occlusion.test(wx - 0.1f, -0.1f, wz - 0.1f, Chunk.SIZE_X + 0.2f, Chunk.SIZE_Y + 0.2f, Chunk.SIZE_Z + 0.2f);
+                    chunkShader.bind();
+                }
                 mesh.render();
+                if (query) occlusion.endTest();
                 drawnChunks++;
-            }
         }
         chunkShader.unbind();
 
@@ -4716,6 +4772,7 @@ public class Game {
             m.destroy();
         waterMeshes.clear();
         atlas.destroy();
+        occlusion.destroy();
         chunkShader.destroy();
         waterShader.destroy();
         shadowShader.destroy();

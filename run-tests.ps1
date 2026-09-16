@@ -7,7 +7,16 @@ $out  = Join-Path $PWD 'out-test'
 if (-not (Test-Path $libs)) { throw "libs/ missing - run .\run.ps1 once to download jars first." }
 if (-not (Test-Path $out))  { New-Item -ItemType Directory $out | Out-Null }
 
-$jars = (Get-ChildItem $libs -Filter *.jar | ForEach-Object { $_.FullName }) -join ';'
+$lwjglVersion = '3.3.6'
+$jars = @(
+    'lwjgl', 'lwjgl-glfw', 'lwjgl-opengl', 'lwjgl-stb', 'lwjgl-openal' |
+        ForEach-Object {
+            Join-Path $libs "$($_)-$lwjglVersion.jar"
+            Join-Path $libs "$($_)-$lwjglVersion-natives-windows.jar"
+        }
+    Join-Path $libs 'joml-1.10.5.jar'
+    Join-Path $libs 'jlayer-1.0.1.4.jar'
+) -join ';'
 $sources = @()
 $sources += Get-ChildItem -Path 'src\main\java' -Recurse -Filter *.java | ForEach-Object { $_.FullName }
 $sources += Get-ChildItem -Path 'src\test\java' -Recurse -Filter *.java | ForEach-Object { $_.FullName }

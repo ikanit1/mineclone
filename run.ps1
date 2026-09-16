@@ -9,7 +9,7 @@ $out  = Join-Path $root 'out'
 New-Item -ItemType Directory -Force -Path $libs | Out-Null
 New-Item -ItemType Directory -Force -Path $out  | Out-Null
 
-$LWJGL  = '3.3.3'
+$LWJGL  = '3.3.6'
 $JOML   = '1.10.5'
 $REPO   = 'https://repo1.maven.org/maven2'
 

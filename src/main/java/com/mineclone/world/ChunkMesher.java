@@ -3,8 +3,6 @@ package com.mineclone.world;
 import com.mineclone.render.MeshData;
 import com.mineclone.render.TextureAtlas;
 
-import java.util.ArrayList;
-import java.util.List;
 
 /** Face culling mesher with vertex Ambient Occlusion. */
 public class ChunkMesher {
@@ -38,18 +36,22 @@ public class ChunkMesher {
     }
 
     /** CPU-only mesh build; safe to call from background threads. */
-    public MeshData[] buildData(Chunk chunk) {
-        List<Float> positions = new ArrayList<>(4096);
-        List<Float> uvs = new ArrayList<>(2048);
-        List<Float> light = new ArrayList<>(1024);
-        List<Float> blockLightList = new ArrayList<>(1024);
-        List<Integer> indices = new ArrayList<>(4096);
+    public MeshData[] buildData(Chunk chunk) { return buildData(chunk, 0); }
 
-        List<Float> wPositions   = new ArrayList<>(1024);
-        List<Float> wUvs         = new ArrayList<>(512);
-        List<Float> wLight       = new ArrayList<>(256);
-        List<Float> wBlockLight  = new ArrayList<>(256);
-        List<Integer> wIndices   = new ArrayList<>(1024);
+    /** Distant LOD simplifies lighting tessellation while retaining voxel silhouettes and borders. */
+    public MeshData[] buildData(Chunk chunk, int lod) {
+        GreedyFaces greedy = new GreedyFaces();
+        FloatList positions = new FloatList(4096);
+        FloatList uvs = new FloatList(2048);
+        FloatList light = new FloatList(1024);
+        FloatList blockLightList = new FloatList(1024);
+        IntList indices = new IntList(4096);
+
+        FloatList wPositions   = new FloatList(1024);
+        FloatList wUvs         = new FloatList(512);
+        FloatList wLight       = new FloatList(256);
+        FloatList wBlockLight  = new FloatList(256);
+        IntList wIndices   = new IntList(1024);
 
         int baseX = chunk.cx * Chunk.SIZE_X;
         int baseZ = chunk.cz * Chunk.SIZE_Z;
@@ -109,19 +111,26 @@ public class ChunkMesher {
                             else
                                 tile = b.sideTile;
                             emitFace(chunk, positions, uvs, light, blockLightList, indices,
-                                    x, y, z, baseX, baseZ, f, tile, FACE_LIGHT[f]);
+                                    x, y, z, baseX, baseZ, f, tile, FACE_LIGHT[f], greedy, lod);
                         }
                     }
                 }
             }
         }
 
+        FloatList repeat = new FloatList(positions.size());
+        for (int i = 0; i < uvs.size(); i += 2) {
+            float u = uvs.get(i) * 16f, v = uvs.get(i + 1) * 16f;
+            int col = (int)Math.floor(u), row = (int)Math.floor(v);
+            repeat.add(u - col); repeat.add(v - row); repeat.add((float)(row * 16 + col + 1));
+        }
+        greedy.emit(positions, uvs, light, blockLightList, indices, repeat);
         float[] pa = toFloatArray(positions);
         float[] ua = toFloatArray(uvs);
         float[] la = toFloatArray(light);
         float[] bla = toFloatArray(blockLightList);
         int[] ia = toIntArray(indices);
-        MeshData opaque = new MeshData(pa, ua, la, bla, ia);
+        MeshData opaque = new MeshData(pa, ua, la, bla, ia, toFloatArray(repeat));
         MeshData water = new MeshData(
                 toFloatArray(wPositions), toFloatArray(wUvs),
                 toFloatArray(wLight), toFloatArray(wBlockLight),
@@ -215,9 +224,9 @@ public class ChunkMesher {
     }
 
     private void emitWaterBlock(Chunk chunk,
-            List<Float> pos, List<Float> uvs,
-            List<Float> light, List<Float> blockLightList,
-            List<Integer> idx,
+            FloatList pos, FloatList uvs,
+            FloatList light, FloatList blockLightList,
+            IntList idx,
             int x, int y, int z, int baseX, int baseZ,
             BlockType b) {
         byte meta = chunk.getMeta(x, y, z);
@@ -354,9 +363,9 @@ public class ChunkMesher {
         }
     }
 
-    private void addWaterQuad(List<Float> pos, List<Float> uvs,
-            List<Float> light, List<Float> blockLightList,
-            List<Integer> idx,
+    private void addWaterQuad(FloatList pos, FloatList uvs,
+            FloatList light, FloatList blockLightList,
+            IntList idx,
             float[][] corners, float[][] uvCorner,
             float lv, float blVal) {
         int base = pos.size() / 3;
@@ -377,8 +386,8 @@ public class ChunkMesher {
         idx.add(base + 3);
     }
 
-    private void emitDoor(Chunk chunk, List<Float> pos, List<Float> uvs, List<Float> light, List<Float> bl,
-            List<Integer> idx,
+    private void emitDoor(Chunk chunk, FloatList pos, FloatList uvs, FloatList light, FloatList bl,
+            IntList idx,
             int x, int y, int z, int baseX, int baseZ, BlockType b) {
         byte meta = chunk.getMeta(x, y, z);
         int facing = meta & 0x3;
@@ -408,8 +417,8 @@ public class ChunkMesher {
         emitBox(chunk, pos, uvs, light, bl, idx, x, y, z, baseX, baseZ, tile, x0, y0, z0, x1, y1, z1);
     }
 
-    private void emitStairs(Chunk chunk, List<Float> pos, List<Float> uvs, List<Float> light, List<Float> bl,
-            List<Integer> idx,
+    private void emitStairs(Chunk chunk, FloatList pos, FloatList uvs, FloatList light, FloatList bl,
+            IntList idx,
             int x, int y, int z, int baseX, int baseZ, BlockType b) {
         byte meta = chunk.getMeta(x, y, z);
         int facing = meta & 0x3;
@@ -433,8 +442,8 @@ public class ChunkMesher {
      * слой в 1/8 блока, 7 — почти полный блок. Нижняя грань пропускается:
      * слой всегда лежит на чём-то твёрдом, и рисовать её незачем.
      */
-    private void emitLayer(Chunk chunk, List<Float> pos, List<Float> uvs, List<Float> light,
-            List<Float> bl, List<Integer> idx, int x, int y, int z, int baseX, int baseZ,
+    private void emitLayer(Chunk chunk, FloatList pos, FloatList uvs, FloatList light,
+            FloatList bl, IntList idx, int x, int y, int z, int baseX, int baseZ,
             BlockType b) {
         int level = chunk.getMeta(x, y, z) & 0x7;
         float h = (level + 1) / 8f;
@@ -442,15 +451,15 @@ public class ChunkMesher {
                 0f, 0f, 0f, 1f, h, 1f, 1 << 5);
     }
 
-    private void emitBox(Chunk chunk, List<Float> pos, List<Float> uvs, List<Float> light, List<Float> bl,
-            List<Integer> idx,
+    private void emitBox(Chunk chunk, FloatList pos, FloatList uvs, FloatList light, FloatList bl,
+            IntList idx,
             int x, int y, int z, int baseX, int baseZ, int tileIndex,
             float x0, float y0, float z0, float x1, float y1, float z1) {
         emitBox(chunk, pos, uvs, light, bl, idx, x, y, z, baseX, baseZ, tileIndex, x0, y0, z0, x1, y1, z1, 0);
     }
 
-    private void emitBox(Chunk chunk, List<Float> pos, List<Float> uvs, List<Float> light, List<Float> bl,
-            List<Integer> idx,
+    private void emitBox(Chunk chunk, FloatList pos, FloatList uvs, FloatList light, FloatList bl,
+            IntList idx,
             int x, int y, int z, int baseX, int baseZ, int tileIndex,
             float x0, float y0, float z0, float x1, float y1, float z1, int skipFaces) {
         float[] uv = TextureAtlas.uv(tileIndex);
@@ -499,9 +508,9 @@ public class ChunkMesher {
     }
 
     private void emitFace(Chunk chunk,
-            List<Float> pos, List<Float> uvs, List<Float> light, List<Float> blockLightList, List<Integer> idx,
+            FloatList pos, FloatList uvs, FloatList light, FloatList blockLightList, IntList idx,
             int x, int y, int z, int baseX, int baseZ,
-            int face, int tileIndex, float lightVal) {
+            int face, int tileIndex, float lightVal, GreedyFaces greedy, int lod) {
         float[] uv = TextureAtlas.uv(tileIndex);
         float u0 = uv[0], v0 = uv[1], u1 = uv[2], v1 = uv[3];
         int base = pos.size() / 3;
@@ -622,6 +631,21 @@ public class ChunkMesher {
             blVerts[i] = aoFactor * (blSum / (float) blCnt) / (float) Chunk.MAX_LIGHT;
         }
 
+        BlockType material = chunk.get(x, y, z);
+        if (lod > 0 && !material.cutout && !material.transparent) {
+            float levels = lod == 1 ? 8f : 4f;
+            float skyMean = Math.round((ao[0] + ao[1] + ao[2] + ao[3]) * 0.25f * levels) / levels;
+            float blockMean = Math.round((blVerts[0] + blVerts[1] + blVerts[2] + blVerts[3]) * 0.25f * levels) / levels;
+            java.util.Arrays.fill(ao, skyMean);
+            java.util.Arrays.fill(blVerts, blockMean);
+        }
+        if (!material.cutout && !material.transparent
+                && ao[0] == ao[1] && ao[0] == ao[2] && ao[0] == ao[3]
+                && blVerts[0] == blVerts[1] && blVerts[0] == blVerts[2] && blVerts[0] == blVerts[3]) {
+            greedy.add(face, x, y, z, tileIndex, material.ordinal(), ao[0], blVerts[0]);
+            return;
+        }
+
         for (int i = 0; i < 4; i++) {
             float fx = x + quad[i][0], fy = y + quad[i][1], fz = z + quad[i][2];
             pos.add(fx);
@@ -691,8 +715,8 @@ public class ChunkMesher {
      * Plane B sits at x=0.5 (visible from east/west).
      */
     private void emitCross(Chunk chunk,
-            List<Float> pos, List<Float> uvs, List<Float> light, List<Float> blockLightList,
-            List<Integer> idx,
+            FloatList pos, FloatList uvs, FloatList light, FloatList blockLightList,
+            IntList idx,
             int x, int y, int z, int baseX, int baseZ, BlockType b) {
         float[] uv = TextureAtlas.uv(b.sideTile);
         float u0 = uv[0], v0 = uv[1], u1 = uv[2], v1 = uv[3];
@@ -744,14 +768,14 @@ public class ChunkMesher {
         return v ? 1 : 0;
     }
 
-    private static float[] toFloatArray(List<Float> list) {
+    private static float[] toFloatArray(FloatList list) {
         float[] arr = new float[list.size()];
         for (int i = 0; i < list.size(); i++)
             arr[i] = list.get(i);
         return arr;
     }
 
-    private static int[] toIntArray(List<Integer> list) {
+    private static int[] toIntArray(IntList list) {
         int[] arr = new int[list.size()];
         for (int i = 0; i < list.size(); i++)
             arr[i] = list.get(i);

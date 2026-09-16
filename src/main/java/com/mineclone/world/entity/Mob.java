@@ -329,6 +329,19 @@ public class Mob {
         enterIdle();
     }
 
+    private float pendingTick;
+    public boolean updateLod(World world, Vector3f playerPos, float dt, float daylight, boolean hostileEnabled) {
+        float distance = position.distanceSquared(playerPos);
+        float interval = dead || hurtFlash > 0f || burning || state == State.CHASE || state == State.ATTACK
+                || distance < 32f * 32f ? 0f : distance < 64f * 64f ? 0.10f : 0.25f;
+        pendingTick += dt;
+        if (pendingTick < interval) return false;
+        float elapsed = pendingTick;
+        pendingTick = 0;
+        update(world, playerPos, elapsed, daylight, hostileEnabled);
+        return true;
+    }
+
     public void update(World world, Vector3f playerPos, float dt, float daylight,
                        boolean hostileEnabled) {
         justAttacked = false;

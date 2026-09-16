@@ -446,8 +446,8 @@ public final class SaveManager {
             writeGzipAtomic(chunkFile(id, s.cx, s.cz), o -> {
                 o.writeInt(SaveFormat.MAGIC);
                 o.writeInt(SaveFormat.CHUNK_VERSION);
-                o.write(s.blocks, 0, SaveFormat.CHUNK_VOLUME);
-                o.write(s.meta, 0, SaveFormat.CHUNK_VOLUME);
+                RunLengthCodec.write(o, s.blocks);
+                RunLengthCodec.write(o, s.meta);
                 o.writeInt(s.chests.size());                                  // v2
                 for (var e : s.chests.entrySet()) {
                     o.writeInt(e.getKey());
@@ -495,8 +495,13 @@ public final class SaveManager {
             if (version < 1 || version > SaveFormat.CHUNK_VERSION) return null;
             byte[] blocks = new byte[SaveFormat.CHUNK_VOLUME];
             byte[] meta = new byte[SaveFormat.CHUNK_VOLUME];
-            in.readFully(blocks);
-            in.readFully(meta);
+            if (version >= 5) {
+                RunLengthCodec.read(in, blocks);
+                RunLengthCodec.read(in, meta);
+            } else {
+                in.readFully(blocks);
+                in.readFully(meta);
+            }
             java.util.Map<Integer, com.mineclone.world.ItemStack[]> chests =
                     new java.util.HashMap<>();
             if (version >= 2) {

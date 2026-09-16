@@ -13,6 +13,7 @@ import java.nio.ByteBuffer;
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL12.*;
 import static org.lwjgl.opengl.GL13.*;
+import static org.lwjgl.opengl.GL30.*;
 
 /**
  * Texture atlas assembled purely from PNG sprites on disk.
@@ -111,7 +112,18 @@ public class TextureAtlas {
     /** First tile index of the crack overlay animation strip (10 stages). */
     public static final int CRACK_TILE_0 = 37;
 
-    private final int textureId;
+    public static final int ARRAY_UNIT = 7;
+    private final int textureId, arrayId;
+    private static java.util.concurrent.CompletableFuture<BufferedImage> prepared;
+    public static synchronized void prepareAsync() {
+        if (prepared == null) prepared = java.util.concurrent.CompletableFuture.supplyAsync(TextureAtlas::assemble);
+    }
+    private static synchronized java.util.concurrent.CompletableFuture<BufferedImage> takePrepared() {
+        prepareAsync();
+        var result = prepared;
+        prepared = null;
+        return result;
+    }
 
     /**
      * Loads every sprite from {@link #BLOCKS_DIR}, packs the atlas and uploads
@@ -125,7 +137,7 @@ public class TextureAtlas {
      *                   any procedural generation to "regenerate".)
      */
     public TextureAtlas(String pngPath, boolean dumpAtlas) {
-        BufferedImage img = assemble();
+        BufferedImage img = takePrepared().join();
         if (dumpAtlas)
             savePng(img, AppPaths.file(pngPath));
 
@@ -139,6 +151,25 @@ public class TextureAtlas {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        arrayId = glGenTextures();
+        glActiveTexture(GL_TEXTURE0 + ARRAY_UNIT);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, arrayId);
+        ByteBuffer layers = BufferUtils.createByteBuffer(TILE * TILE * 4 * TILE_NAMES.length);
+        for (int layer = 0; layer < TILE_NAMES.length; layer++) {
+            for (int y = 0; y < TILE; y++) for (int x = 0; x < TILE; x++) {
+                int c = img.getRGB((layer % 16) * TILE + x, (layer / 16) * TILE + y);
+                layers.put((byte)(c >> 16)).put((byte)(c >> 8)).put((byte)c).put((byte)(c >> 24));
+            }
+        }
+        layers.flip();
+        glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, TILE, TILE, TILE_NAMES.length, 0,
+                GL_RGBA, GL_UNSIGNED_BYTE, layers);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glGenerateMipmap(GL_TEXTURE_2D_ARRAY);
+        glActiveTexture(GL_TEXTURE0);
     }
 
     // -------------------------------------------------------------------------
@@ -257,6 +288,8 @@ public class TextureAtlas {
     // -------------------------------------------------------------------------
 
     public void bind(int unit) {
+        glActiveTexture(GL_TEXTURE0 + ARRAY_UNIT);
+        glBindTexture(GL_TEXTURE_2D_ARRAY, arrayId);
         glActiveTexture(GL_TEXTURE0 + unit);
         glBindTexture(GL_TEXTURE_2D, textureId);
     }
@@ -267,6 +300,7 @@ public class TextureAtlas {
 
     public void destroy() {
         glDeleteTextures(textureId);
+        glDeleteTextures(arrayId);
     }
 
     /** UV coordinates for a tile index. Returns {u0, v0, u1, v1}. */

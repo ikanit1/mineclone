@@ -19,6 +19,7 @@ public final class MobHerd {
     public static final float RANGE = 14f;
 
     private MobHerd() {}
+    private static final ThreadLocal<MobSpatialGrid> GRIDS = ThreadLocal.withInitial(MobSpatialGrid::new);
 
     /**
      * Обновляет у каждого мирного моба центр его стада.
@@ -27,6 +28,8 @@ public final class MobHerd {
      * тот доигрывает падение.
      */
     public static void update(List<Mob> mobs) {
+        MobSpatialGrid grid = GRIDS.get();
+        grid.rebuild(mobs);
         float r2 = RANGE * RANGE;
         for (Mob m : mobs) {
             if (m.dead || m.type.hostile) {
@@ -35,7 +38,7 @@ public final class MobHerd {
             }
             float sx = 0f, sz = 0f;
             int n = 0;
-            for (Mob o : mobs) {
+            for (Mob o : grid.nearby(m, RANGE)) {
                 if (o == m || o.dead || o.type != m.type)
                     continue;
                 float dx = o.position.x - m.position.x;

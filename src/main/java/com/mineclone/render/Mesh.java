@@ -10,10 +10,14 @@ import static org.lwjgl.opengl.GL20.*;
 import static org.lwjgl.opengl.GL30.*;
 
 public class Mesh {
-    private final int vao, vboPos, vboUv, vboLight, vboBlockLight, ebo;
+    private final int vao, vboPos, vboUv, vboLight, vboBlockLight, ebo, vboRepeat;
     private final int indexCount;
 
     public Mesh(float[] positions, float[] uvs, float[] light, float[] blockLight, int[] indices) {
+        this(positions, uvs, light, blockLight, indices, null);
+    }
+
+    public Mesh(float[] positions, float[] uvs, float[] light, float[] blockLight, int[] indices, float[] repeat) {
         indexCount = indices.length;
         vao = glGenVertexArrays();
         glBindVertexArray(vao);
@@ -54,6 +58,12 @@ public class Mesh {
         glVertexAttribPointer(3, 1, GL_FLOAT, false, 0, 0);
         glEnableVertexAttribArray(3);
 
+        vboRepeat = glGenBuffers();
+        glBindBuffer(GL_ARRAY_BUFFER, vboRepeat);
+        glBufferData(GL_ARRAY_BUFFER, repeat == null ? new float[positions.length] : repeat, GL_STATIC_DRAW);
+        glVertexAttribPointer(4, 3, GL_FLOAT, false, 0, 0);
+        glEnableVertexAttribArray(4);
+
         ebo = glGenBuffers();
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
         IntBuffer ib = MemoryUtil.memAllocInt(indices.length);
@@ -72,13 +82,13 @@ public class Mesh {
     }
 
     public void destroy() {
-        glDisableVertexAttribArray(0);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glDeleteBuffers(vboPos);
         glDeleteBuffers(vboUv);
         glDeleteBuffers(vboLight);
         glDeleteBuffers(vboBlockLight);
         glDeleteBuffers(ebo);
+        glDeleteBuffers(vboRepeat);
         glBindVertexArray(0);
         glDeleteVertexArrays(vao);
     }

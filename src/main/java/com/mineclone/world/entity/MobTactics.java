@@ -71,11 +71,13 @@ public final class MobTactics {
 
     /** Обновляет мораль и распорядок без квадратичного поиска в каждом Mob. */
     public static void updateGroup(List<Mob> mobs, float dayPhase, float dt) {
+        int budget = 8;
         for (Mob m : mobs) {
             if (m.dead) continue;
             m.moraleTimer = Math.max(0f, m.moraleTimer - dt);
             if (m.moraleTimer > 0f)
                 continue;
+            if (--budget < 0) break;
             int allies = 0;
             for (Mob o : mobs)
                 if (o != m && !o.dead && o.type == m.type && o.position.distanceSquared(m.position) < 144f)

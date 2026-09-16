@@ -5,9 +5,6 @@ import org.joml.Vector3f;
 import org.lwjgl.system.MemoryUtil;
 
 import java.nio.FloatBuffer;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
 import java.util.Random;
 
 import static org.lwjgl.opengl.GL11.*;
@@ -32,37 +29,118 @@ public class ParticleSystem {
         windZ = z;
     }
 
-    private static final class P {
-        float x, y, z, vx, vy, vz;
-        float life, maxLife, size, growRate;
-        float gravityScale = 1f;
-        /** Насколько частицу сносит ветром: дым — сильно, обломки — никак. */
-        float windScale;
-        /** Мерцание яркости (искры): 0 — ровный свет. */
-        float flicker;
-        /** RGB tint applied on top of the texture sample. */
-        float cr, cg, cb;
-        /** Base alpha (further faded by remaining life). */
-        float baseAlpha = 1f;
-        float u0, v0, u1, v1;
-        /**
-         * World light sampled at emission, as 0..1 sky/block fractions.
-         * When {@code worldLit} the particle is shaded with the exact same
-         * curve blocks use; otherwise it stays full-bright (emissive — e.g.
-         * torch flame, which is itself a light source).
-         */
-        float skyL, blockL;
-        boolean worldLit;
-        float floorY = Float.NEGATIVE_INFINITY;
+    private int count;
+    private final GpuParticlePhysics gpu;
+    private final int indirect;
+    private final boolean[] pendingSpawn = new boolean[MAX];
+    private final float[] x = new float[MAX];
+    private final float[] y = new float[MAX];
+    private final float[] z = new float[MAX];
+    private final float[] vx = new float[MAX];
+    private final float[] vy = new float[MAX];
+    private final float[] vz = new float[MAX];
+    private final float[] life = new float[MAX];
+    private final float[] maxLife = new float[MAX];
+    private final float[] size = new float[MAX];
+    private final float[] growRate = new float[MAX];
+    private final float[] gravityScale = new float[MAX];
+    private final float[] windScale = new float[MAX];
+    private final float[] flicker = new float[MAX];
+    private final float[] cr = new float[MAX];
+    private final float[] cg = new float[MAX];
+    private final float[] cb = new float[MAX];
+    private final float[] baseAlpha = new float[MAX];
+    private final float[] u0 = new float[MAX];
+    private final float[] v0 = new float[MAX];
+    private final float[] u1 = new float[MAX];
+    private final float[] v1 = new float[MAX];
+    private final float[] skyL = new float[MAX];
+    private final float[] blockL = new float[MAX];
+    private final float[] floorY = new float[MAX];
+    private final boolean[] worldLit = new boolean[MAX];
+    private final FloatBuffer instanceData = MemoryUtil.memAllocFloat(MAX * 13);
+    private final StreamingBuffer instances;
+    private final org.joml.FrustumIntersection frustum = new org.joml.FrustumIntersection();
+    private final Matrix4f viewProjection = new Matrix4f();
+
+    private int acquire() {
+        int p = count++;
+        pendingSpawn[p] = true;
+        this.x[p] = 0f;
+        this.y[p] = 0f;
+        this.z[p] = 0f;
+        this.vx[p] = 0f;
+        this.vy[p] = 0f;
+        this.vz[p] = 0f;
+        this.life[p] = 0f;
+        this.maxLife[p] = 0f;
+        this.size[p] = 0f;
+        this.growRate[p] = 0f;
+        this.gravityScale[p] = 0f;
+        this.windScale[p] = 0f;
+        this.flicker[p] = 0f;
+        this.cr[p] = 0f;
+        this.cg[p] = 0f;
+        this.cb[p] = 0f;
+        this.baseAlpha[p] = 0f;
+        this.u0[p] = 0f;
+        this.v0[p] = 0f;
+        this.u1[p] = 0f;
+        this.v1[p] = 0f;
+        this.skyL[p] = 0f;
+        this.blockL[p] = 0f;
+        this.floorY[p] = 0f;
+        this.gravityScale[p] = this.baseAlpha[p] = 1f;
+        this.floorY[p] = Float.NEGATIVE_INFINITY;
+        this.worldLit[p] = false;
+        return p;
     }
 
-    private final List<P>  particles = new ArrayList<>();
+    private void remove(int p) {
+        int last = --count;
+        if (gpu != null && !pendingSpawn[last]) gpu.move(last, p);
+        pendingSpawn[p] = pendingSpawn[last];
+        this.x[p] = this.x[last];
+        this.y[p] = this.y[last];
+        this.z[p] = this.z[last];
+        this.vx[p] = this.vx[last];
+        this.vy[p] = this.vy[last];
+        this.vz[p] = this.vz[last];
+        this.life[p] = this.life[last];
+        this.maxLife[p] = this.maxLife[last];
+        this.size[p] = this.size[last];
+        this.growRate[p] = this.growRate[last];
+        this.gravityScale[p] = this.gravityScale[last];
+        this.windScale[p] = this.windScale[last];
+        this.flicker[p] = this.flicker[last];
+        this.cr[p] = this.cr[last];
+        this.cg[p] = this.cg[last];
+        this.cb[p] = this.cb[last];
+        this.baseAlpha[p] = this.baseAlpha[last];
+        this.u0[p] = this.u0[last];
+        this.v0[p] = this.v0[last];
+        this.u1[p] = this.u1[last];
+        this.v1[p] = this.v1[last];
+        this.skyL[p] = this.skyL[last];
+        this.blockL[p] = this.blockL[last];
+        this.floorY[p] = this.floorY[last];
+        this.worldLit[p] = this.worldLit[last];
+    }
+
     private final Random   rnd       = new Random();
     private final int      vao, vbo;
     private final Shader   shader;
 
     public ParticleSystem() {
-        shader = new Shader(Shaders.PARTICLE_VERTEX, Shaders.PARTICLE_FRAGMENT);
+        indirect = org.lwjgl.opengl.GL.getCapabilities().OpenGL40 ? glGenBuffers() : 0;
+        // The SSBO path is opt-in until the render vertex stream is fully GPU resident;
+        // the default keeps particle transforms in the same instanced buffer as color/UV.
+        gpu = org.lwjgl.opengl.GL.getCapabilities().OpenGL43
+                && Boolean.getBoolean("mineclone.gpuParticles")
+                && !Boolean.getBoolean("mineclone.cpuParticles")
+                ? new GpuParticlePhysics(MAX) : null;
+        shader = new Shader(Shaders.INSTANCED_PARTICLE_VERTEX, Shaders.INSTANCED_PARTICLE_FRAGMENT);
+        instances = new StreamingBuffer(MAX * 13 * 4);
         float[] quad = {
             -0.5f,-0.5f,  0.5f,-0.5f,  0.5f,0.5f,
             -0.5f,-0.5f,  0.5f, 0.5f, -0.5f,0.5f
@@ -88,31 +166,31 @@ public class ParticleSystem {
     public void emitBlockBreak(int bx, int by, int bz, float[] color, int sideTile,
                                float skyFrac, float blockFrac) {
         int count = 5 + rnd.nextInt(6);
-        for (int i = 0; i < count && particles.size() < MAX; i++) {
-            P p = new P();
-            p.worldLit = true;
-            p.skyL = skyFrac;
-            p.blockL = blockFrac;
-            p.x = bx + 0.2f + rnd.nextFloat() * 0.6f;
-            p.y = by + 0.2f + rnd.nextFloat() * 0.6f;
-            p.z = bz + 0.2f + rnd.nextFloat() * 0.6f;
-            p.vx = (rnd.nextFloat() - 0.5f) * 4f;
-            p.vy = 2f + rnd.nextFloat() * 3f;
-            p.vz = (rnd.nextFloat() - 0.5f) * 4f;
-            p.life = p.maxLife = 0.5f + rnd.nextFloat() * 0.4f;
-            p.size = 0.08f + rnd.nextFloat() * 0.06f;
-            p.gravityScale = 1f;
-            p.cr = 1f; p.cg = 1f; p.cb = 1f; // white tint — texture provides colour
-            p.baseAlpha = 1f;
+        for (int i = 0; i < count && this.count < MAX; i++) {
+            int p = acquire();
+            this.worldLit[p] = true;
+            this.skyL[p] = skyFrac;
+            this.blockL[p] = blockFrac;
+            this.x[p] = bx + 0.2f + rnd.nextFloat() * 0.6f;
+            this.y[p] = by + 0.2f + rnd.nextFloat() * 0.6f;
+            this.z[p] = bz + 0.2f + rnd.nextFloat() * 0.6f;
+            this.vx[p] = (rnd.nextFloat() - 0.5f) * 4f;
+            this.vy[p] = 2f + rnd.nextFloat() * 3f;
+            this.vz[p] = (rnd.nextFloat() - 0.5f) * 4f;
+            this.life[p] = this.maxLife[p] = 0.5f + rnd.nextFloat() * 0.4f;
+            this.size[p] = 0.08f + rnd.nextFloat() * 0.06f;
+            this.gravityScale[p] = 1f;
+            this.cr[p] = 1f; this.cg[p] = 1f; this.cb[p] = 1f; // white tint — texture provides colour
+            this.baseAlpha[p] = 1f;
             float[] uv = TextureAtlas.uv(sideTile);
             float span = 4f / TextureAtlas.ATLAS_SIZE;
             float maxU = uv[2] - uv[0] - span;
             float maxV = uv[3] - uv[1] - span;
-            p.u0 = uv[0] + rnd.nextFloat() * Math.max(0f, maxU);
-            p.v0 = uv[1] + rnd.nextFloat() * Math.max(0f, maxV);
-            p.u1 = p.u0 + span;
-            p.v1 = p.v0 + span;
-            particles.add(p);
+            this.u0[p] = uv[0] + rnd.nextFloat() * Math.max(0f, maxU);
+            this.v0[p] = uv[1] + rnd.nextFloat() * Math.max(0f, maxV);
+            this.u1[p] = this.u0[p] + span;
+            this.v1[p] = this.v0[p] + span;
+
         }
     }
 
@@ -124,49 +202,49 @@ public class ParticleSystem {
         float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
 
         // Flame: ~65 % chance per call
-        if (rnd.nextFloat() < 0.65f && particles.size() < MAX) {
-            P p = new P();
-            p.x = bx + 0.42f + rnd.nextFloat() * 0.16f;
-            p.y = by + 0.68f + rnd.nextFloat() * 0.06f;
-            p.z = bz + 0.42f + rnd.nextFloat() * 0.16f;
-            p.vx = (rnd.nextFloat() - 0.5f) * 0.18f;
-            p.vy = 0.35f + rnd.nextFloat() * 0.25f;
-            p.vz = (rnd.nextFloat() - 0.5f) * 0.18f;
-            p.life = p.maxLife = 0.22f + rnd.nextFloat() * 0.14f;
-            p.size = 0.045f + rnd.nextFloat() * 0.025f;
-            p.gravityScale = 0f;
-            p.growRate = 0f;
+        if (rnd.nextFloat() < 0.65f && this.count < MAX) {
+            int p = acquire();
+            this.x[p] = bx + 0.42f + rnd.nextFloat() * 0.16f;
+            this.y[p] = by + 0.68f + rnd.nextFloat() * 0.06f;
+            this.z[p] = bz + 0.42f + rnd.nextFloat() * 0.16f;
+            this.vx[p] = (rnd.nextFloat() - 0.5f) * 0.18f;
+            this.vy[p] = 0.35f + rnd.nextFloat() * 0.25f;
+            this.vz[p] = (rnd.nextFloat() - 0.5f) * 0.18f;
+            this.life[p] = this.maxLife[p] = 0.22f + rnd.nextFloat() * 0.14f;
+            this.size[p] = 0.045f + rnd.nextFloat() * 0.025f;
+            this.gravityScale[p] = 0f;
+            this.growRate[p] = 0f;
             // Random warm flame colour
             float[] cols = {
                 0.95f + rnd.nextFloat() * 0.05f,
                 0.45f + rnd.nextFloat() * 0.25f,
                 0.02f + rnd.nextFloat() * 0.08f
             };
-            p.cr = cols[0]; p.cg = cols[1]; p.cb = cols[2];
-            p.baseAlpha = 0.9f;
-            p.u0 = uvP[0]; p.v0 = uvP[1]; p.u1 = uvP[2]; p.v1 = uvP[3];
-            particles.add(p);
+            this.cr[p] = cols[0]; this.cg[p] = cols[1]; this.cb[p] = cols[2];
+            this.baseAlpha[p] = 0.9f;
+            this.u0[p] = uvP[0]; this.v0[p] = uvP[1]; this.u1[p] = uvP[2]; this.v1[p] = uvP[3];
+
         }
 
         // Smoke: ~28 % chance per call
-        if (rnd.nextFloat() < 0.28f && particles.size() < MAX) {
-            P p = new P();
-            p.x = bx + 0.38f + rnd.nextFloat() * 0.24f;
-            p.y = by + 0.78f + rnd.nextFloat() * 0.04f;
-            p.z = bz + 0.38f + rnd.nextFloat() * 0.24f;
-            p.vx = (rnd.nextFloat() - 0.5f) * 0.12f;
-            p.vy = 0.12f + rnd.nextFloat() * 0.10f;
-            p.vz = (rnd.nextFloat() - 0.5f) * 0.12f;
-            p.life = p.maxLife = 0.7f + rnd.nextFloat() * 0.5f;
-            p.size = 0.05f + rnd.nextFloat() * 0.04f;
-            p.gravityScale = 0f;
-            p.growRate = 0.05f;
-            p.windScale = 0.4f;
+        if (rnd.nextFloat() < 0.28f && this.count < MAX) {
+            int p = acquire();
+            this.x[p] = bx + 0.38f + rnd.nextFloat() * 0.24f;
+            this.y[p] = by + 0.78f + rnd.nextFloat() * 0.04f;
+            this.z[p] = bz + 0.38f + rnd.nextFloat() * 0.24f;
+            this.vx[p] = (rnd.nextFloat() - 0.5f) * 0.12f;
+            this.vy[p] = 0.12f + rnd.nextFloat() * 0.10f;
+            this.vz[p] = (rnd.nextFloat() - 0.5f) * 0.12f;
+            this.life[p] = this.maxLife[p] = 0.7f + rnd.nextFloat() * 0.5f;
+            this.size[p] = 0.05f + rnd.nextFloat() * 0.04f;
+            this.gravityScale[p] = 0f;
+            this.growRate[p] = 0.05f;
+            this.windScale[p] = 0.4f;
             float g = 0.12f + rnd.nextFloat() * 0.08f;
-            p.cr = g; p.cg = g; p.cb = g;
-            p.baseAlpha = 0.50f;
-            p.u0 = uvP[0]; p.v0 = uvP[1]; p.u1 = uvP[2]; p.v1 = uvP[3];
-            particles.add(p);
+            this.cr[p] = g; this.cg[p] = g; this.cb[p] = g;
+            this.baseAlpha[p] = 0.50f;
+            this.u0[p] = uvP[0]; this.v0[p] = uvP[1]; this.u1[p] = uvP[2]; this.v1[p] = uvP[3];
+
         }
 
         // Редкая искра: факел не костёр, но совсем без них пламя мёртвое.
@@ -186,24 +264,24 @@ public class ParticleSystem {
     public void emitBreath(float x, float y, float z, float dirX, float dirZ) {
         float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
         for (int i = 0; i < 2; i++) {
-            if (particles.size() >= MAX)
+            if (this.count >= MAX)
                 return;
-            P p = new P();
-            p.x = x + (rnd.nextFloat() - 0.5f) * 0.1f;
-            p.y = y + (rnd.nextFloat() - 0.5f) * 0.06f;
-            p.z = z + (rnd.nextFloat() - 0.5f) * 0.1f;
-            p.vx = dirX * (0.35f + rnd.nextFloat() * 0.25f) + (rnd.nextFloat() - 0.5f) * 0.1f;
-            p.vy = 0.10f + rnd.nextFloat() * 0.08f;
-            p.vz = dirZ * (0.35f + rnd.nextFloat() * 0.25f) + (rnd.nextFloat() - 0.5f) * 0.1f;
-            p.life = p.maxLife = 0.9f + rnd.nextFloat() * 0.6f;
-            p.size = 0.045f + rnd.nextFloat() * 0.03f;
-            p.gravityScale = 0f;
-            p.growRate = 0.10f;
-            p.windScale = 0.25f;
-            p.cr = 0.92f; p.cg = 0.95f; p.cb = 1.0f;
-            p.baseAlpha = 0.30f;
-            p.u0 = uvP[0]; p.v0 = uvP[1]; p.u1 = uvP[2]; p.v1 = uvP[3];
-            particles.add(p);
+            int p = acquire();
+            this.x[p] = x + (rnd.nextFloat() - 0.5f) * 0.1f;
+            this.y[p] = y + (rnd.nextFloat() - 0.5f) * 0.06f;
+            this.z[p] = z + (rnd.nextFloat() - 0.5f) * 0.1f;
+            this.vx[p] = dirX * (0.35f + rnd.nextFloat() * 0.25f) + (rnd.nextFloat() - 0.5f) * 0.1f;
+            this.vy[p] = 0.10f + rnd.nextFloat() * 0.08f;
+            this.vz[p] = dirZ * (0.35f + rnd.nextFloat() * 0.25f) + (rnd.nextFloat() - 0.5f) * 0.1f;
+            this.life[p] = this.maxLife[p] = 0.9f + rnd.nextFloat() * 0.6f;
+            this.size[p] = 0.045f + rnd.nextFloat() * 0.03f;
+            this.gravityScale[p] = 0f;
+            this.growRate[p] = 0.10f;
+            this.windScale[p] = 0.25f;
+            this.cr[p] = 0.92f; this.cg[p] = 0.95f; this.cb[p] = 1.0f;
+            this.baseAlpha[p] = 0.30f;
+            this.u0[p] = uvP[0]; this.v0[p] = uvP[1]; this.u1[p] = uvP[2]; this.v1[p] = uvP[3];
+
         }
     }
 
@@ -211,45 +289,45 @@ public class ParticleSystem {
         float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
 
         for (int i = 0; i < 2; i++) {
-            if (particles.size() >= MAX)
+            if (this.count >= MAX)
                 break;
-            P p = new P();
-            p.x = bx + 0.25f + rnd.nextFloat() * 0.5f;
-            p.y = by + 0.1f + rnd.nextFloat() * 0.25f;
-            p.z = bz + 0.25f + rnd.nextFloat() * 0.5f;
-            p.vx = (rnd.nextFloat() - 0.5f) * 0.3f;
-            p.vy = 0.9f + rnd.nextFloat() * 0.7f;
-            p.vz = (rnd.nextFloat() - 0.5f) * 0.3f;
-            p.life = p.maxLife = 0.32f + rnd.nextFloat() * 0.22f;
-            p.size = 0.07f + rnd.nextFloat() * 0.05f;
-            p.gravityScale = 0f;
-            p.growRate = -0.06f;
-            p.cr = 1.0f;
-            p.cg = 0.42f + rnd.nextFloat() * 0.38f;
-            p.cb = 0.04f + rnd.nextFloat() * 0.08f;
-            p.baseAlpha = 0.95f;
-            p.u0 = uvP[0]; p.v0 = uvP[1]; p.u1 = uvP[2]; p.v1 = uvP[3];
-            particles.add(p);
+            int p = acquire();
+            this.x[p] = bx + 0.25f + rnd.nextFloat() * 0.5f;
+            this.y[p] = by + 0.1f + rnd.nextFloat() * 0.25f;
+            this.z[p] = bz + 0.25f + rnd.nextFloat() * 0.5f;
+            this.vx[p] = (rnd.nextFloat() - 0.5f) * 0.3f;
+            this.vy[p] = 0.9f + rnd.nextFloat() * 0.7f;
+            this.vz[p] = (rnd.nextFloat() - 0.5f) * 0.3f;
+            this.life[p] = this.maxLife[p] = 0.32f + rnd.nextFloat() * 0.22f;
+            this.size[p] = 0.07f + rnd.nextFloat() * 0.05f;
+            this.gravityScale[p] = 0f;
+            this.growRate[p] = -0.06f;
+            this.cr[p] = 1.0f;
+            this.cg[p] = 0.42f + rnd.nextFloat() * 0.38f;
+            this.cb[p] = 0.04f + rnd.nextFloat() * 0.08f;
+            this.baseAlpha[p] = 0.95f;
+            this.u0[p] = uvP[0]; this.v0[p] = uvP[1]; this.u1[p] = uvP[2]; this.v1[p] = uvP[3];
+
         }
 
-        if (rnd.nextFloat() < 0.5f && particles.size() < MAX) {
-            P p = new P();
-            p.x = bx + 0.3f + rnd.nextFloat() * 0.4f;
-            p.y = by + 0.85f + rnd.nextFloat() * 0.2f;
-            p.z = bz + 0.3f + rnd.nextFloat() * 0.4f;
-            p.vx = (rnd.nextFloat() - 0.5f) * 0.25f;
-            p.vy = 0.3f + rnd.nextFloat() * 0.25f;
-            p.vz = (rnd.nextFloat() - 0.5f) * 0.25f;
-            p.life = p.maxLife = 1.6f + rnd.nextFloat() * 1.2f;
-            p.size = 0.09f + rnd.nextFloat() * 0.06f;
-            p.gravityScale = -0.015f;   // горячий дым сам тянется вверх
-            p.growRate = 0.16f;
-            p.windScale = 0.6f;
+        if (rnd.nextFloat() < 0.5f && this.count < MAX) {
+            int p = acquire();
+            this.x[p] = bx + 0.3f + rnd.nextFloat() * 0.4f;
+            this.y[p] = by + 0.85f + rnd.nextFloat() * 0.2f;
+            this.z[p] = bz + 0.3f + rnd.nextFloat() * 0.4f;
+            this.vx[p] = (rnd.nextFloat() - 0.5f) * 0.25f;
+            this.vy[p] = 0.3f + rnd.nextFloat() * 0.25f;
+            this.vz[p] = (rnd.nextFloat() - 0.5f) * 0.25f;
+            this.life[p] = this.maxLife[p] = 1.6f + rnd.nextFloat() * 1.2f;
+            this.size[p] = 0.09f + rnd.nextFloat() * 0.06f;
+            this.gravityScale[p] = -0.015f;   // горячий дым сам тянется вверх
+            this.growRate[p] = 0.16f;
+            this.windScale[p] = 0.6f;
             float g = 0.10f + rnd.nextFloat() * 0.07f;
-            p.cr = g; p.cg = g; p.cb = g;
-            p.baseAlpha = 0.45f;
-            p.u0 = uvP[0]; p.v0 = uvP[1]; p.u1 = uvP[2]; p.v1 = uvP[3];
-            particles.add(p);
+            this.cr[p] = g; this.cg[p] = g; this.cb[p] = g;
+            this.baseAlpha[p] = 0.45f;
+            this.u0[p] = uvP[0]; this.v0[p] = uvP[1]; this.u1[p] = uvP[2]; this.v1[p] = uvP[3];
+
         }
 
         // Костёр стреляет искрами щедро — это и отличает его от факела издалека.
@@ -260,26 +338,26 @@ public class ParticleSystem {
     public void emitWaterSplash(float x, float y, float z, float skyFrac, float blockFrac) {
         float[] uvP = TextureAtlas.uv(WATER_PARTICLE_TILE);
         int count = 8 + rnd.nextInt(7);
-        for (int i = 0; i < count && particles.size() < MAX; i++) {
-            P p = new P();
-            p.worldLit = true;
-            p.skyL = skyFrac;
-            p.blockL = blockFrac;
+        for (int i = 0; i < count && this.count < MAX; i++) {
+            int p = acquire();
+            this.worldLit[p] = true;
+            this.skyL[p] = skyFrac;
+            this.blockL[p] = blockFrac;
             float angle = rnd.nextFloat() * (float) (Math.PI * 2);
             float horiz = 1.5f + rnd.nextFloat() * 2.5f;
-            p.x = x + (rnd.nextFloat() - 0.5f) * 0.6f;
-            p.y = y;
-            p.z = z + (rnd.nextFloat() - 0.5f) * 0.6f;
-            p.vx = (float) Math.cos(angle) * horiz;
-            p.vy = 2.5f + rnd.nextFloat() * 3f;
-            p.vz = (float) Math.sin(angle) * horiz;
-            p.life = p.maxLife = 0.35f + rnd.nextFloat() * 0.35f;
-            p.size = 0.06f + rnd.nextFloat() * 0.07f;
-            p.gravityScale = 1f;
-            p.cr = 1f; p.cg = 1f; p.cb = 1f;
-            p.baseAlpha = 0.85f + rnd.nextFloat() * 0.15f;
-            p.u0 = uvP[0]; p.v0 = uvP[1]; p.u1 = uvP[2]; p.v1 = uvP[3];
-            particles.add(p);
+            this.x[p] = x + (rnd.nextFloat() - 0.5f) * 0.6f;
+            this.y[p] = y;
+            this.z[p] = z + (rnd.nextFloat() - 0.5f) * 0.6f;
+            this.vx[p] = (float) Math.cos(angle) * horiz;
+            this.vy[p] = 2.5f + rnd.nextFloat() * 3f;
+            this.vz[p] = (float) Math.sin(angle) * horiz;
+            this.life[p] = this.maxLife[p] = 0.35f + rnd.nextFloat() * 0.35f;
+            this.size[p] = 0.06f + rnd.nextFloat() * 0.07f;
+            this.gravityScale[p] = 1f;
+            this.cr[p] = 1f; this.cg[p] = 1f; this.cb[p] = 1f;
+            this.baseAlpha[p] = 0.85f + rnd.nextFloat() * 0.15f;
+            this.u0[p] = uvP[0]; this.v0[p] = uvP[1]; this.u1[p] = uvP[2]; this.v1[p] = uvP[3];
+
         }
     }
 
@@ -287,32 +365,32 @@ public class ParticleSystem {
                                 float skyFrac, float blockFrac, int count) {
         float[] uv = TextureAtlas.uv(sideTile);
         float span = 4f / TextureAtlas.ATLAS_SIZE;
-        for (int i = 0; i < count && particles.size() < MAX; i++) {
-            P p = new P();
-            p.worldLit = true;
-            p.skyL = skyFrac;
-            p.blockL = blockFrac;
-            p.x = x + (rnd.nextFloat() - 0.5f) * 1.0f;
-            p.y = y + 0.05f;
-            p.z = z + (rnd.nextFloat() - 0.5f) * 1.0f;
+        for (int i = 0; i < count && this.count < MAX; i++) {
+            int p = acquire();
+            this.worldLit[p] = true;
+            this.skyL[p] = skyFrac;
+            this.blockL[p] = blockFrac;
+            this.x[p] = x + (rnd.nextFloat() - 0.5f) * 1.0f;
+            this.y[p] = y + 0.05f;
+            this.z[p] = z + (rnd.nextFloat() - 0.5f) * 1.0f;
             float angle = rnd.nextFloat() * (float) (Math.PI * 2);
             float horiz = 1.2f + rnd.nextFloat() * 2.8f;
-            p.vx = (float) Math.cos(angle) * horiz;
-            p.vy = 0.8f + rnd.nextFloat() * 1.8f;
-            p.vz = (float) Math.sin(angle) * horiz;
-            p.life = p.maxLife = 0.25f + rnd.nextFloat() * 0.25f;
-            p.size = 0.05f + rnd.nextFloat() * 0.08f;
-            p.growRate = 0f;
-            p.gravityScale = 1.5f;
-            p.cr = 1f; p.cg = 1f; p.cb = 1f;
-            p.baseAlpha = 1f;
+            this.vx[p] = (float) Math.cos(angle) * horiz;
+            this.vy[p] = 0.8f + rnd.nextFloat() * 1.8f;
+            this.vz[p] = (float) Math.sin(angle) * horiz;
+            this.life[p] = this.maxLife[p] = 0.25f + rnd.nextFloat() * 0.25f;
+            this.size[p] = 0.05f + rnd.nextFloat() * 0.08f;
+            this.growRate[p] = 0f;
+            this.gravityScale[p] = 1.5f;
+            this.cr[p] = 1f; this.cg[p] = 1f; this.cb[p] = 1f;
+            this.baseAlpha[p] = 1f;
             float maxU = uv[2] - uv[0] - span;
             float maxV = uv[3] - uv[1] - span;
-            p.u0 = uv[0] + rnd.nextFloat() * Math.max(0f, maxU);
-            p.v0 = uv[1] + rnd.nextFloat() * Math.max(0f, maxV);
-            p.u1 = p.u0 + span;
-            p.v1 = p.v0 + span;
-            particles.add(p);
+            this.u0[p] = uv[0] + rnd.nextFloat() * Math.max(0f, maxU);
+            this.v0[p] = uv[1] + rnd.nextFloat() * Math.max(0f, maxV);
+            this.u1[p] = this.u0[p] + span;
+            this.v1[p] = this.v0[p] + span;
+
         }
     }
 
@@ -321,86 +399,86 @@ public class ParticleSystem {
      * Зовётся выборочно (не каждый кадр) — иначе дым забивает буфер частиц.
      */
     public void emitMobSmoke(float x, float y, float z) {
-        if (particles.size() >= MAX)
+        if (this.count >= MAX)
             return;
         float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
-        P p = new P();
-        p.x = x + (rnd.nextFloat() - 0.5f) * 0.5f;
-        p.y = y + rnd.nextFloat() * 0.5f;
-        p.z = z + (rnd.nextFloat() - 0.5f) * 0.5f;
-        p.vx = (rnd.nextFloat() - 0.5f) * 0.2f;
-        p.vy = 0.5f + rnd.nextFloat() * 0.4f;
-        p.vz = (rnd.nextFloat() - 0.5f) * 0.2f;
-        p.life = p.maxLife = 0.6f + rnd.nextFloat() * 0.4f;
-        p.size = 0.07f + rnd.nextFloat() * 0.05f;
-        p.gravityScale = 0f;
-        p.growRate = 0.06f;
-        p.windScale = 0.5f;
+        int p = acquire();
+        this.x[p] = x + (rnd.nextFloat() - 0.5f) * 0.5f;
+        this.y[p] = y + rnd.nextFloat() * 0.5f;
+        this.z[p] = z + (rnd.nextFloat() - 0.5f) * 0.5f;
+        this.vx[p] = (rnd.nextFloat() - 0.5f) * 0.2f;
+        this.vy[p] = 0.5f + rnd.nextFloat() * 0.4f;
+        this.vz[p] = (rnd.nextFloat() - 0.5f) * 0.2f;
+        this.life[p] = this.maxLife[p] = 0.6f + rnd.nextFloat() * 0.4f;
+        this.size[p] = 0.07f + rnd.nextFloat() * 0.05f;
+        this.gravityScale[p] = 0f;
+        this.growRate[p] = 0.06f;
+        this.windScale[p] = 0.5f;
         float grey = 0.18f + rnd.nextFloat() * 0.1f;
-        p.cr = grey;
-        p.cg = grey;
-        p.cb = grey;
-        p.baseAlpha = 0.55f;
-        p.u0 = uvP[0];
-        p.v0 = uvP[1];
-        p.u1 = uvP[2];
-        p.v1 = uvP[3];
-        particles.add(p);
+        this.cr[p] = grey;
+        this.cg[p] = grey;
+        this.cb[p] = grey;
+        this.baseAlpha[p] = 0.55f;
+        this.u0[p] = uvP[0];
+        this.v0[p] = uvP[1];
+        this.u1[p] = uvP[2];
+        this.v1[p] = uvP[3];
+
     }
 
     /** Язычок пламени на горящем мобе — тот же рецепт, что у факела. */
     public void emitMobFlame(float x, float y, float z) {
-        if (particles.size() >= MAX)
+        if (this.count >= MAX)
             return;
         float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
-        P p = new P();
-        p.x = x + (rnd.nextFloat() - 0.5f) * 0.6f;
-        p.y = y + (rnd.nextFloat() - 0.5f) * 0.8f;
-        p.z = z + (rnd.nextFloat() - 0.5f) * 0.6f;
-        p.vx = (rnd.nextFloat() - 0.5f) * 0.3f;
-        p.vy = 0.6f + rnd.nextFloat() * 0.5f;
-        p.vz = (rnd.nextFloat() - 0.5f) * 0.3f;
-        p.life = p.maxLife = 0.25f + rnd.nextFloat() * 0.2f;
-        p.size = 0.07f + rnd.nextFloat() * 0.05f;
-        p.gravityScale = 0f;
-        p.growRate = 0f;
-        p.cr = 0.95f + rnd.nextFloat() * 0.05f;
-        p.cg = 0.45f + rnd.nextFloat() * 0.25f;
-        p.cb = 0.03f + rnd.nextFloat() * 0.08f;
-        p.baseAlpha = 0.9f;
-        p.u0 = uvP[0];
-        p.v0 = uvP[1];
-        p.u1 = uvP[2];
-        p.v1 = uvP[3];
-        particles.add(p);
+        int p = acquire();
+        this.x[p] = x + (rnd.nextFloat() - 0.5f) * 0.6f;
+        this.y[p] = y + (rnd.nextFloat() - 0.5f) * 0.8f;
+        this.z[p] = z + (rnd.nextFloat() - 0.5f) * 0.6f;
+        this.vx[p] = (rnd.nextFloat() - 0.5f) * 0.3f;
+        this.vy[p] = 0.6f + rnd.nextFloat() * 0.5f;
+        this.vz[p] = (rnd.nextFloat() - 0.5f) * 0.3f;
+        this.life[p] = this.maxLife[p] = 0.25f + rnd.nextFloat() * 0.2f;
+        this.size[p] = 0.07f + rnd.nextFloat() * 0.05f;
+        this.gravityScale[p] = 0f;
+        this.growRate[p] = 0f;
+        this.cr[p] = 0.95f + rnd.nextFloat() * 0.05f;
+        this.cg[p] = 0.45f + rnd.nextFloat() * 0.25f;
+        this.cb[p] = 0.03f + rnd.nextFloat() * 0.08f;
+        this.baseAlpha[p] = 0.9f;
+        this.u0[p] = uvP[0];
+        this.v0[p] = uvP[1];
+        this.u1[p] = uvP[2];
+        this.v1[p] = uvP[3];
+
     }
 
     /** Облако частиц цвета моба в момент смерти. */
     public void emitMobDeath(float x, float y, float z, float[] color) {
         float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
         int count = 14 + rnd.nextInt(8);
-        for (int i = 0; i < count && particles.size() < MAX; i++) {
-            P p = new P();
+        for (int i = 0; i < count && this.count < MAX; i++) {
+            int p = acquire();
             float angle = rnd.nextFloat() * (float) (Math.PI * 2);
             float horiz = 0.8f + rnd.nextFloat() * 1.8f;
-            p.x = x + (rnd.nextFloat() - 0.5f) * 0.6f;
-            p.y = y + (rnd.nextFloat() - 0.5f) * 0.6f;
-            p.z = z + (rnd.nextFloat() - 0.5f) * 0.6f;
-            p.vx = (float) Math.cos(angle) * horiz;
-            p.vy = 1.2f + rnd.nextFloat() * 1.6f;
-            p.vz = (float) Math.sin(angle) * horiz;
-            p.life = p.maxLife = 0.45f + rnd.nextFloat() * 0.35f;
-            p.size = 0.07f + rnd.nextFloat() * 0.06f;
-            p.gravityScale = 0.6f;
-            p.cr = color[0];
-            p.cg = color[1];
-            p.cb = color[2];
-            p.baseAlpha = 1f;
-            p.u0 = uvP[0];
-            p.v0 = uvP[1];
-            p.u1 = uvP[2];
-            p.v1 = uvP[3];
-            particles.add(p);
+            this.x[p] = x + (rnd.nextFloat() - 0.5f) * 0.6f;
+            this.y[p] = y + (rnd.nextFloat() - 0.5f) * 0.6f;
+            this.z[p] = z + (rnd.nextFloat() - 0.5f) * 0.6f;
+            this.vx[p] = (float) Math.cos(angle) * horiz;
+            this.vy[p] = 1.2f + rnd.nextFloat() * 1.6f;
+            this.vz[p] = (float) Math.sin(angle) * horiz;
+            this.life[p] = this.maxLife[p] = 0.45f + rnd.nextFloat() * 0.35f;
+            this.size[p] = 0.07f + rnd.nextFloat() * 0.06f;
+            this.gravityScale[p] = 0.6f;
+            this.cr[p] = color[0];
+            this.cg[p] = color[1];
+            this.cb[p] = color[2];
+            this.baseAlpha[p] = 1f;
+            this.u0[p] = uvP[0];
+            this.v0[p] = uvP[1];
+            this.u1[p] = uvP[2];
+            this.v1[p] = uvP[3];
+
         }
     }
 
@@ -408,26 +486,35 @@ public class ParticleSystem {
     //  Update & render
     // -------------------------------------------------------------------------
 
+    private void flushSpawns() {
+        if (gpu == null) return;
+        for (int i = 0; i < count; i++) if (pendingSpawn[i]) {
+            gpu.spawn(i, x[i], y[i], z[i], size[i], vx[i], vy[i], vz[i], gravityScale[i], growRate[i], windScale[i], floorY[i]);
+            pendingSpawn[i] = false;
+        }
+    }
+
     public void update(float dt) {
-        Iterator<P> it = particles.iterator();
-        while (it.hasNext()) {
-            P p = it.next();
-            p.life -= dt;
-            if (p.life <= 0f || p.y <= p.floorY) { it.remove(); continue; }
-            p.vy  -= GRAVITY * p.gravityScale * dt;
+        flushSpawns();
+        for (int p = 0; p < count; p++) {
+            this.life[p] -= dt;
+            if (this.life[p] <= 0f || (gpu == null && this.y[p] <= this.floorY[p])) { remove(p--); continue; }
+            if (gpu != null) continue;
+            this.vy[p]  -= GRAVITY * this.gravityScale[p] * dt;
             // Ветер тянет скорость к своей, а не прибавляет её: иначе дым за
             // секунду разгонялся бы быстрее самого ветра.
-            if (p.windScale > 0f) {
-                p.vx += (windX * p.windScale - p.vx) * Math.min(1f, dt * 1.5f);
-                p.vz += (windZ * p.windScale - p.vz) * Math.min(1f, dt * 1.5f);
+            if (this.windScale[p] > 0f) {
+                this.vx[p] += (windX * this.windScale[p] - this.vx[p]) * Math.min(1f, dt * 1.5f);
+                this.vz[p] += (windZ * this.windScale[p] - this.vz[p]) * Math.min(1f, dt * 1.5f);
             }
-            p.x   += p.vx * dt;
-            p.y   += p.vy * dt;
-            p.z   += p.vz * dt;
-            p.size = Math.max(0.01f, p.size + p.growRate * dt);
+            this.x[p]   += this.vx[p] * dt;
+            this.y[p]   += this.vy[p] * dt;
+            this.z[p]   += this.vz[p] * dt;
+            this.size[p] = Math.max(0.01f, this.size[p] + this.growRate[p] * dt);
             float drag = Math.max(0f, 1f - 2f * dt);
-            p.vx *= drag; p.vz *= drag;
+            this.vx[p] *= drag; this.vz[p] *= drag;
         }
+        if (gpu != null) gpu.update(count, dt, windX, windZ);
     }
 
     // -------------------------------------------------------------------------
@@ -440,24 +527,24 @@ public class ParticleSystem {
      * всё время что-то выбрасывает вверх.
      */
     public void emitEmber(float x, float y, float z, float lift) {
-        if (particles.size() >= MAX - 32)
+        if (this.count >= MAX - 32)
             return;
         float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
-        P p = new P();
-        p.x = x; p.y = y; p.z = z;
-        p.vx = (rnd.nextFloat() - 0.5f) * 0.5f;
-        p.vy = lift * (0.8f + rnd.nextFloat() * 0.9f);
-        p.vz = (rnd.nextFloat() - 0.5f) * 0.5f;
-        p.life = p.maxLife = 0.6f + rnd.nextFloat() * 0.9f;
-        p.size = 0.018f + rnd.nextFloat() * 0.016f;
+        int p = acquire();
+        this.x[p] = x; this.y[p] = y; this.z[p] = z;
+        this.vx[p] = (rnd.nextFloat() - 0.5f) * 0.5f;
+        this.vy[p] = lift * (0.8f + rnd.nextFloat() * 0.9f);
+        this.vz[p] = (rnd.nextFloat() - 0.5f) * 0.5f;
+        this.life[p] = this.maxLife[p] = 0.6f + rnd.nextFloat() * 0.9f;
+        this.size[p] = 0.018f + rnd.nextFloat() * 0.016f;
         // Отрицательная гравитация — это подъёмная сила горячего воздуха.
-        p.gravityScale = -0.02f;
-        p.windScale = 0.35f;
-        p.flicker = 1f;
-        p.cr = 1f; p.cg = 0.55f + rnd.nextFloat() * 0.3f; p.cb = 0.12f;
-        p.baseAlpha = 1f;
-        p.u0 = uvP[0]; p.v0 = uvP[1]; p.u1 = uvP[2]; p.v1 = uvP[3];
-        particles.add(p);
+        this.gravityScale[p] = -0.02f;
+        this.windScale[p] = 0.35f;
+        this.flicker[p] = 1f;
+        this.cr[p] = 1f; this.cg[p] = 0.55f + rnd.nextFloat() * 0.3f; this.cb[p] = 0.12f;
+        this.baseAlpha[p] = 1f;
+        this.u0[p] = uvP[0]; this.v0[p] = uvP[1]; this.u1[p] = uvP[2]; this.v1[p] = uvP[3];
+
     }
 
     /**
@@ -470,26 +557,26 @@ public class ParticleSystem {
                              float skyFrac, float blockFrac) {
         float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
         int count = sprint ? 9 : 5;
-        for (int i = 0; i < count && particles.size() < MAX; i++) {
-            P p = new P();
-            p.worldLit = true;
-            p.skyL = skyFrac;
-            p.blockL = blockFrac;
-            p.x = x + (rnd.nextFloat() - 0.5f) * 0.3f;
-            p.y = y + 0.05f;
-            p.z = z + (rnd.nextFloat() - 0.5f) * 0.3f;
+        for (int i = 0; i < count && this.count < MAX; i++) {
+            int p = acquire();
+            this.worldLit[p] = true;
+            this.skyL[p] = skyFrac;
+            this.blockL[p] = blockFrac;
+            this.x[p] = x + (rnd.nextFloat() - 0.5f) * 0.3f;
+            this.y[p] = y + 0.05f;
+            this.z[p] = z + (rnd.nextFloat() - 0.5f) * 0.3f;
             float back = (sprint ? 1.6f : 0.9f) * (0.5f + rnd.nextFloat());
-            p.vx = -dirX * back + (rnd.nextFloat() - 0.5f) * 1.2f;
-            p.vz = -dirZ * back + (rnd.nextFloat() - 0.5f) * 1.2f;
-            p.vy = (sprint ? 2.2f : 1.4f) + rnd.nextFloat() * 1.2f;
-            p.life = p.maxLife = 0.35f + rnd.nextFloat() * 0.35f;
-            p.size = 0.035f + rnd.nextFloat() * 0.045f;
-            p.gravityScale = 0.75f;
-            p.floorY = y - 0.3f;
-            p.cr = 0.95f; p.cg = 0.97f; p.cb = 1f;
-            p.baseAlpha = 0.9f;
-            p.u0 = uvP[0]; p.v0 = uvP[1]; p.u1 = uvP[2]; p.v1 = uvP[3];
-            particles.add(p);
+            this.vx[p] = -dirX * back + (rnd.nextFloat() - 0.5f) * 1.2f;
+            this.vz[p] = -dirZ * back + (rnd.nextFloat() - 0.5f) * 1.2f;
+            this.vy[p] = (sprint ? 2.2f : 1.4f) + rnd.nextFloat() * 1.2f;
+            this.life[p] = this.maxLife[p] = 0.35f + rnd.nextFloat() * 0.35f;
+            this.size[p] = 0.035f + rnd.nextFloat() * 0.045f;
+            this.gravityScale[p] = 0.75f;
+            this.floorY[p] = y - 0.3f;
+            this.cr[p] = 0.95f; this.cg[p] = 0.97f; this.cb[p] = 1f;
+            this.baseAlpha[p] = 0.9f;
+            this.u0[p] = uvP[0]; this.v0[p] = uvP[1]; this.u1[p] = uvP[2]; this.v1[p] = uvP[3];
+
         }
     }
 
@@ -504,51 +591,52 @@ public class ParticleSystem {
                               boolean crit, float[] color, float skyFrac, float blockFrac) {
         float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
         int sparks = crit ? 16 : 8;
-        for (int i = 0; i < sparks && particles.size() < MAX; i++) {
-            P p = new P();
+        for (int i = 0; i < sparks && this.count < MAX; i++) {
+            int p = acquire();
             float speed = (crit ? 4.5f : 3.2f) * (0.5f + rnd.nextFloat());
-            p.x = x; p.y = y; p.z = z;
-            p.vx = (dirX + (rnd.nextFloat() - 0.5f) * 1.6f) * speed;
-            p.vy = (dirY + 0.35f + (rnd.nextFloat() - 0.2f) * 1.4f) * speed;
-            p.vz = (dirZ + (rnd.nextFloat() - 0.5f) * 1.6f) * speed;
-            p.life = p.maxLife = 0.12f + rnd.nextFloat() * (crit ? 0.30f : 0.18f);
-            p.size = (crit ? 0.05f : 0.03f) + rnd.nextFloat() * 0.025f;
-            p.gravityScale = 0.9f;
-            p.flicker = crit ? 1f : 0f;
-            p.cr = 1f;
-            p.cg = crit ? 0.95f : 0.85f;
-            p.cb = crit ? 0.55f : 0.60f;
-            p.baseAlpha = 1f;
-            p.u0 = uvP[0]; p.v0 = uvP[1]; p.u1 = uvP[2]; p.v1 = uvP[3];
-            particles.add(p);
+            this.x[p] = x; this.y[p] = y; this.z[p] = z;
+            this.vx[p] = (dirX + (rnd.nextFloat() - 0.5f) * 1.6f) * speed;
+            this.vy[p] = (dirY + 0.35f + (rnd.nextFloat() - 0.2f) * 1.4f) * speed;
+            this.vz[p] = (dirZ + (rnd.nextFloat() - 0.5f) * 1.6f) * speed;
+            this.life[p] = this.maxLife[p] = 0.12f + rnd.nextFloat() * (crit ? 0.30f : 0.18f);
+            this.size[p] = (crit ? 0.05f : 0.03f) + rnd.nextFloat() * 0.025f;
+            this.gravityScale[p] = 0.9f;
+            this.flicker[p] = crit ? 1f : 0f;
+            this.cr[p] = 1f;
+            this.cg[p] = crit ? 0.95f : 0.85f;
+            this.cb[p] = crit ? 0.55f : 0.60f;
+            this.baseAlpha[p] = 1f;
+            this.u0[p] = uvP[0]; this.v0[p] = uvP[1]; this.u1[p] = uvP[2]; this.v1[p] = uvP[3];
+
         }
         int drops = crit ? 10 : 6;
-        for (int i = 0; i < drops && particles.size() < MAX; i++) {
-            P p = new P();
-            p.worldLit = true;
-            p.skyL = skyFrac;
-            p.blockL = blockFrac;
-            p.x = x + (rnd.nextFloat() - 0.5f) * 0.2f;
-            p.y = y + (rnd.nextFloat() - 0.5f) * 0.2f;
-            p.z = z + (rnd.nextFloat() - 0.5f) * 0.2f;
+        for (int i = 0; i < drops && this.count < MAX; i++) {
+            int p = acquire();
+            this.worldLit[p] = true;
+            this.skyL[p] = skyFrac;
+            this.blockL[p] = blockFrac;
+            this.x[p] = x + (rnd.nextFloat() - 0.5f) * 0.2f;
+            this.y[p] = y + (rnd.nextFloat() - 0.5f) * 0.2f;
+            this.z[p] = z + (rnd.nextFloat() - 0.5f) * 0.2f;
             float speed = 1.4f + rnd.nextFloat() * 1.8f;
-            p.vx = (dirX * 0.7f + (rnd.nextFloat() - 0.5f)) * speed;
-            p.vy = (0.6f + rnd.nextFloat()) * speed;
-            p.vz = (dirZ * 0.7f + (rnd.nextFloat() - 0.5f)) * speed;
-            p.life = p.maxLife = 0.35f + rnd.nextFloat() * 0.3f;
-            p.size = 0.035f + rnd.nextFloat() * 0.035f;
-            p.gravityScale = 1.4f;
+            this.vx[p] = (dirX * 0.7f + (rnd.nextFloat() - 0.5f)) * speed;
+            this.vy[p] = (0.6f + rnd.nextFloat()) * speed;
+            this.vz[p] = (dirZ * 0.7f + (rnd.nextFloat() - 0.5f)) * speed;
+            this.life[p] = this.maxLife[p] = 0.35f + rnd.nextFloat() * 0.3f;
+            this.size[p] = 0.035f + rnd.nextFloat() * 0.035f;
+            this.gravityScale[p] = 1.4f;
             float dark = 0.55f + rnd.nextFloat() * 0.25f;
-            p.cr = color[0] * dark; p.cg = color[1] * dark; p.cb = color[2] * dark;
-            p.baseAlpha = 1f;
-            p.u0 = uvP[0]; p.v0 = uvP[1]; p.u1 = uvP[2]; p.v1 = uvP[3];
-            particles.add(p);
+            this.cr[p] = color[0] * dark; this.cg[p] = color[1] * dark; this.cb[p] = color[2] * dark;
+            this.baseAlpha[p] = 1f;
+            this.u0[p] = uvP[0]; this.v0[p] = uvP[1]; this.u1[p] = uvP[2]; this.v1[p] = uvP[3];
+
         }
     }
 
     public void render(Matrix4f proj, Matrix4f view, Vector3f camRight, Vector3f camUp, TextureAtlas atlas,
                        float daylight, float ambient, float brightness, float linearOut) {
-        if (particles.isEmpty()) return;
+        if (count == 0) return;
+        flushSpawns();
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         shader.bind();
@@ -560,31 +648,49 @@ public class ParticleSystem {
         shader.setVec3("uUp", camUp);
         shader.setFloat("uLinearOut", linearOut);
         glBindVertexArray(vao);
-        Vector3f center = new Vector3f();
-        for (P p : particles) {
+        frustum.set(viewProjection.set(proj).mul(view));
+        instanceData.clear();
+        int visible = 0;
+        for (int p = 0; p < count; p++) {
+            if (gpu == null && !frustum.testSphere(this.x[p], this.y[p], this.z[p], this.size[p])) continue;
+            visible++;
             // Fade alpha based on remaining life fraction
-            float fade = Math.min(1f, p.life / (p.maxLife * 0.35f));
+            float fade = Math.min(1f, this.life[p] / (this.maxLife[p] * 0.35f));
             // Same shading curve as the chunk fragment shader so break debris
             // matches the block it came from. Emissive particles skip it.
             float mul = 1f;
-            if (p.worldLit) {
-                float combined = Math.max(p.skyL * daylight, p.blockL);
+            if (this.worldLit[p]) {
+                float combined = Math.max(this.skyL[p] * daylight, this.blockL[p]);
                 float shaped = (float) Math.pow(Math.max(ambient, combined), 0.75) * brightness;
                 mul = Math.min(shaped, 1f);
             }
             // Искры и пламя светятся сами — в HDR им положен запас за 1.0,
             // иначе bloom их не подхватит.
-            float glow = p.flicker > 0f
-                    ? 0.55f + 0.45f * (float) Math.sin(p.life * 41f + p.x * 13f) : 1f;
-            shader.setFloat("uEmissive", p.worldLit ? 0f : (p.flicker > 0f ? 2.6f : 1.1f));
-            shader.setVec3("uCenter", center.set(p.x, p.y, p.z));
-            shader.setFloat("uSize", p.size);
-            shader.setVec4("uColor", p.cr * mul * glow, p.cg * mul * glow, p.cb * mul * glow,
-                    fade * p.baseAlpha);
-            shader.setVec2("uUv0", p.u0, p.v0);
-            shader.setVec2("uUv1", p.u1, p.v1);
-            glDrawArrays(GL_TRIANGLES, 0, 6);
+            float glow = this.flicker[p] > 0f
+                    ? 0.55f + 0.45f * (float) Math.sin(this.life[p] * 41f + this.x[p] * 13f) : 1f;
+            instanceData.put(this.x[p]).put(this.y[p]).put(this.z[p]).put(this.size[p]);
+            instanceData.put(this.cr[p] * mul * glow).put(this.cg[p] * mul * glow).put(this.cb[p] * mul * glow).put(fade * this.baseAlpha[p]);
+            instanceData.put(this.u0[p]).put(this.v0[p]).put(this.u1[p]).put(this.v1[p]);
+            instanceData.put(this.worldLit[p] ? 0f : (this.flicker[p] > 0f ? 2.6f : 1.1f));
         }
+        instanceData.flip();
+        long offset = instances.upload(instanceData);
+        for (int attribute = 1; attribute <= 4; attribute++) {
+            glVertexAttribPointer(attribute, attribute == 4 ? 1 : 4, GL_FLOAT, false, 13 * 4,
+                    offset + (attribute - 1) * 4L * 4);
+            glEnableVertexAttribArray(attribute);
+            org.lwjgl.opengl.GL33.glVertexAttribDivisor(attribute, 1);
+        }
+        if (gpu != null) gpu.bindPositions();
+        if (indirect != 0) {
+            org.lwjgl.opengl.GL40.glBindBuffer(org.lwjgl.opengl.GL40.GL_DRAW_INDIRECT_BUFFER, indirect);
+            glBufferData(org.lwjgl.opengl.GL40.GL_DRAW_INDIRECT_BUFFER, new int[]{6, visible, 0, 0}, GL_STREAM_DRAW);
+            org.lwjgl.opengl.GL40.glDrawArraysIndirect(GL_TRIANGLES, 0L);
+            org.lwjgl.opengl.GL40.glBindBuffer(org.lwjgl.opengl.GL40.GL_DRAW_INDIRECT_BUFFER, 0);
+        } else {
+            org.lwjgl.opengl.GL31.glDrawArraysInstanced(GL_TRIANGLES, 0, 6, visible);
+        }
+        instances.submitted();
         glBindVertexArray(0);
         shader.unbind();
         glDisable(GL_BLEND);
@@ -597,35 +703,39 @@ public class ParticleSystem {
      * Сами осадки живут на видеокарте, здесь только их след на земле.
      */
     public void emitRainSplash(float x, float y, float z, boolean onWater, float skyFrac) {
-        if (particles.size() >= MAX - 64)
+        if (this.count >= MAX - 64)
             return;
         float[] uv = TextureAtlas.uv(WATER_PARTICLE_TILE);
         int count = onWater ? 3 : 2;
         for (int i = 0; i < count; i++) {
-            P p = new P();
-            p.worldLit = true;
-            p.skyL = Math.max(0.35f, skyFrac);
-            p.blockL = 0f;
+            int p = acquire();
+            this.worldLit[p] = true;
+            this.skyL[p] = Math.max(0.35f, skyFrac);
+            this.blockL[p] = 0f;
             float angle = rnd.nextFloat() * (float) (Math.PI * 2);
             float horiz = (onWater ? 0.9f : 0.6f) + rnd.nextFloat() * 0.6f;
-            p.x = x;
-            p.y = y;
-            p.z = z;
-            p.vx = (float) Math.cos(angle) * horiz;
-            p.vz = (float) Math.sin(angle) * horiz;
-            p.vy = (onWater ? 1.8f : 1.3f) + rnd.nextFloat() * 1.0f;
-            p.floorY = y - 0.05f;
-            p.life = p.maxLife = 0.16f + rnd.nextFloat() * 0.12f;
-            p.size = 0.025f + rnd.nextFloat() * 0.02f;
-            p.gravityScale = 1.1f;
-            p.cr = 0.78f; p.cg = 0.86f; p.cb = 1f;
-            p.baseAlpha = onWater ? 0.75f : 0.55f;
-            p.u0 = uv[0]; p.v0 = uv[1]; p.u1 = uv[2]; p.v1 = uv[3];
-            particles.add(p);
+            this.x[p] = x;
+            this.y[p] = y;
+            this.z[p] = z;
+            this.vx[p] = (float) Math.cos(angle) * horiz;
+            this.vz[p] = (float) Math.sin(angle) * horiz;
+            this.vy[p] = (onWater ? 1.8f : 1.3f) + rnd.nextFloat() * 1.0f;
+            this.floorY[p] = y - 0.05f;
+            this.life[p] = this.maxLife[p] = 0.16f + rnd.nextFloat() * 0.12f;
+            this.size[p] = 0.025f + rnd.nextFloat() * 0.02f;
+            this.gravityScale[p] = 1.1f;
+            this.cr[p] = 0.78f; this.cg[p] = 0.86f; this.cb[p] = 1f;
+            this.baseAlpha[p] = onWater ? 0.75f : 0.55f;
+            this.u0[p] = uv[0]; this.v0[p] = uv[1]; this.u1[p] = uv[2]; this.v1[p] = uv[3];
+
         }
     }
 
     public void destroy() {
+        if (gpu != null) gpu.destroy();
+        if (indirect != 0) glDeleteBuffers(indirect);
+        instances.destroy();
+        MemoryUtil.memFree(instanceData);
         glDeleteBuffers(vbo);
         glDeleteVertexArrays(vao);
         shader.destroy();
@@ -633,46 +743,46 @@ public class ParticleSystem {
     /** Sparse biome ambience using the existing particle budget. */
     public void emitNature(float x, float y, float z, boolean snow, boolean firefly,
                            float skyFrac) {
-        if (particles.size() >= MAX - 96) return;
-        P p = new P();
-        p.x = x; p.y = y; p.z = z;
-        p.vx = 0.12f + rnd.nextFloat() * 0.15f;
-        p.vz = (rnd.nextFloat() - 0.5f) * 0.22f;
-        p.vy = firefly ? 0.06f : snow ? -0.35f : -0.22f;
-        p.life = p.maxLife = 3f + rnd.nextFloat() * 3f;
-        p.size = firefly ? 0.045f : snow ? 0.035f : 0.065f;
-        p.gravityScale = 0f;
-        p.worldLit = !firefly;
-        p.skyL = skyFrac;
-        p.baseAlpha = firefly ? 0.85f : 0.7f;
-        p.cr = firefly ? 1f : snow ? 0.92f : 0.55f;
-        p.cg = firefly ? 0.9f : snow ? 0.96f : 0.75f;
-        p.cb = firefly ? 0.3f : snow ? 1f : 0.3f;
+        if (this.count >= MAX - 96) return;
+        int p = acquire();
+        this.x[p] = x; this.y[p] = y; this.z[p] = z;
+        this.vx[p] = 0.12f + rnd.nextFloat() * 0.15f;
+        this.vz[p] = (rnd.nextFloat() - 0.5f) * 0.22f;
+        this.vy[p] = firefly ? 0.06f : snow ? -0.35f : -0.22f;
+        this.life[p] = this.maxLife[p] = 3f + rnd.nextFloat() * 3f;
+        this.size[p] = firefly ? 0.045f : snow ? 0.035f : 0.065f;
+        this.gravityScale[p] = 0f;
+        this.worldLit[p] = !firefly;
+        this.skyL[p] = skyFrac;
+        this.baseAlpha[p] = firefly ? 0.85f : 0.7f;
+        this.cr[p] = firefly ? 1f : snow ? 0.92f : 0.55f;
+        this.cg[p] = firefly ? 0.9f : snow ? 0.96f : 0.75f;
+        this.cb[p] = firefly ? 0.3f : snow ? 1f : 0.3f;
         float[] uv = TextureAtlas.uv(PARTICLE_TILE);
-        p.u0 = uv[0]; p.v0 = uv[1]; p.u1 = uv[2]; p.v1 = uv[3];
-        particles.add(p);
+        this.u0[p] = uv[0]; this.v0[p] = uv[1]; this.u1[p] = uv[2]; this.v1[p] = uv[3];
+
     }
 
     /** Маленькая рыба-силуэт; направление задаётся прочь от недавнего всплеска. */
     public void emitFish(float x, float y, float z, float awayX, float awayZ, float skyFrac) {
-        if (particles.size() >= MAX - 96) return;
+        if (this.count >= MAX - 96) return;
         float len = (float) Math.sqrt(awayX * awayX + awayZ * awayZ);
         if (len < 0.01f) { awayX = 1f; awayZ = 0f; len = 1f; }
-        P p = new P();
-        p.x = x; p.y = y; p.z = z;
+        int p = acquire();
+        this.x[p] = x; this.y[p] = y; this.z[p] = z;
         float speed = 0.35f + rnd.nextFloat() * 0.45f;
-        p.vx = awayX / len * speed;
-        p.vz = awayZ / len * speed;
-        p.vy = (rnd.nextFloat() - 0.5f) * 0.08f;
-        p.life = p.maxLife = 2.2f + rnd.nextFloat() * 1.8f;
-        p.size = 0.07f + rnd.nextFloat() * 0.04f;
-        p.gravityScale = 0f;
-        p.worldLit = true;
-        p.skyL = skyFrac;
-        p.baseAlpha = 0.78f;
-        p.cr = 0.28f; p.cg = 0.58f; p.cb = 0.72f;
+        this.vx[p] = awayX / len * speed;
+        this.vz[p] = awayZ / len * speed;
+        this.vy[p] = (rnd.nextFloat() - 0.5f) * 0.08f;
+        this.life[p] = this.maxLife[p] = 2.2f + rnd.nextFloat() * 1.8f;
+        this.size[p] = 0.07f + rnd.nextFloat() * 0.04f;
+        this.gravityScale[p] = 0f;
+        this.worldLit[p] = true;
+        this.skyL[p] = skyFrac;
+        this.baseAlpha[p] = 0.78f;
+        this.cr[p] = 0.28f; this.cg[p] = 0.58f; this.cb[p] = 0.72f;
         float[] uv = TextureAtlas.uv(PARTICLE_TILE);
-        p.u0 = uv[0]; p.v0 = uv[1]; p.u1 = uv[2]; p.v1 = uv[3];
-        particles.add(p);
+        this.u0[p] = uv[0]; this.v0[p] = uv[1]; this.u1[p] = uv[2]; this.v1[p] = uv[3];
+
     }
 }

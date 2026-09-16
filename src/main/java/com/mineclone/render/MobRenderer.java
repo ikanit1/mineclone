@@ -80,6 +80,8 @@ public class MobRenderer {
     static final int STRIDE = 6 * Float.BYTES;
 
     private final int vao, vbo;
+    private final org.joml.FrustumIntersection visibility = new org.joml.FrustumIntersection();
+    private final Matrix4f visibilityMatrix = new Matrix4f();
     private final Shader shader;
     private final Map<MobType, Integer> textures = new EnumMap<>(MobType.class);
     private final Map<MobType, Part[]> models = new EnumMap<>(MobType.class);
@@ -220,6 +222,7 @@ public class MobRenderer {
                        float daylight, SceneLighting lighting) {
         if (mobs.isEmpty())
             return;
+        visibility.set(visibilityMatrix.set(proj).mul(view));
         glDisable(GL_CULL_FACE);
         shader.bind();
         shader.setMat4("uProjection", proj);
@@ -230,6 +233,8 @@ public class MobRenderer {
         glBindVertexArray(vao);
 
         for (Mob m : mobs) {
+            if (!visibility.testSphere(m.position.x, m.position.y + m.type.height * 0.5f, m.position.z,
+                    m.type.height + m.type.width)) continue;
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, textures.get(m.type));
             shader.setFloat("uSkyVis", skyVisAt(world, m) * daylight);

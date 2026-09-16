@@ -12,10 +12,10 @@ public final class SaveFormat {
     public static final int LEVEL_VERSION = 9;
     /**
      * Версия формата чанка. 2 — содержимое сундуков, 3 — состояние печей,
-     * 4 — предметы на земле. Младшие версии читаются как раньше: чего в них
+     * 4 — предметы на земле; 5 — адаптивный RLE блоков и метаданных. Младшие версии читаются как раньше: чего в них
      * нет, того просто нет.
      */
-    public static final int CHUNK_VERSION = 4;
+    public static final int CHUNK_VERSION = 5;
     /** Версия настроек. 5 — раскладка клавиш; 1–4 читаются с раскладкой по умолчанию. */
     public static final int OPTIONS_VERSION = 5;
 

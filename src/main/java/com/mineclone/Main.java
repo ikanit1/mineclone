@@ -12,10 +12,14 @@ public class Main {
         // Автопилот идёт на экране игрока — окно скрыто и фокус не забирает.
         boolean autopilot = System.getProperty("mineclone.autopilot") != null;
         Window window = new Window("Mineclone", 1280, 720, !autopilot);
+        com.mineclone.render.TextureAtlas.prepareAsync();
         int exitCode = 0;
         try {
             window.init();
-            Game game = new Game(window, regenAtlas);
+            Game game;
+            try (var shaders = com.mineclone.render.ShaderPreloader.start(window.getHandle())) {
+                game = new Game(window, regenAtlas);
+            }
             game.run();
             exitCode = game.exitCode();
         } finally {

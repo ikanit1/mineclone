@@ -514,6 +514,12 @@ public class World {
     }
 
     // ---- world-space accessors ----
+    public boolean isSolid(int wx, int wy, int wz) {
+        if (wy < 0 || wy >= Chunk.SIZE_Y) return false;
+        Chunk c = getChunkIfExists(wx >> 4, wz >> 4);
+        return c != null && c.isSolid(wx & 15, wy, wz & 15);
+    }
+
     public BlockType getBlock(int wx, int wy, int wz) {
         if (wy < 0 || wy >= Chunk.SIZE_Y)
             return BlockType.AIR;

@@ -33,6 +33,17 @@ public final class EntityPhysics {
      */
     public static Contact step(World world, Vector3f pos, Vector3f vel,
                                float width, float height, float dt, float maxFallSpeed) {
+        // Distance ticks may span several frames; bound displacement to avoid tunnelling.
+        if (dt > 0.025f) {
+            int steps = (int)Math.ceil(dt / 0.025f);
+            Contact last = null;
+            boolean wall = false;
+            for (int i = 0; i < steps; i++) {
+                last = step(world, pos, vel, width, height, dt / steps, maxFallSpeed);
+                wall |= last.hitWall();
+            }
+            return new Contact(last.onGround(), wall, last.inWater());
+        }
         boolean inWater = touchingWater(world, pos, width, height);
         if (inWater) {
             // Ослабленная гравитация + подъём: сущность выныривает и качается
@@ -91,7 +102,7 @@ public final class EntityPhysics {
         for (int x = x0; x <= x1; x++)
             for (int y = y0; y <= y1; y++)
                 for (int z = z0; z <= z1; z++) {
-                    if (!world.getBlock(x, y, z).solid)
+                    if (!world.isSolid(x, y, z))
                         continue;
                     hit = true;
                     switch (axis) {
@@ -110,7 +121,7 @@ public final class EntityPhysics {
         int za = (int) Math.floor(pos.z - hw + 1e-3f), zb = (int) Math.floor(pos.z + hw - 1e-3f);
         for (int x = xa; x <= xb; x++)
             for (int z = za; z <= zb; z++)
-                if (world.getBlock(x, y, z).solid)
+                if (world.isSolid(x, y, z))
                     return true;
         return false;
     }
@@ -147,7 +158,7 @@ public final class EntityPhysics {
             int bx = (int) Math.floor(x0 + dx * t);
             int by = (int) Math.floor(y0 + dy * t);
             int bz = (int) Math.floor(z0 + dz * t);
-            if (world.getBlock(bx, by, bz).solid)
+            if (world.isSolid(bx, by, bz))
                 return false;
         }
         return true;

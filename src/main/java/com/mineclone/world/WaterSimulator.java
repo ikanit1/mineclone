@@ -84,9 +84,12 @@ public final class WaterSimulator {
                 continue;
             int bx = chunk.cx * Chunk.SIZE_X;
             int bz = chunk.cz * Chunk.SIZE_Z;
-            for (int lx = 0; lx < Chunk.SIZE_X; lx++) {
-                for (int y = 0; y < Chunk.SIZE_Y; y++) {
-                    for (int lz = 0; lz < Chunk.SIZE_Z; lz++) {
+            for (int wi = 0; wi < chunk.waterCellCount(); wi++) {
+                        int packed = chunk.waterCellAt(wi);
+                        int lx = packed % Chunk.SIZE_X;
+                        int rest = packed / Chunk.SIZE_X;
+                        int lz = rest % Chunk.SIZE_Z;
+                        int y = rest / Chunk.SIZE_Z;
                         BlockType b = chunk.get(lx, y, lz);
                         if (b != BlockType.WATER && b != BlockType.WATER_FLOW) continue;
 
@@ -110,8 +113,6 @@ public final class WaterSimulator {
 
                         // Try to spread by one step.
                         trySpread(world, wx, wy, wz, myLevel, toAdd, sides);
-                    }
-                }
             }
         }
 

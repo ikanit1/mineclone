@@ -9,7 +9,17 @@ public class Chunk {
     public static final int MAX_LIGHT = 15;
 
     public final int cx, cz;
-    private final byte[] blocks = new byte[SIZE_X * SIZE_Y * SIZE_Z];
+    private volatile int meshLod;
+    public int meshLod() { return meshLod; }
+    public synchronized void setMeshLod(int lod) {
+        if (meshLod == lod) return;
+        meshLod = lod;
+        markDirty();
+    }
+    private final PaletteStorage blocks = new PaletteStorage(SIZE_X * SIZE_Y * SIZE_Z);
+    private int[] waterCells = new int[64];
+    private int waterCount;
+    private final long[] solidMask = new long[SIZE_X * SIZE_Y * SIZE_Z / 64];
     private final byte[] skyLight = new byte[SIZE_X * SIZE_Y * SIZE_Z];
     // blockLight is written on the main thread (flood fill) and read on mesh
     // threads.
@@ -79,7 +89,13 @@ public class Chunk {
     public byte getRaw(int x, int y, int z) {
         if (!inBounds(x, y, z))
             return 0;
-        return blocks[idx(x, y, z)];
+        return blocks.get(idx(x, y, z));
+    }
+
+    public boolean isSolid(int x, int y, int z) {
+        if (!inBounds(x,y,z)) return false;
+        int i = idx(x,y,z);
+        return (solidMask[i >>> 6] & (1L << (i & 63))) != 0;
     }
 
     public BlockType get(int x, int y, int z) {
@@ -90,8 +106,19 @@ public class Chunk {
         if (!inBounds(x, y, z))
             return;
         int i = idx(x, y, z);
-        BlockType old = BlockType.byId(blocks[i]);
-        blocks[i] = (byte) t.ordinal();
+        BlockType old = BlockType.byId(blocks.get(i));
+        if (old == t) return;
+        blocks.set(i, (byte) t.ordinal());
+        boolean oldWater = old == BlockType.WATER || old == BlockType.WATER_FLOW;
+        boolean newWater = t == BlockType.WATER || t == BlockType.WATER_FLOW;
+        if (!oldWater && newWater) {
+            if (waterCount == waterCells.length) waterCells = java.util.Arrays.copyOf(waterCells, waterCount * 2);
+            waterCells[waterCount++] = i;
+        } else if (oldWater && !newWater) {
+            for (int n = 0; n < waterCount; n++) if (waterCells[n] == i) { waterCells[n] = waterCells[--waterCount]; break; }
+        }
+        if (t.solid) solidMask[i >>> 6] |= 1L << (i & 63);
+        else solidMask[i >>> 6] &= ~(1L << (i & 63));
         if (old.emittedLight > 0 && t.emittedLight <= 0)
             removeEmitter(i);
         else if (old.emittedLight <= 0 && t.emittedLight > 0)
@@ -100,7 +127,7 @@ public class Chunk {
     }
 
     /** Помечает меш устаревшим и двигает поколение содержимого. */
-    public void markDirty() {
+    public synchronized void markDirty() {
         contentVersion.incrementAndGet();
         dirty = true;
     }
@@ -121,7 +148,7 @@ public class Chunk {
      *
      * @return true, если флаг снят
      */
-    public boolean clearDirtyIfCurrent(int v) {
+    public synchronized boolean clearDirtyIfCurrent(int v) {
         if (contentVersion.get() != v)
             return false;
         dirty = false;
@@ -200,7 +227,7 @@ public class Chunk {
     public void rebuildEmitters() {
         emitterCount = 0;
         for (int i = 0; i < blocks.length; i++)
-            if (BlockType.byId(blocks[i]).emittedLight > 0)
+            if (BlockType.byId(blocks.get(i)).emittedLight > 0)
                 addEmitter(i);
     }
 
@@ -231,7 +258,10 @@ public class Chunk {
     public void setMeta(int x, int y, int z, byte val) {
         if (!inBounds(x, y, z))
             return;
-        meta[idx(x, y, z)] = val;
+        int i = idx(x, y, z);
+        if (meta[i] == val) return;
+        meta[i] = val;
+        markDirty();
     }
 
     /**
@@ -255,7 +285,7 @@ public class Chunk {
         // дорогой частью функции.
         boolean[] clear = new boolean[len];
         for (int i = 0; i < len; i++)
-            clear[i] = transparent(BlockType.byId(blocks[i]));
+            clear[i] = transparent(BlockType.byId(blocks.get(i)));
 
         int[] queue = new int[8192];
         int head = 0, tail = 0;
@@ -513,8 +543,12 @@ public class Chunk {
     }
 
     /** Defensive copy of the raw block array (length SIZE_X*SIZE_Y*SIZE_Z). */
+    public int blockStorageBytes() { return blocks.payloadBytes(); }
+    public int waterCellCount() { return waterCount; }
+    public int waterCellAt(int index) { return waterCells[index]; }
+
     public byte[] copyBlocks() {
-        return blocks.clone();
+        return blocks.copy();
     }
 
     /** Defensive copy of the raw meta array. */
@@ -529,7 +563,18 @@ public class Chunk {
      * freshly-restored chunk matches disk).
      */
     public void restore(byte[] srcBlocks, byte[] srcMeta) {
-        System.arraycopy(srcBlocks, 0, blocks, 0, blocks.length);
+        blocks.restore(srcBlocks);
+        waterCount = 0;
+        for (int i = 0; i < srcBlocks.length; i++) {
+            BlockType bt = BlockType.byId(srcBlocks[i]);
+            if (bt == BlockType.WATER || bt == BlockType.WATER_FLOW) {
+                if (waterCount == waterCells.length) waterCells = java.util.Arrays.copyOf(waterCells, waterCount * 2);
+                waterCells[waterCount++] = i;
+            }
+        }
+        java.util.Arrays.fill(solidMask, 0L);
+        for (int i = 0; i < srcBlocks.length; i++)
+            if (BlockType.byId(srcBlocks[i]).solid) solidMask[i >>> 6] |= 1L << (i & 63);
         System.arraycopy(srcMeta, 0, meta, 0, meta.length);
         // Блоки пришли массивом мимо set(), инкрементальный учёт их не видел.
         rebuildEmitters();

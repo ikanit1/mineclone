@@ -22,8 +22,8 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
  * собирает: живой фон под стеклом, экран загрузки над фоном, переходы между
  * состояниями, превью мира после сохранения. Автопилот проходит весь путь —
  * фон на закате и ночью, титул, миры, создание, загрузка, игра, пауза,
- * настройки, клавиши, выход в меню — снимает кадр на каждом шаге и закрывает
- * игру с ненулевым кодом, если что-то пошло не так.
+ * настройки, клавиши, выход в меню и повторный вход в тот же мир — снимает кадр
+ * на каждом шаге и закрывает игру с ненулевым кодом, если что-то пошло не так.
  *
  * <p>Экраны открываются и действия подаются напрямую, мимо мыши: щелчки по
  * координатам ломались бы от любой правки раскладки, а сами щелчки уже
@@ -181,7 +181,27 @@ final class Autopilot {
                     throw new IllegalStateException("world icon was not saved");
                 System.out.println("autopilot: ok - world icon saved");
             }),
-            music("menu music returns after leaving the world", 3.0f));
+            music("menu music returns after leaving the world", 3.0f),
+            step("continue the same world", 0.2f, d -> {
+                java.util.List<com.mineclone.save.SaveManager.WorldInfo> worlds = d.save().listWorlds(false);
+                if (worlds.isEmpty())
+                    throw new IllegalStateException("continue: no saved world");
+                d.act(MenuAction.play(worlds.get(0).id));
+            }),
+            when("the same world loads a second time", 8f,
+                    d -> in(d, "PLAYING"),
+                    d -> System.out.println("autopilot: ok - same world loaded a second time")),
+            step("pause after re-entry", 0.2f, d -> d.pressKey(GLFW_KEY_ESCAPE)),
+            expect("pause opens after re-entry", 0.6f, "PAUSED"),
+            step("return to menu again", 0.2f,
+                    d -> d.act(MenuAction.of(MenuAction.Kind.MAIN_MENU))),
+            expect("second return unloads the world", 0.3f, "MENU"),
+            step("create a random-seed world", 0.2f, d -> d.act(MenuAction.create(
+                    new WorldSettings("Автопилот случайный", new java.util.Random().nextLong(),
+                            GameMode.SURVIVAL)))),
+            when("random-seed world loads", 8f,
+                    d -> in(d, "PLAYING"),
+                    d -> System.out.println("autopilot: ok - random-seed world loaded")));
 
     private final Driver d;
     private float clock;

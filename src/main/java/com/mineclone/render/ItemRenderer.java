@@ -34,6 +34,8 @@ public final class ItemRenderer {
     private static final int FLAT_VERTICES = 12;
     private static final Vector3f NO_TINT = new Vector3f(1f, 1f, 1f);
 
+    private final org.joml.FrustumIntersection visibility = new org.joml.FrustumIntersection();
+    private final Matrix4f visibilityMatrix = new Matrix4f();
     private final Shader shader;
     private final int vao, vbo;
     private final Matrix4f model = new Matrix4f();
@@ -49,6 +51,7 @@ public final class ItemRenderer {
                        TextureAtlas atlas, SceneLighting lighting, float daylight) {
         if (items.isEmpty())
             return;
+        visibility.set(visibilityMatrix.set(proj).mul(view));
         glDisable(GL_CULL_FACE);
         shader.bind();
         shader.setMat4("uProjection", proj);
@@ -61,6 +64,7 @@ public final class ItemRenderer {
         float tileSpan = (TextureAtlas.TILE - 1f) / TextureAtlas.ATLAS_SIZE;
         shader.setVec2("uTileSize", tileSpan, tileSpan);
         for (ItemEntity e : items) {
+            if (!visibility.testSphere(e.position.x, e.position.y + 0.4f, e.position.z, 0.9f)) continue;
             if (e.stack.count <= 0)
                 continue;
             int bx = (int) Math.floor(e.position.x), by = (int) Math.floor(e.position.y + 0.2f),

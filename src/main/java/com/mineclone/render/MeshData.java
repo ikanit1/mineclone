@@ -6,8 +6,14 @@ public final class MeshData {
     public final float[] light;
     public final float[] blockLight;
     public final int[] indices;
+    public final float[] repeat;
 
     public MeshData(float[] positions, float[] uvs, float[] light, float[] blockLight, int[] indices) {
+        this(positions, uvs, light, blockLight, indices, null);
+    }
+
+    public MeshData(float[] positions, float[] uvs, float[] light, float[] blockLight, int[] indices, float[] repeat) {
+        this.repeat = repeat;
         this.positions = positions;
         this.uvs = uvs;
         this.light = light;
@@ -18,6 +24,6 @@ public final class MeshData {
     public boolean isEmpty() { return indices.length == 0; }
 
     public Mesh upload() {
-        return new Mesh(positions, uvs, light, blockLight, indices);
+        return new Mesh(positions, uvs, light, blockLight, indices, repeat);
     }
 }

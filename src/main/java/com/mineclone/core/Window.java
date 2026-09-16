@@ -43,13 +43,19 @@ public class Window {
         glfwDefaultWindowHints();
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+        boolean compatibility = Boolean.getBoolean("mineclone.gl33");
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, compatibility ? 3 : 4);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, compatibility ? 3 : 4);
         glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
         glfwWindowHint(GLFW_SAMPLES, 4);
 
         handle = glfwCreateWindow(width, height, title, 0L, 0L);
+        if (handle == 0L && !compatibility) {
+            glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+            glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+            handle = glfwCreateWindow(width, height, title, 0L, 0L);
+        }
         if (handle == 0L) throw new RuntimeException("Failed to create GLFW window");
 
         glfwSetFramebufferSizeCallback(handle, (w, nw, nh) -> {
@@ -71,6 +77,8 @@ public class Window {
             glfwShowWindow(handle);
 
         GL.createCapabilities();
+        if (GL.getCapabilities().GL_ARB_parallel_shader_compile)
+            org.lwjgl.opengl.ARBParallelShaderCompile.glMaxShaderCompilerThreadsARB(Math.max(1, Runtime.getRuntime().availableProcessors() - 1));
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);

@@ -94,6 +94,7 @@ public class ChunkLoader {
     private final Set<Long> pendingGen  = ConcurrentHashMap.newKeySet();
     private final Set<Long> pendingMesh = ConcurrentHashMap.newKeySet();
     /** Chunks for which a mesh upload has been produced (queued or applied). */
+    private final Set<Long> awaitingUpload = ConcurrentHashMap.newKeySet();
     private final Set<Long> meshed      = ConcurrentHashMap.newKeySet();
     private final ConcurrentLinkedQueue<Ready> ready = new ConcurrentLinkedQueue<>();
     /**
@@ -149,6 +150,11 @@ public class ChunkLoader {
             for (int dz = -radius; dz <= radius; dz++) {
                 int cx = pcx + dx, cz = pcz + dz;
                 long k = World.key(cx, cz);
+                Chunk existing = world.getChunkIfExists(cx, cz);
+                if (existing != null) {
+                    int distance = Math.max(Math.abs(dx), Math.abs(dz));
+                    existing.setMeshLod(Boolean.getBoolean("mineclone.fullDetail") ? 0 : distance <= 3 ? 0 : distance <= 5 ? 1 : 2);
+                }
                 if (world.getChunkIfExists(cx, cz) == null) {
                     submitGen(cx, cz, k);
                 } else if (!pendingGen.contains(k) && !pendingLightFlood.contains(k)
@@ -290,7 +296,7 @@ public class ChunkLoader {
      * @return false, если задача уже в работе
      */
     public boolean submitMesh(int cx, int cz, long key, boolean edit) {
-        if (!pendingMesh.add(key)) return false;
+        if (awaitingUpload.contains(key) || !pendingMesh.add(key)) return false;
         int priority = edit ? EDIT_PRIORITY : distancePriority(cx, cz);
         meshPool.execute(new MeshTask(priority, meshSeq.incrementAndGet(), () -> {
             try {
@@ -300,7 +306,8 @@ public class ChunkLoader {
                 // которое было на входе. Изменится оно во время сборки —
                 // главный поток увидит расхождение и закажет ещё одну.
                 int version = c.contentVersion();
-                MeshData[] data = mesher.buildData(c);
+                MeshData[] data = mesher.buildData(c, c.meshLod());
+                awaitingUpload.add(key);
                 ready.offer(new Ready(key, data, version));
                 meshed.add(key);
             } finally {
@@ -316,6 +323,7 @@ public class ChunkLoader {
         for (int i = 0; i < maxPerFrame; i++) {
             Ready r = ready.poll();
             if (r == null) break;
+            awaitingUpload.remove(r.key);
             out.add(r);
         }
         return out;
@@ -333,6 +341,7 @@ public class ChunkLoader {
 
     public void forget(long key) {
         meshed.remove(key);
+        awaitingUpload.remove(key);
         pendingLightFlood.remove(key);
     }
 

@@ -17,9 +17,14 @@ public class Shader {
     private final Map<String, Integer> uniforms = new HashMap<>();
 
     public Shader(String vertexSrc, String fragmentSrc) {
+        Integer prepared = ShaderPreloader.take(vertexSrc, fragmentSrc);
+        program = prepared == null ? compileProgram(vertexSrc, fragmentSrc) : prepared;
+    }
+
+    static int compileProgram(String vertexSrc, String fragmentSrc) {
         int vs = compile(GL_VERTEX_SHADER, vertexSrc);
         int fs = compile(GL_FRAGMENT_SHADER, fragmentSrc);
-        program = glCreateProgram();
+        int program = glCreateProgram();
         glAttachShader(program, vs);
         glAttachShader(program, fs);
         glLinkProgram(program);
@@ -30,9 +35,17 @@ public class Shader {
         glDetachShader(program, fs);
         glDeleteShader(vs);
         glDeleteShader(fs);
+        int arraySampler = glGetUniformLocation(program, "uBlockArray");
+        if (arraySampler >= 0) {
+            int previous = glGetInteger(GL_CURRENT_PROGRAM);
+            glUseProgram(program);
+            glUniform1i(arraySampler, TextureAtlas.ARRAY_UNIT);
+            glUseProgram(previous);
+        }
+        return program;
     }
 
-    private int compile(int type, String src) {
+    private static int compile(int type, String src) {
         int s = glCreateShader(type);
         glShaderSource(s, src);
         glCompileShader(s);

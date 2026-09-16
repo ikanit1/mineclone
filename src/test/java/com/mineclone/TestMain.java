@@ -52,6 +52,7 @@ public final class TestMain {
     private static int failed = 0;
 
     public static void main(String[] args) {
+        run("optimization invariants", OptimizationTests::run);
         run("a stale mesh never overwrites a fresher one", TestMain::testMeshVersionRejectsStale);
         run("the emitter list tracks the blocks it describes", TestMain::testEmitterListMatchesChunk);
         run("player edits jump the mesh queue ahead of distance", TestMain::testMeshPriorityOrder);

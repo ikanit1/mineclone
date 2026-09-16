@@ -257,6 +257,8 @@ public final class Shaders {
     public static final String CHUNK_VERTEX = VER + LIB_SWAY + """
         layout (location = 0) in vec3 aPos;
         layout (location = 1) in vec2 aUv;
+        layout (location = 4) in vec3 aRepeat;
+        out vec3 vRepeat;
         layout (location = 2) in float aLight;
         layout (location = 3) in float aBlockLight;
         uniform mat4 uProjection;
@@ -269,6 +271,7 @@ public final class Shaders {
         out float vBlockLight;
         out vec3  vWorld;
         void main() {
+            vRepeat = aRepeat;
             vec4 worldPos = uModel * vec4(aPos, 1.0);
             worldPos.xyz = swayLeaves(worldPos.xyz, aUv, uTime);
             vec4 viewPos = uView * worldPos;
@@ -338,6 +341,8 @@ public final class Shaders {
         in float vBlockLight;   // AO * блочный свет
         in vec3  vWorld;
         uniform sampler2D uAtlas;
+        uniform sampler2DArray uBlockArray;
+        in vec3 vRepeat;
         out vec4 FragColor;
         void main() {
             // Нормаль и выборка атласа — до discard: обе опираются на производные.
@@ -346,7 +351,7 @@ public final class Shaders {
             vec3 V = toCam / max(dist, 1e-4);
             vec3 N = faceNormal(vWorld, V);
 
-            vec4 tex = texture(uAtlas, vUv);
+            vec4 tex = (vRepeat.z > 0.5 ? texture(uBlockArray, vec3(vRepeat.xy, vRepeat.z - 1.0)) : texture(uAtlas, vUv));
             if (tex.a < 0.1) discard;
             vec3 albedo = toLinear(tex.rgb);
 
@@ -478,11 +483,14 @@ public final class Shaders {
     public static final String SHADOW_VERTEX = VER + LIB_SWAY + """
         layout (location = 0) in vec3 aPos;
         layout (location = 1) in vec2 aUv;
+        layout (location = 4) in vec3 aRepeat;
+        out vec3 vRepeat;
         uniform mat4 uLightSpace;
         uniform mat4 uModel;
         uniform float uTime;
         out vec2 vUv;
         void main() {
+            vRepeat = aRepeat;
             vUv = aUv;
             // Тень кроны качается вместе с кроной — иначе пятна света под
             // деревом стоят, а листья над ним шевелятся.
@@ -615,7 +623,9 @@ public final class Shaders {
         uniform vec2 uUvTop;
         uniform vec2 uTileSize;
         out vec2 vUv;
+        out vec3 vRepeat;
         void main() {
+            vRepeat = vec3(0.0);
             vec2 base = aFace < 0.5 ? uUvFront : (aFace < 1.5 ? uUvSide : uUvTop);
             vUv = base + aCorner * uTileSize;
             gl_Position = uLightSpace * uModel * vec4(aPos, 1.0);
@@ -625,9 +635,11 @@ public final class Shaders {
     public static final String SHADOW_FRAGMENT = VER + """
         in vec2 vUv;
         uniform sampler2D uAtlas;
+        uniform sampler2DArray uBlockArray;
+        in vec3 vRepeat;
         void main() {
             // Листва и кресты дырявые: без alpha-теста их тень — сплошной куб.
-            if (texture(uAtlas, vUv).a < 0.5) discard;
+            if ((vRepeat.z > 0.5 ? texture(uBlockArray, vec3(vRepeat.xy, vRepeat.z - 1.0)) : texture(uAtlas, vUv)).a < 0.5) discard;
         }
         """;
 
@@ -1217,6 +1229,30 @@ public final class Shaders {
             FragColor = vec4(c, tex.a * uColor.a);
         }
         """;
+
+    public static final String INSTANCED_PARTICLE_VERTEX = VER + """
+        layout(location=0) in vec2 aCorner;
+        layout(location=1) in vec4 aCenterSize;
+        layout(location=2) in vec4 aColor;
+        layout(location=3) in vec4 aUvRect;
+        layout(location=4) in float aEmissive;
+        uniform mat4 uProjection, uView;
+        uniform vec3 uRight, uUp;
+        out vec2 vUv;
+        out vec4 vColor;
+        out float vEmissive;
+        void main() {
+            vec3 world = aCenterSize.xyz + (uRight * aCorner.x + uUp * aCorner.y) * aCenterSize.w;
+            gl_Position = uProjection * uView * vec4(world, 1.0);
+            vUv = mix(aUvRect.xy, aUvRect.zw, aCorner + vec2(0.5));
+            vColor = aColor;
+            vEmissive = aEmissive;
+        }
+        """;
+    public static final String INSTANCED_PARTICLE_FRAGMENT = PARTICLE_FRAGMENT
+            .replace("uniform vec4 uColor;", "in vec4 vColor;")
+            .replace("uniform float uEmissive;", "in float vEmissive;")
+            .replace("uColor", "vColor").replace("uEmissive", "vEmissive");
 
     public static final String TEXT_VERTEX = VER + """
         layout (location = 0) in vec2 aPos;
