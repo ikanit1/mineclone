@@ -597,7 +597,7 @@ public final class DragSplit {
 - Двойной клик: сначала неполные стопки, потом полные, из всех групп кроме
   `CRAFT_RESULT`, `CREATIVE_SOURCE`, `TRASH`, до предела курсора.
 - Цифра: обмен с `HOTBAR[n]` с учётом `canPlace` обеих сторон.
-- [ ] Тесты: `left and right clicks keep the old inventory rules`,
+- [x] Тесты: `left and right clicks keep the old inventory rules`,
       `take-only slots pull into a matching cursor`,
       `drag split shares evenly and keeps the remainder on the cursor`,
       `right drag places one per slot`, `drag stops adding slots past the cursor count`,
@@ -610,7 +610,7 @@ public final class DragSplit {
       `creative source clicks add one, middle click gives a full stack`,
       `a stack dropped on the creative source or trash disappears`,
       `closing a window returns the cursor to the player`.
-- [ ] Коммит `feat(ui): container menu logic with drag split, shift routes and creative rules`.
+- [x] Коммит `feat(ui): container menu logic with drag split, shift routes and creative rules`.
 
 ## Задача 10. Подсказки, пружины, перелёты
 

@@ -22,6 +22,12 @@ import com.mineclone.save.LevelData;
 import com.mineclone.save.Options;
 import com.mineclone.save.SaveFormat;
 import com.mineclone.save.SaveManager;
+import com.mineclone.ui.container.ArrayStorage;
+import com.mineclone.ui.container.ContainerMenu;
+import com.mineclone.ui.container.DragSplit;
+import com.mineclone.ui.container.SlotGroup;
+import com.mineclone.ui.container.SlotRef;
+import com.mineclone.ui.container.SlotRole;
 import com.mineclone.world.BlockType;
 import com.mineclone.world.Inventory;
 import com.mineclone.world.ItemStack;
@@ -80,6 +86,326 @@ final class InventoryTests {
         r.run("stairs icon has more faces than a cube", InventoryTests::testStairsFaces);
         r.run("box faces write into the caller buffer without allocating",
                 InventoryTests::testFacesBuffer);
+        r.run("left and right clicks keep the old inventory rules", InventoryTests::testMenuClicks);
+        r.run("take-only slots pull into a matching cursor", InventoryTests::testTakeOnlySlots);
+        r.run("drag split shares evenly and keeps the remainder on the cursor",
+                InventoryTests::testDragSplitEven);
+        r.run("right drag places one per slot", InventoryTests::testDragSplitRight);
+        r.run("drag stops adding slots past the cursor count", InventoryTests::testDragSlotLimit);
+        r.run("a one-slot drag is a plain click", InventoryTests::testOneSlotDrag);
+        r.run("shift-click fills partial stacks before empty slots", InventoryTests::testShiftOrder);
+        r.run("shift-click follows the window routes", InventoryTests::testShiftRoutes);
+        r.run("double click collects partial stacks first", InventoryTests::testDoubleClick);
+        r.run("number key swaps with the hotbar and respects slot filters",
+                InventoryTests::testNumberKey);
+        r.run("q drops one and ctrl-q drops the stack", InventoryTests::testDropKeys);
+        r.run("creative source clicks add one, middle click gives a full stack",
+                InventoryTests::testCreativeSource);
+        r.run("a stack dropped on the creative source or trash disappears",
+                InventoryTests::testCreativeAndTrashSwallow);
+        r.run("closing a window returns the cursor to the player", InventoryTests::testCloseReturns);
+    }
+
+    // ----------------------------------------------------------- окна
+
+    private static SlotGroup boxGroup(String id, SlotRole role, int size) {
+        return new SlotGroup(id, role, new ArrayStorage(new ItemStack[size]), 9);
+    }
+
+    /** Окно из двух групп: «хранилище» и хотбар — как у сундука. */
+    private static ContainerMenu twoGroups() {
+        ContainerMenu m = new ContainerMenu(List.of(
+                boxGroup("box", SlotRole.CONTAINER, 9),
+                boxGroup("hotbar", SlotRole.HOTBAR, 9)));
+        m.route(SlotRole.CONTAINER, SlotRole.HOTBAR);
+        m.route(SlotRole.HOTBAR, SlotRole.CONTAINER);
+        return m;
+    }
+
+    private static SlotRef at(ContainerMenu m, String group, int index) {
+        return new SlotRef(m.group(group), index);
+    }
+
+    private static void testMenuClicks() {
+        ContainerMenu m = twoGroups();
+        SlotRef a = at(m, "box", 0), b = at(m, "box", 1);
+        a.set(ItemStack.of("cobblestone", 20));
+
+        m.leftClick(a);
+        assertEq("left click picks up the whole slot", 20, m.cursor().count);
+        assertTrue("and empties it", a.get() == null);
+
+        m.rightClick(b);
+        assertEq("right click drops one", 1, b.get().count);
+        assertEq("and keeps the rest", 19, m.cursor().count);
+
+        m.leftClick(b);
+        assertEq("left click merges the rest", 20, b.get().count);
+        assertTrue("cursor is empty", m.cursor() == null);
+
+        m.rightClick(b);
+        assertEq("right click on a full slot takes half", 10, m.cursor().count);
+        assertEq("and leaves half", 10, b.get().count);
+
+        // Разные предметы меняются местами.
+        a.set(ItemStack.of("planks", 3));
+        m.leftClick(a);
+        assertEq("swap puts the cursor into the slot", 10, a.get().count);
+        assertEq("and takes what was there", 3, m.cursor().count);
+        assertEq("of the right item", "mineclone:planks", m.cursor().item.id.toString());
+
+        // Нестопкуемое не делится правой кнопкой.
+        m.setCursor(null);
+        SlotRef tool = at(m, "hotbar", 0);
+        tool.set(ItemStack.of("iron_pickaxe"));
+        m.rightClick(tool);
+        assertEq("a tool comes whole", 1, m.cursor().count);
+        assertTrue("and the slot is empty", tool.get() == null);
+    }
+
+    private static void testTakeOnlySlots() {
+        ContainerMenu m = new ContainerMenu(List.of(
+                boxGroup("out", SlotRole.FURNACE_OUTPUT, 1),
+                boxGroup("hotbar", SlotRole.HOTBAR, 9)));
+        SlotRef out = at(m, "out", 0);
+        out.set(ItemStack.of("cooked_beef", 5));
+
+        m.setCursor(ItemStack.of("planks", 2));
+        m.leftClick(out);
+        assertEq("a foreign cursor cannot be put down", 5, out.get().count);
+        assertEq("and keeps what it held", 2, m.cursor().count);
+
+        m.setCursor(ItemStack.of("cooked_beef", 3));
+        m.leftClick(out);
+        assertEq("a matching cursor pulls the slot in", 8, m.cursor().count);
+        assertTrue("and the slot empties", out.get() == null);
+
+        // Пустой рукой забирается как обычно.
+        out.set(ItemStack.of("cooked_beef", 4));
+        m.setCursor(null);
+        m.leftClick(out);
+        assertEq("an empty hand takes it all", 4, m.cursor().count);
+    }
+
+    private static void testDragSplitEven() {
+        int[] add = DragSplit.distribute(8, false, new int[3], new int[] { 64, 64, 64 });
+        assertEq("even share", 2, add[0]);
+        assertEq("even share", 2, add[1]);
+        assertEq("even share", 2, add[2]);
+        // Остаток не размазывается: игрок ждёт 2/2/2 и двойку в руке.
+        assertEq("remainder stays on the cursor", 2, 8 - (add[0] + add[1] + add[2]));
+
+        int[] capped = DragSplit.distribute(9, false, new int[] { 0, 62, 0 },
+                new int[] { 64, 64, 64 });
+        assertEq("a nearly full slot takes what fits", 2, capped[1]);
+        assertEq("the others take their share", 3, capped[0]);
+    }
+
+    private static void testDragSplitRight() {
+        int[] add = DragSplit.distribute(5, true, new int[4], new int[] { 64, 64, 64, 64 });
+        for (int i = 0; i < 4; i++)
+            assertEq("one per slot", 1, add[i]);
+        assertEq("one stays on the cursor", 1, 5 - 4);
+
+        ContainerMenu m = twoGroups();
+        m.setCursor(ItemStack.of("cobblestone", 5));
+        m.beginDrag(true);
+        for (int i = 0; i < 3; i++)
+            m.dragOver(at(m, "box", i));
+        m.endDrag();
+        for (int i = 0; i < 3; i++)
+            assertEq("slot " + i + " got one", 1, at(m, "box", i).get().count);
+        assertEq("the rest stayed in hand", 2, m.cursor().count);
+    }
+
+    private static void testDragSlotLimit() {
+        ContainerMenu m = twoGroups();
+        m.setCursor(ItemStack.of("cobblestone", 2));
+        m.beginDrag(false);
+        for (int i = 0; i < 5; i++)
+            m.dragOver(at(m, "box", i));
+        assertEq("only as many slots as there are items", 2, m.dragPreview().size());
+        m.endDrag();
+        assertEq("first slot", 1, at(m, "box", 0).get().count);
+        assertEq("second slot", 1, at(m, "box", 1).get().count);
+        assertTrue("third slot untouched", at(m, "box", 2).get() == null);
+        assertTrue("cursor is spent", m.cursor() == null);
+    }
+
+    private static void testOneSlotDrag() {
+        ContainerMenu m = twoGroups();
+        m.setCursor(ItemStack.of("cobblestone", 7));
+        m.beginDrag(false);
+        m.dragOver(at(m, "box", 0));
+        m.endDrag();
+        // Нажал и отпустил на одном слоте — это обычный клик, а не «раздать
+        // поровну на один слот».
+        assertEq("the whole stack went down", 7, at(m, "box", 0).get().count);
+        assertTrue("and the cursor is empty", m.cursor() == null);
+    }
+
+    private static void testShiftOrder() {
+        ContainerMenu m = twoGroups();
+        at(m, "hotbar", 0).set(ItemStack.of("cobblestone", 60));
+        at(m, "hotbar", 4).set(ItemStack.of("cobblestone", 62));
+        SlotRef from = at(m, "box", 0);
+        from.set(ItemStack.of("cobblestone", 10));
+
+        m.shiftClick(from);
+        // Неполные стопки вперёд: иначе окно оставляет россыпь огрызков.
+        assertEq("first partial filled up", 64, at(m, "hotbar", 0).get().count);
+        assertEq("second partial filled up", 64, at(m, "hotbar", 4).get().count);
+        assertEq("the rest went to an empty slot", 4, at(m, "hotbar", 1).get().count);
+        assertTrue("source is empty", from.get() == null);
+    }
+
+    private static void testShiftRoutes() {
+        ContainerMenu m = new ContainerMenu(List.of(
+                boxGroup("box", SlotRole.CONTAINER, 9),
+                boxGroup("main", SlotRole.MAIN, 9),
+                boxGroup("hotbar", SlotRole.HOTBAR, 9)));
+        // Из сундука — сначала в основную часть, и только потом в хотбар.
+        m.route(SlotRole.CONTAINER, SlotRole.MAIN, SlotRole.HOTBAR);
+        m.route(SlotRole.HOTBAR, SlotRole.CONTAINER);
+
+        SlotRef from = at(m, "box", 0);
+        from.set(ItemStack.of("stone", 5));
+        m.shiftClick(from);
+        assertTrue("it went to main", at(m, "main", 0).get() != null);
+        assertTrue("and not to the hotbar", at(m, "hotbar", 0).get() == null);
+
+        // Обратно — только в сундук: маршрут хотбара не знает про main.
+        m.shiftClick(at(m, "main", 0));
+        assertTrue("back into the container", at(m, "box", 0).get() == null);
+
+        SlotRef hot = at(m, "hotbar", 0);
+        hot.set(ItemStack.of("planks", 2));
+        m.shiftClick(hot);
+        assertTrue("hotbar goes to the container", at(m, "box", 0).get() != null);
+    }
+
+    private static void testDoubleClick() {
+        ContainerMenu m = twoGroups();
+        at(m, "box", 0).set(ItemStack.of("cobblestone", 64));
+        at(m, "box", 1).set(ItemStack.of("cobblestone", 5));
+        at(m, "box", 2).set(ItemStack.of("cobblestone", 7));
+        m.setCursor(ItemStack.of("cobblestone", 1));
+
+        m.doubleClick(at(m, "box", 1));
+        assertEq("the cursor filled up", 64, m.cursor().count);
+        // Сначала неполные: полная стопка тронута последней и лишь настолько,
+        // насколько не хватило.
+        assertTrue("partial stacks went first",
+                at(m, "box", 1).get() == null && at(m, "box", 2).get() == null);
+        assertEq("the full stack gave the remainder", 13, at(m, "box", 0).get().count);
+    }
+
+    private static void testNumberKey() {
+        ContainerMenu m = twoGroups();
+        SlotRef box = at(m, "box", 0);
+        box.set(ItemStack.of("stone", 12));
+        at(m, "hotbar", 2).set(ItemStack.of("planks", 3));
+
+        m.numberKey(box, 2);
+        assertEq("slot took what the hotbar had", "mineclone:planks", box.get().item.id.toString());
+        assertEq("hotbar took what the slot had", "mineclone:stone",
+                at(m, "hotbar", 2).get().item.id.toString());
+
+        // Слот с фильтром не принимает чужое, и обмен просто не происходит.
+        ContainerMenu fuelMenu = new ContainerMenu(List.of(
+                new SlotGroup("fuel", SlotRole.FURNACE_FUEL,
+                        new ArrayStorage(new ItemStack[1],
+                                (i, s) -> s.item.fuelSeconds > 0f, null), 1),
+                boxGroup("hotbar", SlotRole.HOTBAR, 9)));
+        SlotRef fuel = at(fuelMenu, "fuel", 0);
+        at(fuelMenu, "hotbar", 0).set(ItemStack.of("stone", 4));
+        fuelMenu.numberKey(fuel, 0);
+        assertTrue("stone is not fuel and stays put", fuel.get() == null);
+        assertTrue("and the hotbar keeps it", at(fuelMenu, "hotbar", 0).get() != null);
+
+        at(fuelMenu, "hotbar", 1).set(ItemStack.of("planks", 4));
+        fuelMenu.numberKey(fuel, 1);
+        assertTrue("planks burn and go in", fuel.get() != null);
+    }
+
+    private static void testDropKeys() {
+        ContainerMenu m = twoGroups();
+        SlotRef s = at(m, "box", 0);
+        s.set(ItemStack.of("cobblestone", 9));
+
+        m.drop(s, false);
+        assertEq("one left the slot", 8, s.get().count);
+        assertEq("and one is falling", 1, m.dropped().size());
+        assertEq("exactly one item", 1, m.dropped().get(0).count);
+
+        m.dropped().clear();
+        m.drop(s, true);
+        assertTrue("the slot is empty", s.get() == null);
+        assertEq("eight are falling", 8, m.dropped().get(0).count);
+
+        m.dropped().clear();
+        m.setCursor(ItemStack.of("planks", 4));
+        m.dropCursor(false);
+        assertEq("one left the cursor", 3, m.cursor().count);
+        m.dropCursor(true);
+        assertTrue("and the rest went with ctrl", m.cursor() == null);
+        assertEq("two throws", 2, m.dropped().size());
+    }
+
+    private static void testCreativeSource() {
+        ItemStack[] source = { ItemStack.of("stone", 1), ItemStack.of("iron_pickaxe") };
+        ContainerMenu m = new ContainerMenu(List.of(
+                new SlotGroup("source", SlotRole.CREATIVE_SOURCE, new ArrayStorage(source), 9),
+                boxGroup("hotbar", SlotRole.HOTBAR, 9)));
+        m.route(SlotRole.CREATIVE_SOURCE, SlotRole.HOTBAR);
+        SlotRef stone = at(m, "source", 0);
+
+        m.leftClick(stone);
+        assertEq("first click gives one", 1, m.cursor().count);
+        m.leftClick(stone);
+        assertEq("the next click adds one", 2, m.cursor().count);
+        m.rightClick(stone);
+        assertEq("right click adds one too", 3, m.cursor().count);
+        assertEq("the source is untouched", 1, stone.get().count);
+
+        m.cloneFull(stone);
+        assertEq("middle click gives a full stack", 64, m.cursor().count);
+        m.cloneFull(at(m, "source", 1));
+        assertEq("a tool is still just one", 1, m.cursor().count);
+
+        m.setCursor(null);
+        m.shiftClick(stone);
+        assertEq("shift sends a full stack to the hotbar", 64, at(m, "hotbar", 0).get().count);
+    }
+
+    private static void testCreativeAndTrashSwallow() {
+        ItemStack[] source = { ItemStack.of("stone", 1) };
+        ContainerMenu m = new ContainerMenu(List.of(
+                new SlotGroup("source", SlotRole.CREATIVE_SOURCE, new ArrayStorage(source), 9),
+                boxGroup("trash", SlotRole.TRASH, 1),
+                boxGroup("hotbar", SlotRole.HOTBAR, 9)));
+
+        m.setCursor(ItemStack.of("planks", 40));
+        m.leftClick(at(m, "source", 0));
+        assertEq("the source swallowed it and gave its own", "mineclone:stone",
+                m.cursor().item.id.toString());
+        assertEq("one of it", 1, m.cursor().count);
+        assertEq("nothing fell out", 0, m.dropped().size());
+
+        m.setCursor(ItemStack.of("planks", 40));
+        m.leftClick(at(m, "trash", 0));
+        assertTrue("the bin swallowed it", m.cursor() == null);
+        assertEq("and nothing fell out", 0, m.dropped().size());
+    }
+
+    private static void testCloseReturns() {
+        ContainerMenu m = twoGroups();
+        m.setCursor(ItemStack.of("cobblestone", 17));
+        List<ItemStack> back = m.closeAll();
+        assertEq("one stack came back", 1, back.size());
+        assertEq("with everything in it", 17, back.get(0).count);
+        assertTrue("and the cursor is empty", m.cursor() == null);
+        assertEq("closing an empty window returns nothing", 0, m.closeAll().size());
     }
 
     // --------------------------------------------------------------- иконки
