@@ -104,6 +104,153 @@ final class InventoryTests {
         r.run("a stack dropped on the creative source or trash disappears",
                 InventoryTests::testCreativeAndTrashSwallow);
         r.run("closing a window returns the cursor to the player", InventoryTests::testCloseReturns);
+        r.run("a critically damped spring does not overshoot", InventoryTests::testSpringCritical);
+        r.run("an underdamped spring overshoots a little and settles",
+                InventoryTests::testSpringBouncy);
+        r.run("spring stays stable at a 50 ms frame", InventoryTests::testSpringLongFrame);
+        r.run("tooltip prefers right-below and flips at the right and bottom edges",
+                InventoryTests::testTooltipCorners);
+        r.run("tooltip is clamped when no corner fits", InventoryTests::testTooltipClamp);
+        r.run("advanced tooltip shows id, durability numbers and tags",
+                InventoryTests::testAdvancedTooltip);
+        r.run("flights hide their target until they land", InventoryTests::testFlights);
+    }
+
+    // ------------------------------------------------ пружины и подсказки
+
+    private static void testSpringCritical() {
+        com.mineclone.ui.container.Spring s = new com.mineclone.ui.container.Spring(10f, 1f);
+        float peak = 0f;
+        for (int i = 0; i < 400; i++) {
+            s.update(1f, 1f / 120f);
+            peak = Math.max(peak, s.value);
+        }
+        assertTrue("never goes past the target: " + peak, peak <= 1.0005f);
+        assertTrue("and gets there", s.settled(1f, 1e-3f));
+    }
+
+    private static void testSpringBouncy() {
+        com.mineclone.ui.container.Spring s = new com.mineclone.ui.container.Spring(10f, 0.45f);
+        float peak = 0f;
+        for (int i = 0; i < 400; i++) {
+            s.update(1f, 1f / 120f);
+            peak = Math.max(peak, s.value);
+        }
+        assertTrue("overshoots: " + peak, peak > 1.02f);
+        assertTrue("but not wildly: " + peak, peak < 1.4f);
+        assertTrue("and settles anyway", s.settled(1f, 1e-3f));
+    }
+
+    private static void testSpringLongFrame() {
+        // Просадка кадра не имеет права раскачать интерфейс: явный шаг в 50 мс
+        // на такой частоте расходится, поэтому шаг дробится.
+        com.mineclone.ui.container.Spring s = new com.mineclone.ui.container.Spring(18f, 0.6f);
+        for (int i = 0; i < 60; i++) {
+            s.update(1f, 0.05f);
+            assertTrue("stays finite", Float.isFinite(s.value) && Float.isFinite(s.velocity));
+            assertTrue("stays in a sane range: " + s.value, Math.abs(s.value) < 3f);
+        }
+        assertTrue("and still arrives", Math.abs(s.value - 1f) < 0.05f);
+    }
+
+    private static void testTooltipCorners() {
+        float w = 1280, h = 720, gap = 8, margin = 4;
+        var right = com.mineclone.ui.container.TooltipLayout.place(
+                100, 100, 40, 40, 200, 80, w, h, gap, margin);
+        assertEq("the usual corner", com.mineclone.ui.container.TooltipLayout.Corner.RIGHT_BELOW,
+                right.corner());
+        assertEq("to the right of the slot", 148f, right.x());
+        assertEq("and below it", 148f, right.y());
+
+        var atRight = com.mineclone.ui.container.TooltipLayout.place(
+                1200, 100, 40, 40, 200, 80, w, h, gap, margin);
+        assertEq("flips left at the right edge",
+                com.mineclone.ui.container.TooltipLayout.Corner.LEFT_BELOW, atRight.corner());
+        assertEq("and stands left of the slot", 992f, atRight.x());
+
+        var atBottom = com.mineclone.ui.container.TooltipLayout.place(
+                100, 680, 40, 40, 200, 80, w, h, gap, margin);
+        assertEq("flips up at the bottom edge",
+                com.mineclone.ui.container.TooltipLayout.Corner.RIGHT_ABOVE, atBottom.corner());
+        assertEq("and stands above the slot", 592f, atBottom.y());
+
+        var corner = com.mineclone.ui.container.TooltipLayout.place(
+                1200, 680, 40, 40, 200, 80, w, h, gap, margin);
+        assertEq("the far corner takes the last option",
+                com.mineclone.ui.container.TooltipLayout.Corner.LEFT_ABOVE, corner.corner());
+    }
+
+    private static void testTooltipClamp() {
+        // Подсказка шире экрана: показать урезанную лучше, чем никакой.
+        var p = com.mineclone.ui.container.TooltipLayout.place(
+                50, 50, 20, 20, 400, 400, 300, 200, 8, 4);
+        assertTrue("x stays on screen", p.x() >= 4f);
+        assertTrue("y stays on screen", p.y() >= 4f);
+    }
+
+    private static void testAdvancedTooltip() {
+        ItemStack pick = ItemStack.of("iron_pickaxe").set(Components.DAMAGE, 51);
+        List<com.mineclone.ui.container.Tooltip.Line> plain =
+                com.mineclone.ui.container.Tooltip.lines(pick, false);
+        assertEq("plain tooltip is just the name", 1, plain.size());
+        assertEq("the name", "Железная кирка", plain.get(0).text());
+
+        List<com.mineclone.ui.container.Tooltip.Line> adv =
+                com.mineclone.ui.container.Tooltip.lines(pick, true);
+        assertTrue("id is shown", hasLine(adv, "mineclone:iron_pickaxe"));
+        assertTrue("durability numbers are shown", hasLine(adv, "Прочность: 200 / 251"));
+        assertTrue("tags are shown", anyLineContains(adv, "#pickaxes"));
+
+        ItemStack named = ItemStack.of("stone", 3)
+                .set(Components.CUSTOM_NAME, "Первый камень")
+                .set(Components.LORE, List.of("из первой шахты"))
+                .set(Components.UNBREAKABLE, true);
+        List<com.mineclone.ui.container.Tooltip.Line> lines =
+                com.mineclone.ui.container.Tooltip.lines(named, false);
+        assertEq("custom name first", "Первый камень", lines.get(0).text());
+        assertTrue("and it is amber", lines.get(0).rgb()[2] < 0.6f);
+        assertTrue("lore follows", hasLine(lines, "из первой шахты"));
+        assertTrue("unbreakable is called out", hasLine(lines, "Неразрушимый"));
+    }
+
+    private static boolean hasLine(List<com.mineclone.ui.container.Tooltip.Line> lines, String s) {
+        for (var l : lines)
+            if (l.text().equals(s))
+                return true;
+        return false;
+    }
+
+    private static boolean anyLineContains(List<com.mineclone.ui.container.Tooltip.Line> lines,
+            String s) {
+        for (var l : lines)
+            if (l.text().contains(s))
+                return true;
+        return false;
+    }
+
+    private static void testFlights() {
+        ContainerMenu m = twoGroups();
+        SlotRef target = at(m, "hotbar", 0);
+        com.mineclone.ui.container.ItemFlights flights =
+                new com.mineclone.ui.container.ItemFlights();
+        assertTrue("nothing hidden at rest", !flights.hides(target));
+
+        flights.launch(ItemStack.of("stone", 4), 10f, 10f, 100f, 200f, target);
+        assertTrue("the target hides while the icon is in the air", flights.hides(target));
+        assertTrue("another slot is unaffected", !flights.hides(at(m, "hotbar", 1)));
+
+        float[] seen = new float[2];
+        flights.update(com.mineclone.ui.container.ItemFlights.TIME * 0.5f);
+        flights.forEach((icon, x, y, scale) -> {
+            seen[0] = x;
+            seen[1] = y;
+        });
+        assertTrue("halfway it is between the ends", seen[0] > 10f && seen[0] < 100f);
+        assertTrue("in both axes", seen[1] > 10f && seen[1] < 200f);
+
+        flights.update(com.mineclone.ui.container.ItemFlights.TIME);
+        assertTrue("it lands", flights.isEmpty());
+        assertTrue("and the slot shows its icon again", !flights.hides(target));
     }
 
     // ----------------------------------------------------------- окна

@@ -641,14 +641,14 @@ public final class ItemFlights {
   расширенные — id, `damage/durability` у предметов с износом, теги (до 6 и «…»),
   «+N компонентов»; строка «+данные блока» при `BLOCK_STATE`.
 - Перелёт — 0,18 с, сглаженный; слот назначения скрывает иконку до прилёта.
-- [ ] Тесты: `a critically damped spring does not overshoot`,
+- [x] Тесты: `a critically damped spring does not overshoot`,
       `an underdamped spring overshoots a little and settles`,
       `spring stays stable at a 50 ms frame`,
       `tooltip prefers right-below and flips at the right and bottom edges`,
       `tooltip is clamped when no corner fits`,
       `advanced tooltip shows id, durability numbers and tags`,
       `flights hide their target until they land`.
-- [ ] Коммит `feat(ui): springs, edge-aware tooltips and slot-to-slot flights`.
+- [x] Коммит `feat(ui): springs, edge-aware tooltips and slot-to-slot flights`.
 
 ## Задача 11. Экраны и перевод игры на них
 
