@@ -733,7 +733,7 @@ public interface WindowContext {
 - `Game`: средняя кнопка без F3 — пипетка; F3+средняя — прежний перебор meta;
   F3+H — `advancedTooltips` с тостом «Расширенные подсказки: вкл/выкл» и
   записью `options.dat`; отладка по `TOGGLE_DEBUG`; команда `/debug` — как была.
-- [ ] Тесты: `survival pick selects a hotbar match or swaps from storage`,
+- [x] Тесты: `survival pick selects a hotbar match or swaps from storage`,
       `survival pick does nothing without the item`,
       `creative pick fills the selected slot or the first empty one`,
       `ctrl pick copies chest contents into block state`,
@@ -741,7 +741,7 @@ public interface WindowContext {
       как соседние тесты мира),
       `f3 toggles debug on release only without a combo`,
       `f3+h toggles advanced tooltips and suppresses the debug toggle`.
-- [ ] Коммит `feat(game): pick block with block state, F3 combos and advanced tooltips`.
+- [x] Коммит `feat(game): pick block with block state, F3 combos and advanced tooltips`.
 
 ## Задача 13. Автопилот окон
 

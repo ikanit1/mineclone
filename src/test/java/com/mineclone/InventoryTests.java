@@ -114,6 +114,156 @@ final class InventoryTests {
         r.run("advanced tooltip shows id, durability numbers and tags",
                 InventoryTests::testAdvancedTooltip);
         r.run("flights hide their target until they land", InventoryTests::testFlights);
+        r.run("survival pick selects a hotbar match or swaps from storage",
+                InventoryTests::testSurvivalPick);
+        r.run("survival pick does nothing without the item", InventoryTests::testSurvivalPickMiss);
+        r.run("creative pick fills the selected slot or the first empty one",
+                InventoryTests::testCreativePick);
+        r.run("ctrl pick copies chest contents into block state", InventoryTests::testPickChest);
+        r.run("placing a block state restores meta and chest contents",
+                InventoryTests::testPlaceBlockState);
+        r.run("f3 toggles debug on release only without a combo", InventoryTests::testF3Alone);
+        r.run("f3+h toggles advanced tooltips and suppresses the debug toggle",
+                InventoryTests::testF3Combo);
+    }
+
+    // ---------------------------------------------------- пипетка и F3
+
+    private static void testSurvivalPick() {
+        Inventory inv = new Inventory();
+        inv.set(4, ItemStack.of("stone", 12));
+        int slot = com.mineclone.game.PickBlock.pick(inv, 0, Items.get().require("stone"),
+                false, null);
+        assertEq("already in the hotbar — just switch", 4, slot);
+        assertEq("and nothing moved", 12, inv.get(4).count);
+
+        // Из хранилища предмет переезжает в пустую ячейку хотбара.
+        Inventory store = new Inventory();
+        store.set(20, ItemStack.of("planks", 7));
+        store.set(0, ItemStack.of("stone", 1));
+        int target = com.mineclone.game.PickBlock.pick(store, 0, Items.get().require("planks"),
+                false, null);
+        assertEq("into the first empty hotbar slot", 1, target);
+        assertEq("with everything in it", 7, store.get(1).count);
+        assertTrue("and the storage slot is empty", store.get(20) == null);
+
+        // Хотбар полон — меняется выбранная ячейка.
+        Inventory full = new Inventory();
+        for (int i = 0; i < Inventory.HOTBAR; i++)
+            full.set(i, ItemStack.of("stone", 1));
+        full.set(30, ItemStack.of("planks", 5));
+        int swapped = com.mineclone.game.PickBlock.pick(full, 3, Items.get().require("planks"),
+                false, null);
+        assertEq("the selected slot takes it", 3, swapped);
+        assertEq("the planks are in hand", "mineclone:planks", full.get(3).item.id.toString());
+        assertEq("and the stone went to storage", "mineclone:stone",
+                full.get(30).item.id.toString());
+    }
+
+    private static void testSurvivalPickMiss() {
+        Inventory inv = new Inventory();
+        inv.set(0, ItemStack.of("stone", 3));
+        int slot = com.mineclone.game.PickBlock.pick(inv, 0, Items.get().require("diamond_ore"),
+                false, null);
+        // Пипетка — удобство, а не источник материала.
+        assertEq("nothing happens", 0, slot);
+        assertEq("and nothing appeared", "mineclone:stone", inv.get(0).item.id.toString());
+        assertTrue("the rest is still empty", inv.get(1) == null);
+    }
+
+    private static void testCreativePick() {
+        Inventory inv = new Inventory();
+        Item planks = Items.get().require("planks");
+        int slot = com.mineclone.game.PickBlock.pick(inv, 2, planks, true,
+                new ItemStack(planks, planks.maxStack));
+        assertEq("an empty selected slot takes it", 2, slot);
+        assertEq("a full stack", 64, inv.get(2).count);
+
+        inv.set(5, ItemStack.of("stone", 1));
+        Item ore = Items.get().require("iron_ore");
+        int next = com.mineclone.game.PickBlock.pick(inv, 5, ore, true,
+                new ItemStack(ore, ore.maxStack));
+        assertEq("an occupied one sends it to the first empty slot", 0, next);
+        assertEq("and it is there", "mineclone:iron_ore", inv.get(0).item.id.toString());
+        assertEq("what was selected stayed put", "mineclone:stone", inv.get(5).item.id.toString());
+    }
+
+    private static void testPickChest() {
+        // Снимок сундука: пипетка уносит начинку, а не только оболочку.
+        ItemStack[] chest = new ItemStack[27];
+        chest[0] = ItemStack.of("cobblestone", 40);
+        chest[5] = ItemStack.of("iron_pickaxe").set(Components.DAMAGE, 12);
+        BlockState st = new BlockState((byte) 2, java.util.Arrays.asList(chest), null);
+        ItemStack carried = ItemStack.of("chest", 1).set(Components.BLOCK_STATE, st);
+
+        BlockState back = carried.get(Components.BLOCK_STATE);
+        assertEq("meta came along", (byte) 2, back.meta());
+        assertEq("the cobblestone came along", 40, back.chest().get(0).count);
+        assertEq("and the pickaxe with its wear", 12, back.chest().get(5).damage());
+        assertTrue("empty slots stayed empty", back.chest().get(1) == null);
+
+        // Снимок — копия: сундук в мире дальше живёт своей жизнью.
+        chest[0].count = 1;
+        assertEq("the snapshot did not follow", 40, back.chest().get(0).count);
+    }
+
+    private static void testPlaceBlockState() throws Exception {
+        com.mineclone.world.World world = new com.mineclone.world.World(1234L);
+        int x = 4, y = 70, z = 4;
+        world.getChunk(0, 0);   // сундуки живут в чанке — его надо создать
+        world.setBlock(x, y, z, BlockType.CHEST, (byte) 0);
+        ItemStack[] slots = world.createChest(x, y, z);
+        assertTrue("a fresh chest is empty", slots[0] == null);
+
+        ItemStack[] source = new ItemStack[slots.length];
+        source[0] = ItemStack.of("planks", 33);
+        source[9] = ItemStack.of("cooked_beef", 4);
+        BlockState st = new BlockState((byte) 5, java.util.Arrays.asList(source), null);
+
+        // Постановка: setBlock создаёт пустой сундук, начинка кладётся строго
+        // после него — иначе он же её и стирает.
+        world.setBlock(x, y + 1, z, BlockType.CHEST, st.meta());
+        ItemStack[] placed = world.createChest(x, y + 1, z);
+        java.util.List<ItemStack> src = st.chestCopy();
+        for (int i = 0; i < placed.length; i++)
+            placed[i] = i < src.size() ? src.get(i) : null;
+
+        assertEq("meta restored", (byte) 5, world.getBlockMeta(x, y + 1, z));
+        ItemStack[] check = world.getChest(x, y + 1, z);
+        assertEq("planks restored", 33, check[0].count);
+        assertEq("food restored", "mineclone:cooked_beef", check[9].item.id.toString());
+        assertTrue("and the old chest is untouched", world.getChest(x, y, z)[0] == null);
+    }
+
+    private static void testF3Alone() {
+        com.mineclone.game.DebugKeys k = new com.mineclone.game.DebugKeys();
+        assertTrue("nothing while held", k.update(true, false, false).isEmpty());
+        assertTrue("still nothing", k.update(true, false, false).isEmpty());
+        List<com.mineclone.game.DebugKeys.Action> out = k.update(false, false, false);
+        assertEq("one action on release", 1, out.size());
+        assertEq("and it is the debug screen",
+                com.mineclone.game.DebugKeys.Action.TOGGLE_DEBUG, out.get(0));
+        assertTrue("and nothing afterwards", k.update(false, false, false).isEmpty());
+    }
+
+    private static void testF3Combo() {
+        com.mineclone.game.DebugKeys k = new com.mineclone.game.DebugKeys();
+        k.update(true, false, false);
+        List<com.mineclone.game.DebugKeys.Action> combo = k.update(true, true, false);
+        assertEq("the combo fires at once", 1, combo.size());
+        assertEq("advanced tooltips",
+                com.mineclone.game.DebugKeys.Action.TOGGLE_ADVANCED_TOOLTIPS, combo.get(0));
+        // Отладка при этом не включается: F3 был частью сочетания.
+        assertTrue("release is silent after a combo", k.update(false, false, false).isEmpty());
+
+        List<com.mineclone.game.DebugKeys.Action> meta = k.update(true, false, true);
+        assertEq("the middle button cycles meta",
+                com.mineclone.game.DebugKeys.Action.CYCLE_META, meta.get(0));
+        assertTrue("and release stays silent", k.update(false, false, false).isEmpty());
+
+        // Следующее одиночное нажатие снова включает отладку.
+        k.update(true, false, false);
+        assertEq("a plain press still works", 1, k.update(false, false, false).size());
     }
 
     // ------------------------------------------------ пружины и подсказки

@@ -157,6 +157,7 @@ public class Game {
 
     private State state = State.MENU;
     private boolean showDebug = false;
+    private final DebugKeys debugKeys = new DebugKeys();
 
     private static final float TIME_SCALE = 0.005f; // ~21 min real = full day/night cycle (~10.5 min day, ~10.5 min
                                                     // night)
@@ -1066,8 +1067,20 @@ public class Game {
             pauseGame();
             return;
         }
-        if (input.keyPressed(GLFW.GLFW_KEY_F3))
-            showDebug = !showDebug;
+        for (DebugKeys.Action a : debugKeys.update(input.keyDown(GLFW.GLFW_KEY_F3),
+                input.keyPressed(GLFW.GLFW_KEY_H),
+                input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_MIDDLE))) {
+            switch (a) {
+                case TOGGLE_DEBUG -> showDebug = !showDebug;
+                case TOGGLE_ADVANCED_TOOLTIPS -> {
+                    advancedTooltips = !advancedTooltips;
+                    showCommandToast("Расширенные подсказки: "
+                            + (advancedTooltips ? "вкл" : "выкл"));
+                    save.saveOptions(buildOptions());
+                }
+                case CYCLE_META -> cycleTargetMeta();
+            }
+        }
         if (input.keyPressed(GLFW.GLFW_KEY_F4))
             wireframe = !wireframe;
 
@@ -1981,12 +1994,12 @@ public class Game {
             return;
         }
 
-        // Debug stick: middle click cycles block metadata
-        if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_MIDDLE)) {
-            byte m = world.getBlockMeta(lastHit.x, lastHit.y, lastHit.z);
-            world.setBlock(lastHit.x, lastHit.y, lastHit.z,
-                    world.getBlock(lastHit.x, lastHit.y, lastHit.z), (byte) ((m + 1) & 0x0F));
-        }
+        // Средняя кнопка — пипетка; перебор meta уехал под F3+средняя:
+        // отладочная палка не должна отнимать у игры обычное действие.
+        if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_MIDDLE)
+                && !input.keyDown(GLFW.GLFW_KEY_F3))
+            pickBlock(lastHit.x, lastHit.y, lastHit.z, input.keyDown(GLFW.GLFW_KEY_LEFT_CONTROL)
+                    || input.keyDown(GLFW.GLFW_KEY_RIGHT_CONTROL));
 
         // --- Left mouse: break ---
         if (aimedMob != null) {
@@ -2101,7 +2114,12 @@ public class Game {
                         emitNoise(px + 0.5f, py + 0.5f, pz + 0.5f, NOISE_PLACE);
                         sound.playOneOfAt(sounds.place(placing), blockSoundPosition(px, py, pz),
                                 0.8f, 0.85f + 0.2f * (float) Math.random());
+                        com.mineclone.world.ItemStack held = inventory.get(selectedSlot);
+                        com.mineclone.item.BlockState carried = held == null ? null
+                                : held.get(com.mineclone.item.Components.BLOCK_STATE);
+                        meta = metaFrom(carried, placing, meta);
                         world.setBlock(px, py, pz, placing, meta);
+                        restoreBlockState(carried, px, py, pz);
                         if (com.mineclone.world.StructureStability.heavy(placing))
                             playerStructures.add(com.mineclone.world.StructureStability.placementKey(px, py, pz));
                         placed = true;
@@ -2111,6 +2129,100 @@ public class Game {
                     if (placed && gameMode == com.mineclone.world.GameMode.SURVIVAL)
                         inventory.removeOne(selectedSlot);
                 }
+            }
+        }
+    }
+
+    /** Перебор meta блока под прицелом — отладочная палка под F3. */
+    private void cycleTargetMeta() {
+        if (world == null || lastHit == null)
+            return;
+        byte m = world.getBlockMeta(lastHit.x, lastHit.y, lastHit.z);
+        world.setBlock(lastHit.x, lastHit.y, lastHit.z,
+                world.getBlock(lastHit.x, lastHit.y, lastHit.z), (byte) ((m + 1) & 0x0F));
+    }
+
+    /**
+     * Пипетка: берёт в руку блок, во что целишься.
+     *
+     * <p>С Ctrl в творческом режиме предмет уносит с собой и начинку блока —
+     * meta, содержимое сундука, состояние печи. Без этого «скопировать сундук»
+     * означало бы скопировать только его оболочку.
+     */
+    private void pickBlock(int x, int y, int z, boolean withState) {
+        BlockType target = world.getBlock(x, y, z);
+        com.mineclone.item.Item item = com.mineclone.item.Items.get().forBlock(target);
+        if (item == null)
+            return;
+        boolean creative = gameMode == com.mineclone.world.GameMode.CREATIVE;
+        com.mineclone.world.ItemStack give = null;
+        if (creative) {
+            give = new com.mineclone.world.ItemStack(item, item.maxStack);
+            if (withState)
+                give.set(com.mineclone.item.Components.BLOCK_STATE, captureState(x, y, z));
+        }
+        int slot = PickBlock.pick(inventory, selectedSlot, item, creative, give);
+        if (slot != selectedSlot || creative) {
+            selectedSlot = slot;
+            equipProgress = 0f;
+            sound.playOneOf(sounds.uiClick(), 0.35f, 1.2f);
+        }
+    }
+
+    /** Снимок блока: meta и то, что в нём лежит. */
+    private com.mineclone.item.BlockState captureState(int x, int y, int z) {
+        byte meta = world.getBlockMeta(x, y, z);
+        com.mineclone.world.ItemStack[] chest = world.getChest(x, y, z);
+        com.mineclone.world.Furnace f = world.getFurnace(x, y, z);
+        com.mineclone.item.FurnaceState furnace = f == null ? null
+                : new com.mineclone.item.FurnaceState(f.input, f.fuel, f.output,
+                        f.burnLeft, f.burnMax, f.cook);
+        return new com.mineclone.item.BlockState(meta,
+                chest == null ? null : java.util.Arrays.asList(chest), furnace);
+    }
+
+    /**
+     * Meta из снимка блока.
+     *
+     * <p>Дверь свою meta считает сама — у неё две половины и своё правило
+     * поворота, и чужое число сломало бы верхнюю.
+     */
+    private static byte metaFrom(com.mineclone.item.BlockState st, BlockType placing,
+            byte fallbackMeta) {
+        if (st == null || placing == BlockType.DOOR_CLOSED)
+            return fallbackMeta;
+        return st.meta();
+    }
+
+    /**
+     * Возвращает в мир начинку, которую пипетка унесла с блоком.
+     *
+     * <p>Строго после {@code setBlock}: он же и создаёт пустой сундук, стирая
+     * всё, что положили в него раньше.
+     */
+    private void restoreBlockState(com.mineclone.item.BlockState st, int x, int y, int z) {
+        if (st == null)
+            return;
+        if (st.hasChest()) {
+            com.mineclone.world.ItemStack[] slots = world.createChest(x, y, z);
+            if (slots != null) {
+                java.util.List<com.mineclone.world.ItemStack> src = st.chestCopy();
+                for (int i = 0; i < slots.length; i++)
+                    slots[i] = i < src.size() ? src.get(i) : null;
+                world.markChestDirty(x, z);
+            }
+        }
+        if (st.hasFurnace()) {
+            com.mineclone.world.Furnace f = world.createFurnace(x, y, z);
+            if (f != null) {
+                com.mineclone.item.FurnaceState fs = st.furnace();
+                f.input = fs.inputCopy();
+                f.fuel = fs.fuelCopy();
+                f.output = fs.outputCopy();
+                f.burnLeft = fs.burnLeft();
+                f.burnMax = fs.burnMax();
+                f.cook = fs.cook();
+                world.markChestDirty(x, z);
             }
         }
     }
