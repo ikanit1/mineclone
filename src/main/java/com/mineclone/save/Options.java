@@ -23,6 +23,20 @@ public final class Options {
     /** Раскладка клавиш; копия — изменения на экране не должны течь в сохранённый объект. */
     public final KeyBindings keys;
 
+    // ---- привычки инвентаря (v6) ----
+    // Настройки окон, а не графики: они живут ровно столько же, сколько и
+    // раскладка клавиш, и восстанавливаться должны так же — при запуске.
+    /** Показывать ли в подсказке id, числа прочности и теги. */
+    public final boolean advancedTooltips;
+    /** Была ли книга рецептов открыта на выходе. */
+    public final boolean recipeBookOpen;
+    /** Фильтр «только собираемое» в книге рецептов. */
+    public final boolean recipeBookCraftable;
+    /** Выбранная вкладка книги рецептов; {@code "all"} — все. */
+    public final String recipeBookCategory;
+    /** Способ сортировки инвентаря: 0 — по категории. */
+    public final int sortMode;
+
     public Options(int renderRadius, int fovDegrees, float brightness, float masterVolume,
             int maxFps, boolean vsync, boolean fullscreen, boolean viewBobbing,
             float mouseSensitivity, boolean invertMouseY, float musicVolume, float effectsVolume,
@@ -36,6 +50,23 @@ public final class Options {
             int maxFps, boolean vsync, boolean fullscreen, boolean viewBobbing,
             float mouseSensitivity, boolean invertMouseY, float musicVolume, float effectsVolume,
             int guiScale, int shaderQuality, KeyBindings keys) {
+        this(renderRadius, fovDegrees, brightness, masterVolume, maxFps, vsync, fullscreen,
+                viewBobbing, mouseSensitivity, invertMouseY, musicVolume, effectsVolume,
+                guiScale, shaderQuality, keys, false, false, false, "all", 0);
+    }
+
+    public Options(int renderRadius, int fovDegrees, float brightness, float masterVolume,
+            int maxFps, boolean vsync, boolean fullscreen, boolean viewBobbing,
+            float mouseSensitivity, boolean invertMouseY, float musicVolume, float effectsVolume,
+            int guiScale, int shaderQuality, KeyBindings keys,
+            boolean advancedTooltips, boolean recipeBookOpen, boolean recipeBookCraftable,
+            String recipeBookCategory, int sortMode) {
+        this.advancedTooltips = advancedTooltips;
+        this.recipeBookOpen = recipeBookOpen;
+        this.recipeBookCraftable = recipeBookCraftable;
+        this.recipeBookCategory = recipeBookCategory == null || recipeBookCategory.isEmpty()
+                ? "all" : recipeBookCategory;
+        this.sortMode = sortMode;
         this.renderRadius = renderRadius;
         this.fovDegrees = fovDegrees;
         this.brightness = brightness;

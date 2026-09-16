@@ -444,14 +444,14 @@ v1–5 — `readLegacy`.
 печать `world  chunks  stacks  missing  failures`; код 1 при любом отказе.
 Ничего не пишет.
 
-- [ ] Тесты: `level v9 bytes load into registry items` (писатель v9 скопирован в
+- [x] Тесты: `level v9 bytes load into registry items` (писатель v9 скопирован в
       тест, три вида слотов, износ), `chunk v5 chests, furnaces and dropped items migrate`,
       `level v10 round-trips components, missing items and pending stacks`,
       `unknown level sections survive a save`,
       `options v5 load with default inventory preferences`, `options v6 round-trip`.
-- [ ] Прогон `java -cp "out;libs/*" tools\CheckSaves.java` по 13 мирам — ноль
+- [x] Прогон `java -cp "out;libs/*" tools\CheckSaves.java` по 13 мирам — ноль
       отказов, ноль `missing`; вывод — в раздел «Замеры».
-- [ ] Коммит `feat(save): level v10 with sections, chunk v6 and options v6 on the new stack format`.
+- [x] Коммит `feat(save): level v10 with sections, chunk v6 and options v6 on the new stack format`.
 
 ## Задача 7. Пакетный рендер интерфейса
 
@@ -787,7 +787,7 @@ public interface WindowContext {
 | Сундук, draw calls / кадр (мс) | 633 (3,05) | |
 | Креатив, draw calls / кадр | 355 | |
 | Креатив, мс / кадр | 1,45 | |
-| CheckSaves: миры / чанки / стопки / missing / отказы | — | |
+| CheckSaves: миры / чанки / стопки / missing / отказы | — | 13 / 1588 / 132 / 0 / 0 |
 
 ## Решения, принятые по ходу
 

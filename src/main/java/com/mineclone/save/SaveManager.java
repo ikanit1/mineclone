@@ -300,14 +300,55 @@ public final class SaveManager {
                 o.writeFloat(d.timeOfDay);
                 o.writeInt(d.selectedSlot);
                 o.writeInt(d.gameMode.ordinal());            // v6
-                o.writeInt(d.inventory.length);
-                // v8: слот стал размеченным — блок и инструмент больше не
-                // различить по одному id, у инструмента ещё и износ.
-                for (com.mineclone.world.ItemStack s : d.inventory)
-                    writeStack(o, s);
+                // v10: дальше идут размеченные секции. Новая секция больше не
+                // поднимает версию файла, а незнакомая переживает запись.
+                writeSections(o, d);
             });
         } catch (IOException e) {
             System.err.println("saveLevel failed: " + e.getMessage());
+        }
+    }
+
+    /** Имя секции инвентаря игрока. */
+    private static final String SECTION_INVENTORY = "inventory";
+    /** Секция стопок, которым некуда лечь: курсор открытого окна. */
+    private static final String SECTION_PENDING = "pending";
+
+    private static void writeSections(DataOutputStream o, LevelData d) throws IOException {
+        java.util.LinkedHashMap<String, byte[]> sections = new java.util.LinkedHashMap<>();
+        sections.put(SECTION_INVENTORY, stacksToBytes(d.inventory));
+        if (d.pending.length > 0)
+            sections.put(SECTION_PENDING, stacksToBytes(d.pending));
+        // Чужие секции идут последними и ровно теми байтами, что пришли.
+        for (var e : d.extraSections.entrySet())
+            sections.putIfAbsent(e.getKey(), e.getValue());
+        com.mineclone.data.VarInt.write(o, sections.size());
+        for (var e : sections.entrySet()) {
+            o.writeUTF(e.getKey());
+            com.mineclone.data.VarInt.write(o, e.getValue().length);
+            o.write(e.getValue());
+        }
+    }
+
+    private static byte[] stacksToBytes(com.mineclone.world.ItemStack[] stacks)
+            throws IOException {
+        java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+        try (DataOutputStream o = new DataOutputStream(buf)) {
+            com.mineclone.data.VarInt.write(o, stacks.length);
+            for (com.mineclone.world.ItemStack s : stacks)
+                ItemStackCodec.write(o, s);
+        }
+        return buf.toByteArray();
+    }
+
+    private static com.mineclone.world.ItemStack[] stacksFromBytes(byte[] bytes, int max)
+            throws IOException {
+        try (DataInputStream in = new DataInputStream(new java.io.ByteArrayInputStream(bytes))) {
+            int n = Math.max(0, Math.min(max, com.mineclone.data.VarInt.read(in)));
+            com.mineclone.world.ItemStack[] out = new com.mineclone.world.ItemStack[n];
+            for (int i = 0; i < n; i++)
+                out[i] = ItemStackCodec.read(in);
+            return out;
         }
     }
 
@@ -341,12 +382,30 @@ public final class SaveManager {
                                    : com.mineclone.world.GameMode.CREATIVE;
 
             com.mineclone.world.ItemStack[] inventory = LevelData.emptyInventory();
-            if (version >= 8) {
+            com.mineclone.world.ItemStack[] pending = new com.mineclone.world.ItemStack[0];
+            java.util.LinkedHashMap<String, byte[]> extra = new java.util.LinkedHashMap<>();
+            if (version >= 10) {
+                int count = Math.max(0, Math.min(256, com.mineclone.data.VarInt.read(in)));
+                for (int i = 0; i < count; i++) {
+                    String key = in.readUTF();
+                    int length = Math.max(0, com.mineclone.data.VarInt.read(in));
+                    byte[] bytes = new byte[length];
+                    in.readFully(bytes);
+                    switch (key) {
+                        case SECTION_INVENTORY -> inventory = stacksFromBytes(bytes, 256);
+                        case SECTION_PENDING -> pending = stacksFromBytes(bytes, 256);
+                        // Секция незнакома — значит её записала другая сборка.
+                        // Выбросить её означало бы потерять чужие данные при
+                        // первом же сохранении из этой.
+                        default -> extra.put(key, bytes);
+                    }
+                }
+            } else if (version >= 8) {
                 int n = Math.max(0, Math.min(256, in.readInt()));
                 com.mineclone.world.ItemStack[] tmp =
                         new com.mineclone.world.ItemStack[Math.max(com.mineclone.world.Inventory.SIZE, n)];
                 for (int i = 0; i < n; i++)
-                    tmp[i] = readStack(in);
+                    tmp[i] = ItemStackCodec.readLegacy(in);
                 inventory = tmp;
             } else if (version >= 6) {
                 int n = Math.max(0, Math.min(256, in.readInt()));
@@ -375,78 +434,12 @@ public final class SaveManager {
             }
 
             return new LevelData(name, seed, px, py, pz, spawnX, spawnY, spawnZ,
-                    yaw, pitch, tod, slot, inventory, gameMode, lastPlayed, health, hunger);
+                    yaw, pitch, tod, slot, inventory, gameMode, lastPlayed, health, hunger,
+                    pending, extra);
         } catch (IOException e) {
             System.err.println("loadLevel failed: " + e.getMessage());
             return null;
         }
-    }
-
-    // ---- стопки предметов ----
-
-    /**
-     * Одна стопка в поток. Формат общий у инвентаря игрока и у сундуков:
-     * разойдись они, любая правка предметов ломала бы ровно одно из двух
-     * хранилищ, и заметить это можно было бы только открыв сундук.
-     */
-    static void writeStack(DataOutputStream o, com.mineclone.world.ItemStack s)
-            throws IOException {
-        if (s == null) {
-            o.writeByte(SLOT_EMPTY);
-            return;
-        }
-        int tool = com.mineclone.item.LegacyItems.toolIndex(s.item);
-        if (tool >= 0) {
-            o.writeByte(SLOT_TOOL);
-            o.writeByte(tool);
-            o.writeShort(Math.min(Short.MAX_VALUE, s.damage()));
-            return;
-        }
-        int food = com.mineclone.item.LegacyItems.foodIndex(s.item);
-        if (food >= 0) {
-            o.writeByte(SLOT_FOOD);
-            o.writeByte(food);
-            o.writeShort(s.count);
-            return;
-        }
-        if (s.block() != null) {
-            o.writeByte(SLOT_BLOCK);
-            o.writeByte(s.block().ordinal());
-            o.writeShort(s.count);
-            return;
-        }
-        // Предмет, которого в этом формате не бывает. Записать его нечем,
-        // а врать про содержимое слота нельзя — слот пуст.
-        o.writeByte(SLOT_EMPTY);
-    }
-
-    /** Одна стопка из потока; null — пустой слот или неизвестный предмет. */
-    static com.mineclone.world.ItemStack readStack(DataInputStream in) throws IOException {
-        int kind = in.readUnsignedByte();
-        if (kind == SLOT_TOOL) {
-            com.mineclone.item.Item t =
-                    com.mineclone.item.LegacyItems.tool(in.readUnsignedByte());
-            int dmg = in.readShort();
-            if (t == null)
-                return null;
-            com.mineclone.world.ItemStack st = new com.mineclone.world.ItemStack(t, 1);
-            st.setDamage(Math.max(0, dmg));
-            return st;
-        }
-        if (kind == SLOT_FOOD) {
-            com.mineclone.item.Item f =
-                    com.mineclone.item.LegacyItems.food(in.readUnsignedByte());
-            int count = in.readShort();
-            return (f != null && count > 0) ? new com.mineclone.world.ItemStack(f, count) : null;
-        }
-        if (kind == SLOT_BLOCK) {
-            int blockId = in.readUnsignedByte();
-            int count = in.readShort();
-            com.mineclone.item.Item b = com.mineclone.item.LegacyItems.block(blockId);
-            if (count > 0 && b != null)
-                return new com.mineclone.world.ItemStack(b, count);
-        }
-        return null;
     }
 
     // ---- chunk snapshots ----
@@ -469,22 +462,22 @@ public final class SaveManager {
                     com.mineclone.world.ItemStack[] slots = e.getValue();
                     o.writeByte(slots.length);
                     for (com.mineclone.world.ItemStack st : slots)
-                        writeStack(o, st);
+                        ItemStackCodec.write(o, st);
                 }
                 o.writeInt(s.furnaces.size());                                // v3
                 for (var e : s.furnaces.entrySet()) {
                     o.writeInt(e.getKey());
                     com.mineclone.world.Furnace f = e.getValue();
-                    writeStack(o, f.input);
-                    writeStack(o, f.fuel);
-                    writeStack(o, f.output);
+                    ItemStackCodec.write(o, f.input);
+                    ItemStackCodec.write(o, f.fuel);
+                    ItemStackCodec.write(o, f.output);
                     o.writeFloat(f.burnLeft);
                     o.writeFloat(f.burnMax);
                     o.writeFloat(f.cook);
                 }
                 o.writeInt(s.items.size());                                   // v4
                 for (com.mineclone.world.DroppedItem d : s.items) {
-                    writeStack(o, d.stack);
+                    ItemStackCodec.write(o, d.stack);
                     o.writeFloat(d.x);
                     o.writeFloat(d.y);
                     o.writeFloat(d.z);
@@ -527,7 +520,8 @@ public final class SaveManager {
                     com.mineclone.world.ItemStack[] slots =
                             new com.mineclone.world.ItemStack[len];
                     for (int k = 0; k < len; k++)
-                        slots[k] = readStack(in);
+                        slots[k] = version >= 6 ? ItemStackCodec.read(in)
+                                                : ItemStackCodec.readLegacy(in);
                     if (key >= 0 && key < SaveFormat.CHUNK_VOLUME)
                         chests.put(key, slots);
                 }
@@ -539,9 +533,9 @@ public final class SaveManager {
                 for (int i = 0; i < n; i++) {
                     int key = in.readInt();
                     com.mineclone.world.Furnace furnace = new com.mineclone.world.Furnace();
-                    furnace.input = readStack(in);
-                    furnace.fuel = readStack(in);
-                    furnace.output = readStack(in);
+                    furnace.input = readChunkStack(in, version);
+                    furnace.fuel = readChunkStack(in, version);
+                    furnace.output = readChunkStack(in, version);
                     furnace.burnLeft = in.readFloat();
                     furnace.burnMax = in.readFloat();
                     furnace.cook = in.readFloat();
@@ -553,7 +547,7 @@ public final class SaveManager {
             if (version >= 4) {
                 int n = Math.max(0, Math.min(4096, in.readInt()));
                 for (int i = 0; i < n; i++) {
-                    com.mineclone.world.ItemStack st = readStack(in);
+                    com.mineclone.world.ItemStack st = readChunkStack(in, version);
                     float x = in.readFloat(), y = in.readFloat(), z = in.readFloat();
                     float age = in.readFloat();
                     if (st != null)
@@ -565,6 +559,12 @@ public final class SaveManager {
             System.err.println("loadChunk failed: " + e.getMessage());
             return null;
         }
+    }
+
+    /** Стопка из чанка: с шестой версии — id предмета, раньше — размеченный слот. */
+    private static com.mineclone.world.ItemStack readChunkStack(DataInputStream in, int version)
+            throws IOException {
+        return version >= 6 ? ItemStackCodec.read(in) : ItemStackCodec.readLegacy(in);
     }
 
     public void deleteWorld(String id) {
@@ -643,8 +643,20 @@ public final class SaveManager {
             }
             com.mineclone.core.KeyBindings keys = new com.mineclone.core.KeyBindings();
             keys.load(saved);
+            if (version == 5) {
+                return new Options(rr, fov, br, vol, maxFps, vsync, fullscreen, viewBobbing,
+                        sensitivity, invertY, musicVol, effectsVol, guiScale, shaderQuality, keys);
+            }
+            // v6: привычки инвентаря
+            boolean advancedTooltips = in.readBoolean();
+            boolean recipeBookOpen = in.readBoolean();
+            boolean recipeBookCraftable = in.readBoolean();
+            String recipeBookCategory = in.readUTF();
+            int sortMode = in.readInt();
             return new Options(rr, fov, br, vol, maxFps, vsync, fullscreen, viewBobbing,
-                    sensitivity, invertY, musicVol, effectsVol, guiScale, shaderQuality, keys);
+                    sensitivity, invertY, musicVol, effectsVol, guiScale, shaderQuality, keys,
+                    advancedTooltips, recipeBookOpen, recipeBookCraftable,
+                    recipeBookCategory, sortMode);
         } catch (IOException e) {
             System.err.println("loadOptions failed: " + e.getMessage());
             return Options.defaults();
@@ -676,6 +688,11 @@ public final class SaveManager {
                     out.writeUTF(e.getKey());
                     out.writeInt(e.getValue());
                 }
+                out.writeBoolean(o.advancedTooltips);                   // v6
+                out.writeBoolean(o.recipeBookOpen);
+                out.writeBoolean(o.recipeBookCraftable);
+                out.writeUTF(o.recipeBookCategory);
+                out.writeInt(o.sortMode);
             });
         } catch (IOException e) {
             System.err.println("saveOptions failed: " + e.getMessage());

@@ -299,6 +299,19 @@ public class Game {
     private com.mineclone.world.Inventory inventory = new com.mineclone.world.Inventory();
     private com.mineclone.world.GameMode gameMode = com.mineclone.world.GameMode.SURVIVAL;
     private com.mineclone.world.ItemStack cursorItem = null;
+    /**
+     * Секции level.dat, которых игра не знает: пришли с загрузкой и уходят
+     * обратно нетронутыми. Мир, открытый старой сборкой, не имеет права
+     * терять то, что записала новая.
+     */
+    private java.util.Map<String, byte[]> levelExtraSections = java.util.Map.of();
+    /**
+     * Стопки из сейва, которым не хватило места в инвентаре: их роняют под
+     * ноги, как только чанк под игроком загрузится. Ронять сразу нельзя —
+     * предмет упал бы в ещё не сгенерированную пустоту.
+     */
+    private final java.util.List<com.mineclone.world.ItemStack> pendingDrops =
+            new java.util.ArrayList<>();
     private final com.mineclone.save.SaveManager save = new com.mineclone.save.SaveManager();
     private String worldId;
     private String worldDisplayName = "";
@@ -370,6 +383,8 @@ public class Game {
         this.musicVolume     = opts.musicVolume;
         this.effectsVolume   = opts.effectsVolume;
         this.guiScale        = opts.guiScale;
+        this.advancedTooltips = opts.advancedTooltips;
+        this.inventoryPrefs  = opts;
         this.keys.copyFrom(opts.keys);
         this.input.setBindings(this.keys);
         this.settingsModel = new SettingsModel(this.keys);
@@ -443,12 +458,27 @@ public class Game {
         return s == null || s.block() == null ? BlockType.AIR : s.block();
     }
 
+    /**
+     * Расширенные подсказки: F3+H. Не настройка графики, но живёт там же —
+     * между запусками, в options.dat.
+     */
+    private boolean advancedTooltips;
+    /**
+     * Привычки окон, которые игра пока только переносит из файла в файл:
+     * книга рецептов и сортировка приезжают планами B и D, а терять их при
+     * первом же сохранении из этой сборки нельзя.
+     */
+    private com.mineclone.save.Options inventoryPrefs = com.mineclone.save.Options.defaults();
+
     private com.mineclone.save.Options buildOptions() {
         return new com.mineclone.save.Options(
                 renderRadius, fovDegrees, brightness, volume,
                 maxFps, vsync, fullscreen, viewBobbing,
                 mouseSensitivity, invertMouseY, musicVolume, effectsVolume, guiScale,
-                shaderQuality, keys);
+                shaderQuality, keys,
+                advancedTooltips, inventoryPrefs.recipeBookOpen,
+                inventoryPrefs.recipeBookCraftable, inventoryPrefs.recipeBookCategory,
+                inventoryPrefs.sortMode);
     }
 
     private int effectiveGuiScale() {
@@ -564,7 +594,12 @@ public class Game {
                 worldSpawn.x, worldSpawn.y, worldSpawn.z,
                 player.camera.yaw, player.camera.pitch,
                 gameTime, selectedSlot, invSnapshot, gameMode, System.currentTimeMillis(),
-                player.health, player.hunger);
+                player.health, player.hunger,
+                // Курсор — это предметы игрока, просто ни в одном слоте.
+                // Класть их в инвентарь на записи поздно: он мог быть полон.
+                cursorItem == null ? null
+                        : new com.mineclone.world.ItemStack[] { cursorItem.copy() },
+                levelExtraSections);
         save.saveLevel(worldId, d);
         // Превью снимет ближайший кадр мира: сейчас идёт обновление, а не отрисовка.
         iconRequested = true;
@@ -779,7 +814,10 @@ public class Game {
         gameMode = com.mineclone.world.GameMode.SURVIVAL;
         inventory = new com.mineclone.world.Inventory();
 
+        levelExtraSections = java.util.Map.of();
+        pendingDrops.clear();
         if (lvl != null) {
+            levelExtraSections = lvl.extraSections;
             worldDisplayName = lvl.name.isEmpty() ? "World" : lvl.name;
             worldSpawn.set((float) lvl.spawnX, (float) lvl.spawnY, (float) lvl.spawnZ);
             player.position.set((float) lvl.px, (float) lvl.py, (float) lvl.pz);
@@ -791,6 +829,13 @@ public class Game {
             inventory = new com.mineclone.world.Inventory();
             for (int i = 0; i < com.mineclone.world.Inventory.SIZE && i < lvl.inventory.length; i++)
                 inventory.set(i, lvl.inventory[i]);
+            for (com.mineclone.world.ItemStack s : lvl.pending) {
+                if (s == null || s.count <= 0)
+                    continue;
+                int leftover = giveStack(s);
+                if (leftover > 0)
+                    pendingDrops.add(s.copyWithCount(leftover));
+            }
         } else {
             worldDisplayName = "World";
         }
@@ -905,6 +950,7 @@ public class Game {
 
     private void updatePlaying(float dt) {
         long updateProbe = System.nanoTime();
+        releasePendingDrops();
         player.statusSpeedMultiplier = advancedFeedback.movementMultiplier();
         if (photoMode) {
             updatePhotoCamera(dt);
@@ -2054,6 +2100,23 @@ public class Game {
      * защищает кадр: сверх него исчезает самый старый — список пополняется с
      * конца, и в его начале лежат давние.
      */
+    /**
+     * Роняет под ноги то, что приехало из сейва и не влезло в инвентарь.
+     *
+     * <p>Ждёт, пока под игроком появится чанк: предмет, выпущенный в ещё не
+     * сгенерированную пустоту, улетел бы сквозь мир.
+     */
+    private void releasePendingDrops() {
+        if (pendingDrops.isEmpty())
+            return;
+        if (world.getChunkIfExists((int) Math.floor(player.position.x) >> 4,
+                (int) Math.floor(player.position.z) >> 4) == null)
+            return;
+        for (com.mineclone.world.ItemStack s : pendingDrops)
+            dropItem(s, player.position.x, player.position.y + 0.4f, player.position.z);
+        pendingDrops.clear();
+    }
+
     private void dropItem(com.mineclone.world.ItemStack stack, float x, float y, float z) {
         if (stack == null || stack.count <= 0)
             return;

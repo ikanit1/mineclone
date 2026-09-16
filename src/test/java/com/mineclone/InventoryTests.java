@@ -17,6 +17,11 @@ import com.mineclone.item.Items;
 import com.mineclone.item.Tag;
 import com.mineclone.item.TagRegistry;
 import com.mineclone.item.ToolClass;
+import com.mineclone.save.ChunkSnapshot;
+import com.mineclone.save.LevelData;
+import com.mineclone.save.Options;
+import com.mineclone.save.SaveFormat;
+import com.mineclone.save.SaveManager;
 import com.mineclone.world.BlockType;
 import com.mineclone.world.Inventory;
 import com.mineclone.world.ItemStack;
@@ -62,6 +67,248 @@ final class InventoryTests {
         r.run("custom name overrides the item name", InventoryTests::testCustomName);
         r.run("inventory add keeps components apart", InventoryTests::testInventoryComponents);
         r.run("content hash changes when a count changes", InventoryTests::testContentHash);
+        r.run("level v9 bytes load into registry items", InventoryTests::testLevelV9Migration);
+        r.run("chunk v5 chests, furnaces and dropped items migrate", InventoryTests::testChunkV5Migration);
+        r.run("level v10 round-trips components, missing items and pending stacks",
+                InventoryTests::testLevelV10RoundTrip);
+        r.run("unknown level sections survive a save", InventoryTests::testUnknownSections);
+        r.run("options v5 load with default inventory preferences", InventoryTests::testOptionsV5);
+        r.run("options v6 round-trip", InventoryTests::testOptionsV6);
+    }
+
+    // -------------------------------------------------------------- сейвы
+
+    /** Прежний размеченный слот: пусто / блок / инструмент / еда. */
+    private static void writeLegacyStack(java.io.DataOutputStream o, int kind, int id, int value)
+            throws java.io.IOException {
+        o.writeByte(kind);
+        if (kind == 0)
+            return;
+        o.writeByte(id);
+        o.writeShort(value);
+    }
+
+    private static java.io.File freshRoot() throws java.io.IOException {
+        java.io.File dir = java.io.File.createTempFile("mineclone-inv-", "");
+        if (!dir.delete() || !dir.mkdirs())
+            throw new IllegalStateException("could not create temp dir " + dir);
+        dir.deleteOnExit();
+        return dir;
+    }
+
+    private static java.io.DataOutputStream gzip(java.io.File f) throws java.io.IOException {
+        f.getParentFile().mkdirs();
+        return new java.io.DataOutputStream(new java.util.zip.GZIPOutputStream(
+                new java.io.BufferedOutputStream(new java.io.FileOutputStream(f))));
+    }
+
+    private static void testLevelV9Migration() throws Exception {
+        java.io.File root = freshRoot();
+        java.io.File saves = new java.io.File(root, "saves");
+        // Писатель v9 скопирован сюда целиком: он должен пережить любую
+        // будущую правку живого кода, иначе проверка миграции проверяет
+        // migration против самой себя.
+        try (java.io.DataOutputStream o = gzip(new java.io.File(saves, "old/level.dat"))) {
+            o.writeInt(SaveFormat.MAGIC);
+            o.writeInt(9);
+            o.writeUTF("Старый мир");
+            o.writeLong(4242L);
+            o.writeLong(777L);
+            o.writeFloat(15f);
+            o.writeFloat(11f);
+            o.writeDouble(1.5); o.writeDouble(65.0); o.writeDouble(-2.5);
+            o.writeDouble(8.5); o.writeDouble(80.0); o.writeDouble(8.5);
+            o.writeFloat(0.25f); o.writeFloat(-0.1f);
+            o.writeFloat(1.75f);
+            o.writeInt(3);
+            o.writeInt(com.mineclone.world.GameMode.SURVIVAL.ordinal());
+            o.writeInt(36);
+            for (int i = 0; i < 36; i++) {
+                if (i == 0)
+                    writeLegacyStack(o, 1, BlockType.COBBLE.ordinal(), 17);   // блок
+                else if (i == 1)
+                    writeLegacyStack(o, 2, 2, 77);                            // iron_pickaxe, износ 77
+                else if (i == 2)
+                    writeLegacyStack(o, 3, 1, 5);                             // porkchop x5
+                else
+                    writeLegacyStack(o, 0, 0, 0);
+            }
+        }
+
+        SaveManager sm = new SaveManager(saves);
+        LevelData d = sm.loadLevel("old");
+        assertTrue("v9 level loaded", d != null);
+        assertEq("name", "Старый мир", d.name);
+        assertEq("seed", 4242L, d.seed);
+        assertEq("hunger", 11f, d.hunger);
+        assertEq("block slot", Items.get().forBlock(BlockType.COBBLE), d.inventory[0].item);
+        assertEq("block count", 17, d.inventory[0].count);
+        assertEq("tool slot", Items.get().require("iron_pickaxe"), d.inventory[1].item);
+        assertEq("tool wear became a component", 77, d.inventory[1].damage());
+        assertEq("food slot", Items.get().require("porkchop"), d.inventory[2].item);
+        assertEq("food count", 5, d.inventory[2].count);
+        assertTrue("the rest is empty", d.inventory[3] == null);
+        assertEq("nothing was pending", 0, d.pending.length);
+
+        // Пересохранение поднимает файл до v10, ничего не теряя.
+        sm.saveLevel("old", d);
+        LevelData again = sm.loadLevel("old");
+        assertEq("tool survived the upgrade", 77, again.inventory[1].damage());
+        assertEq("food survived the upgrade", 5, again.inventory[2].count);
+    }
+
+    private static void testChunkV5Migration() throws Exception {
+        java.io.File root = freshRoot();
+        java.io.File saves = new java.io.File(root, "saves");
+        byte[] blocks = new byte[SaveFormat.CHUNK_VOLUME];
+        byte[] meta = new byte[SaveFormat.CHUNK_VOLUME];
+        blocks[0] = (byte) BlockType.CHEST.ordinal();
+        try (java.io.DataOutputStream o = gzip(new java.io.File(saves, "old/chunks/c.0.0.dat"))) {
+            o.writeInt(SaveFormat.MAGIC);
+            o.writeInt(5);
+            com.mineclone.save.RunLengthCodec.write(o, blocks);
+            com.mineclone.save.RunLengthCodec.write(o, meta);
+            o.writeInt(1);                              // сундуки
+            o.writeInt(0);
+            o.writeByte(3);
+            writeLegacyStack(o, 1, BlockType.PLANKS.ordinal(), 12);
+            writeLegacyStack(o, 0, 0, 0);
+            writeLegacyStack(o, 2, 5, 9);               // stone_axe, износ 9
+            o.writeInt(1);                              // печи
+            o.writeInt(7);
+            writeLegacyStack(o, 3, 0, 4);               // beef x4
+            writeLegacyStack(o, 1, BlockType.COAL_ORE.ordinal(), 2);
+            writeLegacyStack(o, 3, 4, 1);               // cooked_beef x1
+            o.writeFloat(3.5f); o.writeFloat(8f); o.writeFloat(1.25f);
+            o.writeInt(1);                              // предметы на земле
+            writeLegacyStack(o, 1, BlockType.STONE.ordinal(), 30);
+            o.writeFloat(1f); o.writeFloat(64f); o.writeFloat(2f); o.writeFloat(5f);
+        }
+
+        SaveManager sm = new SaveManager(saves);
+        ChunkSnapshot c = sm.loadChunk("old", 0, 0);
+        assertTrue("v5 chunk loaded", c != null);
+        assertEq("chest kept", 1, c.chests.size());
+        ItemStack[] chest = c.chests.get(0);
+        assertEq("chest planks", Items.get().require("planks"), chest[0].item);
+        assertEq("chest planks count", 12, chest[0].count);
+        assertTrue("chest gap", chest[1] == null);
+        assertEq("chest axe", Items.get().require("stone_axe"), chest[2].item);
+        assertEq("chest axe wear", 9, chest[2].damage());
+
+        com.mineclone.world.Furnace f = c.furnaces.get(7);
+        assertTrue("furnace kept", f != null);
+        assertEq("furnace input", Items.get().require("beef"), f.input.item);
+        assertEq("furnace fuel", Items.get().require("coal_ore"), f.fuel.item);
+        assertEq("furnace output", Items.get().require("cooked_beef"), f.output.item);
+        assertEq("furnace burn", 3.5f, f.burnLeft);
+
+        assertEq("one item on the ground", 1, c.items.size());
+        assertEq("its stack", 30, c.items.get(0).stack.count);
+        assertEq("its age", 5f, c.items.get(0).age);
+
+        // Обратная запись — уже шестой версией, и она читается так же.
+        sm.saveChunkAsync("old", c);
+        sm.flushAndAwait();
+        ChunkSnapshot back = sm.loadChunk("old", 0, 0);
+        assertEq("axe wear survived the upgrade", 9, back.chests.get(0)[2].damage());
+        assertEq("furnace still cooking", 1.25f, back.furnaces.get(7).cook);
+    }
+
+    private static void testLevelV10RoundTrip() throws Exception {
+        java.io.File saves = new java.io.File(freshRoot(), "saves");
+        SaveManager sm = new SaveManager(saves);
+
+        ItemStack[] inv = LevelData.emptyInventory();
+        inv[0] = ItemStack.of("iron_pickaxe").set(Components.DAMAGE, 42)
+                .set(Components.CUSTOM_NAME, "Кайло");
+        inv[1] = ItemStack.of("cobblestone", 40)
+                .set(Components.LORE, List.of("из первой шахты"));
+        // Предмет, которого нет в реестре: пишем его чужой стопкой, чтобы
+        // проверить, что сейв с ним открывается, а не обнуляется.
+        Item ghost = Items.get().missing(ResourceId.of("mymod:ruby"));
+        inv[2] = new ItemStack(ghost, 3);
+        ItemStack[] pending = { ItemStack.of("planks", 7) };
+
+        LevelData d = new LevelData("Мир", 5L, 1, 2, 3, 4, 5, 6, 0.5f, 0.25f, 1f, 2,
+                inv, com.mineclone.world.GameMode.SURVIVAL, 11L, 9f, 8f, pending, null);
+        sm.saveLevel("w", d);
+        LevelData back = sm.loadLevel("w");
+        assertTrue("loaded", back != null);
+        assertEq("tool item", Items.get().require("iron_pickaxe"), back.inventory[0].item);
+        assertEq("tool wear", 42, back.inventory[0].damage());
+        assertEq("tool name", "Кайло", back.inventory[0].displayName());
+        assertEq("lore", List.of("из первой шахты"), back.inventory[1].get(Components.LORE));
+        assertEq("missing item kept its id", "mymod:ruby", back.inventory[2].item.id.toString());
+        assertTrue("and is marked missing", back.inventory[2].item.missing);
+        assertEq("missing count", 3, back.inventory[2].count);
+        assertEq("pending came back", 1, back.pending.length);
+        assertEq("pending count", 7, back.pending[0].count);
+        assertEq("hunger", 8f, back.hunger);
+    }
+
+    private static void testUnknownSections() throws Exception {
+        java.io.File saves = new java.io.File(freshRoot(), "saves");
+        SaveManager sm = new SaveManager(saves);
+        byte[] alien = { 9, 8, 7, 6, 5 };
+        java.util.LinkedHashMap<String, byte[]> extra = new java.util.LinkedHashMap<>();
+        extra.put("futuremod:armour", alien);
+
+        LevelData d = new LevelData("Мир", 1L, 0, 64, 0, 0, 64, 0, 0f, 0f, 0f, 0,
+                LevelData.emptyInventory(), com.mineclone.world.GameMode.CREATIVE, 0L, 20f, 20f,
+                null, extra);
+        sm.saveLevel("w", d);
+        LevelData back = sm.loadLevel("w");
+        assertTrue("section survived", back.extraSections.containsKey("futuremod:armour"));
+        assertTrue("byte for byte",
+                java.util.Arrays.equals(alien, back.extraSections.get("futuremod:armour")));
+
+        // И переживает ещё одну запись: сборка, которая секцию не понимает,
+        // не имеет права стереть её вторым сохранением.
+        sm.saveLevel("w", back);
+        LevelData twice = sm.loadLevel("w");
+        assertTrue("and a second save",
+                java.util.Arrays.equals(alien, twice.extraSections.get("futuremod:armour")));
+    }
+
+    private static void testOptionsV5() throws Exception {
+        java.io.File root = freshRoot();
+        java.io.File saves = new java.io.File(root, "saves");
+        saves.mkdirs();
+        try (java.io.DataOutputStream o = gzip(new java.io.File(root, "options.dat"))) {
+            o.writeInt(SaveFormat.MAGIC);
+            o.writeInt(5);
+            o.writeInt(8); o.writeInt(90); o.writeFloat(0.5f); o.writeFloat(0.6f);
+            o.writeInt(120); o.writeBoolean(false); o.writeBoolean(true); o.writeBoolean(false);
+            o.writeFloat(1.5f); o.writeBoolean(true); o.writeFloat(0.3f); o.writeFloat(0.4f);
+            o.writeInt(2); o.writeInt(2);
+            o.writeInt(0);   // пустая раскладка — значения по умолчанию
+        }
+        Options opts = new SaveManager(saves).loadOptions();
+        assertEq("render radius", 8, opts.renderRadius);
+        assertEq("shader quality", 2, opts.shaderQuality);
+        assertTrue("advanced tooltips default off", !opts.advancedTooltips);
+        assertTrue("recipe book default closed", !opts.recipeBookOpen);
+        assertTrue("craftable filter default off", !opts.recipeBookCraftable);
+        assertEq("category defaults to all", "all", opts.recipeBookCategory);
+        assertEq("sort mode defaults to zero", 0, opts.sortMode);
+    }
+
+    private static void testOptionsV6() throws Exception {
+        java.io.File saves = new java.io.File(freshRoot(), "saves");
+        saves.mkdirs();
+        SaveManager sm = new SaveManager(saves);
+        Options in = new Options(7, 80, 1f, 1f, 60, true, false, true, 1f, false, 1f, 1f, 1, 2,
+                null, true, true, false, "building", 3);
+        sm.saveOptions(in);
+        Options out = sm.loadOptions();
+        assertTrue("advanced tooltips", out.advancedTooltips);
+        assertTrue("recipe book open", out.recipeBookOpen);
+        assertTrue("craftable filter off", !out.recipeBookCraftable);
+        assertEq("category", "building", out.recipeBookCategory);
+        assertEq("sort mode", 3, out.sortMode);
+        assertEq("older fields intact", 7, out.renderRadius);
+        assertEq("and the shader quality", 2, out.shaderQuality);
     }
 
     // ---------------------------------------------------------------- стопки
