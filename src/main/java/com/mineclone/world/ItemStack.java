@@ -108,6 +108,29 @@ public final class ItemStack {
         return amount - added;
     }
 
+    /**
+     * Совпадает ли содержимое двух стопок целиком: предмет, число и износ.
+     *
+     * <p>Не {@code equals}: стопка изменяема и живёт в массивах слотов, где
+     * сравнение по тождеству и есть то, что нужно. Содержимое сравнивается
+     * отдельным вопросом — его задаёт снимок блока и проверка сейва.
+     */
+    public boolean contentEquals(ItemStack o) {
+        if (o == null) return false;
+        if (this == o) return true;
+        return type == o.type && tool == o.tool && food == o.food
+                && count == o.count && damage == o.damage;
+    }
+
+    /** Хеш того же содержимого, что сравнивает {@link #contentEquals}. */
+    public int contentHash() {
+        int h = type == null ? 0 : type.ordinal() + 1;
+        h = h * 31 + (tool == null ? 0 : tool.ordinal() + 1);
+        h = h * 31 + (food == null ? 0 : food.ordinal() + 1);
+        h = h * 31 + count;
+        return h * 31 + damage;
+    }
+
     public ItemStack copy() {
         if (tool != null) {
             ItemStack s = new ItemStack(tool);

@@ -319,11 +319,11 @@ public final class ItemComponents {
 - Значения неизменяемы; `LORE` хранится `List.copyOf`. `BlockState` делает
   глубокие копии стопок в конструкторе.
 - VarInt — 7-битная запись, `data/VarInt.java` (`write`, `read`).
-- [ ] Тесты: `components compare regardless of insertion order`,
+- [x] Тесты: `components compare regardless of insertion order`,
       `component codec round-trips every known type`,
       `unknown components survive a round trip byte for byte`,
       `with null removes a component`.
-- [ ] Коммит `feat(item): immutable stack components with binary codecs`.
+- [x] Коммит `feat(item): immutable stack components with binary codecs`.
 
 ## Задача 5. Стопка на реестре; удаление ToolType и FoodType
 

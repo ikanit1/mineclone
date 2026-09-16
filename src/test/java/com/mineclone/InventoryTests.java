@@ -5,14 +5,20 @@ import com.mineclone.data.JsonException;
 import com.mineclone.data.JsonObject;
 import com.mineclone.data.DataPack;
 import com.mineclone.data.ResourceId;
+import com.mineclone.item.BlockState;
 import com.mineclone.item.Categories;
+import com.mineclone.item.ComponentType;
+import com.mineclone.item.Components;
+import com.mineclone.item.FurnaceState;
 import com.mineclone.item.Item;
+import com.mineclone.item.ItemComponents;
 import com.mineclone.item.ItemRegistry;
 import com.mineclone.item.Items;
 import com.mineclone.item.Tag;
 import com.mineclone.item.TagRegistry;
 import com.mineclone.item.ToolClass;
 import com.mineclone.world.BlockType;
+import com.mineclone.world.ItemStack;
 
 import java.util.List;
 import java.util.Map;
@@ -46,6 +52,114 @@ final class InventoryTests {
         r.run("tag includes resolve and a cycle is an error", InventoryTests::testTagIncludes);
         r.run("registry rejects an unknown property with its path", InventoryTests::testRegistryStrict);
         r.run("missing items are cached placeholders", InventoryTests::testMissingItems);
+        r.run("components compare regardless of insertion order", InventoryTests::testComponentOrder);
+        r.run("component codec round-trips every known type", InventoryTests::testComponentCodecs);
+        r.run("unknown components survive a round trip byte for byte", InventoryTests::testUnknownComponents);
+        r.run("with null removes a component", InventoryTests::testComponentRemoval);
+    }
+
+    // ----------------------------------------------------------- компоненты
+
+    private static void testComponentOrder() {
+        ItemComponents a = ItemComponents.EMPTY
+                .with(Components.DAMAGE, 7)
+                .with(Components.CUSTOM_NAME, "Кайло")
+                .with(Components.UNBREAKABLE, true);
+        ItemComponents b = ItemComponents.EMPTY
+                .with(Components.UNBREAKABLE, true)
+                .with(Components.DAMAGE, 7)
+                .with(Components.CUSTOM_NAME, "Кайло");
+        assertEq("equal regardless of order", a, b);
+        assertEq("hash matches", a.hashCode(), b.hashCode());
+        assertEq("size", 3, a.size());
+        assertTrue("empty is empty", ItemComponents.EMPTY.isEmpty());
+        assertTrue("with does not touch the original", ItemComponents.EMPTY.isEmpty());
+        assertTrue("a damage of another value differs",
+                !a.equals(a.with(Components.DAMAGE, 8)));
+    }
+
+    private static void testComponentCodecs() throws Exception {
+        // Образец на каждый зарегистрированный тип. Новый тип без образца
+        // валит тест — иначе он уехал бы в сейв непроверенным.
+        Map<String, Object> samples = new java.util.LinkedHashMap<>();
+        samples.put("damage", 123);
+        samples.put("unbreakable", Boolean.TRUE);
+        samples.put("custom_name", "Кайло гнома");
+        samples.put("lore", List.of("строка раз", "строка два"));
+        samples.put("block_state", new BlockState((byte) 5,
+                java.util.Arrays.asList(new ItemStack(BlockType.STONE, 5), null,
+                        new ItemStack(BlockType.PLANKS, 12)),
+                new FurnaceState(new ItemStack(BlockType.SAND, 3), new ItemStack(BlockType.COBBLE, 1),
+                        new ItemStack(BlockType.GLASS, 2), 4.5f, 8f, 1.25f)));
+
+        ItemComponents all = ItemComponents.EMPTY;
+        for (ComponentType<?> t : Components.all()) {
+            Object v = samples.get(t.id);
+            assertTrue("sample for " + t.id, v != null);
+            all = withRaw(all, t, v);
+        }
+        assertEq("every known type has a sample", Components.all().size(), samples.size());
+
+        ItemComponents back = roundTrip(all);
+        assertEq("round trip is equal", all, back);
+        assertEq("damage", 123, back.get(Components.DAMAGE));
+        assertEq("name", "Кайло гнома", back.get(Components.CUSTOM_NAME));
+        assertEq("lore", List.of("строка раз", "строка два"), back.get(Components.LORE));
+        BlockState st = back.get(Components.BLOCK_STATE);
+        assertEq("meta", (byte) 5, st.meta());
+        assertEq("chest size", 3, st.chest().size());
+        assertTrue("empty chest slot stays empty", st.chest().get(1) == null);
+        assertEq("chest stack count", 12, st.chest().get(2).count);
+        assertEq("furnace burn", 4.5f, st.furnace().burnLeft());
+
+        // Слишком длинное описание режется, а не ломает запись.
+        ItemComponents lore = ItemComponents.EMPTY.with(Components.LORE,
+                List.of("1", "2", "3", "4", "5", "6"));
+        assertEq("lore is capped", 4, lore.get(Components.LORE).size());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> ItemComponents withRaw(ItemComponents c, ComponentType<T> t, Object v) {
+        return c.with(t, (T) v);
+    }
+
+    private static ItemComponents roundTrip(ItemComponents c) throws java.io.IOException {
+        java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+        try (java.io.DataOutputStream out = new java.io.DataOutputStream(buf)) {
+            c.write(out);
+        }
+        try (java.io.DataInputStream in =
+                new java.io.DataInputStream(new java.io.ByteArrayInputStream(buf.toByteArray()))) {
+            return ItemComponents.read(in);
+        }
+    }
+
+    private static void testUnknownComponents() throws Exception {
+        byte[] payload = { 1, 2, 3, (byte) 200, 0, 0, 77 };
+        ItemComponents c = ItemComponents.EMPTY
+                .with(Components.DAMAGE, 4)
+                .withRaw("mymod:enchantments", payload);
+        ItemComponents back = roundTrip(c);
+        assertEq("known part survived", 4, back.get(Components.DAMAGE));
+        assertTrue("unknown id kept", back.ids().contains("mymod:enchantments"));
+        assertTrue("bytes kept", java.util.Arrays.equals(payload, back.raw("mymod:enchantments")));
+        assertEq("equal after a round trip", c, back);
+        // Пересохранение чужого компонента не имеет права его портить.
+        assertTrue("stable across two round trips",
+                java.util.Arrays.equals(payload, roundTrip(back).raw("mymod:enchantments")));
+    }
+
+    private static void testComponentRemoval() {
+        ItemComponents c = ItemComponents.EMPTY
+                .with(Components.DAMAGE, 3)
+                .with(Components.UNBREAKABLE, true);
+        assertEq("null removes", 1, c.with(Components.DAMAGE, null).size());
+        assertTrue("value is gone", c.with(Components.DAMAGE, null).get(Components.DAMAGE) == null);
+        assertEq("without removes", 1, c.without(Components.UNBREAKABLE).size());
+        assertTrue("removing what is not there changes nothing",
+                c.without(Components.CUSTOM_NAME) == c);
+        assertTrue("emptied is EMPTY",
+                c.without(Components.DAMAGE).without(Components.UNBREAKABLE) == ItemComponents.EMPTY);
     }
 
     // -------------------------------------------------------------- реестр
