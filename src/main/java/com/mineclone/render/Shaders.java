@@ -1254,67 +1254,71 @@ public final class Shaders {
             .replace("uniform float uEmissive;", "in float vEmissive;")
             .replace("uColor", "vColor").replace("uEmissive", "vEmissive");
 
-    public static final String TEXT_VERTEX = VER + """
+    /**
+     * Единая программа интерфейса: заливка, атлас, стекло, два шрифта и
+     * произвольная текстура в одном пакете.
+     *
+     * <p>Режим приезжает атрибутом вершины, а не юниформой, поэтому смена
+     * вида квадрата не разрывает пакет: весь слой интерфейса уходит одним
+     * draw call'ом. Текстуры разложены по блокам заранее — за ними тоже
+     * незачем ходить в драйвер между квадратами.
+     */
+    public static final String UI_BATCH_VERTEX = VER + """
         layout (location = 0) in vec2 aPos;
         layout (location = 1) in vec2 aUv;
+        layout (location = 2) in vec4 aColor;
+        layout (location = 3) in float aMode;
         uniform vec2 uScreenSize;
         out vec2 vUv;
+        out vec4 vColor;
+        flat out int vMode;
         void main() {
-            // Convert pixel (x,y from top-left) to clip space (-1..1, y flipped).
+            // Пиксели интерфейса (начало в левом верхнем углу) в clip space.
             float x = (aPos.x / uScreenSize.x) * 2.0 - 1.0;
             float y = 1.0 - (aPos.y / uScreenSize.y) * 2.0;
             gl_Position = vec4(x, y, 0.0, 1.0);
             vUv = aUv;
+            vColor = aColor;
+            vMode = int(aMode + 0.5);
         }
         """;
 
-    public static final String TEXT_FRAGMENT = VER + """
+    public static final String UI_BATCH_FRAGMENT = VER + """
         in vec2 vUv;
-        uniform sampler2D uFont;
-        uniform vec4 uColor;
-        out vec4 FragColor;
-        void main() {
-            float a = texture(uFont, vUv).r;
-            if (a < 0.01) discard;
-            FragColor = vec4(uColor.rgb, uColor.a * a);
-        }
-        """;
-
-    public static final String UI_VERTEX = VER + """
-        layout (location = 0) in vec2 aPos;
-        layout (location = 1) in vec2 aUv;
-        uniform vec2 uScreenSize;
-        out vec2 vUv;
-        void main() {
-            float x = (aPos.x / uScreenSize.x) * 2.0 - 1.0;
-            float y = 1.0 - (aPos.y / uScreenSize.y) * 2.0;
-            gl_Position = vec4(x, y, 0.0, 1.0);
-            vUv = aUv;
-        }
-        """;
-
-    public static final String UI_FRAGMENT = VER + """
-        in vec2 vUv;
-        uniform sampler2D uTex;
+        in vec4 vColor;
+        flat in int vMode;
+        uniform sampler2D uAtlas;
         uniform sampler2D uBackdrop;
+        uniform sampler2D uFontA;
+        uniform sampler2D uFontB;
+        uniform sampler2D uTex;
         uniform vec2 uFbSize;
-        uniform int uUseTexture;   // 0 — заливка, 1 — текстура, 2 — стекло
-        uniform vec4 uColor;
         out vec4 FragColor;
         void main() {
-            vec4 c = uColor;
-            if (uUseTexture == 1) {
-                vec4 t = texture(uTex, vUv);
+            vec4 c = vColor;
+            if (vMode == 1) {
+                vec4 t = texture(uAtlas, vUv);
                 if (t.a < 0.1) discard;
-                c = t * uColor;
-            } else if (uUseTexture == 2) {
+                c = t * vColor;
+            } else if (vMode == 2) {
                 // Стекло чуть светлее и спокойнее того, что под ним: матовое
                 // стекло рассеивает, а не просто размывает.
                 vec3 b = texture(uBackdrop, gl_FragCoord.xy / uFbSize).rgb;
                 float lum = dot(b, vec3(0.2126, 0.7152, 0.0722));
                 b = mix(vec3(lum), b, 0.8) * 1.06 + 0.02;
-                // Альфа из uColor: экран меню проявляется целиком, стекло тоже.
-                c = vec4(b, uColor.a);
+                c = vec4(b, vColor.a);
+            } else if (vMode == 3) {
+                float a = texture(uFontA, vUv).r;
+                if (a < 0.01) discard;
+                c = vec4(vColor.rgb, vColor.a * a);
+            } else if (vMode == 4) {
+                float a = texture(uFontB, vUv).r;
+                if (a < 0.01) discard;
+                c = vec4(vColor.rgb, vColor.a * a);
+            } else if (vMode == 5) {
+                vec4 t = texture(uTex, vUv);
+                if (t.a < 0.1) discard;
+                c = t * vColor;
             }
             FragColor = c;
         }

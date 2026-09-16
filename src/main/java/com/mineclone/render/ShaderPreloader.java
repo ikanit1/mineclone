@@ -23,8 +23,8 @@ public final class ShaderPreloader implements AutoCloseable {
             {Shaders.CHUNK_VERTEX, Shaders.CHUNK_FRAGMENT}, {Shaders.CHUNK_VERTEX, Shaders.WATER_FRAGMENT},
             {Shaders.SHADOW_VERTEX, Shaders.SHADOW_FRAGMENT}, {Shaders.SHADOW_MOB_VERTEX, Shaders.SHADOW_FRAGMENT},
             {Shaders.INSTANCED_PARTICLE_VERTEX, Shaders.INSTANCED_PARTICLE_FRAGMENT},
-            {Shaders.MOB_VERTEX, Shaders.MOB_FRAGMENT}, {Shaders.TEXT_VERTEX, Shaders.TEXT_FRAGMENT},
-            {Shaders.UI_VERTEX, Shaders.UI_FRAGMENT}
+            {Shaders.MOB_VERTEX, Shaders.MOB_FRAGMENT},
+            {Shaders.UI_BATCH_VERTEX, Shaders.UI_BATCH_FRAGMENT}
         };
         Source[] jobs = new Source[sources.length];
         for (int i = 0; i < jobs.length; i++) {

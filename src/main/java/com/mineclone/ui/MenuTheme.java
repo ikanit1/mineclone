@@ -293,12 +293,23 @@ public final class MenuTheme {
 
     /** Отрисовать отложенный текст. */
     public void flush() {
+        // Текст идёт в тот же пакет, что и подложки под ним, но после них:
+        // порядок в пакете и есть порядок слоёв, и диалог обязан перекрывать
+        // текст, который под ним.
+        if (!pending.isEmpty()) {
+            if (!uiOpen) {
+                ui.begin(sw, sh);
+                uiOpen = true;
+            }
+            drawPending();
+        }
         if (uiOpen) {
             ui.end();
             uiOpen = false;
         }
-        if (pending.isEmpty())
-            return;
+    }
+
+    private void drawPending() {
         for (Txt t : pending) {
             switch (t.style) {
                 case SHADOW -> {

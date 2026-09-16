@@ -41,8 +41,10 @@ public class RenderHudPreview {
         TextureAtlas atlas = new TextureAtlas(TextureAtlas.DEFAULT_PATH, false);
         Font font = new Font(AppPaths.path("assets/minecraft.ttf"), 22f);
         Font small = new Font(AppPaths.path("assets/minecraft.ttf"), 14f);
-        TextRenderer text = new TextRenderer();
         UiRenderer ui = new UiRenderer();
+        TextRenderer text = new TextRenderer(ui);
+        ui.setAtlas(atlas.getTextureId());
+        ui.registerFonts(font, small);
         menuUi = ui;
         Hud hud = new Hud(font, small, text, ui, atlas);
 

@@ -654,8 +654,10 @@ public class Game {
             throw new IllegalStateException(
                     "Failed to load required font assets/minecraft.ttf: " + e.getMessage(), e);
         }
-        text = new TextRenderer();
         ui = new UiRenderer();
+        text = new TextRenderer(ui);
+        ui.setAtlas(atlas.getTextureId());
+        ui.registerFonts(font, smallFont);
         decals = new DecalRenderer();
         precipitation = new PrecipitationRenderer();
         backdrop = new Backdrop();
@@ -4352,6 +4354,10 @@ public class Game {
     private void drawUi() {
         if (hud == null)
             return;
+        // Счётчик вызовов интерфейса живёт ровно один кадр: F3 показывает
+        // итог прошлого, потому что свой собственный оверлей в текущий ещё
+        // не попал.
+        com.mineclone.render.UiRenderer.resetDrawCalls();
         int w = window.getWidth(), h = window.getHeight();
         int scale = effectiveGuiScale();
         int vw = w / scale, vh = h / scale;

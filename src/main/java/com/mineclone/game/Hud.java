@@ -88,11 +88,16 @@ public class Hud {
                 profiler.breakdown(),
                 "Chunk queue: " + chunkQueue,
                 "Music: " + music,
+                // Счётчик прошлого кадра: свой собственный оверлей в него
+                // попасть уже не успел бы, а мерить надо интерфейс, а не себя.
+                "UI: " + com.mineclone.render.UiRenderer.lastFrameDrawCalls() + " draw calls",
         };
+        ui.begin(screenW, screenH);
         for (String s : lines) {
             text.drawShadowed(font, s, 8, y, screenW, screenH, 1f, 1f, 1f);
             y += lineH;
         }
+        ui.end();
     }
 
     // ---------------- Water overlay ----------------
@@ -176,14 +181,15 @@ public class Hud {
                 ui.quad(bx + bs, by, t, bs, 1f, 1f, 1f, 0.95f);
             }
         }
-        ui.end();
-
+        // Счётчики — в том же пакете, что иконки под ними: порядок внутри
+        // пакета и есть порядок слоёв, и цифра всё равно ложится поверх.
         for (int i = 0; i < n; i++) {
             float x = x0 + i * (slot + pad);
             com.mineclone.world.ItemStack s = hotbar.get(i);
             if (s != null && s.count > 1)
                 drawCount(screenW, screenH, s.count, x, y0, slot);
         }
+        ui.end();
     }
 
     public void drawHeldItem(int screenW, int screenH, BlockType held,

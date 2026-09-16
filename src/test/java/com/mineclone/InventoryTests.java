@@ -74,6 +74,31 @@ final class InventoryTests {
         r.run("unknown level sections survive a save", InventoryTests::testUnknownSections);
         r.run("options v5 load with default inventory preferences", InventoryTests::testOptionsV5);
         r.run("options v6 round-trip", InventoryTests::testOptionsV6);
+        r.run("batch transform scales around its pivot", InventoryTests::testBatchTransform);
+    }
+
+    private static void testBatchTransform() {
+        // Опора остаётся на месте — в этом весь смысл «подрастания» окна.
+        float[] pivot = com.mineclone.render.UiRenderer.transformPoint(
+                100f, 50f, 0.5f, 100f, 50f, 0f, 0f);
+        assertEq("pivot x stays", 100f, pivot[0]);
+        assertEq("pivot y stays", 50f, pivot[1]);
+
+        float[] corner = com.mineclone.render.UiRenderer.transformPoint(
+                200f, 150f, 0.5f, 100f, 50f, 0f, 0f);
+        assertEq("corner halves its distance in x", 150f, corner[0]);
+        assertEq("and in y", 100f, corner[1]);
+
+        // Сдвиг прибавляется после масштаба, а не масштабируется сам.
+        float[] moved = com.mineclone.render.UiRenderer.transformPoint(
+                200f, 150f, 0.5f, 100f, 50f, 10f, -4f);
+        assertEq("shift is added after scaling", 160f, moved[0]);
+        assertEq("and in y too", 96f, moved[1]);
+
+        float[] same = com.mineclone.render.UiRenderer.transformPoint(
+                7f, 9f, 1f, 0f, 0f, 0f, 0f);
+        assertEq("unit transform changes nothing in x", 7f, same[0]);
+        assertEq("nor in y", 9f, same[1]);
     }
 
     // -------------------------------------------------------------- сейвы

@@ -497,12 +497,12 @@ v1–5 — `readLegacy`.
   `ui.setAtlas(atlas.getTextureId()); ui.registerFonts(font, smallFont);`
   То же в `RenderHudPreview`, `BenchUi`.
 - F3: строка `UI: N draw calls` (счётчик прошлого кадра).
-- [ ] `RenderHudPreview` → `ComparePreviews out-test/previews-baseline out-test/previews`
+- [x] `RenderHudPreview` → `ComparePreviews out-test/previews-baseline out-test/previews`
       — все кадры OK.
-- [ ] `BenchUi` — цифры «после рендера» в «Замеры».
-- [ ] Тесты (без GL): `batch transform scales around its pivot`
+- [x] `BenchUi` — цифры «после рендера» в «Замеры».
+- [x] Тесты (без GL): `batch transform scales around its pivot`
       (`UiRenderer.transformPoint` — статическая функция).
-- [ ] Коммит `perf(ui): one batched draw call per interface layer`.
+- [x] Коммит `perf(ui): one batched draw call per interface layer`.
 
 ## Задача 8. Иконки предметов
 
@@ -782,11 +782,11 @@ public interface WindowContext {
 
 | Что | До | После |
 |---|---|---|
-| Инвентарь, draw calls / кадр | 476 | |
-| Инвентарь, мс / кадр | 2,33 | |
-| Сундук, draw calls / кадр (мс) | 633 (3,05) | |
-| Креатив, draw calls / кадр | 355 | |
-| Креатив, мс / кадр | 1,45 | |
+| Инвентарь, draw calls / кадр | 476 | 25 |
+| Инвентарь, мс / кадр | 2,33 | 0,50 |
+| Сундук, draw calls / кадр (мс) | 633 (3,05) | 36 (0,68) |
+| Креатив, draw calls / кадр | 355 | 3 |
+| Креатив, мс / кадр | 1,45 | 0,15 |
 | CheckSaves: миры / чанки / стопки / missing / отказы | — | 13 / 1588 / 132 / 0 / 0 |
 
 ## Решения, принятые по ходу
