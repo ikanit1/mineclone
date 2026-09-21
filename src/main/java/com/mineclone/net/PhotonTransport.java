@@ -1,5 +1,8 @@
 package com.mineclone.net;
 
+import com.mineclone.net.connect.ConnectDiagnosis;
+import com.mineclone.net.connect.ConnectLadder;
+import com.mineclone.net.connect.RoomCode;
 import com.mineclone.net.photon.PhotonCodes;
 import com.mineclone.net.photon.PhotonJson;
 import com.mineclone.net.photon.PhotonPeer;
@@ -29,6 +32,21 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * WebSocket идёт поверх TCP, и доходит всё. Флаг сохранён потому, что у
  * {@link LanTransport} и у будущего UDP-входа он настоящий, а сессия не должна
  * знать, какой транспорт под ней.
+ *
+ * <p><b>Отказ больше не окончателен.</b> Прежде любая поломка на пути рвала
+ * все три соединения и выбрасывала игрока в меню — включая секундный обрыв
+ * WebSocket при входе, самый частый случай на мобильном интернете. Теперь путь
+ * ведёт {@link ConnectLadder}: та же ступень повторяется несколько раз с
+ * растущей паузой, а когда попытки кончились — пробуется незашифрованный вход
+ * на случай, если в сети закрыт нестандартный порт 19093. Отсчёт паузы идёт в
+ * {@link #poll()}, то есть в игровом потоке: своего таймера здесь нет нарочно,
+ * иначе повтор мог бы начаться посреди разбора пришедшего пакета.
+ *
+ * <p>Поломки делятся на мягкие и жёсткие. Мягкая — та, что может пройти со
+ * второго раза: обрыв, тайм-аут, перегруженный сервер. Жёсткая — та, что от
+ * повтора не изменится: не тот ключ приложения, комнаты нет, комната полна.
+ * Повторять жёсткую значит держать игрока на экране ожидания ради заведомо
+ * того же ответа.
  */
 public final class PhotonTransport implements NetTransport {
 
@@ -39,8 +57,9 @@ public final class PhotonTransport implements NetTransport {
 
     private final String appId;
     private final String region;
-    private final boolean secure;
     private final Listener listener;
+    /** Чем и в каком порядке пробуем дойти до облака. */
+    private final ConnectLadder ladder = new ConnectLadder();
 
     /** Всё, что пришло из сети, ждёт игрового потока. */
     private final ConcurrentLinkedQueue<Runnable> inbox = new ConcurrentLinkedQueue<>();
@@ -60,14 +79,19 @@ public final class PhotonTransport implements NetTransport {
     /** Только посмотреть список комнат и остановиться в лобби. */
     private boolean browseOnly;
     private boolean creator;
+    /** Шифрован ли вход текущей попытки: адреса от Photon приходят без схемы. */
+    private boolean secure = true;
+    /** Мы хотели создать комнату, а она уже есть, и мы входим в неё. */
+    private boolean reusingRoom;
+    /** Когда начинать следующую попытку; 0 — повтор не назначен. */
+    private long retryAtNanos;
     private volatile int actor;
     private volatile int serverMasterActor;
     private final List<Integer> peers = new ArrayList<>();
 
-    public PhotonTransport(String appId, String region, boolean secure, Listener listener) {
+    public PhotonTransport(String appId, String region, Listener listener) {
         this.appId = appId == null ? "" : appId.trim();
         this.region = region == null ? "" : region.trim();
-        this.secure = secure;
         this.listener = listener;
     }
 
@@ -84,7 +108,7 @@ public final class PhotonTransport implements NetTransport {
         this.createRoom = create;
         this.browseOnly = this.roomName.isEmpty();
         if (appId.isEmpty()) {
-            fail("не задан ключ приложения Photon (App ID)");
+            hardFail("не задан ключ приложения Photon (App ID)");
             return;
         }
         // Уже в лобби — дальше идти не надо, комната берётся оттуда.
@@ -92,11 +116,30 @@ public final class PhotonTransport implements NetTransport {
             requestRoom();
             return;
         }
+        ladder.succeeded();
+        retryAtNanos = 0;
+        beginAttempt();
+    }
+
+    /**
+     * Одна попытка пройти путь целиком: сервер имён, мастер, игровой сервер.
+     *
+     * <p>Каждая попытка начинается с чистого листа. Переиспользовать
+     * недозакрытые соединения прошлой было бы соблазнительно и неверно: у
+     * половины поломок как раз соединение и виновато.
+     */
+    private void beginAttempt() {
+        ConnectLadder.Step step = ladder.current();
+        if (step == null) {
+            hardFail(ladder.diagnosis(RoomCode.parse(roomName), createRoom));
+            return;
+        }
         closePeers();
-        setState(State.CONNECTING, "сервер имён Photon");
+        secret = "";
+        secure = step.secure();
+        setState(State.CONNECTING, ConnectDiagnosis.progress(ladder, "сервер имён Photon"));
         nameServer = new PhotonPeer("NameServer", new PeerHandler());
-        nameServer.connect(secure ? PhotonCodes.NAME_SERVER_WSS : PhotonCodes.NAME_SERVER_WS,
-                appId, secure);
+        nameServer.connect(step.nameServer(), appId, secure);
     }
 
     @Override
@@ -116,7 +159,7 @@ public final class PhotonTransport implements NetTransport {
         masterAddress = PhotonJson.strOr(vals, PhotonCodes.P_ADDRESS, "");
         secret = PhotonJson.strOr(vals, PhotonCodes.P_SECRET, "");
         if (masterAddress.isEmpty()) {
-            fail("сервер имён не дал адрес мастера");
+            softFail("сервер имён не дал адрес мастера");
             return;
         }
         PhotonPeer old = nameServer;
@@ -198,7 +241,7 @@ public final class PhotonTransport implements NetTransport {
         if (!s.isEmpty())
             secret = s;
         if (gameAddress.isEmpty()) {
-            fail("мастер не дал адрес игрового сервера");
+            softFail("мастер не дал адрес игрового сервера");
             return;
         }
         PhotonPeer old = master;
@@ -256,6 +299,15 @@ public final class PhotonTransport implements NetTransport {
         // ответ на «войти» и на «войти или создать», и отличить создание можно
         // только по составу.
         creator = peers.isEmpty();
+        if (reusingRoom && !creator) {
+            // Мы шли открывать свой мир, а комната с этим кодом оказалась
+            // чужой и живой. Войти в неё значит стать гостем в чужом мире,
+            // не спросив; пусть хозяин откроет заново и получит другой код.
+            hardFail("код " + roomName + " занят чужой комнатой — откройте мир заново");
+            return;
+        }
+        ladder.succeeded();
+        retryAtNanos = 0;
         setState(State.JOINED, roomName);
         int myActor = actor;
         boolean created = creator;
@@ -297,12 +349,20 @@ public final class PhotonTransport implements NetTransport {
         Runnable r;
         while ((r = inbox.poll()) != null)
             r.run();
+        // Отсчёт паузы между попытками идёт здесь, а не в таймере: повтор,
+        // начатый посреди разбора пришедшего пакета, закрыл бы соединение,
+        // из которого этот пакет только что прочитали.
+        if (retryAtNanos != 0 && System.nanoTime() >= retryAtNanos) {
+            retryAtNanos = 0;
+            beginAttempt();
+        }
     }
 
     @Override
     public void disconnect() {
         if (game != null && game.isConnected() && state == State.JOINED)
             game.sendOp(PhotonCodes.OP_LEAVE);
+        retryAtNanos = 0;
         closePeers();
         peers.clear();
         names.clear();
@@ -325,10 +385,42 @@ public final class PhotonTransport implements NetTransport {
         inbox.add(() -> listener.onState(s, detail));
     }
 
-    private void fail(String why) {
+    /**
+     * Поломка, которую повтор не исправит: не тот ключ, нет комнаты, нет мест.
+     *
+     * <p>Здесь путь и кончается. Держать игрока на экране ожидания ради
+     * четырёх попыток получить тот же самый ответ — это не надёжность, а
+     * задержка.
+     */
+    private void hardFail(String why) {
+        retryAtNanos = 0;
         closePeers();
         state = State.FAILED;
         inbox.add(() -> listener.onState(State.FAILED, why));
+    }
+
+    /**
+     * Поломка, которая может пройти со второго раза: обрыв, тайм-аут,
+     * перегрузка.
+     *
+     * <p>Решает {@link ConnectLadder}: он же считает попытки, он же переводит
+     * на незашифрованный вход, он же в конце объясняет отказ. Пока попытки
+     * есть, состояние остаётся {@code CONNECTING} — игрок видит ход дела, а не
+     * ошибку, которая сейчас исправится сама.
+     */
+    private void softFail(String why) {
+        if (state == State.CLOSED || state == State.FAILED)
+            return;
+        closePeers();
+        float wait = ladder.failed(why);
+        if (wait < 0f) {
+            hardFail(ladder.diagnosis(RoomCode.parse(roomName), createRoom));
+            return;
+        }
+        retryAtNanos = System.nanoTime() + (long) (wait * 1e9);
+        state = State.CONNECTING;
+        String detail = ladder.diagnosis(RoomCode.parse(roomName), createRoom);
+        inbox.add(() -> listener.onState(State.CONNECTING, detail));
     }
 
     // -------------------------------------------------------------- сведения
@@ -370,6 +462,8 @@ public final class PhotonTransport implements NetTransport {
     @Override
     public String describe() {
         String where = region.isEmpty() ? "авто" : region;
+        if (state == State.CONNECTING)
+            return "Photon " + where + " · " + ladder.describe();
         int rtt = game != null ? game.rtt() : (master != null ? master.rtt() : 0);
         return "Photon " + where + " " + rtt + " ms #" + actor;
     }
@@ -393,9 +487,7 @@ public final class PhotonTransport implements NetTransport {
         public void onResponse(PhotonPeer peer, int op, int errCode, String errMsg,
                 Map<Integer, Object> vals) {
             if (errCode != PhotonCodes.ERR_OK) {
-                // «Комнаты нет» при обычном входе — не поломка, а ответ: так
-                // выглядит опечатка в имени комнаты.
-                fail(PhotonCodes.errorText(errCode, errMsg));
+                onError(op, errCode, errMsg);
                 return;
             }
             if (peer == nameServer && op == PhotonCodes.OP_AUTHENTICATE) {
@@ -411,6 +503,44 @@ public final class PhotonTransport implements NetTransport {
                 else if (op == PhotonCodes.OP_JOIN_GAME || op == PhotonCodes.OP_CREATE_GAME)
                     onJoined(vals);
             }
+        }
+
+        /**
+         * Разложить отказ сервера на «повторим» и «дальше некуда».
+         *
+         * <p>Отдельный случай — своя же комната, которую облако ещё не
+         * прибрало. Хозяин вышел и через несколько секунд открыл мир снова:
+         * комната с его кодом всё ещё числится за ним, и создать её второй раз
+         * нельзя. Отказ здесь был бы издевательством — надо просто войти в неё.
+         */
+        private void onError(int op, int errCode, String errMsg) {
+            boolean joining = op == PhotonCodes.OP_JOIN_GAME || op == PhotonCodes.OP_CREATE_GAME;
+            if (joining && errCode == PhotonCodes.ERR_GAME_ID_ALREADY_EXISTS && createRoom) {
+                createRoom = false;
+                reusingRoom = true;
+                requestRoom();
+                return;
+            }
+            String text = PhotonCodes.errorText(errCode, errMsg);
+            if (fatal(errCode))
+                hardFail(ConnectDiagnosis.explain(text, null, true,
+                        RoomCode.parse(roomName), createRoom));
+            else
+                softFail(text);
+        }
+
+        /** Ответы, которые от повтора не изменятся. */
+        private boolean fatal(int errCode) {
+            return switch (errCode) {
+                case PhotonCodes.ERR_INVALID_AUTHENTICATION,
+                     PhotonCodes.ERR_CUSTOM_AUTH_FAILED,
+                     PhotonCodes.ERR_GAME_DOES_NOT_EXIST,
+                     PhotonCodes.ERR_GAME_FULL,
+                     PhotonCodes.ERR_GAME_CLOSED,
+                     PhotonCodes.ERR_MAX_CCU_REACHED,
+                     PhotonCodes.ERR_INVALID_REGION -> true;
+                default -> false;
+            };
         }
 
         @Override
@@ -470,8 +600,11 @@ public final class PhotonTransport implements NetTransport {
                         onGameList(PhotonJson.objectOr(vals.get(PhotonCodes.P_GAME_LIST)),
                                 code == PhotonCodes.EV_GAME_LIST);
                 case PhotonCodes.EV_ERROR_INFO -> {
+                    // Раньше слушателю сообщали об отказе, а сам транспорт
+                    // оставался в JOINED: игра считала комнату мёртвой, а
+                    // транспорт продолжал в неё писать.
                     String info = PhotonJson.strOr(vals, PhotonCodes.P_INFO, "ошибка комнаты");
-                    inbox.add(() -> listener.onState(State.FAILED, info));
+                    hardFail(info);
                 }
                 default -> {
                 }
@@ -484,18 +617,30 @@ public final class PhotonTransport implements NetTransport {
             // такой разрыв не ошибка.
             if (peer != nameServer && peer != master && peer != game)
                 return;
-            if (state == State.CLOSED || state == State.FAILED)
-                return;
-            fail(reason);
+            trouble(reason);
         }
 
         @Override
         public void onError(PhotonPeer peer, String message) {
             if (peer != nameServer && peer != master && peer != game)
                 return;
+            trouble(message);
+        }
+
+        /**
+         * Соединение оборвалось.
+         *
+         * <p>По дороге в комнату это повод попробовать ещё раз — обрыв на
+         * секунду чинится сам. Внутри комнаты повторять нечего: заново входить
+         * решает сессия, у неё для этого есть мир, который жалко терять.
+         */
+        private void trouble(String why) {
             if (state == State.CLOSED || state == State.FAILED)
                 return;
-            fail(message);
+            if (state == State.JOINED)
+                hardFail(why);
+            else
+                softFail(why);
         }
     }
 

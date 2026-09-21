@@ -44,8 +44,8 @@ public class PhotonSmoke {
 
         Client host = new Client("host");
         Client guest = new Client("guest");
-        host.transport = new PhotonTransport(appId, region, true, host);
-        guest.transport = new PhotonTransport(appId, region, true, guest);
+        host.transport = new PhotonTransport(appId, region, host);
+        guest.transport = new PhotonTransport(appId, region, guest);
 
         int failures = 0;
         try {

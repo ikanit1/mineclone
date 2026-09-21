@@ -58,7 +58,7 @@ public final class RoomBrowser implements NetTransport.Listener {
         supported = true;
         state = State.CONNECTING;
         status = "подключение к лобби…";
-        transport = new PhotonTransport(settings.effectiveAppId(), settings.region(), true, this);
+        transport = new PhotonTransport(settings.effectiveAppId(), settings.region(), this);
         transport.connect("", false, settings.nickname());
     }
 

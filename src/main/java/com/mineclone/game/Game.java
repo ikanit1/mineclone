@@ -5659,7 +5659,7 @@ public class Game {
         if (s.transport() == com.mineclone.net.NetSettings.LAN)
             return hosting ? com.mineclone.net.LanTransport.host(s.port(), net)
                     : com.mineclone.net.LanTransport.join(s.address(), net);
-        return new com.mineclone.net.PhotonTransport(s.effectiveAppId(), s.region(), true, net);
+        return new com.mineclone.net.PhotonTransport(s.effectiveAppId(), s.region(), net);
     }
 
     /** Сессия кончилась — сказать об этом и вернуться туда, где можно играть. */
