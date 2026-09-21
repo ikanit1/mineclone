@@ -378,6 +378,20 @@ public class Game {
      * заново, хранить в нём сокет негде.
      */
     private final com.mineclone.net.RoomBrowser roomBrowser = new com.mineclone.net.RoomBrowser();
+    /** Миры, объявившиеся в своей сети: их показывает экран прямого соединения. */
+    private final com.mineclone.net.direct.LanBrowser lanBrowser =
+            new com.mineclone.net.direct.LanBrowser();
+    /**
+     * Ближайший регион облака, замеренный один раз за установку игры.
+     *
+     * <p>Пишется из чужого потока, читается в главном — отсюда volatile.
+     * Нужен затем, что «Авто» больше не значит «пусть сервер имён решает
+     * каждый раз»: регион обязан быть конкретным ещё до того, как из него
+     * родится код комнаты.
+     */
+    private volatile String measuredRegion = "";
+    private com.mineclone.net.connect.RegionFinder regionFinder;
+    private boolean regionAsked;
     /** Строки чата и служебных сообщений сети — их рисует HUD. */
     private final java.util.ArrayDeque<String> netChat = new java.util.ArrayDeque<>();
     /** Сколько ещё показывать последние строки чата, секунды. */
@@ -1028,6 +1042,41 @@ public class Game {
     private void updateMenu(float dt) {
         menuBackground.update(dt);
         updateCommandToast(dt);
+        roomBrowser.update(dt);
+        adoptMeasuredRegion();
+    }
+
+    /**
+     * Запомнить замеренный регион.
+     *
+     * <p>Замер приходит из чужого потока, а настройки пишет главный: перенос
+     * делается здесь, в кадре меню, и ровно один раз.
+     */
+    private void adoptMeasuredRegion() {
+        String found = measuredRegion;
+        if (found.isEmpty() || !netSettings.region().isEmpty())
+            return;
+        netSettings = netSettings.withRegion(found);
+        save.saveOptions(buildOptions());
+        if (regionFinder != null) {
+            regionFinder.close();
+            regionFinder = null;
+        }
+    }
+
+    /**
+     * Замерить регионы, если он ещё не выбран.
+     *
+     * <p>Зовётся при открытии экрана сети, а не при нажатии «Открыть мир»:
+     * замер стоит секунду, и лучше он пройдёт, пока человек вписывает имя,
+     * чем перед загрузкой мира.
+     */
+    private void ensureRegionMeasured() {
+        if (regionAsked || !netSettings.region().isEmpty())
+            return;
+        regionAsked = true;
+        regionFinder = new com.mineclone.net.connect.RegionFinder(netSettings.effectiveAppId());
+        regionFinder.start(outcome -> measuredRegion = outcome.region());
     }
 
     private void updateCommandToast(float dt) {
@@ -5407,10 +5456,12 @@ public class Game {
 
     /** Титульный экран, знающий про сеть: настройки уходят туда и приходят назад. */
     private TitleScreen titleScreen() {
+        ensureRegionMeasured();
+        lanBrowser.open();
         return TitleScreen.withNet(save, settingsModel, netSettings, s -> {
             netSettings = s;
             save.saveOptions(buildOptions());
-        }, roomBrowser);
+        }, roomBrowser, lanBrowser);
     }
 
     /**
@@ -5568,6 +5619,8 @@ public class Game {
     private void startNetHost(String id, com.mineclone.net.NetSettings settings) {
         // Лобби больше не нужно, а место из ста бесплатных занимает.
         roomBrowser.close();
+        lanBrowser.close();
+        settings = withFreshCode(settings);
         netSettings = settings;
         save.saveOptions(buildOptions());
         netHosting = true;
@@ -5578,7 +5631,12 @@ public class Game {
     /** Войти в чужой мир. Мир придёт от хозяина — до этого ждём на экране загрузки. */
     private void startNetJoin(com.mineclone.net.NetSettings settings) {
         roomBrowser.close();
+        lanBrowser.close();
+        settings = withCodeRegion(settings);
         netSettings = settings;
+        // Лямбда фабрики переживёт этот метод, поэтому настройки в ней —
+        // своя неизменяемая копия, а не переприсваиваемая переменная.
+        final com.mineclone.net.NetSettings joining = settings;
         save.saveOptions(buildOptions());
         netHosting = false;
         unloadWorld();
@@ -5593,8 +5651,8 @@ public class Game {
         openMenu(loadingScreen);
         // Фабрика, а не готовый транспорт: участнику, потерявшему связь, надо
         // будет поднять новый и вернуться в ту же комнату.
-        net.start(() -> makeTransport(settings, false), roomOf(settings), false,
-                settings.nickname());
+        net.start(() -> makeTransport(joining, false), roomOf(joining), false,
+                joining.nickname());
     }
 
     /**
@@ -5607,6 +5665,51 @@ public class Game {
         if (s.transport() == com.mineclone.net.NetSettings.LAN)
             return "lan";
         return s.room();
+    }
+
+    /**
+     * Выдать комнате новый код.
+     *
+     * <p>Код рождается при открытии мира, а не хранится в настройках: комната
+     * живёт ровно один сеанс, и старый код, показанный второй раз, увёл бы
+     * друга в комнату, которой уже нет.
+     *
+     * <p>Регион берётся замеренный. Если замер не прошёл — Европа: она ближе
+     * всего к большинству, а любой конкретный регион лучше, чем «Авто», из
+     * которого код не сделать.
+     */
+    private com.mineclone.net.NetSettings withFreshCode(com.mineclone.net.NetSettings s) {
+        if (s.transport() != com.mineclone.net.NetSettings.PHOTON)
+            return s;
+        String region = s.region();
+        if (region.isEmpty())
+            region = measuredRegion;
+        if (region.isEmpty()) {
+            region = "eu";
+            showCommandToast("Регион не замерен — открываем в Европе");
+        }
+        com.mineclone.net.connect.RoomCode code =
+                com.mineclone.net.connect.RoomCode.generate(region, new java.util.Random());
+        netChat.addLast("Код комнаты: " + code.pretty());
+        netChatTimer = NET_CHAT_LINGER;
+        return s.withRegion(region).withRoom(code.roomName());
+    }
+
+    /**
+     * Взять регион из кода комнаты.
+     *
+     * <p>Ради этого код и придуман: регион едет внутри него, и войти не в тот
+     * регион, набрав верный код, теперь нельзя.
+     */
+    private static com.mineclone.net.NetSettings withCodeRegion(
+            com.mineclone.net.NetSettings s) {
+        if (s.transport() != com.mineclone.net.NetSettings.PHOTON)
+            return s;
+        com.mineclone.net.connect.RoomCode code =
+                com.mineclone.net.connect.RoomCode.parse(s.room());
+        if (code == null)
+            return s;
+        return s.withRegion(code.region()).withRoom(code.roomName());
     }
 
     private com.mineclone.net.NetTransport makeTransport(

@@ -5,6 +5,9 @@ import com.mineclone.net.NetProto;
 import com.mineclone.net.NetSettings;
 import com.mineclone.net.NetTransport;
 import com.mineclone.net.RoomBrowser;
+import com.mineclone.net.connect.RoomCode;
+import com.mineclone.net.direct.LanBeacon;
+import com.mineclone.net.direct.LanBrowser;
 import com.mineclone.save.SaveManager;
 
 import java.util.List;
@@ -26,21 +29,19 @@ import java.util.function.Consumer;
  *
  * <p>Список комнат экран не добывает сам: соединение с лобби держит игра
  * ({@link RoomBrowser}), а экран только читает. Экран живёт один кадр и
- * рисуется заново — соединению внутри него было бы негде храниться.
+ * рисуется заново — соединению внутри него было бы негде храниться. Список
+ * миров своей сети приходит тем же путём — от {@link LanBrowser}.
+ *
+ * <p><b>Вместо пары «регион и комната» — один код.</b> Договариваться о двух
+ * вещах сразу оказалось непосильно: про регион забывали, по умолчанию стояло
+ * «Авто», и друзья из разных стран попадали на разные мастер-серверы, где
+ * комнат друг друга просто нет. Регион теперь едет внутри кода
+ * ({@link RoomCode}), и продиктовать код, не продиктовав регион, нельзя.
+ * Поле принимает шесть знаков, читает {@code O} как ноль, а {@code I} и
+ * {@code L} как единицу — код, переписанный с экрана от руки, всё равно
+ * войдёт.
  */
 public final class MultiplayerScreen implements Screen {
-
-    /** Регионы, которые помещаются в один ряд. Остальные — через «Авто». */
-    private static final String[] REGION_IDS = { "", "eu", "ru", "us", "asia", "jp", "sa" };
-    /**
-     * Короткие подписи регионов.
-     *
-     * <p>Полные названия в ряд из семи ячеек не влезают и обрезаются в
-     * «Евр…», «Рос…», «Южн…» — а коды Photon и так стоят в его кабинете, так
-     * что игрок видит ровно то, что выбирал там.
-     */
-    private static final String[] REGION_LABELS = {
-            "Авто", "EU", "RU", "US", "Азия", "JP", "SA" };
 
     /** Высота строки комнаты в списке. */
     private static final float ROOM_ROW = 34f;
@@ -48,6 +49,7 @@ public final class MultiplayerScreen implements Screen {
     private final SaveManager save;
     private final Consumer<NetSettings> onSave;
     private final RoomBrowser browser;
+    private final LanBrowser lan;
     private final TextField nameField;
     private final TextField appIdField;
     private final TextField roomField;
@@ -65,21 +67,35 @@ public final class MultiplayerScreen implements Screen {
     private String lobbyRegion;
 
     public MultiplayerScreen(NetSettings initial, SaveManager save, Consumer<NetSettings> onSave) {
-        this(initial, save, onSave, null);
+        this(initial, save, onSave, null, null);
     }
 
     public MultiplayerScreen(NetSettings initial, SaveManager save, Consumer<NetSettings> onSave,
             RoomBrowser browser) {
+        this(initial, save, onSave, browser, null);
+    }
+
+    public MultiplayerScreen(NetSettings initial, SaveManager save, Consumer<NetSettings> onSave,
+            RoomBrowser browser, LanBrowser lan) {
         this.save = save;
         this.onSave = onSave;
         this.browser = browser;
+        this.lan = lan;
         this.net = initial == null ? NetSettings.defaults() : initial;
         this.nameField = new TextField(net.nickname(), NetProto.NAME_LIMIT, TextField.ANY);
         this.appIdField = new TextField(net.appId(), 64, MultiplayerScreen::appIdChar);
-        this.roomField = new TextField(net.room(), 24, TextField.ANY);
+        // Поле принимает только знаки алфавита кода: набрать в нём то, что
+        // кодом быть не может, физически нельзя.
+        this.roomField = new TextField(RoomCode.typed(net.room()), RoomCode.LENGTH,
+                MultiplayerScreen::codeChar);
         this.addressField = new TextField(net.address(), 48, TextField.ANY);
         this.portField = new TextField(String.valueOf(net.port()), 5, c -> c >= '0' && c <= '9');
         openLobby();
+    }
+
+    /** Знак кода комнаты: алфавит кода плюс то, что в него приводится. */
+    private static boolean codeChar(char c) {
+        return !RoomCode.normalize(String.valueOf(c)).isEmpty();
     }
 
     /** Ключ приложения Photon — шестнадцатеричная строка с дефисами. */
@@ -104,8 +120,11 @@ public final class MultiplayerScreen implements Screen {
     public MenuAction draw(MenuTheme t) {
         int sw = t.width(), sh = t.height();
         float pw = Math.min(560f, sw - 60f);
+        // Высота панели считается под содержимое каждой вкладки: у Photon
+        // вместо ряда регионов одно поле кода, у прямого соединения прибавился
+        // список миров своей сети.
         float ph = Math.min(sh - 70f, pickingWorld ? 460f
-                : net.transport() == NetSettings.PHOTON ? 604f : 452f);
+                : net.transport() == NetSettings.PHOTON ? 556f : 548f);
         float px = (sw - pw) / 2f, py = (sh - ph) / 2f;
         t.panel(px, py, pw, ph);
         float inner = px + 24f, iw = pw - 48f;
@@ -151,8 +170,11 @@ public final class MultiplayerScreen implements Screen {
 
         y += 4f;
         float half = (w - 12f) / 2f;
+        // Код разбирается до нажатия: отказ «такой комнаты нет» из-за
+        // опечатки стоит минуты ожидания, а серая кнопка — ничего.
         boolean canJoin = commit().canConnect(false)
-                && (net.transport() == NetSettings.PHOTON ? !roomField.text().isBlank()
+                && (net.transport() == NetSettings.PHOTON
+                        ? RoomCode.looksLikeCode(roomField.text())
                         : !addressField.text().isBlank());
         if (t.button("net.join", x, y, half, 46f, "Войти в комнату",
                 MenuTheme.Style.PRIMARY, canJoin)) {
@@ -187,26 +209,39 @@ public final class MultiplayerScreen implements Screen {
     }
 
     private float drawPhoton(MenuTheme t, float x, float y, float w, float labelW, float rowH) {
-        t.text("Регион", x, t.baseline(t.font(), y, rowH), MenuTheme.TEXT_DIM, 1f);
-        int index = 0;
-        for (int i = 0; i < REGION_IDS.length; i++)
-            if (REGION_IDS[i].equals(net.region()))
-                index = i;
-        int picked = t.segmentedSmall("net.region", x + labelW, y, w - labelW, rowH,
-                REGION_LABELS, index);
-        if (picked != index) {
-            net = net.withRegion(REGION_IDS[picked]);
-            // Комнаты живут в своём регионе: сменил регион — смотришь другой
-            // список, и старый показывать нельзя.
-            openLobby();
-        }
-        y += rowH + 8f;
-
         y = drawRooms(t, x, y, w, 136f);
 
-        t.text("Комната", x, t.baseline(t.font(), y, rowH), MenuTheme.TEXT_DIM, 1f);
-        t.textField("net.room", x + labelW, y, w - labelW, rowH, roomField,
-                "название комнаты");
+        // Своя ширина подписи: «Код друга» длиннее «Адреса» и «Порта», под
+        // которые рассчитан общий отступ, и налезала бы на поле.
+        float codeLabelW = labelW + 32f;
+        t.text("Код друга", x, t.baseline(t.font(), y, rowH), MenuTheme.TEXT_DIM, 1f);
+        String before = roomField.text();
+        t.textField("net.room", x + codeLabelW, y, 150f, rowH, roomField, "A4K7M2");
+        // Приводим набранное к виду кода прямо в поле: игрок печатает
+        // строчными и с дефисом, а диктовать будет то, что видит.
+        String typed = RoomCode.typed(roomField.text());
+        if (!typed.equals(before) || !typed.equals(roomField.text()))
+            roomField.setText(typed);
+        net = net.withRoom(typed);
+
+        // Под полем — что именно мы разобрали. Это единственное место, где
+        // игрок видит регион, и видеть его надо не выбирая: он приехал вместе
+        // с кодом.
+        RoomCode code = RoomCode.parse(typed);
+        String hint;
+        float[] colour;
+        if (typed.isEmpty()) {
+            hint = "Введите код, который продиктовал друг — или откройте свой мир";
+            colour = MenuTheme.TEXT_FAINT;
+        } else if (code != null) {
+            hint = "Регион: " + code.regionLabel();
+            colour = MenuTheme.GOOD;
+        } else {
+            hint = "Это не похоже на код: их шесть знаков, первый — буква";
+            colour = MenuTheme.DANGER;
+        }
+        t.smallText(MenuTheme.ellipsize(t.small(), hint, w - codeLabelW - 162f),
+                x + codeLabelW + 162f, t.baseline(t.small(), y, rowH), colour, 1f);
         return y + rowH + 8f;
     }
 
@@ -271,6 +306,8 @@ public final class MultiplayerScreen implements Screen {
     }
 
     private float drawLan(MenuTheme t, float x, float y, float w, float labelW, float rowH) {
+        y = drawLanWorlds(t, x, y, w, 96f);
+
         t.text("Адрес", x, t.baseline(t.font(), y, rowH), MenuTheme.TEXT_DIM, 1f);
         t.textField("net.address", x + labelW, y, w - labelW, rowH, addressField,
                 "адрес хозяина, например 192.168.1.5");
@@ -285,6 +322,55 @@ public final class MultiplayerScreen implements Screen {
         t.smallText(MenuTheme.ellipsize(t.small(), "порт открывает хозяин", x + w - noteX),
                 noteX, t.baseline(t.small(), y, rowH), MenuTheme.TEXT_FAINT, 1f);
         return y + rowH + 10f;
+    }
+
+    /**
+     * Миры, объявившиеся в своей сети.
+     *
+     * <p>Раньше войти к другу в соседней комнате стоило диктовки адреса,
+     * которого хозяин обычно и не знал. Теперь мир просто появляется в
+     * списке, а поле адреса остаётся для тех, кто идёт через интернет на
+     * проброшенный порт.
+     */
+    private float drawLanWorlds(MenuTheme t, float x, float y, float w, float h) {
+        t.smallText("Миры в вашей сети", x, t.baseline(t.small(), y, 24f),
+                MenuTheme.TEXT_DIM, 1f);
+        y += 26f;
+        t.quad(x, y, w, h, 0f, 0f, 0f, 0.22f);
+        List<LanBeacon.Announcement> found = lan == null ? List.of() : lan.worlds();
+        if (found.isEmpty()) {
+            t.smallCentered(lan == null ? "поиск недоступен" : lan.status(),
+                    x + w / 2f, y + h / 2f, MenuTheme.TEXT_FAINT, 1f);
+            return y + h + 10f;
+        }
+        float contentH = found.size() * ROOM_ROW;
+        t.beginClip(x, y, w, h);
+        float top = y - worldScroll.offset();
+        String current = addressField.text().trim();
+        for (int i = 0; i < found.size(); i++) {
+            LanBeacon.Announcement a = found.get(i);
+            float ry = top + i * ROOM_ROW;
+            if (ry + ROOM_ROW < y || ry > y + h)
+                continue;
+            boolean selected = a.dialable().equals(current);
+            if (t.row("net.lan." + a.dialable(), x, ry, w - 12f, ROOM_ROW, selected)) {
+                addressField.setText(a.dialable());
+                portField.setText(String.valueOf(a.port()));
+                net = net.withAddress(a.dialable()).withPort(a.port());
+            }
+            String label = a.world().isEmpty() ? a.dialable() : a.world();
+            if (!a.host().isEmpty())
+                label = label + " · " + a.host();
+            t.text(MenuTheme.ellipsize(t.font(), label, w - 110f), x + 12f,
+                    t.baseline(t.font(), ry, ROOM_ROW), MenuTheme.TEXT, 1f);
+            boolean full = a.players() >= a.maxPlayers();
+            t.smallRight(a.players() + "/" + a.maxPlayers(), x + w - 24f,
+                    t.baseline(t.small(), ry, ROOM_ROW),
+                    full ? MenuTheme.DANGER : MenuTheme.GOOD, 1f);
+        }
+        t.endClip();
+        t.scrollArea("net.lanScroll", x, y, w, h, worldScroll, contentH);
+        return y + h + 10f;
     }
 
     // -------------------------------------------------------- выбор мира

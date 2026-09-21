@@ -39,6 +39,8 @@ public final class TitleScreen implements Screen {
     private final java.util.function.Consumer<com.mineclone.net.NetSettings> onNetSave;
     /** Лобби Photon: его держит игра, титул только передаёт дальше. */
     private com.mineclone.net.RoomBrowser browser;
+    /** Миры своей сети: их приёмник тоже держит игра. */
+    private com.mineclone.net.direct.LanBrowser lanBrowser;
 
     public TitleScreen(SaveManager save, SettingsModel settings) {
         this(save, settings, new Random().nextInt(SPLASHES.length));
@@ -53,10 +55,12 @@ public final class TitleScreen implements Screen {
     public static TitleScreen withNet(SaveManager save, SettingsModel settings,
             com.mineclone.net.NetSettings net,
             java.util.function.Consumer<com.mineclone.net.NetSettings> onNetSave,
-            com.mineclone.net.RoomBrowser browser) {
+            com.mineclone.net.RoomBrowser browser,
+            com.mineclone.net.direct.LanBrowser lanBrowser) {
         TitleScreen s = new TitleScreen(save, settings, new Random().nextInt(SPLASHES.length),
                 net, onNetSave);
         s.browser = browser;
+        s.lanBrowser = lanBrowser;
         return s;
     }
 
@@ -127,7 +131,7 @@ public final class TitleScreen implements Screen {
         by += bh + gap;
         if (t.button("title.multiplayer", bx, by, bw, bh, "Игра по сети"))
             result = MenuAction.push(
-                    new MultiplayerScreen(netSettings, save, onNetSave, browser));
+                    new MultiplayerScreen(netSettings, save, onNetSave, browser, lanBrowser));
         by += bh + gap;
         if (t.button("title.settings", bx, by, bw, bh, "Настройки"))
             result = MenuAction.push(new SettingsScreen(settings));

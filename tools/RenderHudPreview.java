@@ -275,7 +275,7 @@ public class RenderHudPreview {
         // Экран игры по сети: оба транспорта и список миров под комнату.
         com.mineclone.net.NetSettings netSettings = new com.mineclone.net.NetSettings(
                 com.mineclone.net.NetSettings.PHOTON, "Строитель",
-                "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", "eu", "наша комната",
+                "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", "eu", "A4K7M2",
                 "192.168.1.5", 25566);
         // Лобби без сети: список комнат подкладывается тем же путём, каким
         // его приносит транспорт, — снимок обязан показывать живой экран.
@@ -284,14 +284,20 @@ public class RenderHudPreview {
                 new com.mineclone.ui.MultiplayerScreen(netSettings, save, s -> { }, lobby);
         // Список кладётся после конструктора: он сам открывает лобби и чистит
         // прежние комнаты, а сети в снимке нет.
+        // Комнаты в списке — это коды: ровно те строки, которые игроки
+        // диктуют друг другу, и никакого второго внутреннего имени.
         lobby.onRoomList(java.util.List.of(
-                new com.mineclone.net.NetTransport.RoomInfo("Стройка у реки", 3, 8),
-                new com.mineclone.net.NetTransport.RoomInfo("наша комната", 1, 8),
-                new com.mineclone.net.NetTransport.RoomInfo("survival-hard", 8, 8),
-                new com.mineclone.net.NetTransport.RoomInfo("test", 2, 8)));
+                new com.mineclone.net.NetTransport.RoomInfo("A4K7M2", 1, 8),
+                new com.mineclone.net.NetTransport.RoomInfo("AQ2WX9", 3, 8),
+                new com.mineclone.net.NetTransport.RoomInfo("KM3P7T", 8, 8),
+                new com.mineclone.net.NetTransport.RoomInfo("BZ5N4V", 2, 8)));
         menuShot("menu-net-photon", backdrop, theme, mp, at(640f, 470f), 1);
+        // Прямое соединение: список миров своей сети подкладывается так же,
+        // как список комнат, — экран обязан быть живым, а не пустым.
+        com.mineclone.net.direct.LanBrowser lanBrowser = new PreviewLan();
         com.mineclone.ui.MultiplayerScreen mpLan = new com.mineclone.ui.MultiplayerScreen(
-                netSettings.withTransport(com.mineclone.net.NetSettings.LAN), save, s -> { });
+                netSettings.withTransport(com.mineclone.net.NetSettings.LAN), save, s -> { },
+                null, lanBrowser);
         menuShot("menu-net-lan", backdrop, theme, mpLan, at(640f, 470f), 1);
         com.mineclone.ui.MultiplayerScreen mpWorlds =
                 new com.mineclone.ui.MultiplayerScreen(netSettings, save, s -> { }, lobby);
@@ -520,5 +526,27 @@ public class RenderHudPreview {
         if (err != GL_NO_ERROR)
             throw new IllegalStateException("OpenGL error " + err + " in " + name);
         System.out.println("rendered " + name);
+    }
+    /**
+     * Приёмник объявлений с готовым списком.
+     *
+     * <p>Снимок делается без сети, а экран обязан быть живым: пустой список
+     * показал бы «ищем миры…» и ничего не рассказал бы о том, как выглядит
+     * найденный мир.
+     */
+    private static final class PreviewLan extends com.mineclone.net.direct.LanBrowser {
+        @Override
+        public java.util.List<com.mineclone.net.direct.LanBeacon.Announcement> worlds() {
+            return java.util.List.of(
+                    new com.mineclone.net.direct.LanBeacon.Announcement(
+                            "192.168.1.5", 25566, "Долина", "Гриша", 2, 8),
+                    new com.mineclone.net.direct.LanBeacon.Announcement(
+                            "192.168.1.12", 25566, "Шахта", "Лена", 1, 8));
+        }
+
+        @Override
+        public String status() {
+            return "2 мир(ов) рядом";
+        }
     }
 }
