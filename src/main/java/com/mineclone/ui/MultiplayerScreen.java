@@ -215,12 +215,13 @@ public final class MultiplayerScreen implements Screen {
         // которые рассчитан общий отступ, и налезала бы на поле.
         float codeLabelW = labelW + 32f;
         t.text("Код друга", x, t.baseline(t.font(), y, rowH), MenuTheme.TEXT_DIM, 1f);
-        String before = roomField.text();
         t.textField("net.room", x + codeLabelW, y, 150f, rowH, roomField, "A4K7M2");
         // Приводим набранное к виду кода прямо в поле: игрок печатает
-        // строчными и с дефисом, а диктовать будет то, что видит.
+        // строчными и с дефисом, а диктовать будет то, что видит. Поле
+        // переписывается только когда приведение и правда что-то поменяло:
+        // переписывать каждый кадр значит каждый кадр гнать курсор в конец.
         String typed = RoomCode.typed(roomField.text());
-        if (!typed.equals(before) || !typed.equals(roomField.text()))
+        if (!typed.equals(roomField.text()))
             roomField.setText(typed);
         net = net.withRoom(typed);
 

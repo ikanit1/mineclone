@@ -45,6 +45,10 @@ final class MenuTests {
                 MenuTests::testScreenStackFades);
         r.run("text field types at the caret and stops at its length", MenuTests::testTextFieldEditing);
         r.run("held backspace repeats only after a delay", MenuTests::testTextFieldRepeat);
+        r.run("setText survives a caret left over from the old text",
+                MenuTests::testTextFieldSetText);
+        r.run("typing a room code in lower case lands upper case",
+                MenuTests::testRoomCodeField);
         r.run("text field pastes one clean line", MenuTests::testTextFieldPaste);
         r.run("scroll stays inside the content and eases to its target", MenuTests::testScrollState);
         r.run("russian plurals pick one, few and many", MenuTests::testPlural);
@@ -422,6 +426,67 @@ final class MenuTests {
 
     private static com.mineclone.ui.UiInput.Builder in() {
         return com.mineclone.ui.UiInput.builder();
+    }
+
+    /**
+     * Замена текста при курсоре посреди старого.
+     *
+     * <p>{@code setText} чистит буфер, а вставляет по текущей позиции курсора:
+     * оставшийся от прежнего текста, тот указывал за конец пустой строки, и
+     * экран сети падал исключением посреди кадра меню.
+     */
+    private static void testTextFieldSetText() {
+        com.mineclone.ui.TextField f =
+                new com.mineclone.ui.TextField("", 6, com.mineclone.ui.TextField.ANY);
+        f.edit(in().typed("ab").build(), 0.016f);
+        assertEq("курсор в конце", 2, f.caret());
+        f.setText("");
+        assertEq("пусто", "", f.text());
+        assertEq("и курсор с ним", 0, f.caret());
+
+        f.setText("abcd");
+        f.edit(in().key(GLFW_KEY_HOME).build(), 0.016f);
+        assertEq("курсор в начале", 0, f.caret());
+        f.setText("xy");
+        assertEq("замена целиком", "xy", f.text());
+        assertEq("курсор в конце нового", 2, f.caret());
+
+        // Замена длиннее предела обрезается, а курсор остаётся внутри строки.
+        f.setText("abcdefghij");
+        assertEq("обрезано по длине", "abcdef", f.text());
+        assertEq("курсор не за краем", f.text().length(), f.caret());
+    }
+
+    /**
+     * Поле кода комнаты приводит набранное к виду кода.
+     *
+     * <p>Это и был тот путь, на котором экран падал: игрок печатает строчными,
+     * приведение меняет строку, поле переписывается — а курсор к тому моменту
+     * уже стоял не в начале.
+     */
+    private static void testRoomCodeField() {
+        com.mineclone.ui.TextField f = new com.mineclone.ui.TextField("",
+                com.mineclone.net.connect.RoomCode.LENGTH,
+                c -> !com.mineclone.net.connect.RoomCode.normalize(String.valueOf(c)).isEmpty());
+        // Ровно то, что делает экран каждый кадр.
+        for (String key : new String[] { "a", "4", "k", "7", "m", "2" }) {
+            f.edit(in().typed(key).build(), 0.016f);
+            String typed = com.mineclone.net.connect.RoomCode.typed(f.text());
+            if (!typed.equals(f.text()))
+                f.setText(typed);
+        }
+        assertEq("код прописными", "A4K7M2", f.text());
+        assertTrue("и он разбирается",
+                com.mineclone.net.connect.RoomCode.parse(f.text()) != null);
+
+        // O, I и L на бумаге неотличимы от нуля и единицы — поле их принимает
+        // и тут же приводит.
+        com.mineclone.ui.TextField g = new com.mineclone.ui.TextField("A",
+                com.mineclone.net.connect.RoomCode.LENGTH,
+                c -> !com.mineclone.net.connect.RoomCode.normalize(String.valueOf(c)).isEmpty());
+        g.edit(in().typed("oil").build(), 0.016f);
+        g.setText(com.mineclone.net.connect.RoomCode.typed(g.text()));
+        assertEq("O, I и L прочитаны", "A011", g.text());
     }
 
     private static void testTextFieldEditing() {
