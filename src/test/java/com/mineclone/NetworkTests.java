@@ -1,6 +1,12 @@
 package com.mineclone;
 
 import com.mineclone.net.LoopbackTransport;
+import com.mineclone.net.connect.Backoff;
+import com.mineclone.net.connect.ConnectDiagnosis;
+import com.mineclone.net.connect.ConnectLadder;
+import com.mineclone.net.connect.RegionFinder;
+import com.mineclone.net.connect.RegionProbe;
+import com.mineclone.net.connect.RoomCode;
 import com.mineclone.net.Multiplayer;
 import com.mineclone.net.NetContext;
 import com.mineclone.net.NetProto;
@@ -94,6 +100,16 @@ final class NetworkTests {
         r.run("a remote player stops striding as soon as it leaves the ground",
                 NetworkTests::testRemotePlayerStopsStridingInAir);
         r.run("a remote player emits steps as it travels", NetworkTests::testRemoteFootsteps);
+        r.run("a room code round-trips through its region", NetworkTests::testRoomCodeRoundTrip);
+        r.run("a room code survives being copied by hand", NetworkTests::testRoomCodeTypos);
+        r.run("a room code refuses what is not one", NetworkTests::testRoomCodeRejects);
+        r.run("backoff grows and then gives up", NetworkTests::testBackoff);
+        r.run("the connect ladder retries a step before changing it",
+                NetworkTests::testConnectLadder);
+        r.run("a refusal is explained in terms the player can act on",
+                NetworkTests::testConnectDiagnosis);
+        r.run("the nearest region wins the probe", NetworkTests::testRegionProbe);
+        r.run("the region list is read as parallel arrays", NetworkTests::testRegionPairs);
     }
 
     // ------------------------------------------------------------ примитивы
@@ -1031,6 +1047,165 @@ final class NetworkTests {
                 deleteTree(k);
         if (!f.delete())
             f.deleteOnExit();
+    }
+
+    // ------------------------------------------------------ дойти до комнаты
+
+    /**
+     * Регион едет внутри кода.
+     *
+     * <p>Это главное свойство всей затеи: код, набранный верно, не может
+     * увести в чужой регион — а раньше именно это и происходило, потому что
+     * регион договаривались голосом и забывали.
+     */
+    private static void testRoomCodeRoundTrip() {
+        java.util.Random rnd = new java.util.Random(7);
+        for (int i = 1; i < PhotonCodes.REGIONS.length; i++) {
+            String region = PhotonCodes.REGIONS[i];
+            RoomCode made = RoomCode.generate(region, rnd);
+            assertEq("код длиной", RoomCode.LENGTH, made.code().length());
+            RoomCode read = RoomCode.parse(made.code());
+            assertTrue("код " + made.code() + " разобрался", read != null);
+            assertEq("регион вернулся", region, read.region());
+            assertEq("сам код вернулся", made.code(), read.code());
+            assertEq("имя комнаты — это код", made.code(), read.roomName());
+        }
+    }
+
+    /** Переписанный от руки код всё равно входит. */
+    private static void testRoomCodeTypos() {
+        RoomCode made = RoomCode.generate("eu", new java.util.Random(3));
+        String code = made.code();
+        assertEq("строчные буквы", code, RoomCode.normalize(code.toLowerCase()));
+        assertEq("дефис для глаза", code, RoomCode.normalize(made.pretty()));
+        assertEq("пробелы", code, RoomCode.normalize(" " + code + " "));
+        // O, I и L на бумаге неотличимы от нуля и единицы; в алфавите кода их
+        // нет, поэтому читаются они однозначно.
+        assertEq("O вместо нуля", "A0B123", RoomCode.normalize("AOB123"));
+        assertEq("I вместо единицы", "A1B123", RoomCode.normalize("AIB123"));
+        assertEq("l вместо единицы", "A1B123", RoomCode.normalize("alB123"));
+    }
+
+    /** Не код — значит не код: молчаливое «почти подошло» хуже отказа. */
+    private static void testRoomCodeRejects() {
+        assertTrue("пусто", RoomCode.parse("") == null);
+        assertTrue("коротко", RoomCode.parse("A4K7") == null);
+        // Знаком длиннее — это чужой код, а не опечатка: обрезав хвост, игра
+        // увела бы игрока в комнату, которой он не называл.
+        assertTrue("длинно", RoomCode.parse("A4K7M2X") == null);
+        assertEq("а поле ввода хвост просто не примет", "A4K7M2",
+                RoomCode.typed("A4K7M2X"));
+        // Первый знак кода — всегда буква из «регионной» части алфавита:
+        // цифра там означает, что это не наш код.
+        assertTrue("цифра вместо региона", RoomCode.parse("14K7M2") == null);
+        assertTrue("буква за пределами списка регионов", RoomCode.parse("Z4K7M2") == null);
+        assertTrue("«Авто» кодом не бывает", RoomCode.regionIndex("") < 0);
+        boolean threw = false;
+        try {
+            RoomCode.generate("", new java.util.Random(1));
+        } catch (IllegalArgumentException e) {
+            threw = true;
+        }
+        assertTrue("код из «Авто» не делается", threw);
+    }
+
+    private static void testBackoff() {
+        Backoff b = new Backoff();
+        assertEq("первая попытка", 1, b.attempt());
+        assertEq("пауза перед второй", 0.5f, b.failed());
+        assertEq("пауза перед третьей", 1.5f, b.failed());
+        assertEq("пауза перед четвёртой", 4f, b.failed());
+        assertTrue("после последней паузы попытки ещё есть", !b.exhausted());
+        assertTrue("четвёртая была последней", b.failed() < 0f);
+        assertTrue("попытки кончились", b.exhausted());
+        b.reset();
+        assertTrue("сброс возвращает попытки", !b.exhausted());
+        assertEq("и счётчик", 1, b.attempt());
+    }
+
+    /**
+     * Обрыв повторяют на той же ступени, а закрытый порт меняет ступень.
+     *
+     * <p>Наоборот было бы хуже: уходить с шифрованного входа из-за одной
+     * потерянной секунды значит отдавать ключ приложения открытым текстом
+     * на ровном месте.
+     */
+    private static void testConnectLadder() {
+        ConnectLadder ladder = new ConnectLadder();
+        ConnectLadder.Step first = ladder.current();
+        assertTrue("первая ступень шифрованная", first.secure());
+        for (int i = 0; i < Backoff.DELAYS.length; i++) {
+            assertTrue("ждём перед повтором", ladder.failed("connection refused") > 0f);
+            assertEq("ступень та же", first, ladder.current());
+        }
+        assertEq("смена ступени идёт без паузы", 0f, ladder.failed("connection refused"));
+        ConnectLadder.Step second = ladder.current();
+        assertTrue("вторая ступень не шифрованная", !second.secure());
+        assertTrue("и это другой адрес", !first.nameServer().equals(second.nameServer()));
+        for (int i = 0; i < Backoff.DELAYS.length; i++)
+            ladder.failed("connection refused");
+        assertTrue("лестница кончилась", ladder.failed("connection refused") < 0f);
+        assertTrue("и больше ступеней нет", ladder.exhausted());
+        assertTrue("current() молчит", ladder.current() == null);
+    }
+
+    private static void testConnectDiagnosis() {
+        RoomCode code = RoomCode.parse("A4K7M2");
+        String missing = ConnectDiagnosis.explain(
+                PhotonCodes.errorText(PhotonCodes.ERR_GAME_DOES_NOT_EXIST, ""),
+                null, true, code, false);
+        assertTrue("названа комната: " + missing, missing.contains(code.pretty()));
+        assertTrue("и её регион: " + missing, missing.contains(code.regionLabel()));
+
+        ConnectLadder ladder = new ConnectLadder();
+        for (int i = 0; i <= Backoff.DELAYS.length; i++)
+            ladder.failed("Connection refused");
+        String closed = ladder.diagnosis(code, false);
+        assertTrue("сказано про порт: " + closed, closed.contains("порт"));
+        assertTrue("и что пробуем дальше: " + closed,
+                closed.contains(ladder.current().label()));
+
+        String key = ConnectDiagnosis.explain("Photon не принял ключ приложения",
+                null, true, code, true);
+        assertTrue("про свой ключ: " + key, key.contains("Свой ключ"));
+    }
+
+    /** Ближайший регион выигрывает, недоступные не участвуют. */
+    private static void testRegionProbe() {
+        java.util.Map<String, String> regions = new java.util.LinkedHashMap<>();
+        regions.put("eu", "eu.example:5058");
+        regions.put("us", "us.example:5058");
+        regions.put("asia", "asia.example:5058");
+        java.util.Map<String, Integer> fake = java.util.Map.of(
+                "eu.example:5058", 42,
+                "us.example:5058", 110,
+                "asia.example:5058", -1);
+        java.util.List<RegionProbe.Result> results =
+                RegionProbe.measure(regions, a -> fake.getOrDefault(a, -1));
+        assertEq("замерены все", 3, results.size());
+        assertEq("ближайший первым", "eu", results.get(0).region());
+        assertEq("и он же выбран", "eu", RegionProbe.best(results));
+        assertTrue("недоступный ушёл в конец", !results.get(2).reachable());
+
+        // Не ответил никто — «Авто» на этом месте назвать нельзя: из него не
+        // сделать кода комнаты.
+        assertEq("никого", "", RegionProbe.best(
+                RegionProbe.measure(regions, a -> -1)));
+        assertEq("схема и путь отброшены", "eu.example:5058",
+                RegionProbe.stripScheme("wss://eu.example:5058/app"));
+    }
+
+    private static void testRegionPairs() {
+        java.util.Map<String, String> pairs = RegionFinder.pairs(
+                java.util.List.of("eu", "us", "ru"),
+                java.util.List.of("eu.example:5058", "us.example:5058", "ru.example:5058"));
+        assertEq("столько же", 3, pairs.size());
+        assertEq("адрес на месте", "us.example:5058", pairs.get("us"));
+        // Массивы разной длины — испорченный ответ: лишнее отбрасывается, а не
+        // съезжает на единицу.
+        assertEq("короче адресов", 1, RegionFinder.pairs(
+                java.util.List.of("eu", "us"), java.util.List.of("eu.example:5058")).size());
+        assertEq("не массив", 0, RegionFinder.pairs("eu", "eu.example").size());
     }
 
     // ------------------------------------------------------------- проверки
