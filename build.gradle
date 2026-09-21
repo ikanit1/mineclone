@@ -66,7 +66,10 @@ def appName = 'Mineclone'
 def jpackageInputDir = layout.buildDirectory.dir('jpackage/input')
 def jpackageOutputDir = layout.buildDirectory.dir('jpackage')
 
-tasks.register('prepareJpackageInput', Copy) {
+// Sync, not Copy: Copy leaves behind whatever an earlier build put here, and a
+// stale LWJGL jar beside the current one ships a release with two versions of
+// the same classes on the classpath.
+tasks.register('prepareJpackageInput', Sync) {
     dependsOn tasks.named('jar')
     into jpackageInputDir
 
