@@ -190,6 +190,8 @@ public class Mob {
     public boolean justStepSound;
     /** Только что вошёл в воду — Game отыгрывает всплеск. */
     public boolean justSplashed;
+    /** Impact speed used to scale the splash sound and particle burst. */
+    public float splashSpeed;
     /** Только что впал в ярость — Game отыгрывает рык и искры. */
     public boolean justEnraged;
     /** Хищник только что укусил добычу: кого. Game снимает ей здоровье. */
@@ -438,8 +440,9 @@ public class Mob {
         if (attackSwing > 0f)
             attackSwing = Math.max(0f, attackSwing - dt);
 
-        if (inWater && !wasInWater)
+        if (inWater && !wasInWater) {
             justSplashed = true;
+        }
         wasInWater = inWater;
 
         applySunBurn(world, dt, daylight);
@@ -524,6 +527,8 @@ public class Mob {
         float previousX = position.x, previousZ = position.z;
         EntityPhysics.Contact c = EntityPhysics.step(world, position, velocity,
                 type.width, type.height, dt, type.maxFallSpeed);
+        if (c.inWater() && !inWater)
+            splashSpeed = Math.max(0f, impactSpeed);
         onGround = c.onGround();
         hitWall = c.hitWall();
         inWater = c.inWater();

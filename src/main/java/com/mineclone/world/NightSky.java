@@ -98,7 +98,7 @@ public final class NightSky {
 
     /** Итоговая яркость сияния с поправкой на биом и облака. */
     public static float auroraStrength(long seed, float gameTime, Biome biome, float cloudiness) {
-        float biomeK = biome == Biome.TUNDRA ? 1f : AURORA_WARM_BIOME;
+        float biomeK = biome.isCold() ? 1f : AURORA_WARM_BIOME;
         float clear = Math.max(0f, 1f - cloudiness * 1.25f);
         return auroraActivity(seed, gameTime) * biomeK * clear;
     }

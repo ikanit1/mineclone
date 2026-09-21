@@ -21,6 +21,7 @@ import com.mineclone.world.ItemStack;
 import com.mineclone.world.Recipes;
 import com.mineclone.game.Player;
 import com.mineclone.game.Hud;
+import com.mineclone.render.Camera;
 import com.mineclone.render.PlayerRenderer;
 import com.mineclone.render.ShadowMap;
 import com.mineclone.render.SunLight;
@@ -51,6 +52,7 @@ public final class TestMain {
 
     public static void main(String[] args) {
         run("optimization invariants", OptimizationTests::run);
+        run("biome assets, sparse structures, seams and falling-block conservation", WorldGenerationTests::run);
         run("a stale mesh never overwrites a fresher one", TestMain::testMeshVersionRejectsStale);
         run("the emitter list tracks the blocks it describes", TestMain::testEmitterListMatchesChunk);
         run("player edits jump the mesh queue ahead of distance", TestMain::testMeshPriorityOrder);
@@ -84,6 +86,8 @@ public final class TestMain {
         run("Mob animation moves at rest and settles after walking", TestMain::testMobAnimation);
         run("chunk save/load round-trip", TestMain::testChunkRoundTrip);
         run("options.dat save/load round-trip", TestMain::testOptionsRoundTrip);
+        run("screen, graphics and gameplay options survive a save",
+                TestMain::testVideoOptionsRoundTrip);
         run("sun light direction never grazes the horizon", TestMain::testSunLightDirection);
         run("shadow strength fades across sunrise", TestMain::testShadowStrength);
         run("shadow cascade covers its radius and snaps to texels",
@@ -105,6 +109,10 @@ public final class TestMain {
         run("cactus grows up to its limit", TestMain::testCactusGrowth);
         run("setBlock skips relighting when opacity is unchanged",
                 TestMain::testSetBlockSkipsRelight);
+        run("incremental sky light matches a full reflood",
+                TestMain::testIncrementalSkyLight);
+        run("water and leaves attenuate skylight by material",
+                TestMain::testMaterialSkyAttenuation);
         run("fire spreads along fuel and eats it", TestMain::testFireSpreadsAndConsumes);
         run("fire without fuel burns out", TestMain::testFireDiesWithoutFuel);
         run("water and rain put fire out, a roof saves it",
@@ -113,6 +121,8 @@ public final class TestMain {
                 TestMain::testSnowAccumulation);
         run("player stops striding when he stops walking",
                 TestMain::testPlayerWalkAmplitude);
+        run("player model faces the same direction as the camera",
+                TestMain::testPlayerModelFacing);
         run("hotbar selection spring starts and settles",
                 TestMain::testSelectSpring);
         run("compass heading turns the right way", TestMain::testCompassHeading);
@@ -198,6 +208,7 @@ public final class TestMain {
         MenuTests.runAll((name, check) -> run(name, check::run));
         MusicTests.runAll((name, check) -> run(name, check::run));
         InventoryTests.runAll((name, check) -> run(name, check::run));
+        NetworkTests.runAll((name, check) -> run(name, check::run));
 
         System.out.println();
         System.out.println("==== " + passed + " passed, " + failed + " failed ====");
@@ -232,14 +243,14 @@ public final class TestMain {
     }
 
     private static void testBiomeParams() {
-        assertEq("5 biomes", 5, Biome.values().length);
+        assertEq("11 biomes", 11, Biome.values().length);
         assertTrue("ocean floor below sea level", Biome.OCEAN.baseHeight < World.SEA_LEVEL);
         assertTrue("tundra surface is snowy grass", Biome.TUNDRA.surfaceBlock == BlockType.SNOWY_GRASS);
         assertTrue("desert surface is sand", Biome.DESERT.surfaceBlock == BlockType.SAND);
         assertTrue("forest denser than plains", Biome.FOREST.treesPer128 > Biome.PLAINS.treesPer128);
         assertTrue("ocean has no trees", Biome.OCEAN.treeType == Biome.TreeType.NONE);
         for (Biome b : Biome.values())
-            assertTrue(b + " amplitude in (0,1]", b.amplitude > 0 && b.amplitude <= 1.0);
+            assertTrue(b + " amplitude in (0,2]", b.amplitude > 0 && b.amplitude <= 2.0);
     }
 
     private static void testByIdGuard() {
@@ -310,6 +321,83 @@ public final class TestMain {
     }
 
     /**
+     * Настройки экрана, графики и игры переживают запись — и старый файл тоже.
+     *
+     * <p>Хвост v7 самоописывающийся: незнакомый ключ читается по виду
+     * значения и пропускается. Проверяем и это — иначе первая же новая
+     * настройка тихо обнулит соседние при чтении сборкой постарше.
+     */
+    private static void testVideoOptionsRoundTrip() throws Exception {
+        SaveManager sm = freshManager();
+        Options.Video video = new Options.Video(1, 3, 75, 8);
+        Options.Graphics gfx = new Options.Graphics(3, false, false, false, true, 1, 0, 45, false, false);
+        Options.Gameplay play = new Options.Gameplay(false, false, false, 2);
+        Options in = new Options(8, 90, 0.7f, 0.5f, 144, false, true, false,
+                1.5f, true, 0.25f, 0.9f, 2, 3, new com.mineclone.core.KeyBindings(),
+                true, false, true, "all", 0, video, gfx, play);
+        sm.saveOptions(in);
+        Options out = sm.loadOptions();
+        assertEq("windowMode", 1, out.video.windowMode());
+        assertEq("resolutionIndex", 3, out.video.resolutionIndex());
+        assertEq("renderScale", 75, out.video.renderScale());
+        assertEq("antialiasing", 8, out.video.antialiasing());
+        assertEq("shadows", 3, out.graphics.shadows());
+        assertTrue("bloom off", !out.graphics.bloom());
+        assertTrue("water reflections on", out.graphics.waterReflections());
+        assertEq("particles", 1, out.graphics.particles());
+        assertEq("weather", 0, out.graphics.weather());
+        assertEq("entityDistance", 45, out.graphics.entityDistance());
+        assertTrue("occlusion off", !out.graphics.occlusion());
+        assertTrue("chunk lod off", !out.graphics.chunkLod());
+        assertTrue("camera shake off", !out.gameplay.cameraShake());
+        assertEq("fpsDisplay", 2, out.gameplay.fpsDisplay());
+        assertTrue("advanced tooltips survive", out.advancedTooltips);
+
+        // Настоящий файл шестой версии, собранный байтами: новых настроек в
+        // нём нет, и они обязаны стать умолчаниями, а не нулями. Через
+        // saveOptions такой файл не получить — он всегда пишет текущую версию.
+        File root = freshRoot();
+        SaveManager old6 = new SaveManager(new File(root, "saves"));
+        writeOptionsV6(new File(root, SaveFormat.OPTIONS_FILE));
+        Options legacy = old6.loadOptions();
+        assertEq("legacy render radius", 4, legacy.renderRadius);
+        assertEq("legacy gui scale", 1, legacy.guiScale);
+        assertEq("legacy render scale", Options.Video.defaults().renderScale(),
+                legacy.video.renderScale());
+        assertEq("legacy shadows", Options.Graphics.defaults().shadows(), legacy.graphics.shadows());
+        assertTrue("legacy occlusion", legacy.graphics.occlusion());
+    }
+
+    /** options.dat ровно в том виде, в каком его писала шестая версия. */
+    private static void writeOptionsV6(File f) throws Exception {
+        try (java.io.DataOutputStream out = new java.io.DataOutputStream(
+                new java.util.zip.GZIPOutputStream(new java.io.FileOutputStream(f)))) {
+            out.writeInt(SaveFormat.MAGIC);
+            out.writeInt(6);
+            out.writeInt(4);          // renderRadius
+            out.writeInt(70);         // fov
+            out.writeFloat(1f);       // brightness
+            out.writeFloat(1f);       // master
+            out.writeInt(0);          // maxFps
+            out.writeBoolean(true);   // vsync
+            out.writeBoolean(false);  // fullscreen
+            out.writeBoolean(true);   // viewBobbing
+            out.writeFloat(1f);       // sensitivity
+            out.writeBoolean(false);  // invertY
+            out.writeFloat(1f);       // music
+            out.writeFloat(1f);       // effects
+            out.writeInt(1);          // guiScale
+            out.writeInt(1);          // shaderQuality
+            out.writeInt(0);          // раскладка клавиш: пусто — значит по умолчанию
+            out.writeBoolean(false);  // advancedTooltips
+            out.writeBoolean(false);  // recipeBookOpen
+            out.writeBoolean(false);  // recipeBookCraftable
+            out.writeUTF("all");
+            out.writeInt(0);          // sortMode
+        }
+    }
+
+    /**
      * walkedDistance монотонен и на месте не убывает, поэтому размах шага
      * обязан гаснуть отдельной амплитудой — иначе остановившийся игрок
      * застывает с раскинутыми ногами.
@@ -326,6 +414,64 @@ public final class TestMain {
         // Амплитуда выше единицы не должна выкручивать ноги за предел.
         assertTrue("amplitude is clamped",
                 Math.abs(PlayerRenderer.swingOf(mid, 5f) - PlayerRenderer.swingOf(mid, 1f)) < 1e-6f);
+    }
+
+    /**
+     * Лицевая грань скина лежит на локальной -Z. При переводе yaw/pitch камеры
+     * в поворот модели она должна смотреть в тот же вектор, а не зеркально от
+     * него: иначе удалённый игрок при повороте оказывается боком или спиной.
+     */
+    private static void testPlayerModelFacing() {
+        Camera camera = new Camera();
+        camera.yaw = (float) Math.toRadians(90);
+        camera.pitch = (float) Math.toRadians(25);
+
+        Vector3f modelForward = playerHeadForward(camera.yaw, camera.pitch);
+        Vector3f cameraForward = camera.forward();
+        assertTrue("model X follows camera (" + modelForward + " vs " + cameraForward + ")",
+                Math.abs(modelForward.x - cameraForward.x) < 1e-5f);
+        assertTrue("model Y follows camera (" + modelForward + " vs " + cameraForward + ")",
+                Math.abs(modelForward.y - cameraForward.y) < 1e-5f);
+        assertTrue("model Z follows camera (" + modelForward + " vs " + cameraForward + ")",
+                Math.abs(modelForward.z - cameraForward.z) < 1e-5f);
+
+        // Корпус развёрнут на предел в сторону — голова обязана остаться на
+        // курсе взгляда, иначе иерархия «корпус → голова» собрана неверно.
+        float bodyYaw = camera.yaw - com.mineclone.render.BodyRotation.MAX_OFFSET;
+        Vector3f turned = playerHeadForward(bodyYaw, camera.yaw, camera.pitch);
+        assertTrue("head keeps the camera direction over a turned body ("
+                        + turned + " vs " + cameraForward + ")",
+                Math.abs(turned.x - cameraForward.x) < 1e-5f
+                        && Math.abs(turned.y - cameraForward.y) < 1e-5f
+                        && Math.abs(turned.z - cameraForward.z) < 1e-5f);
+    }
+
+    /** Calls the shared colour/shadow transform without needing an OpenGL context. */
+    private static Vector3f playerHeadForward(float yaw, float pitch) {
+        return playerHeadForward(yaw, yaw, pitch);
+    }
+
+    /**
+     * То же, но корпус и голова врозь.
+     *
+     * <p>Голова обязана смотреть туда, куда смотрит камера, каким бы ни был
+     * курс корпуса: иерархия «корпус → голова» на то и заведена.
+     */
+    private static Vector3f playerHeadForward(float bodyYaw, float headYaw, float pitch) {
+        try {
+            var body = PlayerRenderer.class.getDeclaredField("BODY");
+            body.setAccessible(true);
+            Object head = java.lang.reflect.Array.get(body.get(null), 1);
+            var matrix = Arrays.stream(PlayerRenderer.class.getDeclaredMethods())
+                    .filter(method -> method.getName().equals("partMatrix"))
+                    .findFirst().orElseThrow();
+            matrix.setAccessible(true);
+            Matrix4f out = new Matrix4f();
+            matrix.invoke(null, new Vector3f(), bodyYaw, headYaw, pitch, 0f, 0f, 0f, head, out);
+            return out.transformDirection(new Vector3f(0f, 0f, -1f)).normalize();
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError("cannot inspect player head transform", e);
+        }
     }
 
     /**
@@ -945,7 +1091,7 @@ public final class TestMain {
     private static void testFurnaceSmelting() {
         var f = new com.mineclone.world.Furnace();
         f.input = ItemStack.of("beef", 3);
-        f.fuel = new ItemStack(BlockType.COAL_ORE, 1);
+        f.fuel = ItemStack.of("coal", 1);
 
         // Первый же тик поджигает печь и съедает единицу топлива.
         assertTrue("lighting the furnace changes the slots", f.tick(0.1f));
@@ -978,7 +1124,7 @@ public final class TestMain {
         // Полный выходной слот останавливает печь: иначе результат исчезает.
         var f = new com.mineclone.world.Furnace();
         f.input = new ItemStack(BlockType.SAND, 10);
-        f.fuel = new ItemStack(BlockType.COAL_ORE, 5);
+        f.fuel = ItemStack.of("coal", 5);
         f.output = new ItemStack(BlockType.GLASS, 64);
         stepFurnace(f, 30f, 0.25f);
         assertEq("a full output stops the furnace", 64, f.output.count);
@@ -994,7 +1140,7 @@ public final class TestMain {
         // Что не плавится — не плавится.
         var idle = new com.mineclone.world.Furnace();
         idle.input = new ItemStack(BlockType.DIRT, 5);
-        idle.fuel = new ItemStack(BlockType.COAL_ORE, 1);
+        idle.fuel = ItemStack.of("coal", 1);
         stepFurnace(idle, 30f, 0.25f);
         assertTrue("dirt does not smelt", idle.output == null);
         assertEq("and burns no coal", 1, idle.fuel.count);
@@ -1383,8 +1529,8 @@ public final class TestMain {
 
     /** Ищет колонку тундры с открытым небом: снег ложится только там. */
     private static int[] findTundraColumn(World w) {
-        for (int cx = -3; cx <= 3; cx++)
-            for (int cz = -3; cz <= 3; cz++) {
+        for (int cx = -100; cx <= 100; cx += 4)
+            for (int cz = -100; cz <= 100; cz += 4) {
                 if (w.biomes.biomeAt(cx * Chunk.SIZE_X + 8, cz * Chunk.SIZE_Z + 8) != Biome.TUNDRA)
                     continue;
                 Chunk c = w.getChunk(cx, cz);
@@ -1626,6 +1772,87 @@ public final class TestMain {
      * тики блоков делают десятки таких замен в секунду, и полная BFS-заливка
      * неба на каждую травинку съедала бы кадр.
      */
+    /**
+     * Точечная правка света обязана давать ровно то же, что полная заливка.
+     *
+     * Инкрементальный свет — это оптимизация, а не новая механика: стоит ему
+     * разойтись с эталоном, и в мире появятся тёмные пятна, которые видно
+     * только глазами и только иногда. Поэтому проверка сравнивает все 32 768
+     * ячеек после каждой пачки случайных правок: ломаем, ставим, роем шахту,
+     * накрываем крышей — и сверяемся с {@code computeSkyLight()}.
+     */
+    private static void testIncrementalSkyLight() {
+        java.util.Random rnd = new java.util.Random(20260920L);
+        for (int trial = 0; trial < 6; trial++) {
+            World w = new World(700L + trial);
+            Chunk c = w.getChunk(0, 0);
+            for (int step = 0; step < 40; step++) {
+                int x = rnd.nextInt(Chunk.SIZE_X);
+                int z = rnd.nextInt(Chunk.SIZE_Z);
+                int y = 1 + rnd.nextInt(Chunk.SIZE_Y - 2);
+                BlockType t = switch (rnd.nextInt(4)) {
+                    case 0 -> BlockType.AIR;
+                    case 1 -> BlockType.STONE;
+                    case 2 -> BlockType.GLASS;
+                    default -> BlockType.LEAVES;
+                };
+                w.setBlock(x, y, z, t);
+            }
+            // Вертикальная шахта и крыша над ней — самые злые случаи: столб
+            // неба режется и восстанавливается целиком.
+            for (int y = 60; y < 100; y++)
+                w.setBlock(5, y, 5, BlockType.AIR);
+            w.processPendingSkyRelights(Integer.MAX_VALUE);
+            byte[] incremental = skySnapshot(c);
+            w.setBlock(5, 99, 5, BlockType.STONE);
+            w.processPendingSkyRelights(Integer.MAX_VALUE);
+            byte[] roofed = skySnapshot(c);
+            w.setBlock(5, 99, 5, BlockType.AIR);
+            w.processPendingSkyRelights(Integer.MAX_VALUE);
+
+            byte[] afterEdits = skySnapshot(c);
+            c.computeSkyLight();
+            assertTrue("reopened shaft matches a full reflood",
+                    java.util.Arrays.equals(afterEdits, skySnapshot(c)));
+            assertTrue("a shaft is brighter than the same shaft with a roof",
+                    brightness(incremental) > brightness(roofed));
+        }
+    }
+
+    private static void testMaterialSkyAttenuation() {
+        Chunk air = new Chunk(0, 0);
+        air.computeSkyLight();
+        Chunk water = new Chunk(0, 0);
+        Chunk leaves = new Chunk(0, 0);
+        for (int x = 0; x < Chunk.SIZE_X; x++)
+            for (int z = 0; z < Chunk.SIZE_Z; z++)
+                for (int y = 110; y < 114; y++) {
+                    water.set(x, y, z, BlockType.WATER);
+                    leaves.set(x, y, z, BlockType.LEAVES);
+                }
+        water.computeSkyLight();
+        leaves.computeSkyLight();
+        assertTrue("water darkens its column", water.getSkyLight(8, 109, 8) < air.getSkyLight(8, 109, 8));
+        assertTrue("leaves attenuate harder than water",
+                leaves.getSkyLight(8, 109, 8) < water.getSkyLight(8, 109, 8));
+    }
+
+    private static byte[] skySnapshot(Chunk c) {
+        byte[] out = new byte[Chunk.SIZE_X * Chunk.SIZE_Y * Chunk.SIZE_Z];
+        for (int x = 0; x < Chunk.SIZE_X; x++)
+            for (int y = 0; y < Chunk.SIZE_Y; y++)
+                for (int z = 0; z < Chunk.SIZE_Z; z++)
+                    out[Chunk.idx(x, y, z)] = (byte) c.getSkyLight(x, y, z);
+        return out;
+    }
+
+    private static long brightness(byte[] light) {
+        long sum = 0;
+        for (byte b : light)
+            sum += b & 0xFF;
+        return sum;
+    }
+
     private static void testSetBlockSkipsRelight() {
         World w = flatWorld(34L);
         int y = 70;
@@ -1779,17 +2006,18 @@ public final class TestMain {
         World w = new World(seed);
         int found = 0, scanned = 0;
         // Признак постройки — рукотворный блок на поверхности или над ней.
-        for (int cx = -6; cx <= 6; cx++)
-            for (int cz = -6; cz <= 6; cz++) {
-                Chunk c = w.getChunk(cx, cz);
+        for (int cx = -60; cx <= 60; cx++)
+            for (int cz = -60; cz <= 60; cz++) {
                 scanned++;
+                if (com.mineclone.world.Structures.candidateKind(cx, cz, seed) < 0) continue;
+                Chunk c = w.getChunk(cx, cz);
                 boolean hit = false;
                 for (int x = 0; x < Chunk.SIZE_X && !hit; x++)
                     for (int z = 0; z < Chunk.SIZE_Z && !hit; z++)
-                        for (int y = World.SEA_LEVEL; y < Chunk.SIZE_Y - 1; y++) {
+                        for (int y = 1; y < Chunk.SIZE_Y - 1; y++) {
                             BlockType b = c.get(x, y, z);
                             if (b == BlockType.COBBLE || b == BlockType.PLANKS
-                                    || b == BlockType.GLASS) {
+                                    || b == BlockType.GLASS || b == BlockType.MOSSY_COBBLE || b == BlockType.TORCH) {
                                 hit = true;
                                 // Постройка обязана целиком лежать внутри чанка:
                                 // генерация пишет только в свой чанк, и на
@@ -1971,7 +2199,7 @@ public final class TestMain {
         for (int x = -4000; x <= 4000; x += 32)
             for (int z = -4000; z <= 4000; z += 32)
                 seen.add(p.biomeAt(x, z));
-        assertEq("all five biomes occur within 4000 blocks", 5, seen.size());
+        assertEq("all eleven biomes occur within 4000 blocks", 11, seen.size());
     }
 
     private static int surfaceY(Chunk c, int x, int z) {
@@ -2001,9 +2229,8 @@ public final class TestMain {
                         int y = surfaceY(c, x, z);
                         if (caves.isCave(wx, y + 1, wz))
                             continue;   // колонка вскрыта пещерой
-                        Biome b = bp.biomeAtGrid(Math.floorDiv(wx, BiomeProvider.GRID_STEP),
-                                Math.floorDiv(wz, BiomeProvider.GRID_STEP));
-                        BlockType expected = (y <= World.SEA_LEVEL + 1) ? BlockType.SAND : b.surfaceBlock;
+                        Biome b = bp.biomeAt(wx, wz);
+                        BlockType expected = World.surfaceFor(b, y);
                         BlockType actual = c.get(x, y, z);
                         assertTrue("surface @" + wx + "," + wz + " biome=" + b
                                 + " expected=" + expected + " got=" + actual, actual == expected);
@@ -2037,8 +2264,13 @@ public final class TestMain {
         long seed = 1001L;
         World w = new World(seed);
         boolean sawCactus = false, sawTrunk = false;
-        for (int cx = -6; cx <= 6; cx++)
-            for (int cz = -6; cz <= 6; cz++) {
+        int[] sampled = new int[Biome.values().length];
+        for (int cx = -150; cx <= 150; cx += 3)
+            for (int cz = -150; cz <= 150; cz += 3) {
+                Biome biome = w.biomes.biomeAt(cx * 16 + 8, cz * 16 + 8);
+                if (biome.treeType == Biome.TreeType.NONE || sampled[biome.ordinal()] >= 4
+                        || w.terrainHeight(cx * 16 + 8, cz * 16 + 8) <= World.SEA_LEVEL + 1) continue;
+                sampled[biome.ordinal()]++;
                 Chunk c = w.getChunk(cx, cz);
                 for (int x = 0; x < Chunk.SIZE_X; x++)
                     for (int z = 0; z < Chunk.SIZE_Z; z++)
@@ -2047,14 +2279,14 @@ public final class TestMain {
                             BlockType below = c.get(x, y - 1, z);
                             if (t == BlockType.CACTUS) {
                                 sawCactus = true;
-                                assertTrue("cactus on sand/cactus @" + x + "," + y + "," + z,
-                                        below == BlockType.SAND || below == BlockType.CACTUS);
+                                assertTrue("cactus on sand/cactus @" + (cx * 16 + x) + "," + y + "," + (cz * 16 + z) + ", got " + below,
+                                        below == BlockType.SAND || below == BlockType.RED_SAND || below == BlockType.CACTUS);
                                 assertTrue("cactus above water line", y > World.SEA_LEVEL + 1);
                             }
                             if (t == BlockType.WOOD && below != BlockType.WOOD) {
                                 sawTrunk = true;
                                 assertTrue("trunk base on grass/snowy grass, got " + below,
-                                        below == BlockType.GRASS || below == BlockType.SNOWY_GRASS);
+                                        below.isSoil());
                             }
                         }
             }
@@ -2076,6 +2308,7 @@ public final class TestMain {
         assertEq("snowy grass drops dirt", BlockType.DIRT, BlockType.SNOWY_GRASS.getDrop());
         assertEq("leaves drop nothing", BlockType.AIR, BlockType.LEAVES.getDrop());
         assertEq("water drops nothing", BlockType.AIR, BlockType.WATER.getDrop());
+        assertEq("torch drops itself", BlockType.TORCH, BlockType.TORCH.getDrop());
         assertEq("dirt drops itself", BlockType.DIRT, BlockType.DIRT.getDrop());
         assertEq("wood drops itself", BlockType.WOOD, BlockType.WOOD.getDrop());
     }
@@ -3162,7 +3395,19 @@ public final class TestMain {
     private static void testCrafting() {
         Inventory inv = new Inventory();
         inv.add(new ItemStack(BlockType.COBBLE, 3));
-        inv.add(new ItemStack(BlockType.PLANKS, 1));
+        inv.add(ItemStack.of("stick", 2));
+
+        ItemStack[] grid = new ItemStack[9];
+        grid[0] = new ItemStack(BlockType.COBBLE, 1);
+        grid[1] = new ItemStack(BlockType.COBBLE, 1);
+        grid[2] = new ItemStack(BlockType.COBBLE, 1);
+        grid[4] = ItemStack.of("stick");
+        grid[7] = ItemStack.of("stick");
+        var shaped = Recipes.match(grid, 3);
+        assertTrue("3x3 shape offers a stone pickaxe",
+                shaped != null && shaped.result() == item("stone_pickaxe"));
+        assertTrue("shape consumes its five cells", Recipes.consume(grid, 3) != null
+                && grid[0] == null && grid[4] == null && grid[7] == null);
 
         var list = Recipes.available(inv);
         assertTrue("stone pickaxe is offered", list.stream()
@@ -3185,16 +3430,17 @@ public final class TestMain {
         // Второй раз собрать не из чего.
         assertTrue("cannot craft without materials", !Recipes.craft(inv, pickRecipe));
 
-        // Рукоять того же вида считается отдельно: деревянная кирка это
-        // три доски плюс доска, а не три доски.
+        // Рукоять — отдельный материал: деревянная кирка это три доски плюс
+        // две палки, а не четыре доски.
         Inventory wood = new Inventory();
         wood.add(new ItemStack(BlockType.PLANKS, 3));
         var woodPick = java.util.Arrays.stream(Recipes.all())
                 .filter(r -> r.result() == item("wooden_pickaxe")).findFirst().orElse(null);
         assertTrue("three planks are not enough for a wooden pickaxe",
                 !Recipes.canCraft(wood, woodPick));
-        wood.add(new ItemStack(BlockType.PLANKS, 1));
-        assertTrue("four planks are", Recipes.canCraft(wood, woodPick));
+        wood.add(ItemStack.of("stick", 2));
+        assertTrue("three planks and two sticks are enough",
+                Recipes.canCraft(wood, woodPick));
     }
 
     private static void testRecipeTable() {

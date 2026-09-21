@@ -74,6 +74,27 @@ final class Autopilot {
         /** Как {@code /music next}: погасить трек и начать другой. */
         void musicNext();
 
+        /** Поставить игрока в точку мира. */
+        void teleport(float x, float y, float z);
+
+        /** Повернуть взгляд на точку мира. */
+        void lookAt(float x, float y, float z);
+
+        /** Сколько чужих игроков видит сессия. */
+        int netPlayers();
+
+        /** Мы хозяин комнаты. */
+        boolean netIsHost();
+
+        /** Точка появления мира в блоках: общая у хозяина и участника. */
+        int[] spawnBlock();
+
+        /** Имя блока в мире или пусто, если мира нет. */
+        String blockAt(int x, int y, int z);
+
+        /** Поставить блок напрямую — как это сделал бы игрок. */
+        void setBlockAt(int x, int y, int z, String block);
+
         /** Поставить курсор в виртуальные координаты интерфейса. */
         void mouseAt(float vx, float vy);
 
@@ -94,6 +115,12 @@ final class Autopilot {
 
         /** Переключить режим в творческий — окно креатива открывается только в нём. */
         void setCreative();
+
+        /**
+         * Довернуть камеру, градусы. Мимо мыши: замеру нужен ровный поворот,
+         * а не правдоподобный ввод.
+         */
+        void look(float yawDegrees, float pitchDegrees);
     }
 
     /** Сколько предметов этого вида лежит в инвентаре — для проверок окна. */
@@ -153,8 +180,46 @@ final class Autopilot {
         });
     }
 
-    /** Дольше этого прогон не идёт: зависшая загрузка не должна висеть вечно. */
-    static final float TIMEOUT = 150f;
+    /**
+     * Сетевой прогон: {@code -Dmineclone.autopilot.net=host|join}.
+     *
+     * <p>Два процесса, настоящие сокеты, настоящая игра. Хозяин открывает мир
+     * комнатой, участник входит, и каждый ставит блок, который обязан
+     * появиться у другого. Проверяет ровно то, чего не видит ни один тест без
+     * окна: как {@code Game} собирает сессию, строит чужой мир по сиду и
+     * применяет чужую правку.
+     */
+    private static final String NET_MODE = System.getProperty("mineclone.autopilot.net", "");
+    private static final int NET_PORT =
+            Integer.getInteger("mineclone.autopilot.netPort", com.mineclone.net.LanTransport.DEFAULT_PORT);
+    /**
+     * Через что идёт сетевой прогон: {@code lan} или {@code photon}.
+     *
+     * <p>Прямое соединение проверяется всегда — оно ничего не стоит и ни от
+     * кого не зависит. Photon поднимается отдельной командой: он тратит
+     * бесплатный лимит одновременных игроков и требует интернета.
+     */
+    private static final String NET_VIA = System.getProperty("mineclone.autopilot.netVia", "lan");
+    /**
+     * Регион Photon задан явно, а не «авто»: хозяин и участник обязаны
+     * оказаться на одном мастер-сервере, иначе комнаты друг друга они не
+     * увидят.
+     */
+    private static final String NET_REGION = System.getProperty("mineclone.autopilot.netRegion", "eu");
+
+    /**
+     * Настройки сети для прогона.
+     *
+     * <p>Имя комнаты у Photon берётся от порта: он уникален на запуск, и два
+     * прогона подряд не наступят друг другу на комнату.
+     */
+    /**
+     * Дольше этого прогон не идёт: зависшая загрузка не должна висеть вечно.
+     *
+     * <p>Через Photon запас больше: путь до комнаты идёт через три сервера,
+     * и каждый шаг — это круг до облака и обратно.
+     */
+    static final float TIMEOUT = "photon".equals(NET_VIA) ? 240f : 150f;
 
     /**
      * Шаг: дождаться условия и паузы после предыдущего шага, сделать дело.
@@ -184,7 +249,119 @@ final class Autopilot {
         return state.equals(d.state());
     }
 
-    private final List<Step> steps = List.of(
+    private static com.mineclone.net.NetSettings netSettings(String address) {
+        String who = address.isEmpty() ? "Хозяин" : "Гость";
+        if ("photon".equals(NET_VIA))
+            return new com.mineclone.net.NetSettings(com.mineclone.net.NetSettings.PHOTON,
+                    who, "", NET_REGION, "autopilot-" + NET_PORT, "", NET_PORT);
+        return new com.mineclone.net.NetSettings(com.mineclone.net.NetSettings.LAN,
+                who, "", "", "lan", address, NET_PORT);
+    }
+
+    /**
+     * Пол площадки над точкой появления.
+     *
+     * <p>Рельеф у точки появления какой угодно — бывает и склон, и нависающая
+     * скала. Ровная площадка в воздухе даёт обоим одну высоту, полный свет
+     * неба и чистый фон: только на ней видно, где именно стоит чужая модель.
+     */
+    private static int[] floorAt(Driver d, int dx, int dz) {
+        int[] spawn = d.spawnBlock();
+        return new int[] { spawn[0] + dx, Math.min(116, spawn[1] + 20), spawn[2] + dz };
+    }
+
+    /** Блок-метка обмена: в воздухе над площадкой, чтобы её ни с чем не спутать. */
+    private static int[] mark(Driver d, int dx, int dz) {
+        int[] f = floorAt(d, dx, dz);
+        return new int[] { f[0], f[1] + 3, f[2] };
+    }
+
+    /** Ширина и глубина площадки в блоках. */
+    private static final int PAD_X = 10, PAD_Z = 4;
+    /** Насколько участник стоит в стороне от хозяина, блоки. */
+    private static final int APART = 6;
+
+    private static void buildPad(Driver d) {
+        for (int dx = -1; dx < PAD_X; dx++)
+            for (int dz = -1; dz < PAD_Z; dz++) {
+                int[] at = floorAt(d, dx, dz);
+                d.setBlockAt(at[0], at[1], at[2], "STONE");
+            }
+    }
+
+    /** Встать на площадку в точке (dx, dz) и смотреть в глаза стоящему напротив. */
+    private static void standAt(Driver d, int dx, int otherDx) {
+        int[] here = floorAt(d, dx, 0);
+        d.teleport(here[0] + 0.5f, here[1] + 1f, here[2] + 0.5f);
+        int[] there = floorAt(d, otherDx, 0);
+        d.lookAt(there[0] + 0.5f, there[1] + 1f + 1.62f, there[2] + 0.5f);
+    }
+
+    private static void ok(String what) {
+        System.out.println("autopilot: ok - " + what);
+    }
+
+    private final List<Step> hostSteps = List.of(
+            step("create a world for the room", 1.0f, d -> d.act(MenuAction.create(
+                    new WorldSettings("Net room", 20260921L, GameMode.CREATIVE)))),
+            when("the world is loaded", 0.5f, d -> in(d, "PLAYING"), d -> ok("world loaded")),
+            step("open the room", 0.3f, d -> {
+                java.util.List<com.mineclone.save.SaveManager.WorldInfo> worlds =
+                        d.save().listWorlds(false);
+                if (worlds.isEmpty())
+                    throw new IllegalStateException("no world to host");
+                d.act(MenuAction.netHost(worlds.get(0).id, netSettings("")));
+            }),
+            when("the room is open", 0.5f, d -> in(d, "PLAYING") && d.netIsHost(),
+                    d -> ok("hosting the room")),
+            when("a guest arrived", 0.5f, d -> d.netPlayers() >= 1, d -> ok("a guest arrived")),
+            step("build a platform", 0.3f, Autopilot::buildPad),
+            step("stand on it", 0.6f, d -> standAt(d, 0, APART)),
+            step("place a block for the guest", 0.4f, d -> {
+                int[] at = mark(d, 0, 0);
+                d.setBlockAt(at[0], at[1], at[2], "TORCH");
+            }),
+            when("the guest answered with a block", 0.5f, d -> {
+                int[] at = mark(d, 2, 2);
+                return "GLASS".equals(d.blockAt(at[0], at[1], at[2]));
+            }, d -> ok("the guest's block arrived")),
+            when("the guest is standing where it said", 1.2f,
+                    d -> d.netPlayers() >= 1, d -> ok("the guest is in place")),
+            step("look at the guest", 0.3f, d -> standAt(d, 0, APART)),
+            step("shoot the host", 0.5f, d -> d.shot("net-host")),
+            // Хозяин уходит последним: его выход закрывает комнату, и участник
+            // успел бы снять титульный экран вместо мира.
+            step("hold the room open", 5.0f, d -> ok("room held open for the guest")));
+
+    private final List<Step> guestSteps = List.of(
+            step("join the room", 1.5f,
+                    d -> d.act(MenuAction.netJoin(netSettings("127.0.0.1:" + NET_PORT)))),
+            when("the host's world is loaded", 0.5f, d -> in(d, "PLAYING"),
+                    d -> ok("joined the world")),
+            when("the host is visible", 0.5f, d -> d.netPlayers() >= 1 && !d.netIsHost(),
+                    d -> ok("the host is visible")),
+            when("the platform arrived", 0.5f, d -> {
+                int[] at = floorAt(d, APART, 0);
+                return "STONE".equals(d.blockAt(at[0], at[1], at[2]));
+            }, d -> ok("the platform arrived")),
+            step("stand on it", 0.4f, d -> standAt(d, APART, 0)),
+            when("the host's block arrived", 0.5f, d -> {
+                int[] at = mark(d, 0, 0);
+                return "TORCH".equals(d.blockAt(at[0], at[1], at[2]));
+            }, d -> ok("the host's block arrived")),
+            step("answer with a block", 0.4f, d -> {
+                int[] at = mark(d, 2, 2);
+                d.setBlockAt(at[0], at[1], at[2], "GLASS");
+            }),
+            when("the answer stayed after the host confirmed it", 1.0f, d -> {
+                int[] at = mark(d, 2, 2);
+                return "GLASS".equals(d.blockAt(at[0], at[1], at[2]));
+            }, d -> ok("the host kept the guest's block")),
+            step("look at the host", 0.3f, d -> standAt(d, APART, 0)),
+            step("shoot the guest", 0.5f, d -> d.shot("net-guest")),
+            step("hold still", 2.5f, d -> ok("held still for the host")));
+
+    private final List<Step> menuSteps = List.of(
             step("dusk", 2.5f, d -> d.setMenuTime((float) (Math.PI * 0.93))),
             step("shoot dusk", 0.4f, d -> d.shot("00-title-dusk")),
             step("night", 0.1f, d -> d.setMenuTime((float) (Math.PI * 1.5))),
@@ -328,6 +505,7 @@ final class Autopilot {
             expect("Esc leaves the creative window", 0.6f, "PLAYING"));
 
     private final Driver d;
+    private final List<Step> steps;
     private float clock;
     private float stepClock;
     private int index;
@@ -335,6 +513,11 @@ final class Autopilot {
 
     Autopilot(Driver driver) {
         this.d = driver;
+        this.steps = switch (NET_MODE) {
+            case "host" -> hostSteps;
+            case "join" -> guestSteps;
+            default -> menuSteps;
+        };
     }
 
     void update(float dt) {

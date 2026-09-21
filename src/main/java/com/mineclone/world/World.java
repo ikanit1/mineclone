@@ -3,6 +3,7 @@ package com.mineclone.world;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
@@ -11,12 +12,14 @@ public class World {
     public static final int SEA_LEVEL = 50;
 
     private final Map<Long, Chunk> chunks = new ConcurrentHashMap<>();
+    private final LinkedHashSet<Long> pendingSkyRelights = new LinkedHashSet<>();
     private final PerlinNoise heightNoise;
     private final PerlinNoise detailNoise;
     public final BiomeProvider biomes;
     private final Caves caves;
     public final Rivers rivers;
     public final long seed;
+    public final FallingBlocks falling = new FallingBlocks(this);
 
     public World(long seed) {
         this.seed = seed;
@@ -31,6 +34,39 @@ public class World {
         return (((long) cx) << 32) ^ (cz & 0xFFFFFFFFL);
     }
 
+    /**
+     * Кто-то смотрит за правками блоков.
+     *
+     * <p>Единственный, кому это нужно, — сетевая сессия: любая правка,
+     * откуда бы она ни пришла (кирка, растёкшаяся вода, выросший кактус),
+     * обязана уехать остальным игрокам. Ловить их по всем вызывающим было бы
+     * ошибкой на каждый новый вызов {@code setBlock}, а тут воронка одна.
+     */
+    public interface BlockObserver {
+        void changed(int wx, int wy, int wz, BlockType old, BlockType now, byte meta);
+    }
+
+    private BlockObserver observer;
+    /**
+     * Правка с meta идёт в два приёма, и наблюдателя зовёт только второй:
+     * иначе сеть увидела бы блок со старой meta, а следом — ничего.
+     */
+    private boolean deferObserver;
+
+    public void setBlockObserver(BlockObserver o) {
+        this.observer = o;
+    }
+
+    public BlockObserver blockObserver() {
+        return observer;
+    }
+
+    private void notifyChanged(int wx, int wy, int wz, BlockType old, BlockType now, byte meta) {
+        if (observer != null)
+            observer.changed(wx, wy, wz, old, now, meta);
+    }
+
+
     public Chunk getChunk(int cx, int cz) {
         return chunks.computeIfAbsent(key(cx, cz), k -> generate(cx, cz));
     }
@@ -40,6 +76,8 @@ public class World {
     }
 
     public Chunk removeChunk(int cx, int cz) {
+        falling.forget(cx, cz);
+        pendingSkyRelights.remove(key(cx, cz));
         return chunks.remove(key(cx, cz));
     }
 
@@ -56,25 +94,55 @@ public class World {
      * поставил на свою землю, у нас повиснет в воздухе или уйдёт в грунт.
      */
     private int columnHeight(int wx, int wz, Biome[][] grid, int gi, int gj) {
-        // Сглаживание по окну 5x5: границы биомов дают склон, а не обрыв.
-        double base = 0, amp = 0;
-        for (int ox = -2; ox <= 2; ox++)
-            for (int oz = -2; oz <= 2; oz++) {
+        // Continuous tent filter: the previous equal-weight grid jumped every four blocks.
+        double base = 0, amp = 0, weight = 0, alpine = 0, mesa = 0, volcanic = 0;
+        double fx = Math.floorMod(wx, 4) / 4.0, fz = Math.floorMod(wz, 4) / 4.0;
+        for (int ox = -2; ox <= 3; ox++)
+            for (int oz = -2; oz <= 3; oz++) {
                 Biome b = grid[gi + ox][gj + oz];
-                base += b.baseHeight;
-                amp += b.amplitude;
+                double w = Math.max(0, 3 - Math.abs(ox - fx)) * Math.max(0, 3 - Math.abs(oz - fz));
+                base += b.baseHeight * w;
+                amp += b.amplitude * w;
+                weight += w;
+                if (b == Biome.ALPINE) alpine += w;
+                if (b == Biome.BADLANDS) mesa += w;
+                if (b == Biome.VOLCANIC) volcanic += w;
             }
-        base /= 25.0;
-        amp /= 25.0;
+        base /= weight;
+        amp /= weight;
         double n = heightNoise.fbm(wx * 0.012, wz * 0.012, 5, 2.0, 0.5);
         double d = detailNoise.fbm(wx * 0.05, wz * 0.05, 3, 2.0, 0.5);
-        int height = (int) (base + n * 22 * amp + d * 4);
+        double ridge = 1 - Math.abs(heightNoise.fbm((wx + 531) * 0.008, (wz - 713) * 0.008, 3, 2, 0.5));
+        double relief = base + n * 22 * amp + d * 3 * Math.min(1, amp);
+        relief += (alpine * 23 + volcanic * 12) / weight * ridge * ridge * ridge;
+        // Broad flat-topped mesas, blended continuously into surrounding biomes.
+        double terrace = Math.floor(relief / 7) * 7 + 7 * smooth((relief % 7) / 7);
+        relief += (terrace - relief) * mesa / weight;
+        int height = (int) Math.round(relief);
         height = Math.max(2, Math.min(Chunk.SIZE_Y - 4, height));
         // Реки и озёра — это размыв колонны, а не отдельный блок: высота
         // опускается ниже уровня моря, и вода наливается тем же правилом,
         // что наполняет океан. Делается до всего остального, потому что
         // дальше все проходы читают heights.
         return rivers.carve(wx, wz, height, SEA_LEVEL);
+    }
+
+    private static double smooth(double t) { return t * t * (3 - 2 * t); }
+
+    /** Same height function used for generation and structure-site validation. */
+    public int terrainHeight(int wx, int wz) {
+        int gx = Math.floorDiv(wx, 4), gz = Math.floorDiv(wz, 4);
+        Biome[][] grid = new Biome[6][6];
+        for (int x = 0; x < 6; x++) for (int z = 0; z < 6; z++)
+            grid[x][z] = biomes.biomeAtGrid(gx + x - 2, gz + z - 2);
+        return columnHeight(wx, wz, grid, 2, 2);
+    }
+
+    public static BlockType surfaceFor(Biome biome, int height) {
+        if (biome == Biome.SWAMP) return BlockType.PEAT;
+        if (height <= SEA_LEVEL + 1) return BlockType.SAND;
+        if (biome == Biome.ALPINE && height >= 96) return BlockType.SNOWY_GRASS;
+        return biome.surfaceBlock;
     }
 
     /**
@@ -97,11 +165,9 @@ public class World {
         Chunk c = new Chunk(cx, cz);
         int[][] heights = new int[Chunk.SIZE_X][Chunk.SIZE_Z];
 
-        // Biome grid: 10x10 array covering the chunk (16 cols / 4 = 4 cells) plus
-        // a 3-cell margin on each side. Двух хватало на окно сглаживания 5x5;
-        // третья нужна растительности — она заглядывает за границу чанка,
-        // чтобы крона соседнего дерева дотянулась к нам.
-        final int G = 10;
+        // Biome grid: 11x11 array covering the chunk (16 cols / 4 = 4 cells) plus
+        // margins for the 6x6 filter and crowns originating outside this chunk.
+        final int G = 11;
         int gx0 = cx * 4 - 3, gz0 = cz * 4 - 3;
         Biome[][] grid = new Biome[G][G];
         for (int gx = 0; gx < G; gx++)
@@ -115,25 +181,30 @@ public class World {
                 int wx = cx * Chunk.SIZE_X + x;
                 int wz = cz * Chunk.SIZE_Z + z;
 
-                // Smooth base height/amplitude over a 5x5 grid window so biome
+                // Smooth base height/amplitude with a continuous 6x6 tent filter so biome
                 // borders slope instead of forming cliffs.
                 int gi = Math.floorDiv(x, 4) + 3, gj = Math.floorDiv(z, 4) + 3;
                 int height = columnHeight(wx, wz, grid, gi, gj);
                 heights[x][z] = height;
 
-                // Point biome (4x4 quantised) picks the surface blocks; the
-                // beach rule overrides every biome at the waterline.
-                Biome biome = grid[gi][gj];
-                boolean beach = height <= SEA_LEVEL + 1;
-                BlockType surface = beach ? BlockType.SAND : biome.surfaceBlock;
+                // Exact point biome picks the surface; wetlands retain their peat at the waterline.
+                Biome biome = biomes.biomeAt(wx, wz);
+                boolean beach = height <= SEA_LEVEL + 1 && biome != Biome.SWAMP;
+                BlockType surface = surfaceFor(biome, height);
                 BlockType filler  = beach ? BlockType.SAND : biome.fillerBlock;
 
                 for (int y = 0; y < Chunk.SIZE_Y; y++) {
                     BlockType t;
                     if (y == 0)
                         t = BlockType.BEDROCK;
-                    else if (y < height - 4)
+                    else if (y < height - 4) {
                         t = BlockType.STONE;
+                        if (y >= height - 14) {
+                            if (biome == Biome.VOLCANIC) t = BlockType.BASALT;
+                            if (biome == Biome.ALPINE) t = BlockType.LIMESTONE;
+                            if (biome == Biome.BADLANDS) t = y % 9 == 0 ? BlockType.LIMESTONE : BlockType.TERRACOTTA;
+                        }
+                    }
                     else if (y < height)
                         t = filler;
                     else if (y == height)
@@ -143,7 +214,7 @@ public class World {
                         // слой воды в тундре замерзает. Океанский биом не
                         // замерзает никогда — иначе у тундрового побережья
                         // ледяная кромка уходила бы на много чанков в море.
-                        t = y == SEA_LEVEL && biome == Biome.TUNDRA ? BlockType.ICE : BlockType.WATER;
+                        t = y == SEA_LEVEL && biome.isCold() ? BlockType.ICE : BlockType.WATER;
                     else
                         t = BlockType.AIR;
                     c.set(x, y, z, t);
@@ -155,6 +226,18 @@ public class World {
         // собственной пещерой. Руда ставится после выреза: в пустоте её нет.
         caves.carve(c, heights, SEA_LEVEL);
         OreGenerator.place(c, seed);
+        // Gravel lenses in exposed underground stone; no free-floating loose ceilings.
+        for (int x = 0; x < Chunk.SIZE_X; x++) for (int z = 0; z < Chunk.SIZE_Z; z++) {
+            long rock = mix(cx * 16 + x, cz * 16 + z, seed ^ 0x674B4CL);
+            if ((rock & 15) == 0) {
+                int y = 5 + (int) ((rock >>> 8) % 32);
+                if (c.get(x, y, z) == BlockType.STONE && c.get(x, y - 1, z).solid)
+                    c.set(x, y, z, BlockType.GRAVEL);
+            }
+        }
+        FallingBlocks.settleGenerated(c);
+
+        Structures.Site site = Structures.plan(c, heights, seed, SEA_LEVEL);
 
         // Pass 3: растительность — рельеф уже весь есть, листва ложится верно.
         //
@@ -166,18 +249,18 @@ public class World {
         for (int x = -LEAF_REACH; x < Chunk.SIZE_X + LEAF_REACH; x++) {
             for (int z = -LEAF_REACH; z < Chunk.SIZE_Z + LEAF_REACH; z++) {
                 int gi = Math.floorDiv(x, 4) + 3, gj = Math.floorDiv(z, 4) + 3;
-                Biome biome = grid[gi][gj];
-                if (biome.treeType == Biome.TreeType.NONE)
-                    continue;
                 int wx = cx * Chunk.SIZE_X + x;
                 int wz = cz * Chunk.SIZE_Z + z;
+                Biome biome = biomes.biomeAt(wx, wz);
+                if (biome.treeType == Biome.TreeType.NONE || Structures.reservesTrees(wx, wz, seed))
+                    continue;
                 long h = mix(wx, wz, seed);
                 long roll = (h >>> 17) % TREE_ROLL_RANGE;
                 if (roll >= (long) biome.treesPer128 * TREE_DENSITY_NUM)
                     continue;
                 boolean inside = x >= 0 && x < Chunk.SIZE_X && z >= 0 && z < Chunk.SIZE_Z;
                 int height = inside ? heights[x][z] : columnHeight(wx, wz, grid, gi, gj);
-                if (height <= SEA_LEVEL + 1)
+                if (height < (biome == Biome.SWAMP ? SEA_LEVEL : SEA_LEVEL + 2))
                     continue;
                 // Пещера, вскрывшая поверхность, отменяет дерево. Проверка
                 // одна на свои и чужие колонны намеренно: реши мы её по
@@ -189,14 +272,14 @@ public class World {
                     case OAK    -> placeOak(c, x, height, z, h);
                     case SPRUCE -> placeSpruce(c, x, height, z, h);
                     case CACTUS -> placeCactus(c, x, height, z, h);
+                    case ACACIA -> placeAcacia(c, x, height, z, h);
                     case NONE   -> { }
                 }
             }
         }
 
-        // Pass 4: постройки — последними. Строение имеет право снести
-        // дерево, выросшее на его месте, но не наоборот.
-        Structures.place(c, heights, seed, SEA_LEVEL);
+        // Pass 4: постройки — последними, на заранее зарезервированной площадке.
+        Structures.place(c, site, seed);
 
         c.computeSkyLight();
         // Проходы генерации пишут блоки и через set(), и массивами; список
@@ -205,6 +288,15 @@ public class World {
         c.rebuildEmitters();
         c.markDirty();
         return c;
+    }
+
+    private static void placeAcacia(Chunk c, int x, int height, int z, long h) {
+        int top = height + 5 + (int) ((h >>> 8) & 1);
+        if (top + 2 >= Chunk.SIZE_Y) return;
+        for (int y = height + 1; y <= top; y++) if (c.inBounds(x, y, z))
+            c.set(x, y, z, BlockType.WOOD);
+        leafDisc(c, x, top, z, 3, h);
+        leafDisc(c, x, top + 1, z, 2, h >>> 4);
     }
 
     /**
@@ -302,6 +394,11 @@ public class World {
     }
 
     private static void placeCactus(Chunk c, int x, int height, int z, long h) {
+        // Sand can settle into a cave during generation. Do not plant above its old height.
+        // Cacti have no crown crossing a chunk boundary, so only their owning chunk places them.
+        if (!c.inBounds(x, height, z)) return;
+        BlockType ground = c.get(x, height, z);
+        if (ground != BlockType.SAND && ground != BlockType.RED_SAND) return;
         int ch = 1 + (int) ((h >>> 7) % 3);
         if (height + ch + 1 >= Chunk.SIZE_Y)
             return;
@@ -347,33 +444,87 @@ public class World {
         c.markDirty();
     }
 
+    /**
+     * Очередь заливки блочного света: плоский {@code int[]} по четыре числа на
+     * ячейку (x, y, z, уровень). Раньше здесь стоял {@code ArrayDeque<int[]>} —
+     * факел с уровнем 14 обходит порядка десяти тысяч ячеек, и на каждую
+     * приходились массив из четырёх чисел и узел очереди. Мусор с главного
+     * потока возвращался паузами сборщика, то есть теми же рывками.
+     */
+    private int[] lightQueue = new int[4096];
+    private int lightHead, lightTail;
+    /**
+     * Последний найденный чанк. BFS света идёт сплошным пятном, поэтому
+     * подряд идущие ячейки почти всегда лежат в одном чанке, а поиск в
+     * {@code ConcurrentHashMap} упаковывает ключ в {@code Long} — то есть
+     * выделяет объект на каждый запрос.
+     */
+    private Chunk lightCacheChunk;
+    private int lightCacheCx = Integer.MIN_VALUE, lightCacheCz = Integer.MIN_VALUE;
+
+    private Chunk lightChunk(int cx, int cz) {
+        if (cx == lightCacheCx && cz == lightCacheCz)
+            return lightCacheChunk;
+        Chunk c = getChunkIfExists(cx, cz);
+        lightCacheCx = cx;
+        lightCacheCz = cz;
+        lightCacheChunk = c;
+        return c;
+    }
+
+    /** Сбрасывает кэш чанка: мир мог выгрузить тот, что в нём лежит. */
+    private void resetLightCache() {
+        lightCacheCx = Integer.MIN_VALUE;
+        lightCacheCz = Integer.MIN_VALUE;
+        lightCacheChunk = null;
+    }
+
+    private void lightPush(int wx, int wy, int wz, int val) {
+        if (lightTail + 4 > lightQueue.length)
+            lightQueue = java.util.Arrays.copyOf(lightQueue, lightQueue.length * 2);
+        lightQueue[lightTail++] = wx;
+        lightQueue[lightTail++] = wy;
+        lightQueue[lightTail++] = wz;
+        lightQueue[lightTail++] = val;
+    }
+
     public void floodFillAdd(int wx, int wy, int wz) {
         int emitted = getBlock(wx, wy, wz).emittedLight;
         if (emitted <= 0)
             return;
         setBlockLightWorld(wx, wy, wz, emitted);
-
-        int[][] dirs = { { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 }, { 0, -1, 0 }, { 0, 0, 1 }, { 0, 0, -1 } };
-        Queue<int[]> queue = new ArrayDeque<>();
+        lightHead = lightTail = 0;
+        resetLightCache();
         if (emitted > 1)
-            for (int[] d : dirs)
-                enqueueBlockLight(queue, wx + d[0], wy + d[1], wz + d[2], emitted - 1);
-
-        while (!queue.isEmpty()) {
-            int[] cur = queue.poll();
-            int x = cur[0], y = cur[1], z = cur[2], val = cur[3];
-            if (val > 1)
-                for (int[] d : dirs)
-                    enqueueBlockLight(queue, x + d[0], y + d[1], z + d[2], val - 1);
-        }
+            seedNeighbours(wx, wy, wz, emitted - 1);
+        drainLightQueue();
     }
 
-    private void enqueueBlockLight(Queue<int[]> queue, int wx, int wy, int wz, int val) {
+    private void seedNeighbours(int wx, int wy, int wz, int val) {
+        enqueueBlockLight(wx + 1, wy, wz, val);
+        enqueueBlockLight(wx - 1, wy, wz, val);
+        enqueueBlockLight(wx, wy + 1, wz, val);
+        enqueueBlockLight(wx, wy - 1, wz, val);
+        enqueueBlockLight(wx, wy, wz + 1, val);
+        enqueueBlockLight(wx, wy, wz - 1, val);
+    }
+
+    private void drainLightQueue() {
+        while (lightHead < lightTail) {
+            int x = lightQueue[lightHead++];
+            int y = lightQueue[lightHead++];
+            int z = lightQueue[lightHead++];
+            int val = lightQueue[lightHead++];
+            if (val > 1)
+                seedNeighbours(x, y, z, val - 1);
+        }
+        lightHead = lightTail = 0;
+    }
+
+    private void enqueueBlockLight(int wx, int wy, int wz, int val) {
         if (wy < 0 || wy >= Chunk.SIZE_Y)
             return;
-        int cx = Math.floorDiv(wx, Chunk.SIZE_X);
-        int cz = Math.floorDiv(wz, Chunk.SIZE_Z);
-        Chunk c = getChunkIfExists(cx, cz);
+        Chunk c = lightChunk(Math.floorDiv(wx, Chunk.SIZE_X), Math.floorDiv(wz, Chunk.SIZE_Z));
         if (c == null)
             return;
         int lx = Math.floorMod(wx, Chunk.SIZE_X);
@@ -385,7 +536,7 @@ public class World {
             return;
         c.setBlockLight(lx, wy, lz, val);
         c.markDirty();
-        queue.add(new int[] { wx, wy, wz, val });
+        lightPush(wx, wy, wz, val);
     }
 
     /**
@@ -398,45 +549,42 @@ public class World {
     public void injectNeighbourLight(int cx, int cz) {
         int bx = cx * Chunk.SIZE_X;
         int bz = cz * Chunk.SIZE_Z;
-        Queue<int[]> queue = new ArrayDeque<>();
-        int[][] dirs = { {1,0,0},{-1,0,0},{0,1,0},{0,-1,0},{0,0,1},{0,0,-1} };
+        lightHead = lightTail = 0;
+        resetLightCache();
 
+        // Сосед без единого светящегося блока перебирать незачем: до этой
+        // проверки загрузка чанка стоила 8 192 чтений на каждую сторону, и в
+        // мире без факелов все они возвращали ноль.
         Chunk nPX = getChunkIfExists(cx + 1, cz);
-        if (nPX != null)
+        if (nPX != null && nPX.hasBlockLight())
             for (int y = 0; y < Chunk.SIZE_Y; y++)
                 for (int lz = 0; lz < Chunk.SIZE_Z; lz++) {
                     int nv = nPX.getBlockLight(0, y, lz);
-                    if (nv > 1) enqueueBlockLight(queue, bx + Chunk.SIZE_X - 1, y, bz + lz, nv - 1);
+                    if (nv > 1) enqueueBlockLight(bx + Chunk.SIZE_X - 1, y, bz + lz, nv - 1);
                 }
         Chunk nNX = getChunkIfExists(cx - 1, cz);
-        if (nNX != null)
+        if (nNX != null && nNX.hasBlockLight())
             for (int y = 0; y < Chunk.SIZE_Y; y++)
                 for (int lz = 0; lz < Chunk.SIZE_Z; lz++) {
                     int nv = nNX.getBlockLight(Chunk.SIZE_X - 1, y, lz);
-                    if (nv > 1) enqueueBlockLight(queue, bx, y, bz + lz, nv - 1);
+                    if (nv > 1) enqueueBlockLight(bx, y, bz + lz, nv - 1);
                 }
         Chunk nPZ = getChunkIfExists(cx, cz + 1);
-        if (nPZ != null)
+        if (nPZ != null && nPZ.hasBlockLight())
             for (int y = 0; y < Chunk.SIZE_Y; y++)
                 for (int lx = 0; lx < Chunk.SIZE_X; lx++) {
                     int nv = nPZ.getBlockLight(lx, y, 0);
-                    if (nv > 1) enqueueBlockLight(queue, bx + lx, y, bz + Chunk.SIZE_Z - 1, nv - 1);
+                    if (nv > 1) enqueueBlockLight(bx + lx, y, bz + Chunk.SIZE_Z - 1, nv - 1);
                 }
         Chunk nNZ = getChunkIfExists(cx, cz - 1);
-        if (nNZ != null)
+        if (nNZ != null && nNZ.hasBlockLight())
             for (int y = 0; y < Chunk.SIZE_Y; y++)
                 for (int lx = 0; lx < Chunk.SIZE_X; lx++) {
                     int nv = nNZ.getBlockLight(lx, y, Chunk.SIZE_Z - 1);
-                    if (nv > 1) enqueueBlockLight(queue, bx + lx, y, bz, nv - 1);
+                    if (nv > 1) enqueueBlockLight(bx + lx, y, bz, nv - 1);
                 }
 
-        while (!queue.isEmpty()) {
-            int[] cur = queue.poll();
-            int x = cur[0], y = cur[1], z = cur[2], val = cur[3];
-            if (val > 1)
-                for (int[] d : dirs)
-                    enqueueBlockLight(queue, x + d[0], y + d[1], z + d[2], val - 1);
-        }
+        drainLightQueue();
     }
 
     /**
@@ -453,6 +601,9 @@ public class World {
      * разливать нечего, и куб не трогается вовсе. Попутно это чинит
      * старое поведение, при котором пустой список источников гасил свет от
      * факела чуть дальше радиуса и больше не зажигал его обратно.
+     *
+     * <p>Сам куб гасится по чанкам, а не по ячейкам мира: чанк находится один
+     * раз на свою долю коробки и один раз помечается грязным.
      */
     public void floodFillRemove(int wx, int wy, int wz) {
         final int R = 15;
@@ -462,12 +613,15 @@ public class World {
         // проверки последний снятый источник светил бы вечно.
         if (sources.isEmpty() && getBlockLightWorld(wx, wy, wz) == 0)
             return;
-        for (int x = wx - R; x <= wx + R; x++) {
-            for (int y = Math.max(0, wy - R); y <= Math.min(Chunk.SIZE_Y - 1, wy + R); y++) {
-                for (int z = wz - R; z <= wz + R; z++) {
-                    if (getBlockLightWorld(x, y, z) > 0)
-                        setBlockLightWorld(x, y, z, 0);
-                }
+        int cx0 = Math.floorDiv(wx - R, Chunk.SIZE_X), cx1 = Math.floorDiv(wx + R, Chunk.SIZE_X);
+        int cz0 = Math.floorDiv(wz - R, Chunk.SIZE_Z), cz1 = Math.floorDiv(wz + R, Chunk.SIZE_Z);
+        for (int cx = cx0; cx <= cx1; cx++) {
+            for (int cz = cz0; cz <= cz1; cz++) {
+                Chunk c = getChunkIfExists(cx, cz);
+                if (c == null)
+                    continue;
+                int bx = cx * Chunk.SIZE_X, bz = cz * Chunk.SIZE_Z;
+                c.clearBlockLightBox(wx - R - bx, wx + R - bx, wy - R, wy + R, wz - R - bz, wz + R - bz);
             }
         }
         for (int[] src : sources)
@@ -574,8 +728,19 @@ public class World {
         boolean waterInvolved = isWater(old) || isWater(t);
         if (old.solid != t.solid || waterInvolved)
             WaterSimulator.activateAround(this, wx, wz);
-        if (opacityChanged)
-            c.computeSkyLight();
+        boolean lavaInvolved = old == BlockType.LAVA || t == BlockType.LAVA;
+        if (old.solid != t.solid || lavaInvolved || waterInvolved)
+            LavaSimulator.activateAround(this, wx, wz);
+        // Небесный свет меряет прозрачность своей меркой (cutout его держит),
+        // поэтому и условие своё: листва, поставленная в воздухе, обязана
+        // затенить то, что под ней.
+        //
+        // Правка локальная, а не перезаливка чанка: полный проход стоил
+        // 5–15 мс в кадре и был главным рывком при копании.
+        if (Chunk.letsSkyThrough(old) != Chunk.letsSkyThrough(t))
+            c.updateSkyLightAt(lx, wy, lz);
+        if (Chunk.skyAttenuation(old) != Chunk.skyAttenuation(t))
+            pendingSkyRelights.add(key(cx, cz));
         // mark neighbors dirty if on edge so their borders update
         if (lx == 0)
             remeshNeighbour(cx - 1, cz);
@@ -595,6 +760,29 @@ public class World {
             floodFillRemove(wx, wy, wz);
         if (t.emittedLight > 0)
             floodFillAdd(wx, wy, wz);
+        falling.changed(wx, wy, wz);
+        if (!deferObserver)
+            notifyChanged(wx, wy, wz, old, t, c.getMeta(lx, wy, lz));
+    }
+
+    /**
+     * Rebuilds a bounded number of chunks whose translucent material changed.
+     * Multiple water edits in the same chunk collapse into one full reflood.
+     */
+    public int processPendingSkyRelights(int budget) {
+        int done = 0;
+        java.util.Iterator<Long> it = pendingSkyRelights.iterator();
+        while (it.hasNext() && done < Math.max(0, budget)) {
+            long k = it.next();
+            it.remove();
+            Chunk chunk = chunks.get(k);
+            if (chunk == null)
+                continue;
+            chunk.computeSkyLight();
+            chunk.markDirty();
+            done++;
+        }
+        return done;
     }
 
     public byte getBlockMeta(int wx, int wy, int wz) {
@@ -685,7 +873,13 @@ public class World {
     }
 
     public void setBlock(int wx, int wy, int wz, BlockType t, byte meta) {
-        setBlock(wx, wy, wz, t);
+        BlockType old = getBlock(wx, wy, wz);
+        deferObserver = true;
+        try {
+            setBlock(wx, wy, wz, t);
+        } finally {
+            deferObserver = false;
+        }
         if (wy < 0 || wy >= Chunk.SIZE_Y)
             return;
         int cx = Math.floorDiv(wx, Chunk.SIZE_X);
@@ -694,6 +888,11 @@ public class World {
         if (c == null)
             return;
         c.setMeta(Math.floorMod(wx, Chunk.SIZE_X), wy, Math.floorMod(wz, Chunk.SIZE_Z), meta);
+        if (isWater(t)) WaterSimulator.activateAround(this, wx, wz);
+        if (t == BlockType.LAVA) LavaSimulator.activateAround(this, wx, wz);
+        // Блок мог не измениться — а meta изменилась: дверь, ступень,
+        // спальник. Ранний выход внутри setBlock про это не знает.
+        notifyChanged(wx, wy, wz, old, t, meta);
     }
 
     /**
@@ -708,9 +907,11 @@ public class World {
         if (c == null)
             return;
         int lx = Math.floorMod(wx, Chunk.SIZE_X), lz = Math.floorMod(wz, Chunk.SIZE_Z);
-        c.setMeta(lx, wy, lz, (byte) Math.max(0, Math.min(7, level)));
+        byte m = (byte) Math.max(0, Math.min(7, level));
+        c.setMeta(lx, wy, lz, m);
         c.modified = true;
         c.markDirty();
+        notifyChanged(wx, wy, wz, c.get(lx, wy, lz), c.get(lx, wy, lz), m);
     }
 
     private static boolean isWater(BlockType t) {

@@ -22,6 +22,7 @@ public final class OptimizationGlSmoke {
             preload.close();
             compareParticlePhysics();
             ParticleSystem particles = new ParticleSystem();
+            PrecipitationRenderer precipitation = new PrecipitationRenderer();
             OcclusionCuller culler = new OcclusionCuller();
             Matrix4f projection = new Matrix4f().perspective(1.2f, 1f, 0.1f, 200f);
             Matrix4f view = new Matrix4f().lookAt(8,70,28,8,64,8,0,1,0);
@@ -35,7 +36,10 @@ public final class OptimizationGlSmoke {
                 atlas.bind(0);
                 chunk.bind(); chunk.setMat4("uProjection", projection); chunk.setMat4("uView", view); chunk.setMat4("uModel", new Matrix4f());
                 chunk.setInt("uShadow0",4); chunk.setInt("uShadow1",5);
-                culler.begin(projection,view); culler.test(0,0,0,16,128,16); chunk.bind(); mesh.render(); culler.endTest();
+                culler.begin(projection,view);
+                culler.enqueue(World.key(0,0),0,0,0,16,128,16);
+                if (!culler.hidden(World.key(0,0))) mesh.render();
+                culler.flush();
                 particles.emitBlockBreak(8,66,8,new float[]{1,1,1},3,1,0);
                 particles.emitRainSplash(8,65,8,false,1);
                 particles.update(1f/60);
@@ -44,7 +48,7 @@ public final class OptimizationGlSmoke {
                 if (error != GL_NO_ERROR) throw new AssertionError("GL error frame " + frame + ": 0x" + Integer.toHexString(error));
             }
             glFinish();
-            mesh.destroy(); culler.destroy(); particles.destroy(); chunk.destroy(); shadow.destroy(); mobShadow.destroy(); water.destroy(); atlas.destroy();
+            mesh.destroy(); culler.destroy(); particles.destroy(); precipitation.destroy(); chunk.destroy(); shadow.destroy(); mobShadow.destroy(); water.destroy(); atlas.destroy();
             if (glGetError() != GL_NO_ERROR) throw new AssertionError("GL resource cleanup error");
             System.out.println("Optimization GL smoke passed");
         } finally { window.destroy(); }

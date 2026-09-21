@@ -22,11 +22,13 @@ public final class Mist {
     /** Множитель мглы по биому. */
     public static float biomeFactor(Biome b) {
         return switch (b) {
-            case FOREST -> 1.6f;
+            case FOREST, TAIGA -> 1.6f;
+            case SWAMP -> 2.3f;
             case OCEAN -> 1.3f;
-            case TUNDRA -> 1.2f;
-            case PLAINS -> 1.0f;
-            case DESERT -> 0.15f;
+            case TUNDRA, ALPINE -> 1.2f;
+            case PLAINS, SAVANNA -> 1.0f;
+            case DESERT, BADLANDS -> 0.15f;
+            case VOLCANIC -> 0.65f;
         };
     }
 
@@ -52,8 +54,8 @@ public final class Mist {
 
     /** Равномерная дымка на любой высоте. */
     public static float haze(float precipitation, Biome b) {
-        float h = b == Biome.FOREST ? 0.0024f : 0.0009f;
-        if (b == Biome.DESERT)
+        float h = b == Biome.SWAMP ? 0.0036f : b == Biome.FOREST || b == Biome.TAIGA ? 0.0024f : 0.0009f;
+        if (b.isArid())
             h = 0.0003f;
         return h + 0.0020f * precipitation;
     }

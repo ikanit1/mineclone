@@ -22,8 +22,8 @@ public final class CameraMotion {
     /** Кивок на единицу продольного ускорения (блоков/с²), радианы. */
     public static final float ACCEL_PITCH = 0.0022f;
     public static final float MAX_PITCH = 0.03f;
-    /** Проседание камеры на блок падения и его предел. */
-    public static final float LAND_DIP = 0.05f, MAX_DIP = 0.24f;
+    /** Проседание камеры на блок падения и его предел. Посадка ощутима, но не укачивает. */
+    public static final float LAND_DIP = 0.03f, MAX_DIP = 0.12f;
 
     private static final float ROLL_STIFFNESS = 70f, ROLL_DAMPING = 13f;
     private static final float PITCH_STIFFNESS = 90f, PITCH_DAMPING = 15f;

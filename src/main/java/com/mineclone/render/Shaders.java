@@ -519,33 +519,60 @@ public final class Shaders {
         uniform float uTime;
         uniform float uSnow;      // 1 — снег, 0 — дождь
         uniform float uStorm;
-        uniform vec2  uWind;
+        uniform vec2  uWind;       // мгновенный ветер: им повёрнута частица
+        uniform vec2  uDrift;      // пройденный ветром путь по XZ
+        uniform vec2  uDriftSnow;  // то же с поправкой на метель
+        uniform float uFallSnow;   // добавка к падению снега от бури
+        uniform float uFallRain;
         uniform vec3  uBox;
         uniform sampler2D uHeight;
         uniform vec2  uHeightOrigin;
         uniform float uHeightSize;
         out vec2  vUv;
         out float vFade;
+        out float vDetail;
         void main() {
             float big = aSeed.w;
+            float phase = dot(aSeed, vec4(67.1, 31.7, 19.3, 47.9));
             bool snow = uSnow > 0.5;
+            // Скорость нужна только для поворота и растяжения частицы;
+            // положение считается по пройденному пути. Умножать нынешнюю
+            // скорость на всё прошедшее время нельзя: ветер пульсирует, и
+            // порыв сдвигал бы разом весь снегопад.
             vec3 vel;
+            vec3 travel;
             if (snow) {
                 // Крупные хлопья падают быстрее и сносятся сильнее мелких:
                 // разная скорость и есть глубина снегопада.
-                float fall = mix(0.8, 2.1, big) + uStorm * 2.2;
-                float carry = mix(0.55, 1.0, big) * (1.0 + uStorm * 0.8);
-                vel = vec3(uWind.x * carry, -fall, uWind.y * carry);
+                float own = mix(0.8, 2.1, big);
+                float share = mix(0.55, 1.0, big);
+                float fall = own + uStorm * 2.2;
+                vel = vec3(uWind.x * share * (1.0 + uStorm * 0.8), -fall,
+                           uWind.y * share * (1.0 + uStorm * 0.8));
+                travel = vec3(uDriftSnow.x * share, -(own * uTime + uFallSnow),
+                              uDriftSnow.y * share);
             } else {
-                vel = vec3(uWind.x * 0.35, -13.0 - big * 5.0, uWind.y * 0.35);
+                // У дождя несколько слоёв скорости: дальняя морось короче и
+                // медленнее, крупные близкие капли быстро режут кадр.
+                float own = mix(11.5, 20.0, big);
+                float carry = mix(0.24, 0.46, big);
+                vel = vec3(uWind.x * carry, -(own + uStorm * 3.0), uWind.y * carry);
+                travel = vec3(uDrift.x * carry, -(own * uTime + uFallRain),
+                              uDrift.y * carry);
             }
-            vec3 p = aSeed.xyz * uBox + vel * uTime;
+            vec3 p = aSeed.xyz * uBox + travel;
             if (snow) {
                 float ph = aSeed.x * 61.0 + aSeed.z * 23.0 + aSeed.y * 11.0;
                 float turb = 0.35 + uStorm * 1.1;
                 p.x += (sin(uTime * (0.9 + big * 0.7) + ph) * 0.8 + sin(uTime * 2.1 + ph * 1.7) * 0.3) * turb;
                 p.z += (cos(uTime * (0.8 + big * 0.6) + ph * 1.3) * 0.8 + cos(uTime * 1.9 + ph * 0.7) * 0.3) * turb;
                 p.y += sin(uTime * 1.3 + ph * 2.1) * 0.25 * turb;
+            } else {
+                // Короткие неодинаковые порывы разбивают идеально ровную
+                // «решётку» струй, но не заставляют капли плавать как снег.
+                float gust = 0.035 + uStorm * 0.10;
+                p.x += sin(uTime * 2.3 + phase) * gust;
+                p.z += cos(uTime * 1.9 + phase * 1.37) * gust;
             }
             vec3 origin = uCamPos - uBox * 0.5;
             p = mod(p - origin, uBox) + origin;
@@ -557,10 +584,12 @@ public final class Shaders {
 
             vec3 d = p - uCamPos;
             float dist = length(d);
+            float nearLayer = 1.0 - smoothstep(3.0, uBox.x * 0.48, dist);
             vFade = visible
                   * smoothstep(0.3, 1.4, dist)
                   * (1.0 - smoothstep(uBox.x * 0.36, uBox.x * 0.5, length(d.xz)))
                   * (1.0 - smoothstep(uBox.y * 0.36, uBox.y * 0.5, abs(d.y)));
+            vDetail = mix(0.58, 1.0, nearLayer) * mix(0.82, 1.08, big);
 
             vec3 world;
             if (snow) {
@@ -578,8 +607,10 @@ public final class Shaders {
             } else {
                 vec3 axis = normalize(vel);
                 vec3 side = normalize(cross(axis, normalize(uCamPos - p) + vec3(1e-4)));
-                float len = 0.6 + big * 0.5;
-                float width = 0.014 + big * 0.010;
+                float len = mix(0.30, 0.76, nearLayer)
+                          + big * mix(0.22, 0.52, nearLayer)
+                          + uStorm * 0.12;
+                float width = mix(0.008, 0.017, nearLayer) + big * 0.007;
                 world = p + side * aCorner.x * width + axis * aCorner.y * len;
             }
             vUv = aCorner + 0.5;
@@ -590,6 +621,7 @@ public final class Shaders {
     public static final String PRECIP_FRAGMENT = VER + LIB_COLOR + """
         in vec2  vUv;
         in float vFade;
+        in float vDetail;
         uniform float uSnow;
         uniform vec3  uColor;
         uniform float uAlpha;
@@ -599,15 +631,24 @@ public final class Shaders {
             vec2 q = vUv - 0.5;
             float a;
             if (uSnow > 0.5) {
-                float d = length(q) * 2.0;
-                float star = 0.78 + 0.22 * cos(atan(q.y, q.x) * 6.0);
-                a = 1.0 - smoothstep(0.30 * star, 0.95 * star, d);
+                vec2 pixel = abs(floor(vUv * 8.0) - vec2(3.5));
+                a = (max(pixel.x,pixel.y) <= 2.5 && min(pixel.x,pixel.y) <= 0.5) ? 1.0 : 0.0;
             } else {
-                a = (1.0 - abs(q.x) * 2.0) * smoothstep(0.0, 0.3, vUv.y) * (1.0 - smoothstep(0.7, 1.0, vUv.y));
+                // Тонкий светлый стержень, мягкий хвост и чуть более плотная
+                // головка: капля читается как вода, а не белая полоска.
+                float across = pow(max(0.0, 1.0 - abs(q.x) * 2.0), 1.7);
+                float tail = smoothstep(0.0, 0.24, vUv.y)
+                           * (1.0 - smoothstep(0.82, 1.0, vUv.y));
+                float head = (1.0 - smoothstep(0.08, 0.25, abs(vUv.y - 0.78)))
+                           * (1.0 - smoothstep(0.25, 1.0, abs(q.x) * 2.0));
+                vec2 pixel = floor(vUv * vec2(4.0,8.0));
+                a = (pixel.x >= 1.0 && pixel.x <= 2.0 && pixel.y >= 1.0 && pixel.y <= 6.0)
+                    ? vDetail : 0.0;
             }
             a *= vFade * uAlpha;
             if (a < 0.01) discard;
-            FragColor = vec4(uLinearOut > 0.5 ? uColor : toSrgb(tonemapACES(uColor)), a);
+            vec3 color = uSnow > 0.5 ? uColor : uColor * (0.82 + vDetail * 0.20);
+            FragColor = vec4(uLinearOut > 0.5 ? color : toSrgb(tonemapACES(color)), a);
         }
         """;
 
@@ -843,8 +884,7 @@ public final class Shaders {
         uniform float uTop;         // выше этой Y мглы нет
         uniform float uDepthRange;  // на скольких блоках она набирает плотность
         uniform float uMaxDist;
-        uniform float uTime;
-        uniform vec2  uWind;
+        uniform vec2  uDrift;   // пройденный воздухом путь
         uniform float uShadowOn;
         uniform vec2  uNoiseOffset;
         out vec4 FragColor;
@@ -863,7 +903,9 @@ public final class Shaders {
 
         float density(vec3 p) {
             float h = clamp((uTop - p.y) / max(uDepthRange, 0.001), 0.0, 1.0);
-            vec2 drift = uWind * uTime * 0.35;
+            // Пройденный воздухом путь, а не «ветер × время»: порыв обязан
+            // ускорить туман, а не сдвинуть его целиком.
+            vec2 drift = uDrift * 0.35;
             float n = vnoise((p.xz - drift) * 0.055) * 0.65
                     + vnoise((p.xz - drift * 1.6) * 0.17 + p.y * 0.23) * 0.35;
             float patches = smoothstep(0.25, 0.85, n);
@@ -1490,6 +1532,7 @@ public final class Shaders {
         in float vFogDist;
         in vec3 vWorld;
         uniform sampler2D uSkin;
+        uniform vec2 uSkinGrid;    // 0 — исходный скин; иначе сетка пикселей первого лица
         uniform float uSkyVis;     // доля небесного света в точке моба
         uniform float uBlockVis;   // доля блочного света
         uniform vec3  uTint;
@@ -1500,7 +1543,9 @@ public final class Shaders {
             vec3 V = toCam / max(length(toCam), 1e-4);
             vec3 N = faceNormal(vWorld, V);
 
-            vec4 tex = texture(uSkin, vUv);
+            vec2 skinUv = uSkinGrid.x > 0.0 && uSkinGrid.y > 0.0
+                    ? (floor(vUv * uSkinGrid) + 0.5) / uSkinGrid : vUv;
+            vec4 tex = texture(uSkin, skinUv);
             if (tex.a < 0.1) discard;
             vec3 albedo = toLinear(tex.rgb) * uTint;
 

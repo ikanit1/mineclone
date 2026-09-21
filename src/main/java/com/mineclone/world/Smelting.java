@@ -28,7 +28,10 @@ public final class Smelting {
             { "chicken", "cooked_chicken" },
             { "mutton", "cooked_mutton" },
             { "sand", "glass" },
+            { "red_sand", "glass" },
             { "cobblestone", "stone" },
+            { "iron_ore", "iron_ingot" },
+            { "gold_ore", "gold_ingot" },
     };
 
     private static Map<Item, Item> results;

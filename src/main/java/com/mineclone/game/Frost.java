@@ -38,7 +38,7 @@ public final class Frost {
      */
     public static float coldness(Biome biome, float y, float daylight, float snowfall,
                                  float storm, int skyLight, boolean inWater) {
-        float c = biome == Biome.TUNDRA ? 0.55f : 0f;
+        float c = biome.isCold() ? 0.55f : 0f;
         // Горы холодные в любом биоме — на той же высоте, где дождь сменяется снегом.
         float alt = (y - (World.SEA_LEVEL + 34f)) / 30f;
         c += Math.max(0f, Math.min(1f, alt)) * 0.55f;

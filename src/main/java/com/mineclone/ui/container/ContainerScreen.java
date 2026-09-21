@@ -74,6 +74,16 @@ public abstract class ContainerScreen implements Screen {
     protected void drawExtras(MenuTheme theme) {
     }
 
+    /**
+     * Область собственного виджета экрана, которая не является слотом.
+     *
+     * <p>Нужна вкладкам и кнопкам внутри контейнера: клик по ним не должен
+     * одновременно выбрасывать стопку с курсора как клик «мимо окна».
+     */
+    protected boolean inputWidgetAt(float x, float y) {
+        return false;
+    }
+
     // ------------------------------------------------------------ раскладка
 
     /** Ширина сетки группы в пикселях. */
@@ -215,6 +225,8 @@ public abstract class ContainerScreen implements Screen {
 
         if (in.mousePressed || in.rightPressed) {
             if (hovered == null) {
+                if (inputWidgetAt(in.mouseX, in.mouseY))
+                    return;
                 // Клик мимо панелей со стопкой на курсоре — выбросить её.
                 if (menu.cursor() != null)
                     menu.dropCursor(in.ctrl() || in.mousePressed);

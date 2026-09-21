@@ -281,8 +281,13 @@ public class RenderAtmospherePreview {
                 precip.updateField(world, eye);
                 Vector3f flake = PrecipitationRenderer.flakeColor(skyAmb, lightCol, fogCol);
                 Vector3f drop = PrecipitationRenderer.dropColor(flake);
-                precip.render(proj, view, eye, 57.3f, s.windX, s.windZ, s.snow, s.rain, s.storm,
-                        flake, drop, 1f);
+                // Снимок статичен, но снос всё равно должен быть путём, а не
+                // «ветер × время»: так кадр показывает ту же картину, что и игра.
+                com.mineclone.game.WeatherDrift drift = new com.mineclone.game.WeatherDrift();
+                for (int step = 0; step < 573; step++)
+                    drift.advance(0.1f, s.windX, s.windZ, s.storm);
+                precip.render(proj, view, eye, 57.3f, s.windX, s.windZ, drift,
+                        s.snow, s.rain, s.storm, flake, drop, 1f);
             }
 
             PostProcess.Settings ps = new PostProcess.Settings();
@@ -296,8 +301,8 @@ public class RenderAtmospherePreview {
             ps.fogTop = World.SEA_LEVEL + 15f;
             ps.fogDepth = 13f;
             ps.fogMaxDist = 64f;
-            ps.fogWindX = s.windX;
-            ps.fogWindZ = s.windZ;
+            ps.fogDriftX = s.windX * 21f;
+            ps.fogDriftZ = s.windZ * 21f;
             ps.fogLight.set(lightCol).mul(0.7f);
             ps.fogAmbient.set(skyAmb).mul(0.6f);
             ps.camPos.set(eye);

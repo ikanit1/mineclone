@@ -63,7 +63,28 @@ public class SoundEngine {
     private int lowpass = -1;
 
     private final Map<String, Integer> buffers = new HashMap<>();
+
+    // ---- фоновое декодирование ----------------------------------------
+    /** Что раскодировать. */
+    private record DecodeJob(String path, boolean positional, String key) { }
+    /** Что уже раскодировано и ждёт загрузки в OpenAL. */
+    private record Decoded(String key, ShortBuffer pcm, int format, int rate) { }
+
+    private final java.util.concurrent.BlockingQueue<DecodeJob> decodeQueue =
+            new java.util.concurrent.LinkedBlockingQueue<>();
+    private final java.util.concurrent.ConcurrentLinkedQueue<Decoded> decodedQueue =
+            new java.util.concurrent.ConcurrentLinkedQueue<>();
+    /** Ключи, уже поставленные в очередь или загруженные — чтобы не декодировать дважды. */
+    private final java.util.Set<String> pending = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private Thread decoder;
+    /**
+     * Сколько буферов поднимается в OpenAL за кадр. Сама загрузка дешёвая
+     * (память уже разжата), но сотня подряд на старте — тоже кадр.
+     */
+    private static final int UPLOADS_PER_FRAME = 4;
     private final List<Integer> activeSources = new ArrayList<>();
+    /** Per-source wall occlusion. Underwater filtering is mixed on top of it. */
+    private final Map<Integer, Float> sourceMuffle = new HashMap<>();
     /** Reusing native sources avoids driver allocations on every footstep or particle hit. */
     private final ArrayDeque<Integer> freeSources = new ArrayDeque<>();
     private static final int MAX_POOLED_SOURCES = 48;
@@ -72,6 +93,7 @@ public class SoundEngine {
     private final Random rng = new Random();
     private float masterVolume = 1.0f;
     private float effectsVolume = 1.0f;
+    private float underwaterMix;
 
     public void setMasterVolume(float v) { masterVolume = Math.max(0f, Math.min(1f, v)); }
     public void setEffectsVolume(float v) { effectsVolume = Math.max(0f, Math.min(1f, v)); }
@@ -178,25 +200,55 @@ public class SoundEngine {
         AL11.alSource3i(src, EXTEfx.AL_AUXILIARY_SEND_FILTER, effectSlot, 0, EXTEfx.AL_FILTER_NULL);
     }
 
-    /** Returns AL buffer id or -1 on failure. Cached. */
+    /** Returns AL buffer id, or -1 if it is not decoded yet. */
     public int loadBuffer(String path) {
         return loadBuffer(path, false);
     }
 
-    /** Returns AL buffer id or -1 on failure. Cached. Positional sounds are forced to mono. */
+    /**
+     * Готовый буфер или −1, если звук ещё не раскодирован.
+     *
+     * <p>Раскодировать здесь нельзя: {@code stb_vorbis} разжимает файл целиком,
+     * и это десятки миллисекунд прямо в кадре. Замер поймал 42 мс на подводном
+     * фоне — один такой вход в воду и есть тот самый рывок. Поэтому первый
+     * запрос только ставит файл в очередь фонового потока, а звук прозвучит со
+     * следующего раза. Пропущенный первый шаг никто не услышит, замерший кадр
+     * видят все.
+     */
     public int loadBuffer(String path, boolean positional) {
         if (!ok) return -1;
         String key = positional ? path + "#positional" : path;
         Integer cached = buffers.get(key);
         if (cached != null) return cached;
-        File f = new File(path);
-        if (!f.exists()) return -1;
+        requestDecode(path, positional, key);
+        return -1;
+    }
 
+    /** Ставит файлы в очередь фонового декодера заранее — до первого проигрывания. */
+    public void preload(java.util.Collection<String> paths, boolean positional) {
+        if (!ok || paths == null) return;
+        for (String path : paths)
+            requestDecode(path, positional, positional ? path + "#positional" : path);
+    }
+
+    private void requestDecode(String path, boolean positional, String key) {
+        if (!pending.add(key))
+            return;
+        if (!new File(path).exists()) {
+            pending.remove(key);
+            return;
+        }
+        decodeQueue.add(new DecodeJob(path, positional, key));
+        startDecoder();
+    }
+
+    /** Синхронное декодирование — только в фоновом потоке. */
+    private Decoded decode(String path, boolean positional, String key) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             IntBuffer channels = stack.mallocInt(1);
             IntBuffer rate = stack.mallocInt(1);
             ShortBuffer pcm = STBVorbis.stb_vorbis_decode_filename(path, channels, rate);
-            if (pcm == null) return -1;
+            if (pcm == null) return null;
             int channelCount = channels.get(0);
             ShortBuffer upload = pcm;
             int format = (channelCount == 1 || positional) ? AL10.AL_FORMAT_MONO16 : AL10.AL_FORMAT_STEREO16;
@@ -211,17 +263,12 @@ public class SoundEngine {
                 }
                 upload.flip();
             }
-            int buffer = AL10.alGenBuffers();
-            AL10.alBufferData(buffer, format, upload, rate.get(0));
-            if (upload != pcm) {
-                MemoryUtil.memFree(upload);
-            }
-            MemoryUtil.memFree(pcm);
-            buffers.put(key, buffer);
-            return buffer;
+            if (upload != pcm)
+                MemoryUtil.memFree(pcm);
+            return new Decoded(key, upload, format, rate.get(0));
         } catch (Throwable t) {
             System.err.println("Sound load failed for " + path + ": " + t.getMessage());
-            return -1;
+            return null;
         }
     }
 
@@ -333,6 +380,53 @@ public class SoundEngine {
             AL10.alSourcePlay(loop.source);
     }
 
+    /**
+     * Keeps a listener-relative ambient bed alive. Used for underwater ambience:
+     * it follows the listener, does not pan, and is deliberately exempt from the
+     * outside-world low-pass filter.
+     */
+    public void updateLoopOneOf(String key, List<String> paths, float volume, float pitch) {
+        if (!ok || key == null || paths == null || paths.isEmpty())
+            return;
+        LoopingSource loop = loopingSources.get(key);
+        if (loop == null) {
+            String chosen = paths.get(rng.nextInt(paths.size()));
+            int buffer = loadBuffer(chosen);
+            if (buffer == -1)
+                return;
+            int src = acquireSource();
+            AL10.alSourcei(src, AL10.AL_BUFFER, buffer);
+            AL10.alSourcei(src, AL10.AL_LOOPING, AL10.AL_TRUE);
+            loop = new LoopingSource(src);
+            loopingSources.put(key, loop);
+        }
+        int src = loop.source;
+        sourceMuffle.remove(src);
+        AL10.alSourcei(src, AL10.AL_SOURCE_RELATIVE, AL10.AL_TRUE);
+        AL10.alSource3f(src, AL10.AL_POSITION, 0f, 0f, 0f);
+        AL10.alSourcef(src, AL10.AL_GAIN, volume * masterVolume * effectsVolume);
+        AL10.alSourcef(src, AL10.AL_PITCH, pitch);
+        if (lowpass >= 0)
+            AL10.alSourcei(src, EXTEfx.AL_DIRECT_FILTER, EXTEfx.AL_FILTER_NULL);
+        if (AL10.alGetSourcei(src, AL10.AL_SOURCE_STATE) != AL10.AL_PLAYING)
+            AL10.alSourcePlay(src);
+    }
+
+    /** Smoothly applies one underwater low-pass to every world-space sound. */
+    public void setUnderwater(boolean underwater, float dt) {
+        if (!ok)
+            return;
+        float target = underwater ? 1f : 0f;
+        float blend = 1f - (float) Math.exp(-Math.max(0f, dt) / 0.22f);
+        underwaterMix += (target - underwaterMix) * blend;
+        if (Math.abs(target - underwaterMix) < 0.001f)
+            underwaterMix = target;
+        if (lowpass < 0)
+            return;
+        for (Map.Entry<Integer, Float> entry : sourceMuffle.entrySet())
+            applyMuffle(entry.getKey(), entry.getValue());
+    }
+
     /** Stops and releases a keyed ambient source. */
     public void stopLoop(String key) {
         if (!ok || key == null)
@@ -363,6 +457,13 @@ public class SoundEngine {
         AL10.alSourcef(src, AL10.AL_ROLLOFF_FACTOR, 1f);
         AL10.alSourcef(src, AL10.AL_GAIN, volume * masterVolume * effectsVolume);
         AL10.alSourcef(src, AL10.AL_PITCH, pitch);
+        sourceMuffle.put(src, Math.max(0f, Math.min(1f, muffle)));
+        applyMuffle(src, muffle);
+    }
+
+    private void applyMuffle(int src, float wallMuffle) {
+        float muffle = 1f - (1f - Math.max(0f, Math.min(1f, wallMuffle)))
+                * (1f - underwaterMix);
         if (lowpass >= 0 && muffle > 0.01f) {
             // За стеной верх пропадает раньше громкости: камень глушит, а не
             // только ослабляет. Нижняя граница — чтобы гул всё же читался.
@@ -389,6 +490,7 @@ public class SoundEngine {
     private int acquireSource() {
         Integer pooled = freeSources.pollFirst();
         int src = pooled != null ? pooled : AL10.alGenSources();
+        sourceMuffle.remove(src);
         // A source may previously have been positional/reverberant/looping.
         // Reset everything that can leak into its next short sound.
         AL10.alSourceStop(src);
@@ -406,6 +508,7 @@ public class SoundEngine {
     }
 
     private void recycleSource(int src) {
+        sourceMuffle.remove(src);
         AL10.alSourceStop(src);
         AL10.alSourcei(src, AL10.AL_BUFFER, 0);
         if (freeSources.size() < MAX_POOLED_SOURCES)
@@ -415,8 +518,48 @@ public class SoundEngine {
     }
 
     /** Call once per frame to free sources that finished playback. */
+    private synchronized void startDecoder() {
+        if (decoder != null)
+            return;
+        decoder = new Thread(() -> {
+            while (true) {
+                try {
+                    DecodeJob job = decodeQueue.take();
+                    Decoded d = decode(job.path(), job.positional(), job.key());
+                    if (d == null)
+                        pending.remove(job.key());
+                    else
+                        decodedQueue.add(d);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                } catch (Throwable t) {
+                    System.err.println("Sound decode failed: " + t.getMessage());
+                }
+            }
+        }, "mineclone-audio-decode");
+        decoder.setDaemon(true);
+        // Ниже обычного: декодер не должен отбирать ядро у генерации чанков.
+        decoder.setPriority(Thread.MIN_PRIORITY);
+        decoder.start();
+    }
+
+    /** Поднимает раскодированное в OpenAL. Только главный поток. */
+    private void uploadDecoded() {
+        for (int i = 0; i < UPLOADS_PER_FRAME; i++) {
+            Decoded d = decodedQueue.poll();
+            if (d == null)
+                return;
+            int buffer = AL10.alGenBuffers();
+            AL10.alBufferData(buffer, d.format(), d.pcm(), d.rate());
+            MemoryUtil.memFree(d.pcm());
+            buffers.put(d.key(), buffer);
+        }
+    }
+
     public void tick() {
         if (!ok) return;
+        uploadDecoded();
         Iterator<Integer> it = activeSources.iterator();
         while (it.hasNext()) {
             int s = it.next();
@@ -430,9 +573,14 @@ public class SoundEngine {
 
     public void destroy() {
         if (!ok) return;
+        if (decoder != null)
+            decoder.interrupt();
+        for (Decoded d = decodedQueue.poll(); d != null; d = decodedQueue.poll())
+            MemoryUtil.memFree(d.pcm());
         stopAllLoops();
         for (int s : activeSources) AL10.alDeleteSources(s);
         activeSources.clear();
+        sourceMuffle.clear();
         for (int s : freeSources) AL10.alDeleteSources(s);
         freeSources.clear();
         for (int b : buffers.values()) AL10.alDeleteBuffers(b);

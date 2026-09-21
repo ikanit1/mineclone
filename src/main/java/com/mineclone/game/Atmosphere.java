@@ -38,6 +38,13 @@ final class Atmosphere {
     float visibility = 1f;
     /** Ветер, блоков в секунду. */
     float windX, windZ;
+    /**
+     * Пройденный воздухом путь.
+     *
+     * <p>Осадки и туман смещаются им, а не произведением «ветер × время»:
+     * ветер пульсирует порывами, и такое произведение качало картину целиком.
+     */
+    final WeatherDrift drift = new WeatherDrift();
     int moonPhase;
     float moonlight = 1f;
     /** Яркость сияния 0..1 в точке игрока. */
@@ -100,6 +107,7 @@ final class Atmosphere {
         float scale = scheduled > 1e-3f ? global.wind() / scheduled : 1f;
         windX = w[0] * scale;
         windZ = w[1] * scale;
+        drift.advance(dt, windX, windZ, storm);
         moonPhase = NightSky.moonPhase(gameTime);
         moonlight = NightSky.moonlight(moonPhase);
     }
@@ -107,6 +115,7 @@ final class Atmosphere {
     /** Сразу к установившимся значениям — после загрузки мира и телепорта. */
     void snap() {
         primed = false;
+        drift.reset();
     }
 
     /** Дождь в точке 0..1. */

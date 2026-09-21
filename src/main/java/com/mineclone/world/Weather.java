@@ -56,10 +56,12 @@ public final class Weather {
     public static final int SNOW_ALTITUDE = 40;
 
     /**
-     * Веса видов, в процентах. Ясных и облачных фронтов больше половины:
-     * погода, которая всё время портится, перестаёт быть событием.
+     * Веса видов, в процентах. Дождливые фронты занимают 18% расписания:
+     * дождь остаётся заметным событием, а между ливнями обычно проходит
+     * несколько ясных или просто облачных фронтов. Сильный дождь и гроза
+     * намеренно редки.
      */
-    private static final int[] WEIGHTS = { 36, 22, 20, 14, 8 };
+    private static final int[] WEIGHTS = { 58, 24, 10, 6, 2 };
 
     /** Вид погоды фронта. Первый фронт мира всегда ясный — мир встречает солнцем. */
     public static Kind kindAt(long seed, long front) {
@@ -96,7 +98,7 @@ public final class Weather {
 
     /** Бывают ли в биоме осадки вообще. */
     public static boolean precipitates(Biome biome) {
-        return biome != Biome.DESERT;
+        return !biome.isArid();
     }
 
     /**
@@ -104,7 +106,7 @@ public final class Weather {
      * {@link #SNOW_ALTITUDE}: иначе на вершине в лесу лил бы дождь.
      */
     public static boolean snowsAt(Biome biome, float y) {
-        return biome == Biome.TUNDRA || y > World.SEA_LEVEL + SNOW_ALTITUDE;
+        return biome.isCold() || y > World.SEA_LEVEL + SNOW_ALTITUDE;
     }
 
     /**

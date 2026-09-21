@@ -2,47 +2,50 @@ package com.mineclone.ui.container;
 
 import com.mineclone.render.ItemIcons;
 import com.mineclone.ui.MenuTheme;
+import com.mineclone.ui.UiInput;
 import com.mineclone.world.Inventory;
 import com.mineclone.world.ItemStack;
-import com.mineclone.world.Recipes;
 
 import java.util.List;
 
 /**
- * Окно инвентаря выживания: три ряда хранилища, хотбар, корзина и полка
- * рецептов.
+ * Инвентарь выживания с настоящей карманной сеткой крафта 2×2.
  *
- * <p>Полка вместо сетки крафта — сознательно, до плана B: рецепты бесформенные,
- * и раскладывать материалы по клеткам не во что.
+ * <p>Ингредиенты лежат в слотах и возвращаются при закрытии. Результат
+ * появляется только при точном совпадении формы; Shift-клик собирает максимум.
  */
 public final class InventoryScreen extends ContainerScreen {
 
-    /** Сколько рецептов помещается на полку. */
-    public static final int CRAFT_MAX = 18;
-    private static final float CRAFT_ROW_H = 121f;
     private static final float TRASH_SIZE = 44f;
 
     private final Inventory inv;
-    private float trashX, trashY;
-    private final List<Recipes.Recipe> craftable = new java.util.ArrayList<>();
-    private float craftX, craftY, mainLabelY, hotbarLabelY;
+    private final CraftingGrid crafting;
+    private float trashX, trashY, resultX, resultY, craftX, craftY;
+    private float mainLabelY, hotbarLabelY;
 
     public InventoryScreen(WindowContext ctx) {
-        super(ctx, build(ctx));
-        this.inv = ctx.inventory();
+        this(ctx, new CraftingGrid(2));
     }
 
-    private static ContainerMenu build(WindowContext ctx) {
+    private InventoryScreen(WindowContext ctx, CraftingGrid crafting) {
+        super(ctx, build(ctx, crafting));
+        this.inv = ctx.inventory();
+        this.crafting = crafting;
+    }
+
+    private static ContainerMenu build(WindowContext ctx, CraftingGrid crafting) {
         Inventory inv = ctx.inventory();
-        ContainerMenu m = new ContainerMenu(List.of(
+        ContainerMenu menu = new ContainerMenu(List.of(
+                new SlotGroup("craft", SlotRole.CRAFT_GRID, crafting.storage(), 2),
                 new SlotGroup("main", SlotRole.MAIN,
                         new InventoryStorage(inv, Inventory.HOTBAR,
                                 Inventory.SIZE - Inventory.HOTBAR), 9),
                 new SlotGroup("hotbar", SlotRole.HOTBAR,
                         new InventoryStorage(inv, 0, Inventory.HOTBAR), 9)));
-        m.route(SlotRole.MAIN, SlotRole.HOTBAR);
-        m.route(SlotRole.HOTBAR, SlotRole.MAIN);
-        return m;
+        menu.route(SlotRole.CRAFT_GRID, SlotRole.MAIN, SlotRole.HOTBAR);
+        menu.route(SlotRole.MAIN, SlotRole.HOTBAR);
+        menu.route(SlotRole.HOTBAR, SlotRole.MAIN);
+        return menu;
     }
 
     @Override
@@ -53,87 +56,113 @@ public final class InventoryScreen extends ContainerScreen {
     @Override
     protected float[] layout(MenuTheme theme) {
         float panelW = gridWidth(9) + 2 * PAD;
-        float mainY = 72f;
-        float hotbarY = mainY + gridHeight(3) + 28f;
-        float craftTop = hotbarY + SLOT + 34f;
-        float panelH = craftTop + CRAFT_ROW_H + PAD;
         float panelX = theme.width() / 2f - panelW / 2f;
+        float craftTop = 64f;
+        float mainTop = craftTop + gridHeight(2) + 45f;
+        float hotbarTop = mainTop + gridHeight(3) + 28f;
+        float panelH = hotbarTop + SLOT + PAD;
         float panelY = theme.height() / 2f - panelH / 2f;
         float gridX = panelX + PAD;
 
-        place(menu.group("main"), gridX, panelY + mainY);
-        place(menu.group("hotbar"), gridX, panelY + hotbarY);
-        mainLabelY = panelY + mainY - 8f;
-        hotbarLabelY = panelY + hotbarY - 8f;
+        craftX = panelX + 104f;
+        craftY = panelY + craftTop;
+        resultX = craftX + gridWidth(2) + 76f;
+        resultY = craftY + (gridHeight(2) - SLOT) / 2f;
+        place(menu.group("craft"), craftX, craftY);
+        place(menu.group("main"), gridX, panelY + mainTop);
+        place(menu.group("hotbar"), gridX, panelY + hotbarTop);
+
+        mainLabelY = panelY + mainTop - 8f;
+        hotbarLabelY = panelY + hotbarTop - 8f;
         trashX = panelX + panelW - 70f;
         trashY = panelY + 18f;
-        craftX = gridX;
-        craftY = panelY + craftTop + 14f;
         return new float[] { panelX, panelY, panelW, panelH };
     }
 
     @Override
     protected void drawExtras(MenuTheme theme) {
-        theme.smallText("Хранилище", craftX, mainLabelY, MenuTheme.TEXT_FAINT, 1f);
-        theme.smallText("Хотбар", craftX, hotbarLabelY, MenuTheme.TEXT_FAINT, 1f);
+        theme.smallText("Создание", craftX, craftY - 10f, MenuTheme.TEXT_FAINT, 1f);
+        theme.smallText("Инвентарь", craftX - 82f, mainLabelY, MenuTheme.TEXT_FAINT, 1f);
+        theme.smallText("Хотбар", craftX - 82f, hotbarLabelY, MenuTheme.TEXT_FAINT, 1f);
+        drawSelectedHotbar(theme);
+        drawTrash(theme);
+        drawCraftResult(theme);
+    }
 
-        // Рамка выбранного слота хотбара: окно не должно отнимать у игрока
-        // понимание того, чем он ударит, закрыв его.
+    private void drawSelectedHotbar(MenuTheme theme) {
         SlotGroup hotbar = menu.group("hotbar");
         float[] r = slotRect(new SlotRef(hotbar, ctx.selectedSlot()));
-        if (r != null) {
-            theme.quad(r[0] - 3f, r[1] - 3f, r[2] + 6f, 3f, 1f, 1f, 1f, 0.95f);
-            theme.quad(r[0] - 3f, r[1] + r[2], r[2] + 6f, 3f, 1f, 1f, 1f, 0.95f);
-            theme.quad(r[0] - 3f, r[1], 3f, r[2], 1f, 1f, 1f, 0.95f);
-            theme.quad(r[0] + r[2], r[1], 3f, r[2], 1f, 1f, 1f, 0.95f);
-        }
-
-        drawTrash(theme);
-        drawCraftShelf(theme);
+        if (r == null)
+            return;
+        theme.quad(r[0] - 3f, r[1] - 3f, r[2] + 6f, 3f, 1f, 1f, 1f, 0.95f);
+        theme.quad(r[0] - 3f, r[1] + r[2], r[2] + 6f, 3f, 1f, 1f, 1f, 0.95f);
+        theme.quad(r[0] - 3f, r[1], 3f, r[2], 1f, 1f, 1f, 0.95f);
+        theme.quad(r[0] + r[2], r[1], 3f, r[2], 1f, 1f, 1f, 0.95f);
     }
 
     private void drawTrash(MenuTheme theme) {
-        boolean hov = theme.hovered(trashX, trashY, TRASH_SIZE, TRASH_SIZE);
+        boolean hovered = theme.hovered(trashX, trashY, TRASH_SIZE, TRASH_SIZE);
         theme.quad(trashX, trashY, TRASH_SIZE, TRASH_SIZE,
-                0.34f, 0.12f, 0.14f, hov ? 1f : 0.92f);
+                0.34f, 0.12f, 0.14f, hovered ? 1f : 0.92f);
         theme.quad(trashX, trashY, TRASH_SIZE, 1f, 1f, 1f, 1f, 0.18f);
         theme.quad(trashX + 10f, trashY + 12f, 24f, 4f, 0.95f, 0.95f, 0.95f, 0.85f);
         theme.quad(trashX + 13f, trashY + 18f, 18f, 16f, 0.80f, 0.80f, 0.80f, 0.85f);
-        if (hov && (theme.activeInput().mousePressed || theme.activeInput().rightPressed)
-                && menu.cursor() != null) {
+        UiInput in = theme.activeInput();
+        if (hovered && (in.mousePressed || in.rightPressed) && menu.cursor() != null) {
             menu.setCursor(null);
             ctx.click(0.45f, 0.8f);
         }
     }
 
-    /**
-     * Полка собираемого прямо сейчас.
-     *
-     * <p>Список пересобирается тем же вызовом, который его и рисует, поэтому
-     * индекс под курсором валиден ровно в этом кадре.
-     */
-    private void drawCraftShelf(MenuTheme theme) {
-        craftable.clear();
-        craftable.addAll(Recipes.available(inv));
-        theme.smallText(craftable.isEmpty() ? "Крафт — пока не из чего" : "Крафт",
-                craftX, craftY - 10f, MenuTheme.TEXT_FAINT, 1f);
-        for (int i = 0; i < craftable.size() && i < CRAFT_MAX; i++) {
-            float x = craftX + (i % 9) * (SLOT + GAP);
-            float y = craftY + (i / 9) * (SLOT + GAP);
-            boolean hov = theme.hovered(x, y, SLOT, SLOT);
-            drawSlotBack(theme, x, y, SLOT, hov);
-            ItemStack out = Recipes.result(craftable.get(i));
-            theme.itemIcon(out, x + 6f, y + 6f, SLOT - 12f, 1f,
-                    hov ? ItemIcons.ICON_YAW + theme.time() * ItemIcons.ICON_SPIN
-                        : ItemIcons.ICON_YAW);
+    private void drawCraftResult(MenuTheme theme) {
+        float arrowX = craftX + gridWidth(2) + 18f;
+        float arrowY = resultY + SLOT / 2f - 4f;
+        theme.quad(arrowX, arrowY, 38f, 8f, 0.48f, 0.52f, 0.58f, 0.75f);
+        theme.quad(arrowX + 30f, arrowY - 5f, 8f, 18f, 0.48f, 0.52f, 0.58f, 0.75f);
+
+        boolean hovered = theme.hovered(resultX, resultY, SLOT, SLOT);
+        drawSlotBack(theme, resultX, resultY, SLOT, hovered);
+        ItemStack out = crafting.result();
+        if (out != null) {
+            theme.itemIcon(out, resultX + 6f, resultY + 6f, SLOT - 12f, 1f,
+                    hovered ? ItemIcons.ICON_YAW + theme.time() * ItemIcons.ICON_SPIN
+                            : ItemIcons.ICON_YAW);
             if (out.count > 1)
                 theme.smallShadow(Integer.toString(out.count),
-                        x + SLOT - 4f - theme.smallWidth(Integer.toString(out.count)),
-                        y + SLOT - 6f, MenuTheme.TEXT, 1f);
-            if (hov && theme.activeInput().mousePressed && Recipes.craft(inv, craftable.get(i))) {
-                ctx.toast("Собрано: " + craftable.get(i).resultName());
-                ctx.click(0.5f, 0.9f);
-            }
+                        resultX + SLOT - 4f - theme.smallWidth(Integer.toString(out.count)),
+                        resultY + SLOT - 6f, MenuTheme.TEXT, 1f);
+            if (hovered)
+                theme.smallText(out.displayName(), resultX - 2f,
+                        resultY + SLOT + 16f, MenuTheme.TEXT_DIM, 1f);
         }
+
+        UiInput in = theme.activeInput();
+        if (!hovered || (!in.mousePressed && !in.rightPressed) || out == null)
+            return;
+        int made;
+        if (in.shift())
+            made = crafting.craftAll(inv);
+        else
+            made = crafting.craftToCursor(menu) == null ? 0 : out.count;
+        if (made > 0) {
+            ctx.toast("Создано: " + out.displayName() + (made > out.count ? " ×" + made : ""));
+            ctx.click(0.5f, 0.95f);
+        }
+    }
+
+    @Override
+    protected boolean inputWidgetAt(float x, float y) {
+        return inside(x, y, resultX, resultY, SLOT, SLOT)
+                || inside(x, y, trashX, trashY, TRASH_SIZE, TRASH_SIZE);
+    }
+
+    private static boolean inside(float x, float y, float bx, float by, float w, float h) {
+        return x >= bx && x <= bx + w && y >= by && y <= by + h;
+    }
+
+    @Override
+    public void closed() {
+        crafting.returnItems(ctx);
+        super.closed();
     }
 }

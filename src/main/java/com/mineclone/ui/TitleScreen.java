@@ -33,6 +33,11 @@ public final class TitleScreen implements Screen {
     private final SettingsModel settings;
     private final String splash;
     private SaveManager.WorldInfo last;
+    /** Настройки сети и куда их вернуть; null — экран сети недоступен. */
+    private final com.mineclone.net.NetSettings netSettings;
+    private final java.util.function.Consumer<com.mineclone.net.NetSettings> onNetSave;
+    /** Лобби Photon: его держит игра, титул только передаёт дальше. */
+    private com.mineclone.net.RoomBrowser browser;
 
     public TitleScreen(SaveManager save, SettingsModel settings) {
         this(save, settings, new Random().nextInt(SPLASHES.length));
@@ -40,9 +45,35 @@ public final class TitleScreen implements Screen {
 
     /** С заданной строкой — для предпросмотра, где кадр должен повторяться. */
     public TitleScreen(SaveManager save, SettingsModel settings, int splashIndex) {
+        this(save, settings, splashIndex, com.mineclone.net.NetSettings.defaults(), null);
+    }
+
+    /** Со случайной строкой и настройками сети — так его создаёт игра. */
+    public static TitleScreen withNet(SaveManager save, SettingsModel settings,
+            com.mineclone.net.NetSettings net,
+            java.util.function.Consumer<com.mineclone.net.NetSettings> onNetSave,
+            com.mineclone.net.RoomBrowser browser) {
+        TitleScreen s = new TitleScreen(save, settings, new Random().nextInt(SPLASHES.length),
+                net, onNetSave);
+        s.browser = browser;
+        return s;
+    }
+
+    /**
+     * С настройками сети: игра отдаёт их сюда и забирает обратно изменёнными.
+     *
+     * <p>Экран сети создаётся титульным, а не игрой, потому что переходы между
+     * экранами разбирает стек — игра видит только конечное действие.
+     */
+    public TitleScreen(SaveManager save, SettingsModel settings, int splashIndex,
+            com.mineclone.net.NetSettings netSettings,
+            java.util.function.Consumer<com.mineclone.net.NetSettings> onNetSave) {
         this.save = save;
         this.settings = settings;
         this.splash = SPLASHES[Math.floorMod(splashIndex, SPLASHES.length)];
+        this.netSettings = netSettings == null
+                ? com.mineclone.net.NetSettings.defaults() : netSettings;
+        this.onNetSave = onNetSave;
         refresh();
     }
 
@@ -77,7 +108,7 @@ public final class TitleScreen implements Screen {
         MenuAction result = MenuAction.NONE;
         // Кнопки на стеклянной карточке: над ярким небом и туманом одни
         // полупрозрачные кнопки сливались с фоном.
-        int buttons = last != null ? 4 : 3;
+        int buttons = last != null ? 5 : 4;
         t.panel(bx - 20f, by - 20f, bw + 40f, buttons * (bh + gap) - gap + 40f);
 
         if (last != null) {
@@ -89,6 +120,10 @@ public final class TitleScreen implements Screen {
         if (t.button("title.single", bx, by, bw, bh, "Одиночная игра",
                 last == null ? MenuTheme.Style.PRIMARY : MenuTheme.Style.NORMAL, true))
             result = MenuAction.push(new WorldSelectScreen(save, settings));
+        by += bh + gap;
+        if (t.button("title.multiplayer", bx, by, bw, bh, "Игра по сети"))
+            result = MenuAction.push(
+                    new MultiplayerScreen(netSettings, save, onNetSave, browser));
         by += bh + gap;
         if (t.button("title.settings", bx, by, bw, bh, "Настройки"))
             result = MenuAction.push(new SettingsScreen(settings));

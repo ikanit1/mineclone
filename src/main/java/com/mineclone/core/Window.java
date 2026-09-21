@@ -17,6 +17,13 @@ public class Window {
     private long handle;
     private boolean resized;
     private boolean fullscreen;
+    /** 0 — окно, 1 — без рамки, 2 — полноэкранный. */
+    private int windowMode;
+    /** Куда возвращает F11: безрамочный или полноэкранный, смотря откуда ушли. */
+    private int lastFullMode = 2;
+    /** Запрошенное разрешение полноэкранного режима; 0 — родное. */
+    private int fullW, fullH;
+    private boolean vsync = true;
     private int windowedX, windowedY, windowedW, windowedH;
 
     private final boolean visible;
@@ -96,32 +103,116 @@ public class Window {
     public void setResized(boolean r) { resized = r; }
     public boolean isFullscreen() { return fullscreen; }
 
+    /** 0 — окно, 1 — без рамки во весь экран, 2 — полноэкранный режим. */
+    public int getWindowMode() { return windowMode; }
+
     public void setVSync(boolean enable) {
+        vsync = enable;
         glfwSwapInterval(enable ? 1 : 0);
     }
 
-    public void setFullscreen(boolean wantFullscreen) {
-        if (wantFullscreen != fullscreen) toggleFullscreen();
+    /**
+     * Разрешения, которые умеет основной монитор, без повторов и по возрастанию.
+     *
+     * <p>Частота кадров здесь намеренно теряется: список нужен экрану
+     * настроек, а два одинаковых «1920 × 1080» с разной частотой игрок читает
+     * как ошибку меню, а не как выбор.
+     */
+    public static int[][] videoModes() {
+        GLFWVidMode.Buffer modes = glfwGetVideoModes(glfwGetPrimaryMonitor());
+        if (modes == null) return new int[0][];
+        java.util.LinkedHashSet<Long> seen = new java.util.LinkedHashSet<>();
+        for (int i = 0; i < modes.limit(); i++) {
+            GLFWVidMode m = modes.get(i);
+            if (m.width() < 640 || m.height() < 480) continue;
+            seen.add(((long) m.width() << 32) | m.height());
+        }
+        java.util.ArrayList<Long> sorted = new java.util.ArrayList<>(seen);
+        sorted.sort(java.util.Comparator.naturalOrder());
+        int[][] out = new int[sorted.size()][2];
+        for (int i = 0; i < out.length; i++) {
+            long v = sorted.get(i);
+            out[i][0] = (int) (v >>> 32);
+            out[i][1] = (int) v;
+        }
+        return out;
     }
 
+    /** Родное разрешение основного монитора, или null, если его не спросить. */
+    public static int[] nativeMode() {
+        GLFWVidMode vid = glfwGetVideoMode(glfwGetPrimaryMonitor());
+        return vid == null ? null : new int[] { vid.width(), vid.height(), vid.refreshRate() };
+    }
+
+    public void setFullscreen(boolean wantFullscreen) {
+        setWindowMode(wantFullscreen ? 2 : 0, 0, 0);
+    }
+
+    /** F11: из окна — в последний полноэкранный режим, обратно — в окно. */
     public void toggleFullscreen() {
+        setWindowMode(windowMode == 0 ? (lastFullMode == 0 ? 2 : lastFullMode) : 0, fullW, fullH);
+    }
+
+    /**
+     * Переключает режим окна.
+     *
+     * <p>Безрамочный — это обычное окно без рамки, растянутое на монитор, а не
+     * эксклюзивный режим: alt-tab из него мгновенный, и второй монитор не
+     * гаснет. Полноэкранный отдаёт монитор драйверу и умеет менять его
+     * разрешение — там же работает и выбор разрешения в настройках.
+     *
+     * @param width  запрошенное разрешение полноэкранного режима; 0 — родное
+     */
+    public void setWindowMode(int mode, int width, int height) {
         long monitor = glfwGetPrimaryMonitor();
         GLFWVidMode vid = glfwGetVideoMode(monitor);
         if (vid == null) return;
-        if (!fullscreen) {
-            try (var stack = stackPush()) {
-                IntBuffer wx = stack.mallocInt(1), wy = stack.mallocInt(1);
-                glfwGetWindowPos(handle, wx, wy);
-                windowedX = wx.get(0);
-                windowedY = wy.get(0);
+        mode = Math.max(0, Math.min(2, mode));
+        if (mode == windowMode && (mode != 2 || (width == fullW && height == fullH)))
+            return;
+        if (windowMode == 0 && mode != 0)
+            rememberWindowed();
+        fullW = width;
+        fullH = height;
+        if (mode != 0)
+            lastFullMode = mode;
+        switch (mode) {
+            case 1 -> {
+                glfwSetWindowMonitor(handle, 0L, 0, 0, vid.width(), vid.height(), 0);
+                glfwSetWindowAttrib(handle, GLFW_DECORATED, GLFW_FALSE);
+                try (var stack = stackPush()) {
+                    IntBuffer mx = stack.mallocInt(1), my = stack.mallocInt(1);
+                    glfwGetMonitorPos(monitor, mx, my);
+                    glfwSetWindowPos(handle, mx.get(0), my.get(0));
+                }
             }
-            windowedW = width;
-            windowedH = height;
-            glfwSetWindowMonitor(handle, monitor, 0, 0, vid.width(), vid.height(), vid.refreshRate());
-        } else {
-            glfwSetWindowMonitor(handle, 0L, windowedX, windowedY, windowedW, windowedH, 0);
+            case 2 -> {
+                glfwSetWindowAttrib(handle, GLFW_DECORATED, GLFW_TRUE);
+                int w = width > 0 ? width : vid.width();
+                int h = height > 0 ? height : vid.height();
+                glfwSetWindowMonitor(handle, monitor, 0, 0, w, h, vid.refreshRate());
+            }
+            default -> {
+                glfwSetWindowMonitor(handle, 0L, windowedX, windowedY, windowedW, windowedH, 0);
+                glfwSetWindowAttrib(handle, GLFW_DECORATED, GLFW_TRUE);
+            }
         }
-        fullscreen = !fullscreen;
+        windowMode = mode;
+        fullscreen = mode != 0;
+        // Смена монитора сбрасывает интервал обмена: без этого вертикальная
+        // синхронизация тихо выключалась при каждом входе в полный экран.
+        glfwSwapInterval(vsync ? 1 : 0);
+    }
+
+    private void rememberWindowed() {
+        try (var stack = stackPush()) {
+            IntBuffer wx = stack.mallocInt(1), wy = stack.mallocInt(1);
+            glfwGetWindowPos(handle, wx, wy);
+            windowedX = wx.get(0);
+            windowedY = wy.get(0);
+        }
+        windowedW = width;
+        windowedH = height;
     }
 
     public void destroy() {

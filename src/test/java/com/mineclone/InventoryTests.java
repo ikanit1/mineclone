@@ -1307,7 +1307,7 @@ final class InventoryTests {
         assertTrue("torch is a light source", reg.require("torch").hasTag(ResourceId.of("light")));
         assertTrue("stone is not a light source", !reg.require("stone").hasTag(ResourceId.of("light")));
         assertTrue("pickaxe is durable", reg.require("iron_pickaxe").hasTag(ResourceId.of("durable")));
-        assertTrue("coal ore is fuel", reg.require("coal_ore").hasTag(ResourceId.of("fuel")));
+        assertTrue("coal is fuel", reg.require("coal").hasTag(ResourceId.of("fuel")));
         assertTrue("stone is not fuel", !reg.require("stone").hasTag(ResourceId.of("fuel")));
         assertTrue("beef is food", reg.require("beef").hasTag(ResourceId.of("food")));
         assertTrue("planks burn", reg.require("planks").hasTag(ResourceId.of("flammable")));

@@ -13,7 +13,8 @@ public final class StructureStability {
 
     public static boolean heavy(BlockType b) {
         return b == BlockType.STONE || b == BlockType.COBBLE || b == BlockType.IRON_ORE
-                || b == BlockType.GOLD_ORE || b == BlockType.DIAMOND_ORE || b == BlockType.OBSIDIAN;
+                || b == BlockType.GOLD_ORE || b == BlockType.DIAMOND_ORE || b == BlockType.OBSIDIAN
+                || b == BlockType.TERRACOTTA || b == BlockType.LIMESTONE || b == BlockType.BASALT;
     }
 
     /** True when a connected heavy component reaches bedrock or natural ground. */
@@ -32,8 +33,7 @@ public final class StructureStability {
             if (p[1] <= 1)
                 return true;
             BlockType below = world.getBlock(p[0], p[1] - 1, p[2]);
-            if (below == BlockType.BEDROCK || below == BlockType.DIRT || below == BlockType.GRASS
-                    || below == BlockType.SNOWY_GRASS || below == BlockType.SAND)
+            if (below == BlockType.BEDROCK || below.isSoil() || below.hasGravity())
                 return true;
             for (int[] d : dirs) {
                 int nx = p[0] + d[0], ny = p[1] + d[1], nz = p[2] + d[2];

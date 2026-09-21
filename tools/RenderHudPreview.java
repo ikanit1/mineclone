@@ -67,6 +67,8 @@ public class RenderHudPreview {
         // Кадр 1: игровой HUD поверх «неба».
         shot("hud-play", () -> {
             hud.drawCompass(W, H, (float) Math.toRadians(-38), (float) (Math.PI / 6.0));
+            hud.drawSurvivalObjective(W, H,
+                    new com.mineclone.game.SurvivalProgress().objective(new Inventory()));
             hud.drawHotbar(W, H, inv, 3, 0.25f);
             hud.drawHearts(W, H, 13f, 17f);
             hud.drawHunger(W, H, 11f);
@@ -109,7 +111,7 @@ public class RenderHudPreview {
         // Кадр: печь на середине работы — пламя горит, стрелка заполнена.
         var furnace = new com.mineclone.world.Furnace();
         furnace.input = ItemStack.of("beef", 6);
-        furnace.fuel = new ItemStack(BlockType.COAL_ORE, 12);
+        furnace.fuel = ItemStack.of("coal", 12);
         furnace.output = ItemStack.of("cooked_beef", 3);
         furnace.burnMax = com.mineclone.world.Smelting.COOK_TIME * 8f;
         furnace.burnLeft = furnace.burnMax * 0.62f;
@@ -270,6 +272,34 @@ public class RenderHudPreview {
         menuShot("menu-title", backdrop, theme, new com.mineclone.ui.TitleScreen(save, settings, 0),
                 at(640f, 398f), 0);
 
+        // Экран игры по сети: оба транспорта и список миров под комнату.
+        com.mineclone.net.NetSettings netSettings = new com.mineclone.net.NetSettings(
+                com.mineclone.net.NetSettings.PHOTON, "Строитель",
+                "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", "eu", "наша комната",
+                "192.168.1.5", 25566);
+        // Лобби без сети: список комнат подкладывается тем же путём, каким
+        // его приносит транспорт, — снимок обязан показывать живой экран.
+        com.mineclone.net.RoomBrowser lobby = new com.mineclone.net.RoomBrowser();
+        com.mineclone.ui.MultiplayerScreen mp =
+                new com.mineclone.ui.MultiplayerScreen(netSettings, save, s -> { }, lobby);
+        // Список кладётся после конструктора: он сам открывает лобби и чистит
+        // прежние комнаты, а сети в снимке нет.
+        lobby.onRoomList(java.util.List.of(
+                new com.mineclone.net.NetTransport.RoomInfo("Стройка у реки", 3, 8),
+                new com.mineclone.net.NetTransport.RoomInfo("наша комната", 1, 8),
+                new com.mineclone.net.NetTransport.RoomInfo("survival-hard", 8, 8),
+                new com.mineclone.net.NetTransport.RoomInfo("test", 2, 8)));
+        menuShot("menu-net-photon", backdrop, theme, mp, at(640f, 470f), 1);
+        com.mineclone.ui.MultiplayerScreen mpLan = new com.mineclone.ui.MultiplayerScreen(
+                netSettings.withTransport(com.mineclone.net.NetSettings.LAN), save, s -> { });
+        menuShot("menu-net-lan", backdrop, theme, mpLan, at(640f, 470f), 1);
+        com.mineclone.ui.MultiplayerScreen mpWorlds =
+                new com.mineclone.ui.MultiplayerScreen(netSettings, save, s -> { }, lobby);
+        // Кнопка «Открыть свой мир» переводит тот же экран в список миров.
+        menuFrame(backdrop, theme, mpWorlds, at(0f, 0f), 0.1f);
+        menuFrame(backdrop, theme, mpWorlds, click(771f, 468f), 0.2f);
+        menuShot("menu-net-worlds", backdrop, theme, mpWorlds, at(640f, 300f), 1);
+
         com.mineclone.ui.WorldSelectScreen worlds = new com.mineclone.ui.WorldSelectScreen(save, settings);
         worlds.select("preview_b");
         Thread.sleep(300);   // размеры миров считаются в фоне
@@ -293,11 +323,29 @@ public class RenderHudPreview {
         menuShot("menu-create", backdrop, theme, create, at(480f, 594f), 2);
 
         settings.keys.set(com.mineclone.core.KeyBindings.Action.JUMP, org.lwjgl.glfw.GLFW.GLFW_KEY_W);
+        settings.videoModes = new int[][] { { 1280, 720 }, { 1600, 900 }, { 1920, 1080 }, { 2560, 1440 } };
         menuShot("menu-settings-graphics", backdrop, theme, new com.mineclone.ui.SettingsScreen(settings, 0),
                 at(640f, 214f), 1);
-        menuShot("menu-settings-controls", backdrop, theme, new com.mineclone.ui.SettingsScreen(settings, 1),
+        // Вкладка графики прокручена до упора: только так видно нижние разделы
+        // и только так проверяется, что расчёт высоты содержимого до них
+        // вообще дотягивается.
+        com.mineclone.ui.SettingsScreen scrolled = new com.mineclone.ui.SettingsScreen(settings, 0);
+        for (int i = 0; i < 40; i++)
+            menuFrame(backdrop, theme, scrolled,
+                    com.mineclone.ui.UiInput.builder().at(640f, 400f).scroll(-3f).build(), 0.1f);
+        menuShot("menu-settings-graphics-bottom", backdrop, theme, scrolled, at(640f, 400f), 1);
+        // Экран разрешений имеет смысл только в полноэкранном режиме — иначе
+        // на снимке остался бы один серый прочерк.
+        settings.windowMode = 2;
+        settings.resolutionIndex = 2;
+        menuShot("menu-settings-screen", backdrop, theme, new com.mineclone.ui.SettingsScreen(settings, 1),
                 at(640f, 312f), 1);
-        menuShot("menu-settings-audio", backdrop, theme, new com.mineclone.ui.SettingsScreen(settings, 2),
+        settings.windowMode = 0;
+        menuShot("menu-settings-game", backdrop, theme, new com.mineclone.ui.SettingsScreen(settings, 2),
+                at(640f, 280f), 1);
+        menuShot("menu-settings-controls", backdrop, theme, new com.mineclone.ui.SettingsScreen(settings, 3),
+                at(640f, 312f), 1);
+        menuShot("menu-settings-audio", backdrop, theme, new com.mineclone.ui.SettingsScreen(settings, 4),
                 at(0f, 0f), 1);
         com.mineclone.ui.KeybindScreen keys = new com.mineclone.ui.KeybindScreen(settings);
         keys.startCapture(com.mineclone.core.KeyBindings.Action.DROP);

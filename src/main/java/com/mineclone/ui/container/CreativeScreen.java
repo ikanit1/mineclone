@@ -10,28 +10,39 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Творческое окно: все предметы реестра и хотбар под ними.
+ * Творческое окно: каталог предметов по категориям и хотбар под ним.
  *
  * <p>Источник бездонный: предмет берётся копией, а положенная обратно стопка
- * исчезает. Вкладки по категориям приходят планом D — здесь пока одна сетка с
- * прокруткой, зато настоящая: предметов уже больше, чем помещается на экран.
+ * исчезает. Фильтр меняет живой список источника, поэтому правила кликов и
+ * перетаскивания остаются общими с остальными контейнерами.
  */
 public final class CreativeScreen extends ContainerScreen {
 
     /** Ширина сетки источника и сколько рядов видно за раз. */
     public static final int COLUMNS = 10, VISIBLE_ROWS = 5;
 
+    private static final String[] TAB_LABELS = {
+            "Все", "Блоки", "Декор", "Мех.", "Инстр.", "Еда", "Ещё"
+    };
+    private static final String[] TAB_CATEGORIES = {
+            null, "building", "decor", "mechanics", "tools", "food", "materials,misc"
+    };
+
+    private final List<Item> allItems;
     private final List<Item> items;
+    private int category;
     private int scrollRow;
-    private float gridX, gridY;
+    private float gridX, gridY, tabsX, tabsY;
 
     public CreativeScreen(WindowContext ctx) {
-        this(ctx, visibleItems());
+        this(ctx, visibleItems(), new ArrayList<>());
     }
 
-    private CreativeScreen(WindowContext ctx, List<Item> items) {
+    private CreativeScreen(WindowContext ctx, List<Item> allItems, List<Item> items) {
         super(ctx, build(ctx, items));
+        this.allItems = List.copyOf(allItems);
         this.items = items;
+        applyCategory(0);
     }
 
     private static List<Item> visibleItems() {
@@ -89,11 +100,13 @@ public final class CreativeScreen extends ContainerScreen {
     @Override
     protected float[] layout(MenuTheme theme) {
         float panelW = gridWidth(COLUMNS) + 2 * PAD;
-        float panelH = 64f + gridHeight(VISIBLE_ROWS) + 34f + SLOT + PAD;
+        float panelH = 101f + gridHeight(VISIBLE_ROWS) + 34f + SLOT + PAD;
         float panelX = theme.width() / 2f - panelW / 2f;
         float panelY = theme.height() / 2f - panelH / 2f;
         gridX = panelX + PAD;
-        gridY = panelY + 64f;
+        tabsX = gridX;
+        tabsY = panelY + 55f;
+        gridY = panelY + 101f;
 
         int rows = (items.size() + COLUMNS - 1) / COLUMNS;
         int maxScroll = Math.max(0, rows - VISIBLE_ROWS);
@@ -111,6 +124,11 @@ public final class CreativeScreen extends ContainerScreen {
 
     @Override
     protected void drawExtras(MenuTheme theme) {
+        int next = theme.segmentedSmall("creative-category", tabsX, tabsY,
+                gridWidth(COLUMNS), 30f, TAB_LABELS, category);
+        if (next != category)
+            applyCategory(next);
+
         int rows = (items.size() + COLUMNS - 1) / COLUMNS;
         int maxScroll = Math.max(0, rows - VISIBLE_ROWS);
         if (maxScroll <= 0)
@@ -121,6 +139,29 @@ public final class CreativeScreen extends ContainerScreen {
         float knobH = Math.max(24f, trackH * VISIBLE_ROWS / rows);
         float knobY = gridY + (trackH - knobH) * scrollRow / maxScroll;
         theme.quad(trackX, knobY, 4f, knobH, MenuTheme.ACCENT, 0.75f);
+    }
+
+    @Override
+    protected boolean inputWidgetAt(float x, float y) {
+        return x >= tabsX && x <= tabsX + gridWidth(COLUMNS)
+                && y >= tabsY && y <= tabsY + 30f;
+    }
+
+    private void applyCategory(int next) {
+        category = Math.max(0, Math.min(TAB_CATEGORIES.length - 1, next));
+        String wanted = TAB_CATEGORIES[category];
+        items.clear();
+        for (Item item : allItems)
+            if (wanted == null || categoryMatches(wanted, item.category))
+                items.add(item);
+        scrollRow = 0;
+    }
+
+    private static boolean categoryMatches(String wanted, String category) {
+        for (String candidate : wanted.split(","))
+            if (candidate.equals(category))
+                return true;
+        return false;
     }
 
     /**

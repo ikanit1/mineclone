@@ -34,6 +34,7 @@ public final class ContextHint {
             switch (target) {
                 case CHEST -> { return new Hint(RMB, "открыть сундук"); }
                 case FURNACE -> { return new Hint(RMB, "открыть печь"); }
+                case CRAFTING_TABLE -> { return new Hint(RMB, "открыть верстак"); }
                 case DOOR_CLOSED -> { return new Hint(RMB, "открыть дверь"); }
                 case DOOR_OPEN -> { return new Hint(RMB, "закрыть дверь"); }
                 default -> { }

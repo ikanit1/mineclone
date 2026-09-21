@@ -56,9 +56,12 @@ public class ChunkMesher {
         int baseX = chunk.cx * Chunk.SIZE_X;
         int baseZ = chunk.cz * Chunk.SIZE_Z;
 
-        for (int x = 0; x < Chunk.SIZE_X; x++) {
-            for (int y = 0; y < Chunk.SIZE_Y; y++) {
-                for (int z = 0; z < Chunk.SIZE_Z; z++) {
+        // Порядок обхода — y, z, x: ровно так лежат ячейки в памяти
+        // (idx = (y * SIZE_Z + z) * SIZE_X + x). Прежний x, y, z шагал по
+        // массиву через шестнадцать элементов и мимо каждой кэш-линии.
+        for (int y = 0; y < Chunk.SIZE_Y; y++) {
+            for (int z = 0; z < Chunk.SIZE_Z; z++) {
+                for (int x = 0; x < Chunk.SIZE_X; x++) {
                     BlockType b = chunk.get(x, y, z);
                     if (b == BlockType.AIR)
                         continue;
@@ -76,6 +79,22 @@ public class ChunkMesher {
 
                     if (b == BlockType.DOOR_CLOSED || b == BlockType.DOOR_OPEN) {
                         emitDoor(chunk, positions, uvs, light, blockLightList, indices, x, y, z, baseX, baseZ, b);
+                        continue;
+                    }
+
+                    if (b == BlockType.LAVA) {
+                        int level = chunk.getMeta(x,y,z) & 15;
+                        boolean covered = world.getBlock(baseX+x,y+1,baseZ+z)==BlockType.LAVA;
+                        float height = covered || level==0 || level>=8 ? 1f : (8-level)/8f;
+                        int skip=covered ? 1<<4 : 0;
+                        for(int f=0;f<6;f++) {
+                            int[] d=FACE_DIRS[f];
+                            BlockType n=world.getBlock(baseX+x+d[0],y+d[1],baseZ+z+d[2]);
+                            if(n==BlockType.LAVA && (f==5 || (f<4 &&
+                                    (world.getBlockMeta(baseX+x+d[0],y,baseZ+z+d[2])&15)==level))) skip|=1<<f;
+                        }
+                        emitBox(chunk,positions,uvs,light,blockLightList,indices,x,y,z,baseX,baseZ,
+                                level==0 ? b.sideTile : b.topTile,0,0,0,1,height,1,skip);
                         continue;
                     }
 
@@ -730,8 +749,7 @@ public class ChunkMesher {
         float blVal = blRaw / (float) Chunk.MAX_LIGHT;
         float lv = Math.max(skyFrac, blVal);
 
-        // Each row: {wx,wy,wz} for the 4 corners BL,BR,TR,TL
-        // UV mapping: U spans tile left→right, V spans tile bottom→top
+        // Each row: {wx,wy,wz} for the 4 corners BL,BR,TR,TL.
         float[][][] planes = {
                 // Plane A front (normal +Z): x=0→1, y=0→h, z=0.5
                 { { 0f, 0f, .5f }, { 1f, 0f, .5f }, { 1f, h, .5f }, { 0f, h, .5f } },
@@ -742,6 +760,21 @@ public class ChunkMesher {
                 // Plane B back (normal -X)
                 { { .5f, 0f, 0f }, { .5f, 0f, 1f }, { .5f, h, 1f }, { .5f, h, 0f } },
         };
+        if (b == BlockType.TORCH) {
+            int mount = chunk.getMeta(x, y, z) & 0x7;
+            float bx = .5f, bz = .5f, tx = .5f, tz = .5f;
+            if (mount == 1) { bx = .08f; tx = .34f; }
+            else if (mount == 2) { bx = .92f; tx = .66f; }
+            else if (mount == 3) { bz = .08f; tz = .34f; }
+            else if (mount == 4) { bz = .92f; tz = .66f; }
+            float w = 2.5f / 16f;
+            planes = new float[][][] {
+                    { {bx-w,0,bz}, {bx+w,0,bz}, {tx+w,h,tz}, {tx-w,h,tz} },
+                    { {bx+w,0,bz}, {bx-w,0,bz}, {tx-w,h,tz}, {tx+w,h,tz} },
+                    { {bx,0,bz+w}, {bx,0,bz-w}, {tx,h,tz-w}, {tx,h,tz+w} },
+                    { {bx,0,bz-w}, {bx,0,bz+w}, {tx,h,tz+w}, {tx,h,tz-w} },
+            };
+        }
         float[][] uvQ = { { u0, v1 }, { u1, v1 }, { u1, v0 }, { u0, v0 } };
 
         for (float[][] quad : planes) {

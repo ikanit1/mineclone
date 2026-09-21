@@ -43,7 +43,14 @@ public final class PostProcess {
     private final int farShadowTex;
 
     private int width, height;
+    /**
+     * Размер экрана. Сцена может рисоваться меньше его ({@link #resize}), и
+     * тогда композит растягивает её на окно — интерфейс при этом остаётся
+     * чётким, потому что рисуется после и в полном разрешении.
+     */
+    private int outWidth, outHeight;
     private int samples;
+    private int wantSamples;
 
     private int msFbo, msColor, msDepth;
     /** Разрешённая (не multisample) глубина мира — её читают туман и глубина резкости. */
@@ -78,8 +85,31 @@ public final class PostProcess {
         farShadowTex = farDepth(true);
 
         int max = glGetInteger(GL_MAX_SAMPLES);
-        samples = Math.max(1, Math.min(4, max));
-        resize(width, height);
+        wantSamples = 4;
+        samples = Math.max(1, Math.min(wantSamples, max));
+        resize(width, height, width, height);
+    }
+
+    /**
+     * Сколько выборок у multisample-цели: 0 или 1 — сглаживания нет.
+     *
+     * <p>Перестройка целей дорогая (шесть текстур и два renderbuffer'а), но
+     * случается она ровно по щелчку в настройках, а не в кадре.
+     */
+    public void setSamples(int n) {
+        int max = glGetInteger(GL_MAX_SAMPLES);
+        int want = Math.max(1, Math.min(n <= 1 ? 1 : n, max));
+        if (want == samples)
+            return;
+        wantSamples = want;
+        samples = want;
+        int w = width, h = height, ow = outWidth, oh = outHeight;
+        width = height = 0;                 // заставить resize пересобрать цели
+        resize(w, h, ow, oh);
+    }
+
+    public int getSamples() {
+        return samples;
     }
 
     /** Глубина 1×1 «всё далеко». */
@@ -113,8 +143,18 @@ public final class PostProcess {
     public boolean isReady() { return ready; }
 
     public void resize(int w, int h) {
+        resize(w, h, w, h);
+    }
+
+    /**
+     * @param w  ширина, в которой рисуется сцена
+     * @param ow ширина окна, в которую композит её растягивает
+     */
+    public void resize(int w, int h, int ow, int oh) {
         w = Math.max(1, w);
         h = Math.max(1, h);
+        outWidth = Math.max(1, ow);
+        outHeight = Math.max(1, oh);
         if (w == width && h == height && ready)
             return;
         destroyTargets();
@@ -303,8 +343,7 @@ public final class PostProcess {
             fogShader.setFloat("uTop", s.fogTop);
             fogShader.setFloat("uDepthRange", s.fogDepth);
             fogShader.setFloat("uMaxDist", s.fogMaxDist);
-            fogShader.setFloat("uTime", s.fogTime);
-            fogShader.setVec2("uWind", s.fogWindX, s.fogWindZ);
+            fogShader.setVec2("uDrift", s.fogDriftX, s.fogDriftZ);
             fogShader.setFloat("uShadowOn", s.fogShadowTex != 0 ? 1f : 0f);
             // Шум сдвигается от кадра к кадру: зерно марша не стоит на месте
             // сеткой, а мелко кипит, и глаз его усредняет.
@@ -366,7 +405,9 @@ public final class PostProcess {
         }
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(0, 0, width, height);
+        // Композит — единственный проход, который пишет в окно, поэтому
+        // масштаб рендера виден только здесь: сцена меньше, вывод во весь экран.
+        glViewport(0, 0, outWidth, outHeight);
         compositeShader.bind();
         compositeShader.setInt("uScene", 0);
         compositeShader.setInt("uBloom", 1);
@@ -491,7 +532,8 @@ public final class PostProcess {
         public float fogDepth = 12f;
         public float fogMaxDist = 96f;
         public float fogTime = 0f;
-        public float fogWindX, fogWindZ;
+        /** Пройденный воздухом путь, а не ветер: см. {@code WeatherDrift}. */
+        public float fogDriftX, fogDriftZ;
         public final Vector3f fogLight = new Vector3f();
         public final Vector3f fogAmbient = new Vector3f();
         public final Vector3f camPos = new Vector3f();

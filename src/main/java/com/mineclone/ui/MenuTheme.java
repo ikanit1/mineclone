@@ -630,6 +630,17 @@ public final class MenuTheme {
 
     /** Ряд взаимоисключающих вариантов. Возвращает выбранный индекс. */
     public int segmented(String id, float x, float y, float w, float h, String[] options, int index) {
+        return segmented(id, x, y, w, h, options, index, false);
+    }
+
+    /** Компактный ряд вкладок с малым шрифтом. */
+    public int segmentedSmall(String id, float x, float y, float w, float h,
+            String[] options, int index) {
+        return segmented(id, x, y, w, h, options, index, true);
+    }
+
+    private int segmented(String id, float x, float y, float w, float h,
+            String[] options, int index, boolean compact) {
         int n = options.length;
         float gap = 4f;
         float cw = (w - gap * (n - 1)) / n;
@@ -654,8 +665,12 @@ public final class MenuTheme {
             quad(cx, y + h - 1.5f, cw, 1.5f, 0f, 0f, 0f, 0.45f);
             if (k > 0.01f)
                 outline(cx - 1.5f, y - 1.5f, cw + 3f, h + 3f, 1.5f, ACCENT, 0.7f * k);
-            textCentered(ellipsize(font, options[i], cw - 12f), cx + cw / 2f, baseline(font, y, h),
-                    i == result ? TEXT : TEXT_DIM, 1f);
+            if (compact)
+                smallCentered(ellipsize(small, options[i], cw - 6f), cx + cw / 2f,
+                        baseline(small, y, h), i == result ? TEXT : TEXT_DIM, 1f);
+            else
+                textCentered(ellipsize(font, options[i], cw - 12f), cx + cw / 2f,
+                        baseline(font, y, h), i == result ? TEXT : TEXT_DIM, 1f);
         }
         return result;
     }

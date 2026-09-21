@@ -223,7 +223,8 @@ public final class SaveManager {
         saveLevel(copy, new LevelData(d.name + " (копия)", d.seed,
                 d.px, d.py, d.pz, d.spawnX, d.spawnY, d.spawnZ,
                 d.yaw, d.pitch, d.timeOfDay, d.selectedSlot,
-                d.inventory, d.gameMode, System.currentTimeMillis(), d.health, d.hunger));
+                d.inventory, d.gameMode, System.currentTimeMillis(), d.health, d.hunger,
+                d.pending, d.extraSections));
         return copy;
     }
 
@@ -246,7 +247,19 @@ public final class SaveManager {
      * Записать превью в фоне, в том же потоке, что и чанки. Массив
      * копируется: вызывающий волен переиспользовать свой.
      */
+    /**
+     * Мир без имени — это чужой мир, открытый по сети.
+     *
+     * <p>У участника своего сохранения нет и быть не должно: {@code worldId} у
+     * него пустой, и всё, что идёт через него, обязано тихо ничего не делать, а
+     * не падать на построении пути к файлу.
+     */
+    private static boolean nameless(String id) {
+        return id == null || id.isEmpty();
+    }
+
     public void saveIconAsync(String id, int w, int h, int[] argb) {
+        if (nameless(id)) return;
         int[] px = argb.clone();
         chunkWriter.submit(() -> {
             File dir = worldDir(id);
@@ -272,6 +285,7 @@ public final class SaveManager {
 
     /** Превью мира или null, если его нет или файл не читается. */
     public java.awt.image.BufferedImage loadIcon(String id) {
+        if (nameless(id)) return null;
         File f = iconFile(id);
         if (!f.isFile())
             return null;
@@ -285,6 +299,7 @@ public final class SaveManager {
     // ---- level.dat ----
 
     public void saveLevel(String id, LevelData d) {
+        if (nameless(id)) return;
         try {
             writeGzipAtomic(levelFile(id), o -> {
                 o.writeInt(SaveFormat.MAGIC);
@@ -354,6 +369,7 @@ public final class SaveManager {
 
     /** @return loaded level, or null if absent/unreadable/incompatible. */
     public LevelData loadLevel(String id) {
+        if (nameless(id)) return null;
         File f = levelFile(id);
         if (!f.isFile()) return null;
         try (DataInputStream in = new DataInputStream(new GZIPInputStream(
@@ -446,6 +462,7 @@ public final class SaveManager {
 
     /** Queues a chunk write on the background thread. Arrays must not be mutated after the call. */
     public void saveChunkAsync(String id, ChunkSnapshot s) {
+        if (nameless(id)) return;
         chunkWriter.submit(() -> saveChunkBlocking(id, s));
     }
 
@@ -491,6 +508,7 @@ public final class SaveManager {
 
     /** @return snapshot, or null if absent/unreadable/incompatible. */
     public ChunkSnapshot loadChunk(String id, int cx, int cz) {
+        if (nameless(id)) return null;
         File f = chunkFile(id, cx, cz);
         if (!f.isFile()) return null;
         try (DataInputStream in = new DataInputStream(new GZIPInputStream(
@@ -582,7 +600,8 @@ public final class SaveManager {
         saveLevel(id, new LevelData(newName, d.seed,
                 d.px, d.py, d.pz, d.spawnX, d.spawnY, d.spawnZ,
                 d.yaw, d.pitch, d.timeOfDay, d.selectedSlot,
-                d.inventory, d.gameMode, d.lastPlayed, d.health, d.hunger));
+                d.inventory, d.gameMode, d.lastPlayed, d.health, d.hunger,
+                d.pending, d.extraSections));
     }
 
     /** Метки слота инвентаря в формате уровня v8. */
@@ -592,6 +611,28 @@ public final class SaveManager {
     private static final int SLOT_FOOD = 3;
 
     // ---- options.dat (global, not per-world) ----
+
+    /**
+     * Размеченный хвост настроек: «имя, вид, значение».
+     *
+     * <p>Новая настройка не поднимает версию файла, а незнакомую читатель
+     * пропускает по виду значения — ровно так же, как секции level.dat.
+     * Раньше каждое поле было позицией в потоке, и добавить одно значило
+     * написать ещё одну ветку чтения для каждой прошлой версии.
+     */
+    private static final byte KIND_BOOL = 0, KIND_INT = 1, KIND_FLOAT = 2, KIND_STRING = 3;
+
+    private static void putBool(DataOutputStream out, String key, boolean v) throws IOException {
+        out.writeUTF(key); out.writeByte(KIND_BOOL); out.writeBoolean(v);
+    }
+
+    private static void putInt(DataOutputStream out, String key, int v) throws IOException {
+        out.writeUTF(key); out.writeByte(KIND_INT); out.writeInt(v);
+    }
+
+    private static void putString(DataOutputStream out, String key, String v) throws IOException {
+        out.writeUTF(key); out.writeByte(KIND_STRING); out.writeUTF(v == null ? "" : v);
+    }
 
     /** @return loaded options, or {@link Options#defaults()} if absent/unreadable/incompatible. */
     public Options loadOptions() {
@@ -653,14 +694,93 @@ public final class SaveManager {
             boolean recipeBookCraftable = in.readBoolean();
             String recipeBookCategory = in.readUTF();
             int sortMode = in.readInt();
+            if (version == 6) {
+                return new Options(rr, fov, br, vol, maxFps, vsync, fullscreen, viewBobbing,
+                        sensitivity, invertY, musicVol, effectsVol, guiScale, shaderQuality, keys,
+                        advancedTooltips, recipeBookOpen, recipeBookCraftable,
+                        recipeBookCategory, sortMode);
+            }
+            // v7: размеченный хвост
+            java.util.Map<String, Object> extra = readTagged(in);
+            Options.Video vd = Options.Video.defaults();
+            Options.Graphics gr = Options.Graphics.defaults();
+            Options.Gameplay gp = Options.Gameplay.defaults();
+            vd = new Options.Video(
+                    intOr(extra, "video.windowMode", vd.windowMode()),
+                    intOr(extra, "video.resolution", vd.resolutionIndex()),
+                    intOr(extra, "video.renderScale", vd.renderScale()),
+                    intOr(extra, "video.antialiasing", vd.antialiasing()));
+            gr = new Options.Graphics(
+                    intOr(extra, "gfx.shadows", gr.shadows()),
+                    boolOr(extra, "gfx.bloom", gr.bloom()),
+                    boolOr(extra, "gfx.godRays", gr.godRays()),
+                    boolOr(extra, "gfx.volumetricFog", gr.volumetricFog()),
+                    boolOr(extra, "gfx.waterReflections", gr.waterReflections()),
+                    intOr(extra, "gfx.particles", gr.particles()),
+                    intOr(extra, "gfx.weather", gr.weather()),
+                    intOr(extra, "gfx.entityDistance", gr.entityDistance()),
+                    boolOr(extra, "gfx.occlusion", gr.occlusion()),
+                    boolOr(extra, "gfx.chunkLod", gr.chunkLod()));
+            gp = new Options.Gameplay(
+                    boolOr(extra, "game.cameraShake", gp.cameraShake()),
+                    boolOr(extra, "game.screenEffects", gp.screenEffects()),
+                    boolOr(extra, "game.contextHints", gp.contextHints()),
+                    intOr(extra, "game.fpsDisplay", gp.fpsDisplay()));
+            com.mineclone.net.NetSettings defNet = com.mineclone.net.NetSettings.defaults();
+            com.mineclone.net.NetSettings net = new com.mineclone.net.NetSettings(
+                    intOr(extra, "net.transport", defNet.transport()),
+                    stringOr(extra, "net.nickname", defNet.nickname()),
+                    stringOr(extra, "net.appId", defNet.appId()),
+                    stringOr(extra, "net.region", defNet.region()),
+                    stringOr(extra, "net.room", defNet.room()),
+                    stringOr(extra, "net.address", defNet.address()),
+                    intOr(extra, "net.port", defNet.port()));
             return new Options(rr, fov, br, vol, maxFps, vsync, fullscreen, viewBobbing,
                     sensitivity, invertY, musicVol, effectsVol, guiScale, shaderQuality, keys,
                     advancedTooltips, recipeBookOpen, recipeBookCraftable,
-                    recipeBookCategory, sortMode);
+                    recipeBookCategory, sortMode, vd, gr, gp, net);
         } catch (IOException e) {
             System.err.println("loadOptions failed: " + e.getMessage());
             return Options.defaults();
         }
+    }
+
+    /** Читает хвост до конца, пропуская незнакомые ключи по виду значения. */
+    private static java.util.Map<String, Object> readTagged(DataInputStream in) throws IOException {
+        java.util.Map<String, Object> out = new java.util.HashMap<>();
+        int count = in.readInt();
+        if (count < 0 || count > 4096)
+            return out;
+        for (int i = 0; i < count; i++) {
+            String key = in.readUTF();
+            byte kind = in.readByte();
+            switch (kind) {
+                case KIND_BOOL -> out.put(key, in.readBoolean());
+                case KIND_INT -> out.put(key, in.readInt());
+                case KIND_FLOAT -> out.put(key, in.readFloat());
+                case KIND_STRING -> out.put(key, in.readUTF());
+                // Вид неизвестен — дальше по потоку идти вслепую нельзя:
+                // отдаём то, что успели прочитать, остальное возьмётся из
+                // умолчаний.
+                default -> { return out; }
+            }
+        }
+        return out;
+    }
+
+    private static int intOr(java.util.Map<String, Object> m, String key, int fallback) {
+        Object v = m.get(key);
+        return v instanceof Integer i ? i : fallback;
+    }
+
+    private static boolean boolOr(java.util.Map<String, Object> m, String key, boolean fallback) {
+        Object v = m.get(key);
+        return v instanceof Boolean b ? b : fallback;
+    }
+
+    private static String stringOr(java.util.Map<String, Object> m, String key, String fallback) {
+        Object v = m.get(key);
+        return v instanceof String s ? s : fallback;
     }
 
     public void saveOptions(Options o) {
@@ -693,6 +813,32 @@ public final class SaveManager {
                 out.writeBoolean(o.recipeBookCraftable);
                 out.writeUTF(o.recipeBookCategory);
                 out.writeInt(o.sortMode);
+                out.writeInt(25);                                       // v7
+                putInt(out, "video.windowMode", o.video.windowMode());
+                putInt(out, "video.resolution", o.video.resolutionIndex());
+                putInt(out, "video.renderScale", o.video.renderScale());
+                putInt(out, "video.antialiasing", o.video.antialiasing());
+                putInt(out, "gfx.shadows", o.graphics.shadows());
+                putBool(out, "gfx.bloom", o.graphics.bloom());
+                putBool(out, "gfx.godRays", o.graphics.godRays());
+                putBool(out, "gfx.volumetricFog", o.graphics.volumetricFog());
+                putBool(out, "gfx.waterReflections", o.graphics.waterReflections());
+                putInt(out, "gfx.particles", o.graphics.particles());
+                putInt(out, "gfx.weather", o.graphics.weather());
+                putInt(out, "gfx.entityDistance", o.graphics.entityDistance());
+                putBool(out, "gfx.occlusion", o.graphics.occlusion());
+                putBool(out, "gfx.chunkLod", o.graphics.chunkLod());
+                putBool(out, "game.cameraShake", o.gameplay.cameraShake());
+                putBool(out, "game.screenEffects", o.gameplay.screenEffects());
+                putBool(out, "game.contextHints", o.gameplay.contextHints());
+                putInt(out, "game.fpsDisplay", o.gameplay.fpsDisplay());
+                putInt(out, "net.transport", o.net.transport());
+                putString(out, "net.nickname", o.net.nickname());
+                putString(out, "net.appId", o.net.appId());
+                putString(out, "net.region", o.net.region());
+                putString(out, "net.room", o.net.room());
+                putString(out, "net.address", o.net.address());
+                putInt(out, "net.port", o.net.port());
             });
         } catch (IOException e) {
             System.err.println("saveOptions failed: " + e.getMessage());

@@ -3,25 +3,40 @@ package com.mineclone.ui;
 import java.util.Locale;
 
 /**
- * Настройки: вкладки «Графика», «Управление», «Звук».
+ * Настройки: «Графика», «Экран», «Игра», «Управление», «Звук».
  *
- * <p>Вкладки вместо прежнего хаба с тремя подэкранами: переключение между
- * разделами — один щелчок, а не «Готово» и снова вход. Содержимое вкладки
- * прокручивается — на маленьком окне графика целиком не помещается.
+ * <p>Раньше вся графика была одним переключателем «Шейдеры» на три значения:
+ * либо всё, либо ничего. Слабая видеокарта тянет мир с тенями, но не тянет
+ * объёмный туман; у кого-то не хватает кадров именно на осадках. Поэтому
+ * пресет остался (он просто выставляет остальные ручки и уходит), а рядом
+ * встали сами ручки — и подпись пресета честно меняется на «Свои», как только
+ * тронули любую из них.
+ *
+ * <p>Вкладки вместо прежнего хаба с подэкранами: переключение между разделами —
+ * один щелчок. Содержимое вкладки прокручивается — на маленьком окне графика
+ * целиком не помещается.
  *
  * <p>Изменение применяется сразу ({@link SettingsModel#changed()}), запись в
  * файл — при закрытии экрана ({@link SettingsModel#commit()}).
  */
 public final class SettingsScreen implements Screen {
 
-    static final String[] TABS = { "Графика", "Управление", "Звук" };
-    static final String[] SHADERS = { "Быстро", "Красиво", "Ультра" };
-    static final String[] SHADER_HINTS = {
+    static final String[] TABS = { "Графика", "Экран", "Игра", "Управление", "Звук" };
+    static final String[] PRESETS = { "Быстро", "Красиво", "Ультра", "Свои" };
+    static final String[] PRESET_HINTS = {
             "Без теней и пост-эффектов — для слабых видеокарт.",
             "Тени, свечение и лучи света.",
-            "Мягкие тени высокого разрешения.",
+            "Мягкие тени, отражения на воде, полная детализация.",
+            "Ручки ниже выставлены вручную.",
     };
+    static final String[] SHADOWS = { "Выкл", "Низкие", "Средние", "Высокие" };
+    static final String[] PARTICLES = { "Выкл", "Мало", "Средне", "Максимум" };
+    static final String[] WEATHER = { "Выкл", "Реже", "Полные" };
     static final String[] GUI_SCALES = { "Авто", "1×", "2×", "3×" };
+    static final String[] WINDOW_MODES = { "Окно", "Без рамки", "Полный экран" };
+    static final String[] AA = { "Выкл", "2×", "4×", "8×" };
+    static final int[] AA_VALUES = { 0, 2, 4, 8 };
+    static final String[] FPS_DISPLAY = { "Выкл", "Кадры", "Кадры и рывки" };
 
     private final SettingsModel m;
     private int tab;
@@ -31,7 +46,7 @@ public final class SettingsScreen implements Screen {
         this(model, 0);
     }
 
-    /** Сразу на вкладке: 0 — графика, 1 — управление, 2 — звук. */
+    /** Сразу на вкладке: 0 — графика, 1 — экран, 2 — игра, 3 — управление, 4 — звук. */
     public SettingsScreen(SettingsModel model, int tab) {
         this.m = model;
         this.tab = Math.max(0, Math.min(TABS.length - 1, tab));
@@ -71,6 +86,30 @@ public final class SettingsScreen implements Screen {
         return fps <= 0 ? "Без ограничения" : fps + " к/с";
     }
 
+    /** Масштаб рендера шагом 5 % — иначе ползунок не попадает в круглые числа. */
+    public static int scaleAt(float t) {
+        int span = SettingsModel.SCALE_MAX - SettingsModel.SCALE_MIN;
+        int v = SettingsModel.SCALE_MIN + Math.round(clamp01(t) * span);
+        return Math.round(v / 5f) * 5;
+    }
+
+    public static float scaleT(int scale) {
+        return (scale - SettingsModel.SCALE_MIN)
+                / (float) (SettingsModel.SCALE_MAX - SettingsModel.SCALE_MIN);
+    }
+
+    /** Дальность сущностей шагом 5 %. */
+    public static int entityAt(float t) {
+        int span = SettingsModel.ENTITY_MAX - SettingsModel.ENTITY_MIN;
+        int v = SettingsModel.ENTITY_MIN + Math.round(clamp01(t) * span);
+        return Math.round(v / 5f) * 5;
+    }
+
+    public static float entityT(int percent) {
+        return (percent - SettingsModel.ENTITY_MIN)
+                / (float) (SettingsModel.ENTITY_MAX - SettingsModel.ENTITY_MIN);
+    }
+
     /** Чувствительность 0.5..2.0 шагом 0.05 — иначе ползунок не попадает в круглые значения. */
     public static float sensitivityAt(float t) {
         float v = 0.5f + clamp01(t) * 1.5f;
@@ -81,28 +120,43 @@ public final class SettingsScreen implements Screen {
         return (s - 0.5f) / 1.5f;
     }
 
+    /** Индекс в списке сглаживания по числу выборок; неизвестное — «Выкл». */
+    public static int aaIndex(int samples) {
+        for (int i = 0; i < AA_VALUES.length; i++)
+            if (AA_VALUES[i] == samples)
+                return i;
+        return 0;
+    }
+
     // ---- экран ----
 
     @Override
     public MenuAction draw(MenuTheme t) {
         int sw = t.width(), sh = t.height();
         t.dim(0.30f);
-        float pw = Math.min(700f, sw - 48f), ph = Math.min(620f, sh - 40f);
+        float pw = Math.min(860f, sw - 48f), ph = Math.min(650f, sh - 40f);
         float px = (sw - pw) / 2f, py = (sh - ph) / 2f;
         t.panel(px, py, pw, ph);
         float inner = px + 24f, iw = pw - 48f;
         float y = t.header("Настройки", inner, py + 14f, iw);
 
-        // Вкладки
-        float tabY = y + 12f, tabW = (iw - 8f) / TABS.length;
+        // Вкладки. Ширина не поровну, а по длине надписи: «Управление» вдвое
+        // длиннее «Игры», и на равных долях оно обрезалось многоточием, пока
+        // рядом пустовала половина соседней кнопки.
+        float tabY = y + 12f;
+        float gap = 4f, free = iw - gap * (TABS.length - 1), sum = 0f;
+        for (String name : TABS)
+            sum += t.textWidth(name) + 28f;
+        float tx = inner;
         for (int i = 0; i < TABS.length; i++) {
-            float tx = inner + i * (tabW + 4f);
+            float tabW = free * (t.textWidth(TABS[i]) + 28f) / sum;
             if (t.button("settings.tab" + i, tx, tabY, tabW, 40f, TABS[i],
                     i == tab ? MenuTheme.Style.PRIMARY : MenuTheme.Style.QUIET, true) && i != tab) {
                 tab = i;
                 scroll.scrollBy(-1e6f, 1f, 1f);
                 scroll.snap();
             }
+            tx += tabW + gap;
         }
 
         float footH = 64f;
@@ -116,7 +170,9 @@ public final class SettingsScreen implements Screen {
         MenuAction result = MenuAction.NONE;
         switch (tab) {
             case 0 -> drawGraphics(t, inner, cy, rowW);
-            case 1 -> result = drawControls(t, inner, cy, rowW);
+            case 1 -> drawScreen(t, inner, cy, rowW);
+            case 2 -> drawGameplay(t, inner, cy, rowW);
+            case 3 -> result = drawControls(t, inner, cy, rowW);
             default -> drawAudio(t, inner, cy, rowW);
         }
         t.setInputEnabled(true);
@@ -131,20 +187,132 @@ public final class SettingsScreen implements Screen {
     }
 
     private static final float ROW = MenuTheme.ROW_H + 10f;
+    /** Заголовок раздела: подпись и воздух над ней. */
+    private static final float SECTION = 40f;
+    /** Строка пояснения под элементом. */
+    private static final float HINT = 30f;
 
     private float contentHeight() {
         return switch (tab) {
-            case 0 -> ROW * 4 + (ROW + 30f) * 2 + ROW * 3;
-            case 1 -> ROW * 3;
+            //   пресет+подсказка, «мир» (2), «свет и тени» (4),
+            //   «детали» (3), «оптимизация» (2 + подсказка)
+            case 0 -> ROW + HINT + SECTION + ROW * 2 + SECTION + ROW * 4
+                    + SECTION + ROW * 3 + SECTION + ROW * 2 + HINT;
+            case 1 -> SECTION + ROW * 3 + SECTION + ROW * 2 + HINT + SECTION + ROW * 4;
+            case 2 -> SECTION + ROW * 4 + SECTION + ROW * 2 + HINT;
+            case 3 -> ROW * 3;
             default -> ROW * 3;
         };
     }
 
+    // ---- вкладка «Графика» ----
+
     private void drawGraphics(MenuTheme t, float x, float y, float w) {
         float h = MenuTheme.ROW_H;
+        float half = w * 0.40f;
+
+        int preset = t.segmentedSmall("set.preset", x + half, y, w - half, h, PRESETS, m.shaderQuality);
+        t.text("Качество", x + 14f, t.baseline(t.font(), y, h), MenuTheme.TEXT, 1f);
+        if (preset != m.shaderQuality && preset != SettingsModel.PRESET_CUSTOM) {
+            m.applyPreset(preset);
+            m.changed();
+        }
+        t.smallText(PRESET_HINTS[Math.max(0, Math.min(3, m.shaderQuality))], x + 14f, y + h + 18f,
+                MenuTheme.TEXT_DIM, 1f);
+        y += ROW + HINT;
+
+        y = section(t, "Мир", x, y, w);
         float nt = t.slider("set.radius", x, y, w, h, "Дальность прорисовки",
                 MenuText.count(m.renderRadius, "чанк", "чанка", "чанков"), radiusT(m.renderRadius));
         set(radiusAt(nt) != m.renderRadius, () -> m.renderRadius = radiusAt(nt));
+        y += ROW;
+        float et = t.slider("set.entity", x, y, w, h, "Дальность существ",
+                m.entityDistance + " %", entityT(m.entityDistance));
+        setQuality(entityAt(et) != m.entityDistance, () -> m.entityDistance = entityAt(et));
+        y += ROW;
+
+        y = section(t, "Свет и тени", x, y, w);
+        t.text("Тени", x + 14f, t.baseline(t.font(), y, h), MenuTheme.TEXT, 1f);
+        int sh = t.segmentedSmall("set.shadows", x + half, y, w - half, h, SHADOWS, m.shadows);
+        setQuality(sh != m.shadows, () -> m.shadows = sh);
+        y += ROW;
+        boolean bl = t.toggle("set.bloom", x, y, w, h, "Свечение (bloom)", m.bloom);
+        setQuality(bl != m.bloom, () -> m.bloom = bl);
+        y += ROW;
+        boolean gr = t.toggle("set.rays", x, y, w, h, "Лучи света", m.godRays);
+        setQuality(gr != m.godRays, () -> m.godRays = gr);
+        y += ROW;
+        boolean vf = t.toggle("set.fog", x, y, w, h, "Объёмный туман", m.volumetricFog);
+        setQuality(vf != m.volumetricFog, () -> m.volumetricFog = vf);
+        y += ROW;
+
+        y = section(t, "Детали", x, y, w);
+        t.text("Частицы", x + 14f, t.baseline(t.font(), y, h), MenuTheme.TEXT, 1f);
+        int pa = t.segmentedSmall("set.particles", x + half, y, w - half, h, PARTICLES, m.particles);
+        setQuality(pa != m.particles, () -> m.particles = pa);
+        y += ROW;
+        t.text("Осадки", x + 14f, t.baseline(t.font(), y, h), MenuTheme.TEXT, 1f);
+        int we = t.segmentedSmall("set.weather", x + half, y, w - half, h, WEATHER, m.weather);
+        setQuality(we != m.weather, () -> m.weather = we);
+        y += ROW;
+        boolean wr = t.toggle("set.ssr", x, y, w, h, "Отражения на воде", m.waterReflections);
+        setQuality(wr != m.waterReflections, () -> m.waterReflections = wr);
+        y += ROW;
+
+        y = section(t, "Оптимизация", x, y, w);
+        boolean lod = t.toggle("set.lod", x, y, w, h, "Упрощать дальние чанки", m.chunkLod);
+        setQuality(lod != m.chunkLod, () -> m.chunkLod = lod);
+        y += ROW;
+        boolean oc = t.toggle("set.occlusion", x, y, w, h, "Не рисовать закрытое", m.occlusion);
+        set(oc != m.occlusion, () -> m.occlusion = oc);
+        t.smallText("Чанк за горой не рисуется. Выключите, если картинка мигает.",
+                x + 14f, y + h + 18f, MenuTheme.TEXT_DIM, 1f);
+    }
+
+    // ---- вкладка «Экран» ----
+
+    private void drawScreen(MenuTheme t, float x, float y, float w) {
+        float h = MenuTheme.ROW_H;
+        float half = w * 0.40f;
+
+        y = section(t, "Окно", x, y, w);
+        t.text("Режим", x + 14f, t.baseline(t.font(), y, h), MenuTheme.TEXT, 1f);
+        int wm = t.segmentedSmall("set.winmode", x + half, y, w - half, h, WINDOW_MODES, m.windowMode);
+        set(wm != m.windowMode, () -> {
+            m.windowMode = wm;
+            m.fullscreen = wm != 0;
+        });
+        y += ROW;
+        // Разрешение имеет смысл только в полноэкранном: в окне его задаёт
+        // сам размер окна, без рамки — монитор.
+        boolean pickable = m.windowMode == 2 && m.videoModes.length > 0;
+        stepper(t, "set.res", x, y, w, h, "Разрешение", resolutionLabel(), pickable, step -> {
+            int n = m.videoModes.length;
+            int cur = m.resolutionIndex < 0 ? n : m.resolutionIndex;   // n — «родное»
+            int next = Math.floorMod(cur + step, n + 1);
+            m.resolutionIndex = next == n ? -1 : next;
+            m.changed();
+        });
+        y += ROW;
+        boolean vs = t.toggle("set.vsync", x, y, w, h, "Вертикальная синхронизация", m.vsync);
+        set(vs != m.vsync, () -> m.vsync = vs);
+        y += ROW;
+
+        y = section(t, "Кадр", x, y, w);
+        float pt = t.slider("set.fps", x, y, w, h, "Ограничение кадров", fpsLabel(m.maxFps), fpsT(m.maxFps));
+        set(fpsAt(pt) != m.maxFps, () -> m.maxFps = fpsAt(pt));
+        y += ROW;
+        float st = t.slider("set.scale", x, y, w, h, "Масштаб рендера",
+                m.renderScale + " %", scaleT(m.renderScale));
+        set(scaleAt(st) != m.renderScale, () -> m.renderScale = scaleAt(st));
+        t.smallText("Сцена рисуется мельче и растягивается. Интерфейс остаётся чётким.",
+                x + 14f, y + h + 18f, MenuTheme.TEXT_DIM, 1f);
+        y += ROW + HINT;
+
+        y = section(t, "Изображение", x, y, w);
+        t.text("Сглаживание", x + 14f, t.baseline(t.font(), y, h), MenuTheme.TEXT, 1f);
+        int aa = t.segmentedSmall("set.aa", x + half, y, w - half, h, AA, aaIndex(m.antialiasing));
+        setQuality(AA_VALUES[aa] != m.antialiasing, () -> m.antialiasing = AA_VALUES[aa]);
         y += ROW;
         float ft = t.slider("set.fov", x, y, w, h, "Поле зрения", m.fov + "°", fovT(m.fov));
         set(fovAt(ft) != m.fov, () -> m.fov = fovAt(ft));
@@ -154,33 +322,52 @@ public final class SettingsScreen implements Screen {
         float nb = Math.round(bt * 40f) / 20f;   // шаг 5 %
         set(Math.abs(nb - m.brightness) > 1e-4f, () -> m.brightness = nb);
         y += ROW;
-        float pt = t.slider("set.fps", x, y, w, h, "Ограничение кадров", fpsLabel(m.maxFps), fpsT(m.maxFps));
-        set(fpsAt(pt) != m.maxFps, () -> m.maxFps = fpsAt(pt));
-        y += ROW;
-
-        float half = w * 0.34f;
-        t.text("Шейдеры", x + 14f, t.baseline(t.font(), y, h), MenuTheme.TEXT, 1f);
-        int q = t.segmented("set.shaders", x + half, y, w - half, h, SHADERS, m.shaderQuality);
-        set(q != m.shaderQuality, () -> m.shaderQuality = q);
-        t.smallText(SHADER_HINTS[Math.max(0, Math.min(2, m.shaderQuality))], x + half + 4f, y + h + 18f,
-                MenuTheme.TEXT_DIM, 1f);
-        y += ROW + 30f;
         t.text("Интерфейс", x + 14f, t.baseline(t.font(), y, h), MenuTheme.TEXT, 1f);
-        int g = t.segmented("set.gui", x + half, y, w - half, h, GUI_SCALES, m.guiScale);
+        int g = t.segmentedSmall("set.gui", x + half, y, w - half, h, GUI_SCALES, m.guiScale);
         set(g != m.guiScale, () -> m.guiScale = g);
-        t.smallText("Масштаб; «Авто» подбирает его по высоте окна.", x + half + 4f, y + h + 18f,
-                MenuTheme.TEXT_DIM, 1f);
-        y += ROW + 30f;
-
-        boolean v = t.toggle("set.vsync", x, y, w, h, "Вертикальная синхронизация", m.vsync);
-        set(v != m.vsync, () -> m.vsync = v);
-        y += ROW;
-        boolean f = t.toggle("set.full", x, y, w, h, "Полный экран", m.fullscreen);
-        set(f != m.fullscreen, () -> m.fullscreen = f);
-        y += ROW;
-        boolean b = t.toggle("set.bob", x, y, w, h, "Покачивание камеры при ходьбе", m.viewBobbing);
-        set(b != m.viewBobbing, () -> m.viewBobbing = b);
     }
+
+    private String resolutionLabel() {
+        if (m.windowMode != 2)
+            return "по окну";
+        if (m.resolutionIndex < 0 || m.resolutionIndex >= m.videoModes.length)
+            return "родное";
+        int[] mode = m.videoModes[m.resolutionIndex];
+        return mode[0] + " × " + mode[1];
+    }
+
+    // ---- вкладка «Игра» ----
+
+    private void drawGameplay(MenuTheme t, float x, float y, float w) {
+        float h = MenuTheme.ROW_H;
+        float half = w * 0.40f;
+
+        y = section(t, "Камера и экран", x, y, w);
+        boolean bob = t.toggle("set.bob", x, y, w, h, "Покачивание камеры при ходьбе", m.viewBobbing);
+        set(bob != m.viewBobbing, () -> m.viewBobbing = bob);
+        y += ROW;
+        boolean shake = t.toggle("set.shake", x, y, w, h, "Тряска камеры от урона", m.cameraShake);
+        set(shake != m.cameraShake, () -> m.cameraShake = shake);
+        y += ROW;
+        boolean fx = t.toggle("set.fx", x, y, w, h, "Эффекты состояний на экране", m.screenEffects);
+        set(fx != m.screenEffects, () -> m.screenEffects = fx);
+        y += ROW;
+        t.text("Счётчик кадров", x + 14f, t.baseline(t.font(), y, h), MenuTheme.TEXT, 1f);
+        int fd = t.segmentedSmall("set.fpsdisp", x + half, y, w - half, h, FPS_DISPLAY, m.fpsDisplay);
+        set(fd != m.fpsDisplay, () -> m.fpsDisplay = fd);
+        y += ROW;
+
+        y = section(t, "Подсказки", x, y, w);
+        boolean hints = t.toggle("set.hints", x, y, w, h, "Подсказки у прицела", m.contextHints);
+        set(hints != m.contextHints, () -> m.contextHints = hints);
+        y += ROW;
+        boolean adv = t.toggle("set.adv", x, y, w, h, "Подробные подсказки предметов", m.advancedTooltips);
+        set(adv != m.advancedTooltips, () -> m.advancedTooltips = adv);
+        t.smallText("Id предмета, числа прочности и теги. То же делает F3+H.",
+                x + 14f, y + h + 18f, MenuTheme.TEXT_DIM, 1f);
+    }
+
+    // ---- вкладка «Управление» ----
 
     private MenuAction drawControls(MenuTheme t, float x, float y, float w) {
         float h = MenuTheme.ROW_H;
@@ -199,6 +386,8 @@ public final class SettingsScreen implements Screen {
         return MenuAction.NONE;
     }
 
+    // ---- вкладка «Звук» ----
+
     private void drawAudio(MenuTheme t, float x, float y, float w) {
         float h = MenuTheme.ROW_H;
         float a = t.slider("set.master", x, y, w, h, "Общая громкость", percent(m.masterVolume), m.masterVolume);
@@ -214,10 +403,55 @@ public final class SettingsScreen implements Screen {
         set(Math.abs(ne - m.effectsVolume) > 1e-4f, () -> m.effectsVolume = ne);
     }
 
+    // ---- мелочи раскладки ----
+
+    /** Заголовок раздела; возвращает y следующей строки. */
+    private float section(MenuTheme t, String title, float x, float y, float w) {
+        t.smallText(title.toUpperCase(Locale.ROOT), x + 14f, y + 22f, MenuTheme.ACCENT, 0.85f);
+        t.quad(x + 14f, y + 30f, w - 28f, 1f, 1f, 1f, 1f, 0.08f);
+        return y + SECTION;
+    }
+
+    /**
+     * Строка «подпись — ‹ значение ›».
+     *
+     * <p>Для списка, который нельзя разложить в ряд кнопок: разрешений у
+     * монитора бывает под тридцать, и сегментами они не помещаются никуда.
+     */
+    private void stepper(MenuTheme t, String id, float x, float y, float w, float h,
+            String label, String value, boolean enabled, java.util.function.IntConsumer step) {
+        t.quad(x, y, w, h, 0.12f, 0.14f, 0.18f, enabled ? 0.55f : 0.30f);
+        t.quad(x, y, w, 1.5f, 1f, 1f, 1f, 0.10f);
+        t.quad(x, y + h - 1.5f, w, 1.5f, 0f, 0f, 0f, 0.40f);
+        float bw = 34f;
+        float rightX = x + w - bw - 10f, leftX = rightX - bw - 4f;
+        float[] valueColor = enabled ? MenuTheme.ACCENT : MenuTheme.TEXT_DIM;
+        t.text(label, x + 14f, t.baseline(t.font(), y, h), enabled ? MenuTheme.TEXT : MenuTheme.TEXT_DIM, 1f);
+        t.textRight(value, leftX - 12f, t.baseline(t.font(), y, h), valueColor, 1f);
+        boolean was = t.inputEnabled();
+        t.setInputEnabled(was && enabled);
+        // Стрелки обычные, а не типографские: в пиксельном шрифте игры
+        // «‹» и «›» нет, и кнопка выходила пустой.
+        if (t.button(id + ".prev", leftX, y + 4f, bw, h - 8f, "<", MenuTheme.Style.QUIET, true))
+            step.accept(-1);
+        if (t.button(id + ".next", rightX, y + 4f, bw, h - 8f, ">", MenuTheme.Style.QUIET, true))
+            step.accept(1);
+        t.setInputEnabled(was);
+    }
+
     private void set(boolean differs, Runnable apply) {
         if (!differs)
             return;
         apply.run();
+        m.changed();
+    }
+
+    /** То же, но правка руками сбивает пресет на «Свои». */
+    private void setQuality(boolean differs, Runnable apply) {
+        if (!differs)
+            return;
+        apply.run();
+        m.custom();
         m.changed();
     }
 

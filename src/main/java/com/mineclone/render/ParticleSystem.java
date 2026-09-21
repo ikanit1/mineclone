@@ -14,6 +14,13 @@ import static org.lwjgl.opengl.GL30.*;
 
 public class ParticleSystem {
     private static final int   MAX     = 768;
+    /**
+     * Сколько частиц разрешено сейчас. Массивы всегда на {@link #MAX}, а
+     * настройка режет только потолок живых: пересоздавать полтора десятка
+     * массивов на каждый щелчок в меню незачем, а ноль здесь выключает
+     * частицы целиком, не трогая ни одного вызывающего.
+     */
+    private int budget = MAX;
     private static final float GRAVITY = 14f;
 
     /** Tile index in the atlas used for solid-color flame/smoke particles. */
@@ -23,6 +30,18 @@ public class ParticleSystem {
 
     /** Ветер кадра, блоков в секунду: сносит дым и искры. */
     private float windX, windZ;
+
+    /** Потолок живых частиц: 0 — частиц нет вовсе. */
+    public void setBudget(int max) {
+        budget = Math.max(0, Math.min(MAX, max));
+        while (count > budget)
+            remove(count - 1);
+    }
+
+    /** Максимум, который вообще умеет система — предел ползунка в настройках. */
+    public static int maxParticles() {
+        return MAX;
+    }
 
     public void setWind(float x, float z) {
         windX = x;
@@ -166,7 +185,7 @@ public class ParticleSystem {
     public void emitBlockBreak(int bx, int by, int bz, float[] color, int sideTile,
                                float skyFrac, float blockFrac) {
         int count = 5 + rnd.nextInt(6);
-        for (int i = 0; i < count && this.count < MAX; i++) {
+        for (int i = 0; i < count && this.count < budget; i++) {
             int p = acquire();
             this.worldLit[p] = true;
             this.skyL[p] = skyFrac;
@@ -194,15 +213,43 @@ public class ParticleSystem {
         }
     }
 
+    /** Short, restrained texture-chip burst when a block snaps into place. */
+    public void emitBlockPlace(int bx, int by, int bz, int sideTile,
+                               float skyFrac, float blockFrac) {
+        float[] uv = TextureAtlas.uv(sideTile);
+        float span = 3f / TextureAtlas.ATLAS_SIZE;
+        for (int i = 0; i < 5 && this.count < budget; i++) {
+            int p = acquire();
+            this.worldLit[p] = true;
+            this.skyL[p] = skyFrac;
+            this.blockL[p] = blockFrac;
+            this.x[p] = bx + 0.18f + rnd.nextFloat() * 0.64f;
+            this.y[p] = by + 0.12f + rnd.nextFloat() * 0.45f;
+            this.z[p] = bz + 0.18f + rnd.nextFloat() * 0.64f;
+            this.vx[p] = (rnd.nextFloat() - 0.5f) * 1.1f;
+            this.vy[p] = 0.45f + rnd.nextFloat() * 0.85f;
+            this.vz[p] = (rnd.nextFloat() - 0.5f) * 1.1f;
+            this.life[p] = this.maxLife[p] = 0.18f + rnd.nextFloat() * 0.18f;
+            this.size[p] = 0.045f + rnd.nextFloat() * 0.035f;
+            this.gravityScale[p] = 1f;
+            this.cr[p] = this.cg[p] = this.cb[p] = 1f;
+            this.baseAlpha[p] = 0.9f;
+            this.u0[p] = uv[0] + rnd.nextFloat() * Math.max(0f, uv[2] - uv[0] - span);
+            this.v0[p] = uv[1] + rnd.nextFloat() * Math.max(0f, uv[3] - uv[1] - span);
+            this.u1[p] = this.u0[p] + span;
+            this.v1[p] = this.v0[p] + span;
+        }
+    }
+
     /**
      * Emit a small burst of flame and smoke from a torch block.
      * Call this every ~70 ms for nearby torches.
      */
     public void emitTorchEffects(int bx, int by, int bz) {
-        float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
+        float[] uvP = TextureAtlas.uv(125);
 
         // Flame: ~65 % chance per call
-        if (rnd.nextFloat() < 0.65f && this.count < MAX) {
+        if (rnd.nextFloat() < 0.65f && this.count < budget) {
             int p = acquire();
             this.x[p] = bx + 0.42f + rnd.nextFloat() * 0.16f;
             this.y[p] = by + 0.68f + rnd.nextFloat() * 0.06f;
@@ -227,7 +274,8 @@ public class ParticleSystem {
         }
 
         // Smoke: ~28 % chance per call
-        if (rnd.nextFloat() < 0.28f && this.count < MAX) {
+        uvP = TextureAtlas.uv(124);
+        if (rnd.nextFloat() < 0.28f && this.count < budget) {
             int p = acquire();
             this.x[p] = bx + 0.38f + rnd.nextFloat() * 0.24f;
             this.y[p] = by + 0.78f + rnd.nextFloat() * 0.04f;
@@ -262,9 +310,9 @@ public class ParticleSystem {
      * уплывающих вперёд по взгляду и растущих на лету.
      */
     public void emitBreath(float x, float y, float z, float dirX, float dirZ) {
-        float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
+        float[] uvP = TextureAtlas.uv(124);
         for (int i = 0; i < 2; i++) {
-            if (this.count >= MAX)
+            if (this.count >= budget)
                 return;
             int p = acquire();
             this.x[p] = x + (rnd.nextFloat() - 0.5f) * 0.1f;
@@ -286,10 +334,10 @@ public class ParticleSystem {
     }
 
     public void emitFire(int bx, int by, int bz) {
-        float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
+        float[] uvP = TextureAtlas.uv(125);
 
         for (int i = 0; i < 2; i++) {
-            if (this.count >= MAX)
+            if (this.count >= budget)
                 break;
             int p = acquire();
             this.x[p] = bx + 0.25f + rnd.nextFloat() * 0.5f;
@@ -310,7 +358,8 @@ public class ParticleSystem {
 
         }
 
-        if (rnd.nextFloat() < 0.5f && this.count < MAX) {
+        uvP = TextureAtlas.uv(124);
+        if (rnd.nextFloat() < 0.5f && this.count < budget) {
             int p = acquire();
             this.x[p] = bx + 0.3f + rnd.nextFloat() * 0.4f;
             this.y[p] = by + 0.85f + rnd.nextFloat() * 0.2f;
@@ -336,20 +385,44 @@ public class ParticleSystem {
     }
 
     public void emitWaterSplash(float x, float y, float z, float skyFrac, float blockFrac) {
+        emitWaterSplash(x, y, z, skyFrac, blockFrac, 1f);
+    }
+
+    /** One glowing pixel droplet, emitted sparsely from exposed lava surfaces. */
+    public void emitLavaPop(float x, float y, float z) {
+        if (count >= budget - 32) return;
+        int p = acquire();
+        this.x[p]=x; this.y[p]=y; this.z[p]=z;
+        vx[p]=(rnd.nextFloat()-.5f)*.9f;
+        vz[p]=(rnd.nextFloat()-.5f)*.9f;
+        vy[p]=1.8f+rnd.nextFloat()*1.8f;
+        life[p]=maxLife[p]=.6f+rnd.nextFloat()*.35f;
+        size[p]=.11f+rnd.nextFloat()*.08f;
+        gravityScale[p]=.45f;
+        floorY[p]=y-.02f;
+        cr[p]=cg[p]=cb[p]=baseAlpha[p]=1f;
+        flicker[p]=1f;
+        float[] uv=TextureAtlas.uv(126);
+        u0[p]=uv[0]; v0[p]=uv[1]; u1[p]=uv[2]; v1[p]=uv[3];
+    }
+
+    public void emitWaterSplash(float x, float y, float z, float skyFrac, float blockFrac,
+                                float intensity) {
+        intensity = Math.max(0.15f, Math.min(1.6f, intensity));
         float[] uvP = TextureAtlas.uv(WATER_PARTICLE_TILE);
-        int count = 8 + rnd.nextInt(7);
-        for (int i = 0; i < count && this.count < MAX; i++) {
+        int count = Math.max(3, Math.round((8 + rnd.nextInt(7)) * intensity));
+        for (int i = 0; i < count && this.count < budget; i++) {
             int p = acquire();
             this.worldLit[p] = true;
             this.skyL[p] = skyFrac;
             this.blockL[p] = blockFrac;
             float angle = rnd.nextFloat() * (float) (Math.PI * 2);
-            float horiz = 1.5f + rnd.nextFloat() * 2.5f;
+            float horiz = (1.0f + rnd.nextFloat() * 2.3f) * (0.65f + intensity * 0.55f);
             this.x[p] = x + (rnd.nextFloat() - 0.5f) * 0.6f;
             this.y[p] = y;
             this.z[p] = z + (rnd.nextFloat() - 0.5f) * 0.6f;
             this.vx[p] = (float) Math.cos(angle) * horiz;
-            this.vy[p] = 2.5f + rnd.nextFloat() * 3f;
+            this.vy[p] = (1.8f + rnd.nextFloat() * 2.8f) * (0.65f + intensity * 0.5f);
             this.vz[p] = (float) Math.sin(angle) * horiz;
             this.life[p] = this.maxLife[p] = 0.35f + rnd.nextFloat() * 0.35f;
             this.size[p] = 0.06f + rnd.nextFloat() * 0.07f;
@@ -365,7 +438,7 @@ public class ParticleSystem {
                                 float skyFrac, float blockFrac, int count) {
         float[] uv = TextureAtlas.uv(sideTile);
         float span = 4f / TextureAtlas.ATLAS_SIZE;
-        for (int i = 0; i < count && this.count < MAX; i++) {
+        for (int i = 0; i < count && this.count < budget; i++) {
             int p = acquire();
             this.worldLit[p] = true;
             this.skyL[p] = skyFrac;
@@ -399,7 +472,7 @@ public class ParticleSystem {
      * Зовётся выборочно (не каждый кадр) — иначе дым забивает буфер частиц.
      */
     public void emitMobSmoke(float x, float y, float z) {
-        if (this.count >= MAX)
+        if (this.count >= budget)
             return;
         float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
         int p = acquire();
@@ -428,7 +501,7 @@ public class ParticleSystem {
 
     /** Язычок пламени на горящем мобе — тот же рецепт, что у факела. */
     public void emitMobFlame(float x, float y, float z) {
-        if (this.count >= MAX)
+        if (this.count >= budget)
             return;
         float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
         int p = acquire();
@@ -457,7 +530,7 @@ public class ParticleSystem {
     public void emitMobDeath(float x, float y, float z, float[] color) {
         float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
         int count = 14 + rnd.nextInt(8);
-        for (int i = 0; i < count && this.count < MAX; i++) {
+        for (int i = 0; i < count && this.count < budget; i++) {
             int p = acquire();
             float angle = rnd.nextFloat() * (float) (Math.PI * 2);
             float horiz = 0.8f + rnd.nextFloat() * 1.8f;
@@ -527,7 +600,7 @@ public class ParticleSystem {
      * всё время что-то выбрасывает вверх.
      */
     public void emitEmber(float x, float y, float z, float lift) {
-        if (this.count >= MAX - 32)
+        if (this.count >= budget - 32)
             return;
         float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
         int p = acquire();
@@ -557,7 +630,7 @@ public class ParticleSystem {
                              float skyFrac, float blockFrac) {
         float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
         int count = sprint ? 9 : 5;
-        for (int i = 0; i < count && this.count < MAX; i++) {
+        for (int i = 0; i < count && this.count < budget; i++) {
             int p = acquire();
             this.worldLit[p] = true;
             this.skyL[p] = skyFrac;
@@ -591,7 +664,7 @@ public class ParticleSystem {
                               boolean crit, float[] color, float skyFrac, float blockFrac) {
         float[] uvP = TextureAtlas.uv(PARTICLE_TILE);
         int sparks = crit ? 16 : 8;
-        for (int i = 0; i < sparks && this.count < MAX; i++) {
+        for (int i = 0; i < sparks && this.count < budget; i++) {
             int p = acquire();
             float speed = (crit ? 4.5f : 3.2f) * (0.5f + rnd.nextFloat());
             this.x[p] = x; this.y[p] = y; this.z[p] = z;
@@ -610,7 +683,7 @@ public class ParticleSystem {
 
         }
         int drops = crit ? 10 : 6;
-        for (int i = 0; i < drops && this.count < MAX; i++) {
+        for (int i = 0; i < drops && this.count < budget; i++) {
             int p = acquire();
             this.worldLit[p] = true;
             this.skyL[p] = skyFrac;
@@ -703,7 +776,7 @@ public class ParticleSystem {
      * Сами осадки живут на видеокарте, здесь только их след на земле.
      */
     public void emitRainSplash(float x, float y, float z, boolean onWater, float skyFrac) {
-        if (this.count >= MAX - 64)
+        if (this.count >= budget - 64)
             return;
         float[] uv = TextureAtlas.uv(WATER_PARTICLE_TILE);
         int count = onWater ? 3 : 2;
@@ -743,7 +816,7 @@ public class ParticleSystem {
     /** Sparse biome ambience using the existing particle budget. */
     public void emitNature(float x, float y, float z, boolean snow, boolean firefly,
                            float skyFrac) {
-        if (this.count >= MAX - 96) return;
+        if (this.count >= budget - 96) return;
         int p = acquire();
         this.x[p] = x; this.y[p] = y; this.z[p] = z;
         this.vx[p] = 0.12f + rnd.nextFloat() * 0.15f;
@@ -765,7 +838,7 @@ public class ParticleSystem {
 
     /** Маленькая рыба-силуэт; направление задаётся прочь от недавнего всплеска. */
     public void emitFish(float x, float y, float z, float awayX, float awayZ, float skyFrac) {
-        if (this.count >= MAX - 96) return;
+        if (this.count >= budget - 96) return;
         float len = (float) Math.sqrt(awayX * awayX + awayZ * awayZ);
         if (len < 0.01f) { awayX = 1f; awayZ = 0f; len = 1f; }
         int p = acquire();

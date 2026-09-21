@@ -59,7 +59,7 @@ public class MobSpawner {
 
     /** Мирные животные появляются только на траве. */
     public static boolean peacefulSurfaceOk(BlockType surface) {
-        return surface == BlockType.GRASS;
+        return surface == BlockType.GRASS || surface == BlockType.DRY_GRASS;
     }
 
     /** Зомби — только ночью. Частный случай {@link #darkEnough} для открытого неба. */
@@ -190,27 +190,27 @@ public class MobSpawner {
                                       float daylight, float roll) {
         boolean day = daylight > NIGHT_DAYLIGHT;
         switch (biome) {
-            case FOREST -> {
+            case FOREST, TAIGA, SWAMP -> {
                 if (surface == BlockType.LEAVES)
                     return day ? MobType.BIRD : null;
-                if (surface != BlockType.GRASS)
+                if (!surface.isSoil())
                     return null;
                 if (roll < 0.35f)
                     return MobType.WOLF;
                 return day && roll < 0.7f ? MobType.BIRD : MobType.RABBIT;
             }
-            case PLAINS -> {
-                if (surface != BlockType.GRASS)
+            case PLAINS, SAVANNA -> {
+                if (!surface.isSoil())
                     return null;
                 return day && roll < 0.3f ? MobType.BIRD : MobType.RABBIT;
             }
-            case TUNDRA -> {
+            case TUNDRA, ALPINE -> {
                 if (surface != BlockType.SNOWY_GRASS && surface != BlockType.SNOW_LAYER)
                     return null;
                 return roll < 0.4f ? MobType.WOLF : MobType.RABBIT;
             }
-            case DESERT -> {
-                return surface == BlockType.SAND && roll < 0.5f ? MobType.RABBIT : null;
+            case DESERT, BADLANDS -> {
+                return (surface == BlockType.SAND || surface == BlockType.RED_SAND) && roll < 0.5f ? MobType.RABBIT : null;
             }
             default -> {
                 return null;

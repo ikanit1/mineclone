@@ -14,6 +14,8 @@ public class Player {
     public boolean flying = false;
     public boolean inWater = false;
     public boolean eyeInWater = false;
+    /** Downward speed captured before water drag on the frame of entry. */
+    public float waterEntrySpeed = 0f;
     public float swimSoundTimer = 0f;
 
     public float health = 20f;
@@ -88,6 +90,9 @@ public class Player {
     public void update(float dt, World world, com.mineclone.core.Input input,
             boolean controlsEnabled, float sensitivity, boolean invertY) {
         justJumped = false;
+        boolean wetAtFrameStart = inWater;
+        float entryVelocityY = velocity.y;
+        waterEntrySpeed = 0f;
         if (hurtCooldown > 0f)
             hurtCooldown = Math.max(0f, hurtCooldown - dt);
         if (controlsEnabled)
@@ -133,6 +138,8 @@ public class Player {
 
         inWater = !flying && touchingWater(world);
         eyeInWater = !flying && eyeBlockIsWater(world);
+        if (inWater && !wetAtFrameStart)
+            waterEntrySpeed = Math.max(0f, -entryVelocityY);
 
         if (flying) {
             velocity.x = wish.x * speed;
@@ -175,6 +182,8 @@ public class Player {
             swimSoundTimer -= dt;
         } else {
             // MC-подобное движение: экспоненциальное приближение к цели.
+            if (onGround) speed *= world.getBlock((int) Math.floor(position.x),
+                    (int) Math.floor(position.y - 0.05f), (int) Math.floor(position.z)).walkSpeedMultiplier();
             // Сильный разгон/торможение на земле, слабый контроль в воздухе.
             float targetX = wish.x * speed;
             float targetZ = wish.z * speed;
@@ -205,6 +214,8 @@ public class Player {
         // Refresh water contact after movement (player may have entered water this frame)
         inWater = !flying && touchingWater(world);
         eyeInWater = !flying && eyeBlockIsWater(world);
+        if (inWater && !wetAtFrameStart)
+            waterEntrySpeed = Math.max(0f, -entryVelocityY);
 
         // Flight and water end the current fall. Include the landing frame's
         // descent, but never carry a previous fall through a flying stop.

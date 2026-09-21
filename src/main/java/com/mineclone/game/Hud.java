@@ -46,7 +46,8 @@ public class Hud {
             int chunkX, int chunkZ, int loadedChunks, int drawnChunks,
             BlockType target, byte targetMeta, boolean wireframe, int skyLight, int blockLight,
             String biome, int mobCount,
-            com.mineclone.game.FrameProfiler profiler, int chunkQueue, String music) {
+            com.mineclone.game.FrameProfiler profiler, int chunkQueue, String music,
+            String network) {
         float lineH = font.getPixelHeight() + 2;
         float y = lineH;
         long used = (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / (1024 * 1024);
@@ -68,6 +69,7 @@ public class Hud {
                 profiler.breakdown(),
                 "Chunk queue: " + chunkQueue,
                 "Music: " + music,
+                "Net: " + network,
                 // Счётчик прошлого кадра: свой собственный оверлей в него
                 // попасть уже не успел бы, а мерить надо интерфейс, а не себя.
                 "UI: " + com.mineclone.render.UiRenderer.lastFrameDrawCalls() + " draw calls",
@@ -304,6 +306,84 @@ public class Hud {
                 // вторым проходом пустого поверх.
                 ui.texQuad(x, y0, hs / 2f, hs, tid, uvF[0], uvF[1],
                         (uvF[0] + uvF[2]) / 2f, uvF[3], 1f, 1f, 1f, 1f);
+        }
+        ui.end();
+    }
+
+    // ---------------- путь выживания ----------------
+
+    /**
+     * Следующая цель выживания. Панель намеренно короткая: она задаёт
+     * направление, но не превращает свободную игру в список поручений.
+     */
+    public void drawSurvivalObjective(int screenW, int screenH,
+            SurvivalProgress.Objective objective) {
+        if (objective == null)
+            return;
+        // Ниже компаса: на узком окне их горизонтальные области пересекаются.
+        float x = 12f, y = 84f;
+        float w = Math.min(330f, Math.max(230f, screenW * 0.31f));
+        float h = 67f;
+        float progress = objective.target() <= 0 ? 1f
+                : Math.max(0f, Math.min(1f, objective.current() / (float) objective.target()));
+
+        ui.begin(screenW, screenH);
+        ui.glass(x, y, w, h);
+        ui.quad(x, y, w, h, 0.045f, 0.052f, 0.075f, ui.hasBackdrop() ? 0.48f : 0.78f);
+        ui.quad(x, y, 3f, h, objective.finished() ? 0.42f : 0.95f,
+                objective.finished() ? 0.82f : 0.70f, 0.30f, 0.95f);
+        ui.quad(x, y, w, 1f, 1f, 1f, 1f, 0.18f);
+
+        String step = objective.finished() ? "ГОТОВО"
+                : (objective.completed() + 1) + " / " + objective.total();
+        ui.glyphs(small, step, x + w - small.textWidth(step) - 10f, y + 18f,
+                0.72f, 0.76f, 0.83f, 1f);
+        ui.glyphs(font, objective.title(), x + 12f, y + 20f,
+                1f, 0.92f, 0.72f, 1f);
+        ui.glyphs(small, objective.detail(), x + 12f, y + 41f,
+                0.76f, 0.80f, 0.87f, 1f);
+
+        float barX = x + 12f, barY = y + h - 10f, barW = w - 24f;
+        ui.quad(barX, barY, barW, 4f, 0.12f, 0.14f, 0.18f, 0.9f);
+        if (progress > 0f)
+            ui.quad(barX, barY, barW * progress, 4f,
+                    objective.finished() ? 0.42f : 0.95f,
+                    objective.finished() ? 0.82f : 0.70f, 0.30f, 0.95f);
+        ui.end();
+    }
+
+    /**
+     * Счётчик кадров в правом верхнем углу — отдельно от отладочного экрана.
+     *
+     * <p>Второе число важнее первого: средний FPS про рывки не говорит
+     * ничего, а худший кадр окна — говорит всё. Цвет по нему же и берётся:
+     * зелёный до 20 мс, жёлтый до 40, красный дальше. Игрок, который жалуется
+     * на фризы, должен увидеть их числом, а не «кажется, дёрнулось».
+     *
+     * @param mode 1 — только к/с, 2 — к/с и худший кадр
+     */
+    public void drawFps(int screenW, int screenH, int fps, double worstMs, int mode) {
+        if (mode <= 0)
+            return;
+        String main = fps + " к/с";
+        String worst = String.format(java.util.Locale.ROOT, "%.0f мс", worstMs);
+        float pad = 8f;
+        float w = small.textWidth(main) + 2 * pad;
+        if (mode >= 2)
+            w = Math.max(w, small.textWidth(main) + small.textWidth(worst) + 3 * pad);
+        float h = 24f;
+        float x = screenW - w - 10f, y = 10f;
+
+        ui.begin(screenW, screenH);
+        ui.glass(x, y, w, h);
+        ui.quad(x, y, w, h, 0.045f, 0.052f, 0.075f, ui.hasBackdrop() ? 0.42f : 0.72f);
+        ui.quad(x, y, w, 1f, 1f, 1f, 1f, 0.16f);
+        ui.glyphs(small, main, x + pad, y + 16f, 0.88f, 0.91f, 0.96f, 1f);
+        if (mode >= 2) {
+            float r = worstMs > 40 ? 0.96f : worstMs > 20 ? 0.95f : 0.45f;
+            float g = worstMs > 40 ? 0.38f : worstMs > 20 ? 0.78f : 0.86f;
+            float b = worstMs > 40 ? 0.34f : worstMs > 20 ? 0.36f : 0.42f;
+            ui.glyphs(small, worst, x + w - small.textWidth(worst) - pad, y + 16f, r, g, b, 1f);
         }
         ui.end();
     }
