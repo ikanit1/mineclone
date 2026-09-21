@@ -1,6 +1,8 @@
 package com.mineclone;
 
+import com.mineclone.net.CompositeTransport;
 import com.mineclone.net.LoopbackTransport;
+import com.mineclone.net.NetChannel;
 import com.mineclone.net.connect.Backoff;
 import com.mineclone.net.connect.ConnectDiagnosis;
 import com.mineclone.net.connect.ConnectLadder;
@@ -123,6 +125,10 @@ final class NetworkTests {
                 NetworkTests::testUpnpDescription);
         r.run("both port-mapping refusals reach the player", NetworkTests::testPortMapperErrors);
         r.run("a lan beacon announces a world and expires", NetworkTests::testLanBeacon);
+        r.run("two doors make one room and guests hear each other",
+                NetworkTests::testCompositeRoom);
+        r.run("one broken door does not close the room",
+                NetworkTests::testCompositeSurvivesOneDoor);
     }
 
     // ------------------------------------------------------------ примитивы
@@ -1371,6 +1377,159 @@ final class NetworkTests {
                 LanBeacon.decode(new byte[] { 1, 2, 3 }, 3, "192.168.1.5") == null);
         assertTrue("обрезанное отброшено",
                 LanBeacon.decode(announcement, 9, "192.168.1.5") == null);
+    }
+
+    // ---------------------------------------------------- две двери в комнату
+
+    /** Слушатель, который просто записывает всё, что ему сказали. */
+    private static final class DoorRecorder implements NetTransport.Listener {
+        final List<String> events = new ArrayList<>();
+        final List<String> payloads = new ArrayList<>();
+        NetTransport.State state = NetTransport.State.IDLE;
+        int myActor;
+
+        @Override
+        public void onState(NetTransport.State s, String detail) {
+            state = s;
+            events.add("state:" + s);
+        }
+
+        @Override
+        public void onJoined(int actor, boolean created) {
+            myActor = actor;
+            events.add("joined:" + actor + ":" + created);
+        }
+
+        @Override
+        public void onActorJoin(int actor, String name) {
+            events.add("join:" + actor + ":" + name);
+        }
+
+        @Override
+        public void onActorLeave(int actor) {
+            events.add("leave:" + actor);
+        }
+
+        @Override
+        public void onPayload(int from, byte[] data) {
+            payloads.add(from + ":" + new String(data, java.nio.charset.StandardCharsets.UTF_8));
+        }
+
+        @Override
+        public void onRoomList(List<NetTransport.RoomInfo> rooms) {
+        }
+    }
+
+    private static CompositeTransport.Door loopbackDoor(String label) {
+        return new CompositeTransport.Door() {
+            @Override
+            public String label() {
+                return label;
+            }
+
+            @Override
+            public NetTransport open(NetTransport.Listener l) {
+                return new LoopbackTransport(l);
+            }
+        };
+    }
+
+    /**
+     * Гость за одной дверью слышит гостя за другой.
+     *
+     * <p>Ради этого композит и нужен: широковещательное сообщение Photon
+     * доходит до Photon, кадр TCP — до TCP, и без перекрёстной пересылки два
+     * друга в одной комнате друг друга бы не видели.
+     */
+    private static void testCompositeRoom() {
+        LoopbackTransport.reset();
+        DoorRecorder hostSide = new DoorRecorder();
+        CompositeTransport host = new CompositeTransport(hostSide,
+                List.of(loopbackDoor("свой порт"), loopbackDoor("Photon")));
+        // У каждой двери своя комната — как своя сеть и облако в жизни: за
+        // одной дверью участника не слышно из-за другой.
+        host.connectDoor(0, "порт", true, "Хозяин");
+        host.connectDoor(1, "облако", true, "Хозяин");
+        host.poll();
+        assertEq("комната открыта", NetTransport.State.JOINED, hostSide.state);
+        assertEq("хозяин первый", CompositeTransport.HOST_ACTOR, hostSide.myActor);
+
+        DoorRecorder viaPortSide = new DoorRecorder();
+        LoopbackTransport viaPort = new LoopbackTransport(viaPortSide);
+        viaPort.connect("порт", false, "Порт");
+        DoorRecorder viaCloudSide = new DoorRecorder();
+        LoopbackTransport viaCloud = new LoopbackTransport(viaCloudSide);
+        viaCloud.connect("облако", false, "Облако");
+        pump(host, viaPort, viaCloud);
+
+        assertEq("оба гостя на счету у хозяина", 2, host.actors().size());
+        int fromPort = host.actors().get(0);
+        int fromCloud = host.actors().get(1);
+        assertTrue("номера разные", fromPort != fromCloud);
+        assertEq("имя первого", "Порт", host.actorName(fromPort));
+        assertEq("имя второго", "Облако", host.actorName(fromCloud));
+        assertEq("и видно, какой дверью", "свой порт", host.doorOf(fromPort));
+        assertEq("и второй тоже", "Photon", host.doorOf(fromCloud));
+
+        // Гость кричит всем. Хозяин обязан услышать, и второй гость — тоже,
+        // хотя он за другой дверью.
+        viaPort.send("привет".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                true, NetChannel.ALL);
+        pump(host, viaPort, viaCloud);
+        assertEq("хозяин услышал", 1, hostSide.payloads.size());
+        assertEq("и знает от кого", fromPort + ":привет", hostSide.payloads.get(0));
+        assertEq("гость за другой дверью услышал", 1, viaCloudSide.payloads.size());
+        assertTrue("сам себе не переслал: " + viaPortSide.payloads,
+                viaPortSide.payloads.isEmpty());
+
+        // Хозяин отвечает лично — в свою дверь и больше никуда.
+        host.send("тебе".getBytes(java.nio.charset.StandardCharsets.UTF_8), true, fromCloud);
+        pump(host, viaPort, viaCloud);
+        assertEq("адресат получил", 2, viaCloudSide.payloads.size());
+        assertTrue("посторонний не получил: " + viaPortSide.payloads,
+                viaPortSide.payloads.isEmpty());
+
+        viaPort.disconnect();
+        pump(host, viaPort, viaCloud);
+        assertEq("ушедший снят со счёта", 1, host.actors().size());
+        host.disconnect();
+        viaCloud.disconnect();
+    }
+
+    /**
+     * Одна отказавшая дверь не закрывает комнату.
+     *
+     * <p>Нет интернета — играем по своей сети; занят порт — играем через
+     * облако. Иначе выделенный сервер падал бы от того, что у него нет одной
+     * из двух возможностей, которые ему не обе нужны.
+     */
+    private static void testCompositeSurvivesOneDoor() {
+        LoopbackTransport.reset();
+        // Первая дверь входит в несуществующую комнату и отказывает; вторая
+        // создаёт свою и открывается.
+        DoorRecorder side = new DoorRecorder();
+        CompositeTransport host = new CompositeTransport(side,
+                List.of(loopbackDoor("сломанная"), loopbackDoor("рабочая")));
+        // Первой двери велено входить, а не создавать: комнаты нет — отказ.
+        host.connectDoor(0, "чужая", false, "Хозяин");
+        host.connectDoor(1, "своя", true, "Хозяин");
+        host.poll();
+
+        assertEq("комната всё равно открыта", NetTransport.State.JOINED, side.state);
+        assertTrue("сломанная дверь закрыта", !host.doorOpen(0));
+        assertTrue("рабочая открыта", host.doorOpen(1));
+        assertTrue("и причина названа: " + host.doorDetail(0),
+                !host.doorDetail(0).isEmpty());
+        assertTrue("в строке видно обе: " + host.describe(),
+                host.describe().contains("сломанная") && host.describe().contains("рабочая"));
+        host.disconnect();
+    }
+
+    /** Прокрутить всех участников, пока они не перестанут отвечать друг другу. */
+    private static void pump(NetTransport... parties) {
+        for (int i = 0; i < 6; i++)
+            for (NetTransport t : parties)
+                t.poll();
     }
 
     // ------------------------------------------------------------- проверки
