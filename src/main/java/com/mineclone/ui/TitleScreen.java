@@ -7,13 +7,14 @@ import java.util.Random;
 /**
  * Титульный экран: логотип, «Продолжить» последний мир и три пути дальше.
  *
- * <p>«Продолжить» — мир, в который играли последним, одной кнопкой: чаще
+ * <p>
+ * «Продолжить» — мир, в который играли последним, одной кнопкой: чаще
  * всего игрок открывает игру ровно ради него, и путь через список миров
  * отнимал бы два лишних щелчка каждый запуск.
  */
 public final class TitleScreen implements Screen {
 
-    public static final String VERSION = "v0.9.0 alpha";
+    public static final String VERSION = "v1.0.0 alpha";
 
     /** Строка под логотипом. Своя на каждый запуск. */
     static final String[] SPLASHES = {
@@ -62,7 +63,8 @@ public final class TitleScreen implements Screen {
     /**
      * С настройками сети: игра отдаёт их сюда и забирает обратно изменёнными.
      *
-     * <p>Экран сети создаётся титульным, а не игрой, потому что переходы между
+     * <p>
+     * Экран сети создаётся титульным, а не игрой, потому что переходы между
      * экранами разбирает стек — игра видит только конечное действие.
      */
     public TitleScreen(SaveManager save, SettingsModel settings, int splashIndex,
@@ -72,7 +74,8 @@ public final class TitleScreen implements Screen {
         this.settings = settings;
         this.splash = SPLASHES[Math.floorMod(splashIndex, SPLASHES.length)];
         this.netSettings = netSettings == null
-                ? com.mineclone.net.NetSettings.defaults() : netSettings;
+                ? com.mineclone.net.NetSettings.defaults()
+                : netSettings;
         this.onNetSave = onNetSave;
         refresh();
     }
@@ -81,7 +84,7 @@ public final class TitleScreen implements Screen {
         last = null;
         for (SaveManager.WorldInfo w : save.listWorlds(false))
             if (!w.corrupted) {
-                last = w;   // список уже от последнего сыгранного
+                last = w; // список уже от последнего сыгранного
                 break;
             }
     }
@@ -95,7 +98,8 @@ public final class TitleScreen implements Screen {
     public MenuAction draw(MenuTheme t) {
         int sw = t.width(), sh = t.height();
 
-        float pixel = Math.max(7f, Math.min(15f, Math.min(sh / 58f, (sw - 80f) / MenuTheme.logoWidth("MINECLONE", 1f))));
+        float pixel = Math.max(7f,
+                Math.min(15f, Math.min(sh / 58f, (sw - 80f) / MenuTheme.logoWidth("MINECLONE", 1f))));
         float logoTop = Math.max(28f, sh * 0.12f);
         float logoH = t.logo("MINECLONE", sw / 2f, logoTop, pixel);
         // Строка под логотипом пульсирует: заметна, но не мигает.

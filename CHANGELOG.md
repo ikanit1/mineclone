@@ -1,6 +1,17 @@
 # Changelog
 
-Versions below 0.9.0 predate git tags and are reconstructed from the commit history by feature milestones; their dates are taken from the commits. 0.9.0 is the first tagged release.
+Versions below 0.9.0 predate git tags and are reconstructed from the commit history by feature milestones; their dates are taken from the commits.
+
+## [1.0.0-alpha] - 2026-09-21
+
+Official 1.0.0-alpha release milestone.
+
+### Added & Refined
+- Complete Inventory & Window management overhaul (`ContainerMenu`, crafting grid 2x2/3x3, chest, furnace, creative UI).
+- Enhanced block state picking, F3 info overlays, and advanced item tooltips.
+- Full Day/Night atmosphere with realistic volumetric weather drift, sky gradient, moon phases, and custom particles.
+- Multiplayer via built-in Photon Cloud & LAN socket server with compressed chunk deltas.
+- Portable Windows app image packaging with bundled JVM runtime (`Mineclone.exe`).
 
 ## [0.9.0] - 2026-09-21
 

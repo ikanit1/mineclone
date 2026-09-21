@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'com.mineclone'
-version = '0.9.0'
+version = '1.0.0-alpha'
 
 java {
     toolchain {
@@ -97,7 +97,7 @@ tasks.register('jpackage', Exec) {
     commandLine 'jpackage',
             '--type', 'app-image',
             '--name', appName,
-            '--app-version', project.version.toString(),
+            '--app-version', project.version.toString().replaceAll('-.*', ''),
             '--vendor', 'Mineclone',
             '--dest', jpackageOutputDir.get().asFile.absolutePath,
             '--input', jpackageInputDir.get().asFile.absolutePath,
