@@ -25,3 +25,17 @@ door_top_tile.png
 # Local runtime state
 saves/
 options.dat
+
+# Preview/bench output trees written by the tools in tools/
+out-net/
+out-video-review*/
+
+# Scratch logs left by local runs
+*.log
+run_out.txt
+run_err.txt
+vlc-help.txt
+
+# Machine-local Claude Code state (absolute temp paths, one session only)
+.claude/launch.json
+.claude/settings.local.json
