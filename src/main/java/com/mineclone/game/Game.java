@@ -198,11 +198,9 @@ public class Game {
     private com.mineclone.world.Furnace openFurnace;
     private int furnaceX, furnaceY, furnaceZ;
 
-    /** Темп тиков печей. Реже кадра: переплавка меряется секундами. */
-    private static final float FURNACE_TICK = 0.25f;
-    /** В скольких чанках вокруг игрока печи вообще работают. */
-    private static final int FURNACE_RADIUS = 4;
-    private float furnaceTimer;
+    /** Темп тиков печей и радиус их работы теперь у {@link WorldSimulation}. */
+    private static final float FURNACE_TICK = WorldSimulation.FURNACE_TICK;
+    private static final int FURNACE_RADIUS = WorldSimulation.FURNACE_RADIUS;
 
     /** Расписание фоновой атмосферы: пещера, дождь, гром, вода. */
     private com.mineclone.audio.AmbientSound ambient;
@@ -265,11 +263,15 @@ public class Game {
     private static final float NOISE_SPRINT = 11f;
     private static final float NOISE_WALK = 4f;
     private static final float NOISE_LAND = 14f;
-    private static final float WATER_TICK_INTERVAL = 0.25f;
-    private float lavaTickTimer = LavaSimulator.TICK_INTERVAL;
-    private float waterTickTimer = WATER_TICK_INTERVAL;
-    private com.mineclone.world.BlockTicker blockTicker;
-    private float blockTickTimer = com.mineclone.world.BlockTicker.TICK_INTERVAL;
+    private static final float WATER_TICK_INTERVAL = WorldSimulation.WATER_TICK;
+    /**
+     * Мировой тик: вода, лава, обвалы, случайные тики блоков и печи.
+     *
+     * <p>Вынесен целиком, потому что ровно этот код тикает и у выделенного
+     * сервера, у которого нет ни частиц, ни звука, ни камеры. Всё, что
+     * относится к картинке, осталось здесь.
+     */
+    private WorldSimulation simulation;
     private float totalTime = 0f;
     private boolean wasInWater = false;
     /** Nearby-water probe is throttled; the actual sound source is continuous. */
@@ -1148,7 +1150,7 @@ public class Game {
         healthGhost = player.health;
         healthGhostDelay = 0f;
         mobSpawner = new com.mineclone.world.entity.MobSpawner(world.seed ^ 0x51E7B0BL);
-        blockTicker = new com.mineclone.world.BlockTicker(world.seed);
+        simulation = new WorldSimulation(world.seed);
         atmosphere.snap();
         musicSense.reset();
         mobSpawnTimer = 0f;
@@ -1504,7 +1506,6 @@ public class Game {
         updateItems(dt);
         if (decals != null)
             decals.update(dt);
-        tickFurnaces(dt);
         updateWaterFlowSound(dt);
         updateLavaEffects(dt);
         updateAmbient(dt);
@@ -1521,42 +1522,20 @@ public class Game {
         probeEffects = System.nanoTime() - effectsStart;
         long ticksStart = System.nanoTime();
 
-        blockTickTimer -= dt;
-        if (blockTickTimer <= 0f) {
-            blockTickTimer = com.mineclone.world.BlockTicker.TICK_INTERVAL;
+        // Жидкости, обвалы, случайные тики и печи считает хозяин: посчитай их
+        // участник у себя — и два мира разойдутся уже на первой луже, а
+        // выросшая у него трава уедет хозяину как просьба поставить блок.
+        boolean simulate = !net.isClient();
+        if (simulation != null) {
             // Тикеру — осадки фронта, а не местные: игрок может стоять в
             // пустыне, а снег обязан ложиться на соседнюю тундру.
-            long start = System.nanoTime();
-            if (blockTicker != null)
-                blockTicker.tick(world, player.position, atmosphere.global.precipitation());
-            probeBlockTick = System.nanoTime() - start;
+            simulation.update(world, dt, player.position,
+                    atmosphere.global.precipitation(), simulate);
+            probeBlockTick = simulation.blockNanos();
+            probeWaterTick = simulation.waterNanos();
+            probeLavaTick = simulation.lavaNanos();
+            probeFalling = simulation.fallingNanos();
         }
-
-        waterTickTimer -= dt;
-        // Жидкости, падающие блоки и случайные тики считает хозяин: посчитай
-        // их участник у себя — и два мира разойдутся уже на первой луже.
-        boolean simulate = !net.isClient();
-        if (waterTickTimer <= 0f) {
-            waterTickTimer = WATER_TICK_INTERVAL;
-            long waterStart = System.nanoTime();
-            if (simulate)
-                WaterSimulator.tick(world);
-            probeWaterTick = System.nanoTime() - waterStart;
-        }
-        lavaTickTimer -= dt;
-        if (lavaTickTimer <= 0f) {
-            lavaTickTimer = LavaSimulator.TICK_INTERVAL;
-            long lavaStart = System.nanoTime();
-            if (simulate) LavaSimulator.tick(world);
-            probeLavaTick = System.nanoTime() - lavaStart;
-        }
-        // Coalesce material-light changes by chunk: flowing water may edit
-        // hundreds of cells in one tick, but only one relight reaches this frame.
-        world.processPendingSkyRelights(1);
-        long fallStart = System.nanoTime();
-        if (simulate)
-            world.falling.update(dt);
-        probeFalling = System.nanoTime() - fallStart;
         for (com.mineclone.world.DroppedItem d : world.falling.drainDrops())
             items.add(com.mineclone.world.entity.ItemEntity.restored(d, itemRandom));
         // После тиков воды и блоков: они и пачкают чанки, ради которых
@@ -3033,33 +3012,6 @@ public class Game {
             return new Vector3f(x + 0.5f, y + 0.5f, z + 0.5f);
         }
         return new Vector3f(eye);
-    }
-
-    private void tickFurnaces(float dt) {
-        // Печи считает хозяин: у участника они только показываются.
-        if (net.isClient())
-            return;
-        if (world == null)
-            return;
-        furnaceTimer -= dt;
-        if (furnaceTimer > 0f)
-            return;
-        float step = FURNACE_TICK;
-        furnaceTimer = FURNACE_TICK;
-        int pcx = (int) Math.floor(player.position.x / Chunk.SIZE_X);
-        int pcz = (int) Math.floor(player.position.z / Chunk.SIZE_Z);
-        for (int cx = pcx - FURNACE_RADIUS; cx <= pcx + FURNACE_RADIUS; cx++)
-            for (int cz = pcz - FURNACE_RADIUS; cz <= pcz + FURNACE_RADIUS; cz++) {
-                Chunk c = world.getChunkIfExists(cx, cz);
-                if (c == null || c.furnaces().isEmpty())
-                    continue;
-                for (var f : c.furnaces().values())
-                    // Чанк помечается изменённым только когда поменялись
-                    // слоты: иначе горящая печь переписывала бы свой файл
-                    // четыре раза в секунду всё время работы.
-                    if (f.tick(step))
-                        c.modified = true;
-            }
     }
 
     /** Высыпает содержимое печи на землю — вызывается до того, как блок снят. */
@@ -5740,7 +5692,9 @@ public class Game {
         // У участника мир не живёт своей жизнью: мобов, воду и случайные тики
         // считает хозяин, а сюда они приезжают готовыми.
         mobSpawner = null;
-        blockTicker = null;
+        // У участника мир тикает тот же объект, но с выключенной симуляцией:
+        // таймеры ему нужны, право что-то менять — нет.
+        simulation = new WorldSimulation(world == null ? 0L : world.seed);
         atmosphere.snap();
         musicSense.reset();
         mobSpawnTimer = 0f;
