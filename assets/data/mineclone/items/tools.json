@@ -16,5 +16,11 @@
   "wooden_shovel":   { "name": "Деревянная лопата", "category": "tools", "mass": 1.0, "icon": "wood_shovel",    "durability": 60,  "tool": { "class": "shovel", "level": 1, "speed": 2.2 } },
   "stone_shovel":    { "name": "Каменная лопата",   "category": "tools", "mass": 1.0, "icon": "stone_shovel",   "durability": 132, "tool": { "class": "shovel", "level": 2, "speed": 4.0 } },
   "iron_shovel":     { "name": "Железная лопата",   "category": "tools", "mass": 1.0, "icon": "iron_shovel",    "durability": 251, "tool": { "class": "shovel", "level": 3, "speed": 6.5 } },
-  "diamond_shovel":  { "name": "Алмазная лопата",   "category": "tools", "mass": 1.0, "icon": "diamond_shovel", "durability": 900, "tool": { "class": "shovel", "level": 4, "speed": 9.0 } }
+  "diamond_shovel":  { "name": "Алмазная лопата",   "category": "tools", "mass": 1.0, "icon": "diamond_shovel", "durability": 900, "tool": { "class": "shovel", "level": 4, "speed": 9.0 } },
+  "gold_pickaxe": { "name": "Золотая кирка", "category": "tools", "mass": 1.2, "icon": "gold_pickaxe", "durability": 48, "tool": { "class": "pickaxe", "level": 3, "speed": 10.0 } },
+  "gold_axe": { "name": "Золотой топор", "category": "tools", "mass": 1.2, "icon": "gold_axe", "durability": 48, "tool": { "class": "axe", "level": 3, "speed": 10.0 } },
+  "gold_shovel": { "name": "Золотая лопата", "category": "tools", "mass": 0.9, "icon": "gold_shovel", "durability": 48, "tool": { "class": "shovel", "level": 3, "speed": 10.0 } },
+  "copper_pickaxe": { "name": "Медная кирка", "category": "tools", "mass": 1.4, "icon": "copper_pickaxe", "durability": 180, "tool": { "class": "pickaxe", "level": 2, "speed": 5.0 } },
+  "copper_axe": { "name": "Медный топор", "category": "tools", "mass": 1.4, "icon": "copper_axe", "durability": 180, "tool": { "class": "axe", "level": 2, "speed": 5.0 } },
+  "copper_shovel": { "name": "Медная лопата", "category": "tools", "mass": 1.0, "icon": "tool_copper", "durability": 180, "tool": { "class": "shovel", "level": 2, "speed": 5.0 } }
 }

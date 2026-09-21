@@ -13,5 +13,17 @@ Import with `tools/ImportMobAtlas.java` using the compiled game and library
 classpath. The importer retains existing files in `pre-higgsfield` and
 removes source-sheet borders using reviewed cell boundaries.
 
+`player.png` has since moved to a sheet of its own — the camera gets closer
+to the player than to anything else, and sharing eight tiles with five mobs
+was costing them resolution. Source: `assets/higgsfield-player-source.png`,
+importer `tools/ImportPlayerSkin.java`, previous file kept in `pre-import`.
+That importer stretches the middle column of the two long arm tiles across
+the tile: an image model draws an arm as an object on a background, but a
+cube face has to be filled edge to edge.
+
+Editing by hand: `player.png` is the file the game loads. Delete it and the
+procedural skin in `render/PlayerSkin.java` takes over. The texture is
+uploaded once at start-up, so a change needs a restart to show.
+
 Animation is implemented on the cuboid parts in `MobAnimation` and
 `MobRenderer`; it does not require animated texture frames.
