@@ -7,6 +7,11 @@ import com.mineclone.net.connect.ConnectLadder;
 import com.mineclone.net.connect.RegionFinder;
 import com.mineclone.net.connect.RegionProbe;
 import com.mineclone.net.connect.RoomCode;
+import com.mineclone.net.direct.LanBeacon;
+import com.mineclone.net.direct.NatPmp;
+import com.mineclone.net.direct.PortMapper;
+import com.mineclone.net.direct.PublicAddress;
+import com.mineclone.net.direct.UpnpGateway;
 import com.mineclone.net.Multiplayer;
 import com.mineclone.net.NetContext;
 import com.mineclone.net.NetProto;
@@ -110,6 +115,14 @@ final class NetworkTests {
                 NetworkTests::testConnectDiagnosis);
         r.run("the nearest region wins the probe", NetworkTests::testRegionProbe);
         r.run("the region list is read as parallel arrays", NetworkTests::testRegionPairs);
+        r.run("a nat-pmp mapping request and its answer match the rfc",
+                NetworkTests::testNatPmpFrames);
+        r.run("a stun binding response gives back the public address",
+                NetworkTests::testStunResponse);
+        r.run("the upnp control url comes from its own service block",
+                NetworkTests::testUpnpDescription);
+        r.run("both port-mapping refusals reach the player", NetworkTests::testPortMapperErrors);
+        r.run("a lan beacon announces a world and expires", NetworkTests::testLanBeacon);
     }
 
     // ------------------------------------------------------------ примитивы
@@ -1206,6 +1219,158 @@ final class NetworkTests {
         assertEq("короче адресов", 1, RegionFinder.pairs(
                 java.util.List.of("eu", "us"), java.util.List.of("eu.example:5058")).size());
         assertEq("не массив", 0, RegionFinder.pairs("eu", "eu.example").size());
+    }
+
+    // ------------------------------------------------- прямое соединение
+
+    /**
+     * Кадр NAT-PMP — двенадцать байт, и все они на своих местах.
+     *
+     * <p>Числа задаёт RFC 6886, проверить их против живого роутера нельзя (у
+     * каждого свой), поэтому единственная защита от случайной правки — эталон
+     * в тесте.
+     */
+    private static void testNatPmpFrames() {
+        byte[] req = NatPmp.mapRequest(25566, 3600);
+        assertEq("длина запроса", 12, req.length);
+        assertEq("версия", 0, req[0] & 0xFF);
+        assertEq("операция TCP", 2, req[1] & 0xFF);
+        assertEq("внутренний порт, старший байт", 25566 >> 8, req[4] & 0xFF);
+        assertEq("внутренний порт, младший", 25566 & 0xFF, req[5] & 0xFF);
+        assertEq("внешний порт тот же", 25566 & 0xFF, req[7] & 0xFF);
+        assertEq("срок жизни", 3600, ((req[8] & 0xFF) << 24) | ((req[9] & 0xFF) << 16)
+                | ((req[10] & 0xFF) << 8) | (req[11] & 0xFF));
+
+        // Ответ на операцию n приходит с кодом n + 128.
+        byte[] ok = new byte[] { 0, (byte) 130, 0, 0, 0, 0, 0, 0, 0, 0,
+                (byte) (25566 >> 8), (byte) 25566, 0, 0, 0x0E, 0x10 };
+        NatPmp.Mapping m = NatPmp.parseMapping(ok, ok.length);
+        assertTrue("принято: " + m.error(), m.ok());
+        assertEq("внешний порт", 25566, m.externalPort());
+        assertEq("срок", 3600, m.lifetimeSeconds());
+
+        byte[] refused = ok.clone();
+        refused[3] = 2;
+        assertTrue("отказ распознан", !NatPmp.parseMapping(refused, refused.length).ok());
+        byte[] alien = ok.clone();
+        alien[1] = (byte) 128;
+        assertTrue("чужой ответ не принят",
+                !NatPmp.parseMapping(alien, alien.length).ok());
+        assertTrue("обрезанный не принят", !NatPmp.parseMapping(ok, 8).ok());
+    }
+
+    /** Адрес из ответа STUN, сложенный с постоянной протокола, читается верно. */
+    private static void testStunResponse() {
+        byte[] id = new byte[12];
+        for (int i = 0; i < id.length; i++)
+            id[i] = (byte) (i + 1);
+        byte[] req = PublicAddress.bindingRequest(id);
+        assertEq("длина запроса", 20, req.length);
+        assertEq("тип Binding", 0x0001, ((req[0] & 0xFF) << 8) | (req[1] & 0xFF));
+        assertEq("постоянная протокола", 0x2112A442,
+                ((req[4] & 0xFF) << 24) | ((req[5] & 0xFF) << 16)
+                        | ((req[6] & 0xFF) << 8) | (req[7] & 0xFF));
+
+        // 203.0.113.7, сложенное по модулю два с постоянной протокола.
+        byte[] addr = { (byte) (203 ^ 0x21), (byte) (0 ^ 0x12),
+                (byte) (113 ^ 0xA4), (byte) (7 ^ 0x42) };
+        byte[] res = new byte[20 + 12];
+        res[0] = 0x01;
+        res[1] = 0x01;
+        res[2] = 0;
+        res[3] = 12;
+        System.arraycopy(req, 4, res, 4, 4);
+        System.arraycopy(id, 0, res, 8, 12);
+        res[20] = 0x00;
+        res[21] = 0x20;   // XOR-MAPPED-ADDRESS
+        res[22] = 0;
+        res[23] = 8;
+        res[24] = 0;
+        res[25] = 1;      // семейство: IPv4
+        res[26] = 0x11;
+        res[27] = 0x12;   // порт нас не интересует
+        System.arraycopy(addr, 0, res, 28, 4);
+        assertEq("адрес", "203.0.113.7", PublicAddress.parseResponse(res, res.length, id));
+
+        // Ответ на чужой запрос — не наш ответ: номер обращения для того и есть.
+        byte[] other = new byte[12];
+        assertEq("чужое обращение", "", PublicAddress.parseResponse(res, res.length, other));
+        byte[] request = res.clone();
+        request[1] = 0x00;
+        assertEq("не ответ вовсе", "", PublicAddress.parseResponse(request, request.length, id));
+    }
+
+    /**
+     * Адрес управления берётся из блока своей службы.
+     *
+     * <p>Служб в описании роутера с десяток, и {@code controlURL} есть у
+     * каждой. Взять чужой значит попросить открыть порт у часов или у
+     * принт-сервера.
+     */
+    private static void testUpnpDescription() {
+        String xml = "<root><device><serviceList>"
+                + "<service><serviceType>urn:schemas-upnp-org:service:Layer3Forwarding:1"
+                + "</serviceType><controlURL>/wrong</controlURL></service>"
+                + "<service><serviceType>urn:schemas-upnp-org:service:WANIPConnection:1"
+                + "</serviceType><controlURL>/ctl/IPConn</controlURL></service>"
+                + "</serviceList></device></root>";
+        assertEq("свой адрес управления", "/ctl/IPConn",
+                UpnpGateway.controlUrl(xml, "urn:schemas-upnp-org:service:WANIPConnection:1"));
+        assertEq("чужой службы нет", "",
+                UpnpGateway.controlUrl(xml, "urn:schemas-upnp-org:service:WANPPPConnection:1"));
+        assertEq("относительный путь достроен", "http://192.168.1.1:5000/ctl/IPConn",
+                UpnpGateway.absolute("http://192.168.1.1:5000/rootDesc.xml", "/ctl/IPConn"));
+        assertEq("полный остаётся собой", "http://10.0.0.1/ctl",
+                UpnpGateway.absolute("http://192.168.1.1:5000/rootDesc.xml", "http://10.0.0.1/ctl"));
+        assertEq("заголовок без учёта регистра", "http://192.168.1.1:5000/rootDesc.xml",
+                UpnpGateway.header("HTTP/1.1 200 OK\r\nlocation: "
+                        + "http://192.168.1.1:5000/rootDesc.xml\r\n", "LOCATION"));
+        assertTrue("занятый порт назван",
+                UpnpGateway.errorOf("<errorCode>718</errorCode>").contains("занят"));
+    }
+
+    /** Не вышло ни так, ни так — игрок должен увидеть обе причины. */
+    private static void testPortMapperErrors() {
+        String both = PortMapper.combine("роутер не отозвался на UPnP", "шлюз не ответил");
+        assertTrue("UPnP назван: " + both, both.contains("UPnP"));
+        assertTrue("NAT-PMP назван: " + both, both.contains("NAT-PMP"));
+        assertEq("одна и та же причина не повторяется дважды", "шлюз не ответил",
+                PortMapper.combine("шлюз не ответил", "шлюз не ответил"));
+        assertEq("пустая сторона молчит", "роутер отказал",
+                PortMapper.combine("", "роутер отказал"));
+        assertTrue("без причин всё равно понятно",
+                !PortMapper.combine("", "").isEmpty());
+    }
+
+    /**
+     * Маяк объявляет мир, а чужое объявление в список не попадает.
+     *
+     * <p>Адрес в объявление не пишется нарочно: приёмник и так знает, откуда
+     * пакет, а записанный разошёлся бы с настоящим у всякого, у кого две
+     * сетевые карты.
+     */
+    private static void testLanBeacon() {
+        byte[] announcement = LanBeacon.encode(25566, "Долина", "Гриша", 2, 8);
+        LanBeacon.Announcement a =
+                LanBeacon.decode(announcement, announcement.length, "192.168.1.5");
+        assertTrue("объявление разобрано", a != null);
+        assertEq("порт", 25566, a.port());
+        assertEq("мир", "Долина", a.world());
+        assertEq("хозяин", "Гриша", a.host());
+        assertEq("внутри", 2, a.players());
+        assertEq("вмещает", 8, a.maxPlayers());
+        assertEq("адрес от приёмника", "192.168.1.5:25566", a.dialable());
+
+        // Сборка с другим протоколом не должна попадать в список: ткнуть в неё
+        // значит получить отказ при входе.
+        byte[] alien = announcement.clone();
+        alien[7] = (byte) (alien[7] + 1);
+        assertTrue("чужая версия отброшена",
+                LanBeacon.decode(alien, alien.length, "192.168.1.5") == null);
+        assertTrue("мусор отброшен",
+                LanBeacon.decode(new byte[] { 1, 2, 3 }, 3, "192.168.1.5") == null);
+        assertTrue("обрезанное отброшено",
+                LanBeacon.decode(announcement, 9, "192.168.1.5") == null);
     }
 
     // ------------------------------------------------------------- проверки

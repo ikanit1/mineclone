@@ -32,6 +32,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <p>Кадр на проводе — длина и тело; TCP склеивает и рвёт как хочет, поэтому
  * длину надо писать явно. Всё надёжно по построению: флаг {@code reliable}
  * здесь ни на что не влияет и сохранён только ради общего интерфейса.
+ *
+ * <p><b>Молчание считается обрывом.</b> Без этого мёртвое соединение висело
+ * вечно: TCP не замечает выдернутого кабеля и уснувшего ноутбука, пока в него
+ * не попробуют записать, — а хозяин участнику пишет далеко не каждый кадр.
+ * Поэтому раз в {@link #HEARTBEAT_SECONDS} по пустому соединению уходит
+ * {@link #F_PING}, а молчащее дольше {@link #SILENCE_SECONDS} закрывается.
  */
 public final class LanTransport implements NetTransport {
 
@@ -41,6 +47,10 @@ public final class LanTransport implements NetTransport {
     public static final int MAX_PLAYERS = 8;
     /** Больше этого в одном сообщении не бывает — защита от мусора в потоке. */
     private static final int MAX_FRAME = 1 << 20;
+    /** Через сколько тишины напомнить о себе пустым кадром. */
+    public static final float HEARTBEAT_SECONDS = 2f;
+    /** Через сколько тишины считать соединение мёртвым. */
+    public static final float SILENCE_SECONDS = 10f;
 
     private static final byte F_HELLO = 1;
     private static final byte F_WELCOME = 2;
@@ -48,6 +58,8 @@ public final class LanTransport implements NetTransport {
     private static final byte F_JOIN = 4;
     private static final byte F_LEAVE = 5;
     private static final byte F_REJECT = 6;
+    /** Пустой кадр: «я ещё здесь». Ответа не требует — ответ придёт своим. */
+    private static final byte F_PING = 7;
 
     private final Listener listener;
     private final ConcurrentLinkedQueue<Runnable> inbox = new ConcurrentLinkedQueue<>();
@@ -275,6 +287,37 @@ public final class LanTransport implements NetTransport {
         Runnable r;
         while ((r = inbox.poll()) != null)
             r.run();
+        tendConnections();
+    }
+
+    /**
+     * Присмотреть за соединениями: напомнить о себе и убрать мёртвые.
+     *
+     * <p>Идёт здесь, а не в своём потоке, потому что {@link #poll()} и так
+     * зовут каждый кадр, а закрытие соединения обязано попасть в ту же очередь
+     * событий, что и всё остальное: иначе участник успел бы исчезнуть
+     * посреди разбора собственного пакета.
+     */
+    private void tendConnections() {
+        if (state != State.JOINED)
+            return;
+        long now = System.nanoTime();
+        if (hosting) {
+            for (Link l : links.values()) {
+                if (l.silent(now))
+                    l.close();
+                else
+                    l.heartbeat(now);
+            }
+        } else {
+            Link up = upstream;
+            if (up == null)
+                return;
+            if (up.silent(now))
+                up.close();
+            else
+                up.heartbeat(now);
+        }
     }
 
     @Override
@@ -382,6 +425,10 @@ public final class LanTransport implements NetTransport {
         private final DataOutputStream out;
         private final Object writeLock = new Object();
         volatile int actor;
+        /** Когда с этого соединения последний раз что-то пришло. */
+        volatile long lastHeardNanos = System.nanoTime();
+        /** Когда в него последний раз что-то ушло. */
+        volatile long lastSentNanos = System.nanoTime();
 
         Link(Socket socket) throws IOException {
             this.socket = socket;
@@ -397,7 +444,11 @@ public final class LanTransport implements NetTransport {
                 } catch (EOFException | SocketException e) {
                     return;
                 }
+                lastHeardNanos = System.nanoTime();
                 switch (kind) {
+                    case F_PING -> {
+                        // Само появление кадра и есть весь его смысл.
+                    }
                     case F_WELCOME -> readWelcome();
                     case F_JOIN -> {
                         int a = in.readInt();
@@ -518,6 +569,7 @@ public final class LanTransport implements NetTransport {
                     out.writeInt(payload.length);
                     out.write(payload);
                     out.flush();
+                    lastSentNanos = System.nanoTime();
                 } catch (IOException e) {
                     close();
                 }
@@ -534,10 +586,31 @@ public final class LanTransport implements NetTransport {
                     out.writeInt(payload.length);
                     out.write(payload);
                     out.flush();
+                    lastSentNanos = System.nanoTime();
                 } catch (IOException e) {
                     close();
                 }
             }
+        }
+
+        /** Напомнить о себе, если давно молчали. */
+        void heartbeat(long now) {
+            if (now - lastSentNanos < (long) (HEARTBEAT_SECONDS * 1e9))
+                return;
+            synchronized (writeLock) {
+                try {
+                    out.writeByte(F_PING);
+                    out.flush();
+                    lastSentNanos = now;
+                } catch (IOException e) {
+                    close();
+                }
+            }
+        }
+
+        /** Замолчало дольше терпимого: с той стороны уже никого. */
+        boolean silent(long now) {
+            return now - lastHeardNanos > (long) (SILENCE_SECONDS * 1e9);
         }
 
         void sendReject(String why) {
