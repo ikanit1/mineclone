@@ -1042,7 +1042,8 @@ public class Game {
     private void updateMenu(float dt) {
         menuBackground.update(dt);
         updateCommandToast(dt);
-        roomBrowser.update(dt);
+        // Лобби качается кадром выше, в любом состоянии: второй раз здесь
+        // значило бы разбирать его очередь дважды за кадр.
         adoptMeasuredRegion();
     }
 
