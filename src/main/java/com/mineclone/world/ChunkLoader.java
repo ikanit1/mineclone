@@ -117,6 +117,9 @@ public class ChunkLoader {
      */
     private final Set<Long> pendingLightFlood = ConcurrentHashMap.newKeySet();
 
+    /** Сервер мешей не строит; см. {@link #setMeshing(boolean)}. */
+    private volatile boolean meshing = true;
+
     public ChunkLoader(World world, ChunkMesher mesher,
                        com.mineclone.save.SaveManager save, String worldId) {
         this.world = world;
@@ -138,6 +141,17 @@ public class ChunkLoader {
     /** Включить или выключить упрощение дальних чанков. */
     public void setLodEnabled(boolean on) {
         lod = on;
+    }
+
+    /**
+     * Строить ли меши вообще.
+     *
+     * <p>Выделенному серверу они не нужны: рисовать ему нечем, а шесть потоков,
+     * складывающих треугольники в очередь, из которой никто не берёт, — это
+     * шесть занятых ядер и растущая куча мусора.
+     */
+    public void setMeshing(boolean on) {
+        meshing = on;
     }
 
     /**
@@ -169,7 +183,7 @@ public class ChunkLoader {
                 }
                 if (world.getChunkIfExists(cx, cz) == null) {
                     submitGen(cx, cz, k);
-                } else if (!pendingGen.contains(k) && !pendingLightFlood.contains(k)
+                } else if (meshing && !pendingGen.contains(k) && !pendingLightFlood.contains(k)
                         && !meshed.contains(k) && !pendingMesh.contains(k)) {
                     if (neighboursReady(cx, cz)) submitMesh(cx, cz, k, false);
                 }
@@ -310,6 +324,7 @@ public class ChunkLoader {
      * @return false, если задача уже в работе
      */
     public boolean submitMesh(int cx, int cz, long key, boolean edit) {
+        if (!meshing) return false;
         if (awaitingUpload.contains(key) || !pendingMesh.add(key)) return false;
         int priority = edit ? EDIT_PRIORITY : distancePriority(cx, cz);
         meshPool.execute(new MeshTask(priority, meshSeq.incrementAndGet(), () -> {

@@ -25,6 +25,8 @@ import com.mineclone.net.photon.PhotonCodes;
 import com.mineclone.net.photon.PhotonJson;
 import com.mineclone.net.photon.PhotonPeer;
 import com.mineclone.save.ChunkSnapshot;
+import com.mineclone.server.ServerConfig;
+import com.mineclone.server.ServerConsole;
 import com.mineclone.save.Options;
 import com.mineclone.save.SaveManager;
 import com.mineclone.world.BlockType;
@@ -129,6 +131,15 @@ final class NetworkTests {
                 NetworkTests::testCompositeRoom);
         r.run("one broken door does not close the room",
                 NetworkTests::testCompositeSurvivesOneDoor);
+        r.run("the server package never reaches for a window",
+                NetworkTests::testServerStaysHeadless);
+        r.run("server.properties round-trips and writes itself",
+                NetworkTests::testServerConfig);
+        r.run("server clock only ever moves forward", NetworkTests::testServerTimeForward);
+        r.run("a dropped guest comes back to the same world",
+                NetworkTests::testResumeAfterDrop);
+        r.run("a guest that cannot come back gives up and says so",
+                NetworkTests::testResumeGivesUp);
     }
 
     // ------------------------------------------------------------ примитивы
@@ -1530,6 +1541,191 @@ final class NetworkTests {
         for (int i = 0; i < 6; i++)
             for (NetTransport t : parties)
                 t.poll();
+    }
+
+    // ------------------------------------------------------ выделенный сервер
+
+    /**
+     * Сервер не тянется за окном.
+     *
+     * <p>Проверка читает исходники пакета, а не гоняет его: падение на
+     * машине без экрана случилось бы у того, кто ставит сервер, а не у того,
+     * кто пишет код. Одна удобная строчка, списанная из {@code Game},
+     * притащила бы за собой GLFW и контекст OpenGL — и сервер перестал бы
+     * запускаться там, ради чего он и написан.
+     */
+    private static void testServerStaysHeadless() throws Exception {
+        java.io.File dir = new java.io.File("src/main/java/com/mineclone/server");
+        assertTrue("исходники сервера на месте: " + dir.getAbsolutePath(), dir.isDirectory());
+        java.io.File[] files = dir.listFiles((d, n) -> n.endsWith(".java"));
+        assertTrue("и их несколько", files != null && files.length >= 3);
+        String[] forbidden = {
+                "import com.mineclone.render.",
+                "import com.mineclone.audio.",
+                "import org.lwjgl.",
+                "import com.mineclone.game.",
+        };
+        for (java.io.File f : files) {
+            String text = java.nio.file.Files.readString(f.toPath(),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            for (String bad : forbidden)
+                assertTrue(f.getName() + " не тянет " + bad, !text.contains(bad));
+        }
+    }
+
+    /** Файла нет — он пишется сам, и прочитанное совпадает с записанным. */
+    private static void testServerConfig() throws Exception {
+        java.io.File dir = java.nio.file.Files.createTempDirectory("mineclone-server").toFile();
+        try {
+            java.io.File file = new java.io.File(dir, "server.properties");
+            assertTrue("сначала файла нет", !file.exists());
+            ServerConfig fresh = ServerConfig.load(file);
+            assertTrue("и он появился: человек должен увидеть, что можно настроить",
+                    file.isFile());
+            assertEq("порт по умолчанию", com.mineclone.net.LanTransport.DEFAULT_PORT,
+                    fresh.port);
+            assertTrue("обе двери открыты по умолчанию", fresh.direct && fresh.photon);
+
+            java.nio.file.Files.writeString(file.toPath(),
+                    "port=25999\nphoton=false\nmode=creative\n"
+                            + "view-distance=9\nroom=a4k7m2\n"
+                            + "world-name=Долина\nseed=1234\n",
+                    java.nio.charset.StandardCharsets.UTF_8);
+            ServerConfig read = ServerConfig.load(file);
+            assertEq("порт", 25999, read.port);
+            assertTrue("облако выключено", !read.photon);
+            assertTrue("творческий режим", read.creative);
+            assertEq("радиус", 9, read.viewDistance);
+            assertEq("имя мира", "Долина", read.worldName);
+            assertEq("сид", 1234L, read.seed);
+            // Код комнаты приводится к своему виду прямо при чтении: человек
+            // впишет его строчными, а диктовать будет прописными.
+            assertEq("код комнаты", "A4K7M2", read.room);
+
+            java.io.File written = new java.io.File(dir, "written.properties");
+            read.write(written);
+            ServerConfig again = ServerConfig.load(written);
+            assertEq("порт пережил запись", read.port, again.port);
+            assertEq("режим пережил запись", read.creative, again.creative);
+            assertEq("радиус пережил запись", read.viewDistance, again.viewDistance);
+            assertEq("имя мира пережило запись", read.worldName, again.worldName);
+        } finally {
+            deleteTree(dir);
+        }
+    }
+
+    /**
+     * Часы сервера идут только вперёд.
+     *
+     * <p>Назад время в этой игре не ходит: от полного оборота зависит фаза
+     * луны, и {@code /time day} посреди дня обязан перевести на следующее
+     * утро, а не вернуть к прошедшему.
+     */
+    private static void testServerTimeForward() {
+        float full = (float) (Math.PI * 2.0);
+        float morning = (float) (Math.PI / 6.0);
+        float noon = (float) (Math.PI / 2.0);
+        assertTrue("из ночи в утро — вперёд",
+                ServerConsole.forward(full * 3f + 5f, morning) > full * 3f + 5f);
+        assertTrue("из утра в полдень — вперёд",
+                ServerConsole.forward(morning + 0.01f, noon) > morning + 0.01f);
+        // Уже ровно в этой фазе: следующий такой же момент — через сутки, а
+        // не прямо сейчас, иначе команда молча ничего бы не делала.
+        float exact = ServerConsole.forward(morning, morning);
+        assertTrue("та же фаза уезжает на сутки вперёд", exact > morning);
+        assertTrue("ровно на одни сутки", Math.abs(exact - (morning + full)) < 1e-3f);
+    }
+
+    // ---------------------------------------------------- возвращение в комнату
+
+    /**
+     * Секундный обрыв больше не стоит партии.
+     *
+     * <p>Раньше любой отказ транспорта выгружал мир и уводил в меню. Мир при
+     * этом никуда не девался: он построен из сида и лежит в памяти. Теперь
+     * сессия держит его тридцать секунд и всё это время пробует вернуться.
+     */
+    private static void testResumeAfterDrop() {
+        LoopbackTransport.reset();
+        TestContext host = new TestContext(new World(0xBEEF77L), "Возврат");
+        Multiplayer hostNet = new Multiplayer(host);
+        host.world.setBlockObserver(hostNet::onWorldBlockChanged);
+        hostNet.start(new LoopbackTransport(hostNet), "room", true, "Хозяин");
+
+        TestContext guest = new TestContext(null, "");
+        Multiplayer[] self = new Multiplayer[1];
+        Multiplayer guestNet = new Multiplayer(guest);
+        self[0] = guestNet;
+        guest.onWorldStarted = w -> w.setBlockObserver(guestNet::onWorldBlockChanged);
+        guestNet.start(() -> new LoopbackTransport(self[0]), "room", false, "Гость");
+        pumpNets(hostNet, guestNet, 8);
+
+        assertTrue("гость вошёл", guestNet.isClient() && guestNet.worldReady());
+        World built = guest.world();
+        assertTrue("мир построен", built != null);
+
+        // Ровно то, что присылает оборвавшийся транспорт.
+        guestNet.onState(NetTransport.State.FAILED, "проверочный обрыв");
+        assertTrue("сессия пробует вернуться", guestNet.resuming());
+        assertTrue("мир не выгружен", guest.world() == built);
+        assertTrue("и в меню никого не выгнали", guest.stopped == null);
+
+        pumpNets(hostNet, guestNet, 40);
+        assertTrue("вернулись: " + guestNet.status(), !guestNet.resuming());
+        assertTrue("и снова в комнате", guestNet.joined());
+        assertTrue("мир остался тем же", guest.world() == built);
+        assertTrue("второй раз его не строили", guest.stopped == null);
+        assertEq("хозяин снова видит одного соседа", 1, hostNet.players().size());
+
+        hostNet.stop(null);
+        guestNet.stop(null);
+    }
+
+    /**
+     * Вернуться не вышло — тогда уже по-настоящему.
+     *
+     * <p>Окно конечно нарочно: человек перед застывшим миром, который
+     * никогда не оживёт, — это хуже честного «связь потеряна».
+     */
+    private static void testResumeGivesUp() {
+        LoopbackTransport.reset();
+        TestContext host = new TestContext(new World(0xDEAD11L), "Уход");
+        Multiplayer hostNet = new Multiplayer(host);
+        host.world.setBlockObserver(hostNet::onWorldBlockChanged);
+        hostNet.start(new LoopbackTransport(hostNet), "room", true, "Хозяин");
+
+        TestContext guest = new TestContext(null, "");
+        Multiplayer[] self = new Multiplayer[1];
+        Multiplayer guestNet = new Multiplayer(guest);
+        self[0] = guestNet;
+        guest.onWorldStarted = w -> w.setBlockObserver(guestNet::onWorldBlockChanged);
+        guestNet.start(() -> new LoopbackTransport(self[0]), "room", false, "Гость");
+        pumpNets(hostNet, guestNet, 8);
+        assertTrue("гость вошёл", guestNet.worldReady());
+
+        // Комнаты больше нет: возвращаться некуда, сколько ни пробуй.
+        hostNet.stop(null);
+        LoopbackTransport.reset();
+        guestNet.onState(NetTransport.State.FAILED, "хозяин исчез");
+        assertTrue("сначала всё-таки пробует", guestNet.resuming());
+        // Первая попытка упрётся в отсутствующую комнату — и это не повод
+        // сдаваться: окно ещё не вышло.
+        guestNet.update(0.05f);
+        assertTrue("и после первой неудачи ещё пробует", guestNet.resuming());
+
+        // Одним шагом за всё окно: ждать тридцать секунд в тесте незачем.
+        guestNet.update(Multiplayer.RESUME_WINDOW + 1f);
+        assertTrue("сдались", !guestNet.resuming());
+        assertTrue("и сказали почему: " + guest.stopped, guest.stopped != null);
+        assertTrue("сессия закрыта", !guestNet.active());
+    }
+
+    /** Прокрутить обе стороны столько-то тиков сети. */
+    private static void pumpNets(Multiplayer a, Multiplayer b, int ticks) {
+        for (int i = 0; i < ticks; i++) {
+            a.update(0.1f);
+            b.update(0.1f);
+        }
     }
 
     // ------------------------------------------------------------- проверки

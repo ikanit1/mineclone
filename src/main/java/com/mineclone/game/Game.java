@@ -5591,7 +5591,10 @@ public class Game {
         input.grabCursor(false);
         loadingScreen = new LoadingScreen(worldDisplayName);
         openMenu(loadingScreen);
-        net.start(makeTransport(settings, false), roomOf(settings), false, settings.nickname());
+        // Фабрика, а не готовый транспорт: участнику, потерявшему связь, надо
+        // будет поднять новый и вернуться в ту же комнату.
+        net.start(() -> makeTransport(settings, false), roomOf(settings), false,
+                settings.nickname());
     }
 
     /**
@@ -5824,6 +5827,22 @@ public class Game {
                     + "  " + Math.round(rp.health) + "/20";
             text.draw(smallFont, clipSmall(line, 186f), vw - 202f, ly,
                     vw, vh, 0.8f, 0.85f, 0.92f, 0.95f);
+        }
+
+        // Связь потеряна — полоса по центру над хотбаром. Не тост и не строка
+        // чата: тост уедет через пару секунд, а игрок должен видеть, что мир
+        // ещё жив и его не бросили, всё то время, пока мы возвращаемся.
+        if (net.resuming()) {
+            String line = "Связь потеряна — возвращаемся… "
+                    + (int) Math.ceil(net.resumeLeft()) + " с";
+            float w = smallFont.textWidth(line);
+            float bx = (vw - w) / 2f - 10f, by = vh * 0.5f - 18f;
+            // Пакет интерфейса уже закрыт выше: подложку рисуем своим.
+            ui.begin(vw, vh);
+            ui.quad(bx, by, w + 20f, 26f, 0f, 0f, 0f, 0.55f);
+            ui.end();
+            text.draw(smallFont, line, (vw - w) / 2f, by + 18f,
+                    vw, vh, 1f, 0.86f, 0.45f, 0.95f);
         }
 
         // Чат — левый нижний угол, над хотбаром.

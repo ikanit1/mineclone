@@ -64,6 +64,17 @@ public final class Multiplayer implements NetTransport.Listener {
     private static final int CHUNK_REQUESTS_PER_TICK = 6;
     /** Через сколько молчания чужой игрок считается отвалившимся. */
     private static final float SILENCE_LIMIT = 12f;
+    /**
+     * Сколько участник пытается вернуться в комнату, прежде чем сдаться.
+     *
+     * <p>Тридцать секунд — это запас на переезд с вышки на вышку, на
+     * переподключение Wi-Fi и на минутную грозу у провайдера. Меньше — и
+     * обычный обрыв всё ещё стоит партии; больше — и человек сидит перед
+     * застывшим миром, не понимая, вернётся он или нет.
+     */
+    public static final float RESUME_WINDOW = 30f;
+    /** Пауза между попытками вернуться. */
+    private static final float RESUME_RETRY = 3f;
     /** Как часто хозяин рассылает предметы на земле. */
     private static final float ITEM_SYNC_INTERVAL = 0.25f;
     /** Сколько строк чата помнится. */
@@ -85,6 +96,23 @@ public final class Multiplayer implements NetTransport.Listener {
     private boolean worldReady;
     private String status = "";
     private String lastError = "";
+
+    /**
+     * Чем поднять транспорт заново.
+     *
+     * <p>Переподключение не может переиспользовать прежний транспорт: у него
+     * закрыты сокеты, а у Photon-клиента ещё и просрочен ключ сессии. Поэтому
+     * сессия держит не сам транспорт, а способ сделать новый. Без фабрики
+     * ({@link #start(NetTransport, String, boolean, String)}) переподключения
+     * просто нет — так заходят тесты, которым оно ни к чему.
+     */
+    private TransportFactory factory;
+    private boolean createRoom;
+    /** Участник потерял связь и пробует вернуться. */
+    private boolean resuming;
+    private float resumeLeft;
+    private float resumeRetry;
+    private String resumeReason = "";
 
     private final Map<Integer, RemotePlayer> players = new LinkedHashMap<>();
     private final Deque<String> chat = new ArrayDeque<>();
@@ -123,8 +151,27 @@ public final class Multiplayer implements NetTransport.Listener {
 
     // ------------------------------------------------------------- запуск
 
+    /** Как сделать новый транспорт: нужен, чтобы вернуться после обрыва. */
+    public interface TransportFactory {
+        NetTransport create();
+    }
+
     /**
-     * Начать сессию.
+     * Начать сессию, умеющую вернуться после обрыва.
+     *
+     * @param create создаём комнату (значит будем хозяином) или входим в чужую
+     */
+    public void start(TransportFactory maker, String room, boolean create, String nick) {
+        start(maker.create(), room, create, nick);
+        this.factory = maker;
+        this.createRoom = create;
+    }
+
+    /**
+     * Начать сессию на готовом транспорте.
+     *
+     * <p>Без фабрики, а значит и без переподключения: так заходят тесты и
+     * петля, которой возвращаться неоткуда.
      *
      * @param create создаём комнату (значит будем хозяином) или входим в чужую
      */
@@ -143,6 +190,10 @@ public final class Multiplayer implements NetTransport.Listener {
     }
 
     public void stop(String reason) {
+        factory = null;
+        resuming = false;
+        resumeLeft = 0f;
+        resumeReason = "";
         if (transport != null) {
             if (channel != null)
                 channel.discard();
@@ -205,6 +256,16 @@ public final class Multiplayer implements NetTransport.Listener {
         return lastError;
     }
 
+    /** Связь потеряна и мы пробуем вернуться: мир пока держим. */
+    public boolean resuming() {
+        return resuming;
+    }
+
+    /** Сколько секунд ещё будем пробовать. */
+    public float resumeLeft() {
+        return Math.max(0f, resumeLeft);
+    }
+
     public String roomName() {
         return roomName;
     }
@@ -236,6 +297,11 @@ public final class Multiplayer implements NetTransport.Listener {
 
     /** Один кадр сессии. Зовётся из игрового потока. */
     public void update(float dt) {
+        if (resuming) {
+            tryResume(dt);
+            if (transport == null)
+                return;
+        }
         if (transport == null)
             return;
         transport.poll();
@@ -442,6 +508,19 @@ public final class Multiplayer implements NetTransport.Listener {
             case JOINED -> status = "в комнате " + detail;
             case FAILED -> {
                 lastError = detail;
+                if (resuming) {
+                    // Попытка вернуться не удалась — это ещё не конец: окно
+                    // на то и окно, чтобы вместить несколько попыток. Закрыть
+                    // сессию здесь значило бы дать ровно одну.
+                    resumeReason = detail;
+                    status = "связь потеряна, возвращаемся…";
+                    dropTransport();
+                    return;
+                }
+                if (canResume()) {
+                    beginResume(detail);
+                    return;
+                }
                 ctx.netStopped(detail);
                 stop(detail);
             }
@@ -451,8 +530,98 @@ public final class Multiplayer implements NetTransport.Listener {
         }
     }
 
+    /**
+     * Есть ли куда возвращаться.
+     *
+     * <p>Только участнику и только с построенным миром. Хозяину возвращаться
+     * не к чему — мир у него и так в памяти, а комнату он откроет заново сам.
+     * Участнику же до того, как мир построен, терять нечего: он ещё на экране
+     * загрузки, и честный отказ там полезнее молчаливого ожидания.
+     */
+    private boolean canResume() {
+        return factory != null && role == Role.CLIENT && worldReady && !resuming;
+    }
+
+    /**
+     * Потеряли связь — держим мир и пробуем вернуться.
+     *
+     * <p>Мир не выгружается: он построен из сида и никуда не делся, а
+     * выгрузить его значит отдать игроку титульный экран за секундный обрыв.
+     * Не вернулись за {@link #RESUME_WINDOW} — тогда уже по-настоящему.
+     */
+    private void beginResume(String reason) {
+        resumeReason = reason == null ? "" : reason;
+        resuming = true;
+        resumeLeft = RESUME_WINDOW;
+        resumeRetry = 0f;
+        joined = false;
+        status = "связь потеряна, возвращаемся…";
+        addChat("Связь потеряна — возвращаемся в комнату");
+        dropTransport();
+    }
+
+    /** Закрыть транспорт, не трогая мир и не забывая, кто мы. */
+    private void dropTransport() {
+        if (channel != null)
+            channel.discard();
+        if (transport != null)
+            transport.disconnect();
+        transport = null;
+        channel = null;
+        // Чужие игроки приедут снова: их положение за время обрыва устарело,
+        // а фигуры, застывшие там, где их застал обрыв, — это враньё.
+        players.clear();
+        // Дельты чанков спросим заново: пока нас не было, там могли копать.
+        requestedChunks.clear();
+        chunkQueue.clear();
+        shownMobs.clear();
+        shownItems.clear();
+        pickRequested.clear();
+    }
+
+    /** Очередная попытка вернуться. Зовётся из {@link #update}. */
+    private void tryResume(float dt) {
+        resumeLeft -= dt;
+        if (resumeLeft <= 0f) {
+            resuming = false;
+            String why = resumeReason.isEmpty() ? "связь потеряна" : resumeReason;
+            ctx.netStopped(why);
+            stop(why);
+            return;
+        }
+        if (transport != null)
+            return;
+        resumeRetry -= dt;
+        if (resumeRetry > 0f)
+            return;
+        resumeRetry = RESUME_RETRY;
+        transport = factory.create();
+        channel = new NetChannel(transport);
+        // Создавать комнату не пытаемся, даже если так начинали: она уже есть,
+        // а «создать» на её месте значит войти вторым хозяином в пустой мир.
+        transport.connect(roomName, false, nickname);
+    }
+
+    /**
+     * Спросить дельты для всего, что уже построено.
+     *
+     * <p>Обычно заявка на дельту уходит, когда чанк только загрузился. После
+     * возвращения таких событий не будет — чанки давно стоят, — а за время
+     * обрыва в них могли копать. Поэтому спрашиваем всё разом.
+     */
+    private void requestLoadedChunks() {
+        World world = ctx.world();
+        if (world == null)
+            return;
+        for (Chunk c : world.getLoadedChunks())
+            noteChunkLoaded(c.cx, c.cz);
+    }
+
     @Override
     public void onJoined(int myActor, boolean created) {
+        boolean returning = resuming;
+        resuming = false;
+        resumeLeft = 0f;
         joined = true;
         role = created ? Role.HOST : Role.CLIENT;
         hostActor = created ? myActor : transport.masterActor();
@@ -470,6 +639,14 @@ public final class Multiplayer implements NetTransport.Listener {
             channel.packet(NetProto.C_HELLO, true, hostActor)
                     .varInt(NetProto.VERSION).str(nickname);
             channel.flush();
+            if (returning) {
+                // Мир у нас уже есть — второй раз строить его не надо, и
+                // хозяйский WELCOME это учтёт сам: startRemoteWorld у
+                // участника, который уже в мире, ничего не пересоздаёт.
+                status = "вернулись в комнату";
+                addChat("Связь восстановлена");
+                requestLoadedChunks();
+            }
         }
     }
 
@@ -666,10 +843,19 @@ public final class Multiplayer implements NetTransport.Listener {
         if (in.truncated() || role != Role.CLIENT)
             return;
         hostActor = from;
+        boolean returning = worldReady && ctx.world() != null && ctx.seed() == seed;
         worldReady = true;
         status = "мир «" + name + "»";
         requestedChunks.clear();
         chunkQueue.clear();
+        if (returning) {
+            // Тот же мир, в который мы и так стоим: строить его заново значит
+            // выкинуть игрока на экран загрузки из-за секундного обрыва.
+            // Время суток всё равно берём хозяйское — за обрыв оно ушло.
+            ctx.setTimeOfDay(time);
+            requestLoadedChunks();
+            return;
+        }
         ctx.startRemoteWorld(seed, name, time, mode, sx, sy, sz);
         addChat("Вошли в мир «" + name + "»");
     }

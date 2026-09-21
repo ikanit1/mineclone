@@ -201,6 +201,14 @@ final class Autopilot {
      */
     private static final String NET_VIA = System.getProperty("mineclone.autopilot.netVia", "lan");
     /**
+     * Номер гостя в прогоне против выделенного сервера.
+     *
+     * <p>Гостей двое, и метки на площадке у них разные: первый ставит свою и
+     * ждёт чужую, второй наоборот. Без номера оба ставили бы в одну клетку и
+     * проверка «чужой блок дошёл» проходила бы от собственного блока.
+     */
+    private static final int NET_SLOT = Integer.getInteger("mineclone.autopilot.netSlot", 0);
+    /**
      * Регион Photon задан явно, а не «авто»: хозяин и участник обязаны
      * оказаться на одном мастер-сервере, иначе комнаты друг друга они не
      * увидят.
@@ -361,6 +369,44 @@ final class Autopilot {
             step("shoot the guest", 0.5f, d -> d.shot("net-guest")),
             step("hold still", 2.5f, d -> ok("held still for the host")));
 
+    /**
+     * Гость выделенного сервера.
+     *
+     * <p>Отличается от обычного гостя тем, что на той стороне нет игрока: мир
+     * строит сервер, площадку строить некому, и всё, что можно проверить, —
+     * что мир пришёл, что наша правка пережила подтверждение сервера и что
+     * правку соседа сервер до нас донёс.
+     */
+    private final List<Step> serverGuestSteps = List.of(
+            step("join the server", 1.5f,
+                    d -> d.act(MenuAction.netJoin(netSettings("127.0.0.1:" + NET_PORT)))),
+            when("the server's world is loaded", 0.5f, d -> in(d, "PLAYING"),
+                    d -> ok("joined the server's world")),
+            when("we are a guest, not a host", 0.3f, d -> !d.netIsHost(),
+                    d -> ok("the server owns the world")),
+            // Площадку строит гость: у сервера нет рук. Хватает одного слоя
+            // под ногами — проверяем обмен, а не строительство.
+            step("build a floor", 0.4f, Autopilot::buildPad),
+            step("stand on it", 0.5f, d -> standAt(d, NET_SLOT * APART, 0)),
+            step("place our own block", 0.4f, d -> {
+                int[] at = mark(d, NET_SLOT * 2, NET_SLOT * 2);
+                d.setBlockAt(at[0], at[1], at[2], NET_SLOT == 0 ? "TORCH" : "GLASS");
+            }),
+            when("the server kept our block", 1.5f, d -> {
+                int[] at = mark(d, NET_SLOT * 2, NET_SLOT * 2);
+                return (NET_SLOT == 0 ? "TORCH" : "GLASS")
+                        .equals(d.blockAt(at[0], at[1], at[2]));
+            }, d -> ok("the server confirmed our block")),
+            when("the other guest's block arrived", 1.0f, d -> {
+                int other = NET_SLOT == 0 ? 1 : 0;
+                int[] at = mark(d, other * 2, other * 2);
+                return (other == 0 ? "TORCH" : "GLASS").equals(d.blockAt(at[0], at[1], at[2]));
+            }, d -> ok("the server relayed the other guest's block")),
+            when("the other guest is visible", 0.5f, d -> d.netPlayers() >= 1,
+                    d -> ok("the other guest is visible")),
+            step("shoot the room", 0.5f, d -> d.shot("net-server-" + NET_SLOT)),
+            step("hold still", 2.0f, d -> ok("held still")));
+
     private final List<Step> menuSteps = List.of(
             step("dusk", 2.5f, d -> d.setMenuTime((float) (Math.PI * 0.93))),
             step("shoot dusk", 0.4f, d -> d.shot("00-title-dusk")),
@@ -516,6 +562,7 @@ final class Autopilot {
         this.steps = switch (NET_MODE) {
             case "host" -> hostSteps;
             case "join" -> guestSteps;
+            case "server" -> serverGuestSteps;
             default -> menuSteps;
         };
     }
