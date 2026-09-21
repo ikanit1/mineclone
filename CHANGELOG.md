@@ -1,10 +1,197 @@
 # Changelog
 
-This project does not currently have git tags, so the versions below are reconstructed from the commit history by feature milestones. Dates are taken from the commits.
+Versions below 0.9.0 predate git tags and are reconstructed from the commit history by feature milestones; their dates are taken from the commits.
 
-## [Unreleased] - 0.9.0 candidate
+## [1.0.0-alpha] - 2026-09-21
+
+Official 1.0.0-alpha release milestone.
+
+### Added & Refined
+- Complete Inventory & Window management overhaul (`ContainerMenu`, crafting grid 2x2/3x3, chest, furnace, creative UI).
+- Enhanced block state picking, F3 info overlays, and advanced item tooltips.
+- Full Day/Night atmosphere with realistic volumetric weather drift, sky gradient, moon phases, and custom particles.
+- Multiplayer via built-in Photon Cloud & LAN socket server with compressed chunk deltas.
+- Portable Windows app image packaging with bundled JVM runtime (`Mineclone.exe`).
+
+## [0.9.0] - 2026-09-21
+
+First tagged release. Ships as a portable Windows app image (`Mineclone.exe` with
+a bundled JRE) - no install, no JDK.
+
+### Fixed
+- **Falling water refilled its spread budget, so a single source could flood a
+  stepped hillside.** A fall was resetting the flow level to source strength (and a
+  flow cell was re-levelled against its own column), which contradicted both the
+  comments around it and the invariant the tests are named for. A fall preserves
+  the distance from the source again.
+- **Snow, rain and volumetric fog swayed back and forth instead of drifting.**
+  Particle position was `current wind × total elapsed time`, and the wind pulses
+  by design (`Weather.wind` mixes a ~4.8 s gust). Multiplied by an ever-growing
+  clock, that pulse moved the whole field at once — barely visible in the first
+  seconds of a session, hundreds of blocks after ten minutes. Drift is now the
+  integral of the wind (`WeatherDrift`), so a gust speeds the snow up instead of
+  teleporting it; the same fix covers the storm-driven fall speed.
+  `knowledge/bugs/precipitation-swayed-with-gusts.md`.
+
+### Player model
+- **The head turns before the body does.** The model used to pivot as one piece
+  with the camera, which reads as a weather vane rather than a person. Now it
+  follows Minecraft's rule: the head is always on the camera's heading, the body
+  turns toward where the feet are going, and the two stay within a 75° cone
+  (`BodyRotation`). Past the cone the body is pulled up to the limit, not all the
+  way to the head. The cone holds while walking too — strafing puts the movement
+  direction at a right angle to the view, and without it the neck would twist 90°.
+  Remote players use the same class: the body heading is derived from movement, so
+  it costs nothing on the wire.
+- A new, much more detailed player skin, and `tools/ImportPlayerSkin.java` to cut
+  a 4×2 sheet into it. The player gets a sheet to themselves — the camera gets
+  closer to them than to anything else, and sharing tiles with five mobs was
+  costing them resolution.
+
+### Multiplayer lobby
+- **The Photon key ships with the build.** Nobody signs up for a Photon account
+  to join a friend for one evening, so `NetSettings.DEFAULT_APP_ID` is built in
+  and the screen's key field is an override. What it costs: the free 100
+  concurrent players are shared by everyone on this build, and the key is
+  readable by anyone who has its files. `-Dmineclone.photonAppId` or
+  `MINECLONE_PHOTON_APPID` overrides everything, which is what the checks use.
+- **A room browser.** The network screen now lists the open Photon rooms with
+  their headcount — click one to fill the room name, full ones are marked in
+  red. The lobby connection is held by the game (`RoomBrowser`), not by the
+  screen, which lives for a single frame; it closes the moment a session starts,
+  because a lobby and a room are two separate connections and two of the hundred
+  free slots.
+- `.\run-net-test.ps1 -Photon` runs the two-process game test **through Photon
+  Cloud** instead of a local socket: name server → master → game server, chunk
+  deltas, block edits both ways. Proven against the real cloud, not a mock.
+
+### Multiplayer
+- **Play together, over Photon Cloud or a LAN.** A host opens one of their worlds
+  as a room; guests join it, see each other, and build in the same world. Players
+  are drawn with the same model, shader and lighting as the local one, with a name
+  tag above the head, and the chat lives in the console field (`T`, a line without
+  a leading `/`).
+- Photon ships **no Java SDK**, so the client is written here: `PhotonPeer` speaks
+  Photon Realtime's WebSocket + `Json` entry point over the JDK's own
+  `java.net.http.WebSocket`, with no third-party jar. It walks the standard
+  NameServer → Master → GameServer path and carries the game's own binary packets
+  as base64 payloads. ADR: `knowledge/decisions/multiplayer-photon.md`.
+- **The world is not sent, only the difference is.** Generation is deterministic
+  per seed, so a guest builds the same terrain itself; the host answers a chunk
+  request with the cells that differ from a fresh generation, computed on a
+  background thread. An untouched chunk costs an empty delta — which is the common
+  case, so joining a world costs tens of kilobytes instead of tens of megabytes.
+- Authority is the host's: water, lava, falling blocks, random ticks, mobs,
+  furnaces and item pickup all run there and arrive as snapshots. A guest still
+  applies its own block edits immediately — a pick that stalls for half a round
+  trip ruins the game worse than any divergence — and the host broadcasts the
+  result to everyone, including the sender.
+- A second transport, `LanTransport`, plays the same protocol over plain TCP for
+  a local network, with no account and no App ID. `LoopbackTransport` runs two
+  sessions inside one process, and the tests stand on it.
+- New: `tools/PhotonSmoke.java` — two clients create a room, join it, exchange an
+  event and leave, against real Photon Cloud with your own App ID.
+- options.dat keeps the nickname, App ID, region, room and host address (the v7
+  tagged tail, so old files still load).
+
+### Performance
+- Sky light is now updated incrementally around an edit instead of reflooding the
+  whole chunk. A block edit costs **0.005 ms average / 0.30 ms worst** instead of
+  1.10 / 14.76 ms — this was the hitch felt on every dig and place.
+- Block reads no longer take a monitor: `PaletteStorage` publishes an immutable
+  palette snapshot and reads words through a `VarHandle`. **16.3 ns → 1.9 ns** per
+  cell (a chunk mesh reads blocks hundreds of thousands of times). The end-to-end
+  mesh build measurement is too noisy on this machine to quote a figure; the
+  isolated read benchmark is the honest number.
+- Water simulation skips the drop-distance search when no side can be filled, and
+  scans a loaded chunk once instead of on every mesh upload. The 0.18 s water tick
+  over an ocean went from **11.4 ms to 4.8 ms** worst case, and to nothing at all
+  once the world settles.
+- Chunk meshes upload as a single interleaved vertex buffer (2 GL objects instead
+  of 7, one upload instead of six) and no longer allocate a zero-filled `repeat`
+  array when there are no repeats.
+- Hardware occlusion now reads the previous frame's query results and issues all
+  boxes in one batch, instead of a conditional render whose query could never be
+  ready. Removes ~2000 GL calls per frame.
+- Block-light flood no longer allocates an `int[4]` per visited cell, clears its
+  removal cube per chunk instead of per world cell, and skips neighbours that hold
+  no block light at all.
+- The menu background no longer generates its 3×3 spawn chunks synchronously on the
+  first frame (that frame cost ~200 ms).
+- `ChunkMesher` walks the chunk in memory order (y, z, x).
 
 ### Added
+- Full settings menu: five tabs (Graphics, Screen, Game, Controls, Sound) with
+  individual quality knobs instead of a single three-way "Shaders" switch.
+  Presets now just fill those knobs in and step aside.
+- Screen settings: window mode (windowed / borderless / fullscreen), monitor
+  resolution, render scale (50–100 %), antialiasing, frame limit, vsync, GUI scale.
+- Graphics settings: shadow quality, bloom, god rays, volumetric fog, water
+  reflections, particle budget, precipitation density, entity render distance,
+  occlusion culling, distant-chunk LOD.
+- Game settings: camera shake, on-screen status effects, context hints, advanced
+  tooltips, and an FPS counter that also shows the worst frame of the window.
+- `options.dat` v7: a self-describing tagged tail, so a new setting no longer bumps
+  the file version and an unknown key is skipped by its value kind.
+- `tools/BenchWater.java` — deterministic measurement of the water tick.
+
+### Crafting
+- **A crafting grid instead of a shelf of suggestions.** The inventory has a 2x2
+  grid and the crafting table opens a 3x3 one, both driven by one `CraftingGrid`,
+  so "what does this make" is answered in a single place rather than once per
+  screen. Recipes now carry a shape (with optional mirroring) beside the shapeless
+  ones, and a shapeless recipe fits any grid large enough to hold it. Whatever is
+  left in the grid goes back to the player on close instead of vanishing.
+
+### World simulation
+- **Lava flows on its own clock** - one wave every 1.5 s and three cells sideways.
+  At water's pace a lava front stops reading as melt. Falls outlive the spread, and
+  a chunk is scanned once after loading, as water is.
+- **Water and lava meet by geometry.** The lava cell is the one that solidifies:
+  side contact makes cobble, water landing on a lava *source* makes obsidian, and
+  any other vertical meeting chills it to stone. One table for ticks, particles and
+  tests.
+- **Sand and gravel fall on events**, not on a per-frame sweep of the world: a
+  column is queued when its support is taken away. `MAX_ACTIVE` and
+  `STARTS_PER_FRAME` keep a collapsing wall inside the frame, and a block in flight
+  is drawn as a real cube (`FallingBlockRenderer`) instead of staying in the chunk
+  mesh.
+- New `WorldGenerationTests`: biome soils, structure spacing across region
+  boundaries, chunk seams, and mass conservation for falling blocks.
+
+### Survival
+- **A short chain of goals** (`SurvivalProgress`) that walks a new player through
+  the survival loop. Progress is monotonic - planks spent on a recipe and a broken
+  pickaxe never push you back - and an old world recovers a sensible point from the
+  most advanced item in the inventory. It rides in its own save section, so the
+  level format did not have to move for it.
+
+### Art
+- Twenty-five new tiles: biome soils (podzol, peat, dry grass, red sand,
+  terracotta, limestone, basalt, gravel), materials (stick, coal, ingots, diamond),
+  lava and its flow, mud, ash, mossy cobble, obsidian, thin ice, rope, chain, web,
+  journal and the crafting table.
+- Tools were redrawn as a 4x2 sheet and are cut into tiles by
+  `tools/ImportToolTextures.java` and `tools/ImportBiomeTextures.java`; the source
+  sheets and the pre-import snapshots are kept beside them, because a redraw
+  without them starts from nothing.
+- Particles (spark, drop, smoke, flame, snow, lava) are drawn as 8x8 masks in
+  `tools/DrawPixelParticles.java` and scaled with no smoothing: a smoothed particle
+  in a blocky world reads as a smudge, not a pixel.
+- `GenBlockTextures` only writes the sprites that are missing, so hand-drawn art is
+  no longer overwritten by a blind run; `--force-tools` regenerates exactly the
+  tools.
+
+### Packaging
+- `gradlew portableZip` produces `Mineclone-<version>-windows-portable.zip`: a
+  jpackage app image with a bundled runtime and the assets, launched by
+  `Mineclone.exe`.
+- **Fixed: the portable image shipped two versions of LWJGL.** The jpackage input
+  directory was filled by a `Copy` task, which leaves behind whatever an earlier
+  build put there - 3.3.3 from an old build sat on the classpath in front of the
+  current 3.3.6. It is a `Sync` task now.
+
+### Added (earlier in this milestone)
 - Positional 3D audio support in the OpenAL sound engine.
 - World-space sound playback for block breaks, block placement, doors, footsteps, landing, swimming, splashes, and flowing water.
 - First-person held-item renderer with equip, swing, walking bob, and underwater tint.
@@ -19,8 +206,10 @@ This project does not currently have git tags, so the versions below are reconst
 - Deferred chunk meshing around pending light flood work to avoid stale lighting artifacts.
 
 ### Notes
-- This version is still uncommitted in the working tree.
-- The repository also contains untracked build/runtime artifacts such as `bin/`, generated `.class` files, Gradle wrapper files, and helper texture generator files. They should be reviewed before including them in a release.
+- Verified before tagging: 326/326 tests green (`run-tests.ps1`), and the packaged
+  `Mineclone.exe` passes the in-game menu autopilot end to end.
+- Local preview trees (`out-net/`, `out-video-review*/`) and run logs are ignored
+  rather than versioned.
 
 ## [0.8.0] - 2026-05-19
 

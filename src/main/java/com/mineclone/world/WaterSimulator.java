@@ -19,15 +19,49 @@ import java.util.*;
  * above (vertical column). Otherwise the cell is orphaned and removed.
  */
 public final class WaterSimulator {
+    /**
+     * Maximum amount of liquid state inspected by one 5.5 Hz water tick.
+     *
+     * <p>Render distance must not become a frame-time budget.  A radius-16
+     * stream can discover tens of thousands of water cells at once; consuming
+     * that entire backlog on the main thread produced 20-70 ms hitches.  The
+     * backlog is therefore advanced over several ticks.  A single unusually
+     * wet chunk is still processed whole so it can never starve.
+     */
+    private static final int MAX_CELLS_PER_TICK = 2048;
+    private static final int MAX_CHUNKS_PER_TICK = 64;
+
     private static final Set<Long> activeChunks = new HashSet<>();
+    private static final ArrayDeque<Long> activeQueue = new ArrayDeque<>();
+    /** Streamed terrain only needs its seam checked; edits promote it to a full scan. */
+    private static final Set<Long> borderOnlyChunks = new HashSet<>();
+    /**
+     * Чанки, чью воду уже осматривали после загрузки.
+     *
+     * <p>Загрузка меша будила симулятор на каждый чанк с водой — а меш
+     * перестраивается постоянно, и один и тот же спокойный океан обходился
+     * заново по нескольку раз в секунду. Осмотреть его надо ровно один раз:
+     * всё, что потом меняет воду, идёт через {@code setBlock}, а тот будит
+     * соседей сам.
+     */
+    private static final Set<Long> scanned = new HashSet<>();
     private static boolean seededLoadedChunks = false;
 
     private WaterSimulator() { }
 
     public static void activateChunkIfWater(World world, int cx, int cz) {
+        long key = World.key(cx, cz);
+        // Remeshing the same chunk is common.  Avoid the 32k-cell water probe
+        // before checking whether this loaded incarnation was already seen.
+        if (!scanned.add(key))
+            return;
         Chunk chunk = world.getChunkIfExists(cx, cz);
-        if (chunk != null && chunkHasWater(chunk))
-            activeChunks.add(World.key(cx, cz));
+        if (chunk == null || !chunkHasWater(chunk)) {
+            if (chunk == null) scanned.remove(key);
+            return;
+        }
+        // A mesh completion must never downgrade a pending player edit.
+        enqueue(key, false);
     }
 
     /**
@@ -41,13 +75,30 @@ public final class WaterSimulator {
         for (int dx = -1; dx <= 1; dx++)
             for (int dz = -1; dz <= 1; dz++) {
                 int ncx = cx + dx, ncz = cz + dz;
-                if (world.getChunkIfExists(ncx, ncz) != null)
-                    activeChunks.add(World.key(ncx, ncz));
+                if (world.getChunkIfExists(ncx, ncz) != null) {
+                    long key = World.key(ncx, ncz);
+                    borderOnlyChunks.remove(key);
+                    enqueue(key, true);
+                }
             }
+    }
+
+    /** Player and simulation edits go to the front; streamed terrain waits behind them. */
+    private static void enqueue(long key, boolean urgent) {
+        if (activeChunks.add(key)) {
+            if (urgent) activeQueue.addFirst(key);
+            else activeQueue.addLast(key);
+            return;
+        }
+        // Keep queued chunks in place: repeatedly promoting neighbours starves
+        // the older work when the active region exceeds the tick budget.
     }
 
     public static void forgetChunk(long key) {
         activeChunks.remove(key);
+        activeQueue.remove(key);
+        borderOnlyChunks.remove(key);
+        scanned.remove(key);
     }
 
     /**
@@ -57,6 +108,9 @@ public final class WaterSimulator {
      */
     public static void reset() {
         activeChunks.clear();
+        activeQueue.clear();
+        borderOnlyChunks.clear();
+        scanned.clear();
         seededLoadedChunks = false;
     }
 
@@ -72,13 +126,27 @@ public final class WaterSimulator {
         Map<Long, Integer> toAdd = new HashMap<>(256);
         Map<Long, Integer> toWeaken = new HashMap<>();
         Set<Long> toSource = new HashSet<>(64);
-        Set<Long> scan = new HashSet<>(activeChunks);
-        activeChunks.clear();
+        ArrayList<Long> scan = new ArrayList<>(Math.min(MAX_CHUNKS_PER_TICK, activeQueue.size()));
+        int cells = 0;
+        while (!activeQueue.isEmpty() && scan.size() < MAX_CHUNKS_PER_TICK) {
+            long key = activeQueue.peekFirst();
+            Chunk chunk = world.getChunkIfExists((int) (key >> 32), (int) key);
+            int chunkCells = chunk == null ? 0 : chunk.waterCellCount();
+            if (!scan.isEmpty() && cells + chunkCells > MAX_CELLS_PER_TICK)
+                break;
+            activeQueue.removeFirst();
+            activeChunks.remove(key);
+            scan.add(key);
+            cells += chunkCells;
+            if (cells >= MAX_CELLS_PER_TICK)
+                break;
+        }
         int[][] sides = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
 
         for (long key : scan) {
             int cx = (int) (key >> 32);
             int cz = (int) (key & 0xFFFFFFFFL);
+            boolean borderOnly = borderOnlyChunks.remove(key);
             Chunk chunk = world.getChunkIfExists(cx, cz);
             if (chunk == null)
                 continue;
@@ -90,6 +158,9 @@ public final class WaterSimulator {
                         int rest = packed / Chunk.SIZE_X;
                         int lz = rest % Chunk.SIZE_Z;
                         int y = rest / Chunk.SIZE_Z;
+                        if (borderOnly && lx != 0 && lx != Chunk.SIZE_X - 1
+                                && lz != 0 && lz != Chunk.SIZE_Z - 1)
+                            continue;
                         BlockType b = chunk.get(lx, y, lz);
                         if (b != BlockType.WATER && b != BlockType.WATER_FLOW) continue;
 
@@ -171,8 +242,10 @@ public final class WaterSimulator {
 
     private static void seedLoadedWaterChunks(World world) {
         for (Chunk chunk : world.getLoadedChunks()) {
-            if (chunkHasWater(chunk))
-                activeChunks.add(World.key(chunk.cx, chunk.cz));
+            if (chunkHasWater(chunk)) {
+                long key = World.key(chunk.cx, chunk.cz);
+                enqueue(key, false);
+            }
         }
     }
 
@@ -265,6 +338,22 @@ public final class WaterSimulator {
         // Preserve the upstream level at the bottom of every falling column.
         if (myLevel >= 7) return;
         int sideLevel = myLevel + 1;
+        // Есть ли вообще куда течь. У клетки посреди океана со всех четырёх
+        // сторон вода, и карта стока ниже — четыре поиска вглубь на четыре
+        // шага — считалась вхолостую. Именно на этом тик воды над водой стоил
+        // десятки миллисекунд и повторялся пять раз в секунду.
+        boolean anyFillable = false;
+        for (int[] d : sides) {
+            int nx = wx + d[0], nz = wz + d[1];
+            BlockType nb = world.getBlock(nx, wy, nz);
+            if (nb == BlockType.AIR
+                    || (nb == BlockType.WATER_FLOW
+                        && sideLevel < (world.getBlockMeta(nx, wy, nz) & 0xF))) {
+                anyFillable = true;
+                break;
+            }
+        }
+        if (!anyFillable) return;
         int[] costs = new int[sides.length];
         int best = 99;
         for (int i = 0; i < sides.length; i++) {
@@ -300,10 +389,7 @@ public final class WaterSimulator {
         if (c == null) return;
         int lx = Math.floorMod(wx, Chunk.SIZE_X);
         int lz = Math.floorMod(wz, Chunk.SIZE_Z);
-        c.set(lx, wy, lz, type);
-        c.setMeta(lx, wy, lz, meta);
-        c.markDirty();
-        c.modified = true;
+        world.setBlock(wx, wy, wz, type, meta);
         activateAround(world, wx, wz);
         // Edge cells: neighbouring chunk needs a rebuild too so its mesh sees the change.
         if (lx == 0)                       markNeighbourDirty(world, cx - 1, cz);

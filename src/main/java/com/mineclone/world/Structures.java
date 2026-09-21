@@ -6,7 +6,6 @@ package com.mineclone.world;
  * Шаблон — таблица символов по слоям, прямо в коде. Файлами это было бы
  * «красивее», но добавило бы чтение с диска в горячий путь генерации,
  * который крутится на фоновых потоках, и целую ветку обработки «файла нет».
- * Текстуры в этом проекте тоже описаны кодом — держим один стиль.
  *
  * Размещение — чистая функция сида и координат чанка, поэтому в сейве ничего
  * не хранится и старые миры продолжают открываться. Тот же приём, которым
@@ -24,10 +23,8 @@ public final class Structures {
 
     /**
      * @param layers  слои снизу вверх; layers[y][z] — строка длиной w по оси X
-     * @param decay   выедать ли часть блоков, чтобы постройка выглядела руиной
-     * @param rarity  один шанс из rarity на чанк
      */
-    private record Template(String name, String[][] layers, boolean decay, int rarity) {}
+    private record Template(String[][] layers) {}
 
     private static final String[][] RUIN = {
             { "CCCCC",
@@ -99,74 +96,96 @@ public final class Structures {
     };
 
     private static final Template[] ALL = {
-            new Template("ruin", RUIN, true, 70),
-            new Template("hut", HUT, false, 110),
-            new Template("obelisk", OBELISK, false, 90),
-            new Template("dungeon", DUNGEON, true, 82),
+            new Template(RUIN),
+            new Template(HUT),
+            new Template(OBELISK),
+            new Template(DUNGEON),
     };
 
-    /** Куда ставить факел внутри — считается от шаблона, а не зашито в него. */
-    private static final int TORCH_LAYER = 2;
-    /** Сколько раз пробуем найти ровное пятно в чанке. */
-    private static final int PLACE_ATTEMPTS = 12;
-    /** На сколько блоков выше постройки расчищается пятно от деревьев. */
-    private static final int TREE_CLEARANCE = 6;
+    /** One candidate per 160x160 region, with a gap of at least seven chunks. */
+    public static final int REGION_CHUNKS = 10;
+    public static final int MIN_CHUNK_GAP = 7;
+    public record Site(int kind, int x, int y, int z) {}
 
     private Structures() {}
 
     /**
      * Ставит постройку в чанк, если этому чанку выпало. Зовётся последним
-     * проходом генерации: строение имеет право снести дерево, выросшее на его
-     * месте, но не наоборот.
+     * проходом генерации. Место под наземную постройку резервируется до деревьев.
      *
      * @param heights высоты поверхности из первого прохода
      */
     public static void place(Chunk chunk, int[][] heights, long seed, int seaLevel) {
-        long h = hash(chunk.cx, chunk.cz, seed);
-        Template t = pick(h);
-        if (t == null)
-            return;
+        place(chunk, plan(chunk, heights, seed, seaLevel), seed);
+    }
 
-        int w = t.layers()[0][0].length();
-        int d = t.layers()[0].length;
-        int margin = 2;
-        int span = Chunk.SIZE_X - w - margin * 2;
-        if (span < 1)
-            return;
+    /** Pure region selection; floorDiv is essential on the negative half of the world. */
+    public static int candidateKind(int cx, int cz, long seed) {
+        int rx = Math.floorDiv(cx, REGION_CHUNKS), rz = Math.floorDiv(cz, REGION_CHUNKS);
+        long h = hash(rx, rz, seed ^ 0x535452554354L);
+        if ((h & 3) == 0) return -1;
+        int x = rx * REGION_CHUNKS + 3 + (int) ((h >>> 9) % 4);
+        int z = rz * REGION_CHUNKS + 3 + (int) ((h >>> 25) % 4);
+        return cx == x && cz == z ? (int) ((h >>> 43) % ALL.length) : -1;
+    }
 
-        // Несколько попыток на чанк. С одной попыткой постройки почти не
-        // появляются: пятно 5x5 ровным в пределах пары блоков бывает редко,
-        // и единственный бросок почти всегда падает на склон.
-        int x0 = -1, z0 = -1, base = -1;
-        for (int attempt = 0; attempt < PLACE_ATTEMPTS; attempt++) {
-            long bits = h >>> (attempt * 5);
-            int tx = margin + (int) ((bits >>> 20) % span);
-            int tz = margin + (int) ((bits >>> 34) % span);
-            int b = flatBase(heights, tx, tz, w, d);
-            if (b >= seaLevel + 2 && b + t.layers().length < Chunk.SIZE_Y - 2) {
-                x0 = tx;
-                z0 = tz;
-                base = b;
-                break;
+    /** Tree reservation is coordinate-only, including crowns from neighbouring chunks. */
+    public static boolean reservesTrees(int wx, int wz, long seed) {
+        int cx = Math.floorDiv(wx, 16), cz = Math.floorDiv(wz, 16);
+        for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++) {
+            int sx = cx + dx, sz = cz + dz;
+            int kind = candidateKind(sx, sz, seed);
+            if (kind >= 0 && kind != 3 && wx >= sx * 16 - 3 && wx <= sx * 16 + 18
+                    && wz >= sz * 16 - 3 && wz <= sz * 16 + 18) return true;
+        }
+        return false;
+    }
+
+    public static Site plan(Chunk chunk, int[][] heights, long seed, int seaLevel) {
+        int kind = candidateKind(chunk.cx, chunk.cz, seed);
+        if (kind < 0) return null;
+        Template t = ALL[kind];
+        int w = t.layers()[0][0].length(), d = t.layers()[0].length;
+        for (int attempt = 0; attempt < 8; attempt++) {
+            long bits = hash(chunk.cx, chunk.cz, seed ^ (0x9E3779B97F4A7C15L * (attempt + 1)));
+            int x = 2 + (int) (bits % (16 - w - 3));
+            int z = 2 + (int) ((bits >>> 19) % (16 - d - 3));
+            int y = flatBase(heights, x, z, w, d);
+            if (kind == 3) {
+                int min = 127;
+                for (int dx = 0; dx < w; dx++) for (int dz = 0; dz < d; dz++)
+                    min = Math.min(min, heights[x + dx][z + dz]);
+                y = min - 10 - (int) ((bits >>> 35) % 14);
+                if (y < 5) continue;
+            } else if (y < seaLevel + 2 || y + t.layers().length + 1 >= Chunk.SIZE_Y) continue;
+            boolean sound = true;
+            for (int dx = 0; dx < w && sound; dx++) for (int dz = 0; dz < d && sound; dz++) {
+                int ground = kind == 3 ? y - 1 : heights[x + dx][z + dz];
+                // Reject cave mouths, water, ice and unsupported slopes.
+                for (int sy = ground; sy >= ground - 2; sy--) {
+                    BlockType b = chunk.get(x + dx, sy, z + dz);
+                    if (!b.solid || b == BlockType.ICE || b == BlockType.THIN_ICE) sound = false;
+                }
+            }
+            if (sound) return new Site(kind, x, y, z);
+        }
+        return null;
+    }
+
+    public static void place(Chunk chunk, Site site, long seed) {
+        if (site == null) return;
+        Template t = ALL[site.kind];
+        int x0 = site.x, z0 = site.z, base = site.y;
+        int w = t.layers()[0][0].length(), d = t.layers()[0].length;
+        if (site.kind != 3) {
+            for (int x = x0; x < x0 + w; x++) for (int z = z0; z < z0 + d; z++) {
+                for (int y = base + 1; y < Chunk.SIZE_Y; y++) chunk.set(x, y, z, BlockType.AIR);
+                for (int y = base - 1; y >= base - 3; y--) {
+                    if (chunk.get(x, y, z).solid) break;
+                    chunk.set(x, y, z, BlockType.COBBLE);
+                }
             }
         }
-        if (base < 0)
-            return;
-
-        // Расчищаем пятно до неба: иначе дерево, выросшее здесь третьим
-        // проходом, останется торчать сквозь крышу, а его ствол окажется
-        // стоящим на досках пола.
-        int clearTop = base + t.layers().length + TREE_CLEARANCE;
-        for (int x = x0; x < x0 + w; x++)
-            for (int z = z0; z < z0 + d; z++) {
-                for (int y = base + 1; y < Math.min(Chunk.SIZE_Y, clearTop); y++)
-                    chunk.set(x, y, z, BlockType.AIR);
-                // И подсыпаем грунт там, где склон ниже пола, иначе постройка
-                // стоит на сваях из воздуха.
-                for (int y = heights[x][z] + 1; y <= base; y++)
-                    chunk.set(x, y, z, BlockType.DIRT);
-            }
-
         for (int y = 0; y < t.layers().length; y++)
             for (int z = 0; z < d; z++) {
                 String row = t.layers()[y][z];
@@ -176,28 +195,19 @@ public final class Structures {
                         continue;
                     // Руина стоит не первый век: часть кладки выкрошилась.
                     // Пол не трогаем — иначе постройка проваливается.
-                    if (t.decay() && y > 0 && (hash(x0 + x, z0 + z, seed ^ (y * 31L)) & 7) == 0)
-                        continue;
+                    if (site.kind == 0 && y > 0 && ch == 'C') {
+                        boolean missing = (hash(chunk.cx * 16 + x0 + x, chunk.cz * 16 + z0 + z,
+                                seed ^ (y * 31L)) & 7) == 0;
+                        if (missing || !chunk.get(x0 + x, base + y - 1, z0 + z).solid)
+                            ch = CLEAR;
+                    }
                     chunk.set(x0 + x, base + y, z0 + z, decode(ch));
                 }
             }
 
-        // Факел в центре: постройку должно быть видно ночью, и внутрь неё не
-        // должны заселяться мобы.
-        if (t.layers().length > TORCH_LAYER)
-            chunk.set(x0 + w / 2, base + TORCH_LAYER, z0 + d / 2, BlockType.TORCH);
-    }
-
-    /** Какой шаблон выпал этому чанку, или null — ничего. */
-    static Template pick(long h) {
-        for (int i = 0; i < ALL.length; i++) {
-            // Свой разряд хэша на каждый шаблон: общий счётчик выстроил бы
-            // постройки в решётку.
-            long bits = h >>> (i * 13);
-            if (bits % ALL[i].rarity() == 0)
-                return ALL[i];
-        }
-        return null;
+        // A floor torch is valid inside a room. Never replace the obelisk's stone pillar.
+        if (site.kind != 2)
+            chunk.set(x0 + w / 2, base + 1, z0 + d / 2, BlockType.TORCH);
     }
 
     /**

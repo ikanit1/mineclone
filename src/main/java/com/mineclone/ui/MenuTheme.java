@@ -74,13 +74,14 @@ public final class MenuTheme {
     /** Постоянная пружины наведения, 1/с. */
     static final float HOVER_RATE = 16f;
     /** Окно двойного клика, секунды. */
-    static final float DOUBLE_CLICK = 0.35f;
+    public static final float DOUBLE_CLICK = 0.35f;
 
     private final UiRenderer ui;
     private final TextRenderer text;
     private final Font font;
     private final Font small;
     private final TextureAtlas atlas;
+    private com.mineclone.render.ItemIcons icons;
     private Sounds sounds = Sounds.SILENT;
 
     private int sw, sh;
@@ -209,6 +210,36 @@ public final class MenuTheme {
         return atlas;
     }
 
+    /**
+     * Иконки предметов той же темы.
+     *
+     * <p>Окна рисуют предмет не сами: хотбар, сундук и креатив обязаны
+     * показывать одну и ту же вещь одинаково, иначе интерфейс разъезжается по
+     * мелочам, которые никто не замечает поодиночке.
+     */
+    public com.mineclone.render.ItemIcons icons() {
+        if (icons == null) {
+            icons = new com.mineclone.render.ItemIcons(ui, atlas);
+            icons.setFont(small);
+        }
+        return icons;
+    }
+
+    /**
+     * Иконка предмета с учётом всплытия экрана и его прозрачности.
+     *
+     * <p>Идёт мимо {@link #quad}, потому что рисует сама, — поэтому сдвиг и
+     * альфу ей надо передать руками.
+     */
+    public void itemIcon(com.mineclone.world.ItemStack s, float x, float y, float size,
+            float a, float yawDeg) {
+        float fa = a * alpha;
+        if (s == null || fa <= 0.002f)
+            return;
+        ensureUi();
+        icons().draw(s, x, y + offsetY, size, fa, yawDeg);
+    }
+
     public float alpha() {
         return alpha;
     }
@@ -293,12 +324,23 @@ public final class MenuTheme {
 
     /** Отрисовать отложенный текст. */
     public void flush() {
+        // Текст идёт в тот же пакет, что и подложки под ним, но после них:
+        // порядок в пакете и есть порядок слоёв, и диалог обязан перекрывать
+        // текст, который под ним.
+        if (!pending.isEmpty()) {
+            if (!uiOpen) {
+                ui.begin(sw, sh);
+                uiOpen = true;
+            }
+            drawPending();
+        }
         if (uiOpen) {
             ui.end();
             uiOpen = false;
         }
-        if (pending.isEmpty())
-            return;
+    }
+
+    private void drawPending() {
         for (Txt t : pending) {
             switch (t.style) {
                 case SHADOW -> {
@@ -588,6 +630,17 @@ public final class MenuTheme {
 
     /** Ряд взаимоисключающих вариантов. Возвращает выбранный индекс. */
     public int segmented(String id, float x, float y, float w, float h, String[] options, int index) {
+        return segmented(id, x, y, w, h, options, index, false);
+    }
+
+    /** Компактный ряд вкладок с малым шрифтом. */
+    public int segmentedSmall(String id, float x, float y, float w, float h,
+            String[] options, int index) {
+        return segmented(id, x, y, w, h, options, index, true);
+    }
+
+    private int segmented(String id, float x, float y, float w, float h,
+            String[] options, int index, boolean compact) {
         int n = options.length;
         float gap = 4f;
         float cw = (w - gap * (n - 1)) / n;
@@ -612,8 +665,12 @@ public final class MenuTheme {
             quad(cx, y + h - 1.5f, cw, 1.5f, 0f, 0f, 0f, 0.45f);
             if (k > 0.01f)
                 outline(cx - 1.5f, y - 1.5f, cw + 3f, h + 3f, 1.5f, ACCENT, 0.7f * k);
-            textCentered(ellipsize(font, options[i], cw - 12f), cx + cw / 2f, baseline(font, y, h),
-                    i == result ? TEXT : TEXT_DIM, 1f);
+            if (compact)
+                smallCentered(ellipsize(small, options[i], cw - 6f), cx + cw / 2f,
+                        baseline(small, y, h), i == result ? TEXT : TEXT_DIM, 1f);
+            else
+                textCentered(ellipsize(font, options[i], cw - 12f), cx + cw / 2f,
+                        baseline(font, y, h), i == result ? TEXT : TEXT_DIM, 1f);
         }
         return result;
     }

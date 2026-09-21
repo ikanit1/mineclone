@@ -265,8 +265,11 @@ public class RenderShaderPreview {
             if (heroShot) {
                 // Ходячая поза и замах: статичная модель не показала бы,
                 // что анимация вообще работает.
-                playerRenderer.render(proj, view, heroPos, 2.5f, 0.15f, 0.62f, 1f, 0.45f,
-                        lighting, 1f, 0f);
+                // Корпус и голова врозь: голова отвёрнута на предел, чтобы
+                // кадр показывал именно раздельный поворот.
+                playerRenderer.render(proj, view, heroPos, 2.5f,
+                        2.5f + com.mineclone.render.BodyRotation.MAX_OFFSET, 0.15f,
+                        0.62f, 1f, 0.45f, lighting, 1f, 0f);
             }
             drawChunks(chunkShader, lighting, atlas, proj, view, opaque, false);
             if (tracksShot)

@@ -74,14 +74,17 @@ public final class PlayerRenderer {
     }
 
     /**
-     * @param yaw          курс игрока, радианы (как у камеры)
+     * @param bodyYaw      курс корпуса, радианы; им повёрнута вся модель
+     * @param headYaw      курс головы — курс камеры; от корпуса отличается
+     *                     не больше чем на {@link BodyRotation#MAX_OFFSET}
      * @param pitch        наклон взгляда; поворачивает только голову
      * @param walkDistance монотонный пройденный путь — им заведены синусы шага
      * @param walkAmount   0..1, размах шага; на месте гаснет в ноль
      * @param swing        0..1, замах рукой
      */
     public void render(Matrix4f proj, Matrix4f view, Vector3f position,
-                       float yaw, float pitch, float walkDistance, float walkAmount, float swing,
+                       float bodyYaw, float headYaw, float pitch,
+                       float walkDistance, float walkAmount, float swing,
                        SceneLighting lighting, float skyVis, float blockVis) {
         glDisable(GL_CULL_FACE);
         shader.bind();
@@ -98,7 +101,7 @@ public final class PlayerRenderer {
         glBindVertexArray(vao);
 
         for (Part p : BODY) {
-            partMatrix(position, yaw, pitch, walkDistance, walkAmount, swing, p, model);
+            partMatrix(position, bodyYaw, headYaw, pitch, walkDistance, walkAmount, swing, p, model);
             shader.setMat4("uModel", model);
             shader.setVec2("uUvFront", MobRenderer.uvX(p.front()), MobRenderer.uvY(p.front()));
             shader.setVec2("uUvSide", MobRenderer.uvX(p.side()), MobRenderer.uvY(p.side()));
@@ -113,8 +116,8 @@ public final class PlayerRenderer {
 
     /** Те же части в карту теней: игрок обязан отбрасывать тень наравне с мобами. */
     public void renderShadow(Shader shadowShader, Matrix4f lightSpace, Vector3f position,
-                            float yaw, float pitch, float walkDistance, float walkAmount,
-                            float swing) {
+                            float bodyYaw, float headYaw, float pitch,
+                            float walkDistance, float walkAmount, float swing) {
         shadowShader.bind();
         shadowShader.setMat4("uLightSpace", lightSpace);
         shadowShader.setInt("uAtlas", 0);
@@ -123,7 +126,7 @@ public final class PlayerRenderer {
         glBindTexture(GL_TEXTURE_2D, texture);
         glBindVertexArray(vao);
         for (Part p : BODY) {
-            partMatrix(position, yaw, pitch, walkDistance, walkAmount, swing, p, model);
+            partMatrix(position, bodyYaw, headYaw, pitch, walkDistance, walkAmount, swing, p, model);
             shadowShader.setMat4("uModel", model);
             shadowShader.setVec2("uUvFront", MobRenderer.uvX(p.front()), MobRenderer.uvY(p.front()));
             shadowShader.setVec2("uUvSide", MobRenderer.uvX(p.side()), MobRenderer.uvY(p.side()));
@@ -139,16 +142,20 @@ public final class PlayerRenderer {
      * звать и проход цвета, и проход теней — тогда тень не может разъехаться
      * с моделью.
      */
-    private static void partMatrix(Vector3f position, float yaw, float pitch,
+    private static void partMatrix(Vector3f position, float bodyYaw, float headYaw, float pitch,
                            float walkDistance, float walkAmount, float swing,
                            Part p, Matrix4f out) {
-        // Камера смотрит по -Z при yaw = 0, а модель развёрнута лицом в -Z,
-        // поэтому курс уходит в поворот как есть.
-        out.identity().translate(position.x, position.y, position.z).rotateY(yaw);
+        // Камера и лицевая грань модели смотрят по -Z при нулевых углах.
+        // Но положительный yaw/pitch камеры направляет взгляд вправо/вниз,
+        // тогда как положительный поворот модели ведёт её влево/вверх.
+        //
+        // Вся модель стоит по курсу корпуса; голове потом добавляется разница
+        // с курсом взгляда — иерархия «корпус → голова», как в Minecraft.
+        out.identity().translate(position.x, position.y, position.z).rotateY(-bodyYaw);
         out.translate(p.pivX(), p.pivY(), p.pivZ());
         float step = swingOf(walkDistance, walkAmount);
         switch (p.anim()) {
-            case A_HEAD -> out.rotateX(pitch);
+            case A_HEAD -> out.rotateY(-BodyRotation.wrap(headYaw - bodyYaw)).rotateX(-pitch);
             case A_LEG_A -> out.rotateX(step);
             case A_LEG_B -> out.rotateX(-step);
             // Руки ходят в противофазе с ногами; замах добавляется поверх.

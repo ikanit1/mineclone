@@ -31,7 +31,9 @@ import java.util.Random;
  *
  * Дописывает только недостающие спрайты. Уже лежащие в папке не трогает:
  * часть из них перерисована руками и в большем разрешении, и слепой прогон
- * затирал их процедурными 16x16. Перегенерировать весь набор — {@code --force}.
+ * затирал их процедурными 16x16. Перегенерировать весь набор — {@code --force},
+ * только иконки инструментов — {@code --force-tools}, новые игровые спрайты —
+ * {@code --force-gameplay}.
  *
  * Side outputs: assets/atlas.png (debug dump of the packed atlas) and
  * docs/textures.html (256x256 pixelated preview + the index matrices).
@@ -110,6 +112,13 @@ public class GenBlockTextures {
     /** Окорочок в шкале сытости: тёплый коричневый, заметный на тёмном хотбаре. */
     static final int[] R_HUNGER  = pal("1A0C05", "5A2E12", "8A4A1E", "B87434", "E0A55C");
     static final int[] R_BONE    = pal("1A0C05", "8A8270", "B5AD98", "D8D1BC", "F2EEDC");
+    static final int[] R_MUD     = pal("201923", "332327", "493128", "65452E", "81613D");
+    static final int[] R_ASH     = pal("20212A", "343640", "4B4D55", "66676B", "85837E");
+    static final int[] R_MOSS    = pal("183125", "26482A", "376033", "4C793B", "6A954A");
+    static final int[] R_LAVA    = pal("5B0905", "991706", "D83B08", "F47C0C", "FFD33D");
+    static final int[] R_OBSIDIAN = pal("100F1C", "1B1730", "292047", "3B2B61", "624585");
+    static final int[] R_CHAIN   = pal("1D222B", "343C47", "535D68", "7C8790", "B4BEC3");
+    static final int[] R_BOOK    = pal("28151A", "492126", "73302E", "9D4B3A", "D07952");
 
     /** Crack overlay: greyscale with baked alpha (0 = deepest, 4 = faintest). */
     static final int[] R_CRACK = { 0xD2000000, 0xB4090A0F, 0x8C1A1B22, 0x64303039, 0x3C4A4A54 };
@@ -189,16 +198,37 @@ public class GenBlockTextures {
         tiles.add(new Tile("ice",            R_ICE, ice()));
         tiles.add(new Tile("bedroll_top",  merge(R_BEDROLL, R_LINEN), bedrollTop()));
         tiles.add(new Tile("bedroll_side", merge(R_BEDROLL, R_LINEN), bedrollSide()));
+        tiles.add(new Tile("mud", R_MUD, mud()));
+        tiles.add(new Tile("ash", R_ASH, ash()));
+        tiles.add(new Tile("mossy_cobblestone", merge(R_COBBLE, R_MOSS), mossyCobble()));
+        tiles.add(new Tile("lava", R_LAVA, lava()));
+        tiles.add(new Tile("obsidian", R_OBSIDIAN, obsidian()));
+        tiles.add(new Tile("thin_ice", R_ICE, thinIce()));
+        tiles.add(new Tile("rope", R_HANDLE, rope()));
+        tiles.add(new Tile("chain", R_CHAIN, chain()));
+        tiles.add(new Tile("cobweb", R_WHITE, cobweb()));
+        tiles.add(new Tile("journal", merge(R_BOOK, R_LINEN), journal()));
+        tiles.add(new Tile("crafting_table_side", R_PLANK, craftingTable(false)));
+        tiles.add(new Tile("crafting_table_top", R_PLANK, craftingTable(true)));
+        tiles.add(new Tile("stick", R_HANDLE, stick()));
+        tiles.add(new Tile("coal", R_COAL, coal()));
+        tiles.add(new Tile("iron_ingot", R_TOOLIRON, ingot()));
+        tiles.add(new Tile("gold_ingot", R_GOLD, ingot()));
+        tiles.add(new Tile("diamond", merge(R_DIAMOND, R_DIAMOND), diamond()));
 
         // По умолчанию генератор дописывает недостающее и не трогает то,
         // что уже лежит в папке. Источник правды по текстурам — папка
         // ассетов, а не этот код: часть спрайтов перерисована руками и в
         // большем разрешении, и слепой прогон затирал их процедурными 16x16.
-        boolean force = args.length > 0 && args[0].equals("--force");
+        boolean force = java.util.Arrays.asList(args).contains("--force");
+        boolean forceTools = java.util.Arrays.asList(args).contains("--force-tools");
+        boolean forceGameplay = java.util.Arrays.asList(args).contains("--force-gameplay");
         int written = 0, skipped = 0;
         for (Tile t : tiles) {
             File f = new File(BLOCKS, t.name + ".png");
-            if (f.exists() && !force) {
+            boolean overwrite = force || (forceTools && isToolSprite(t.name))
+                    || (forceGameplay && isGameplaySprite(t.name));
+            if (f.exists() && !overwrite) {
                 skipped++;
                 continue;
             }
@@ -214,6 +244,17 @@ public class GenBlockTextures {
             writeAtlasDump(tiles, new File("assets/atlas.png"));
             writePreview(tiles, new File("docs/textures.html"));
         }
+    }
+
+    static boolean isToolSprite(String name) {
+        return name.endsWith("_pickaxe") || name.endsWith("_axe") || name.endsWith("_shovel");
+    }
+
+    static boolean isGameplaySprite(String name) {
+        return java.util.Set.of("mud", "ash", "mossy_cobblestone", "lava", "obsidian",
+                "thin_ice", "rope", "chain", "cobweb", "journal", "crafting_table_side",
+                "crafting_table_top", "stick", "coal", "iron_ingot", "gold_ingot", "diamond")
+                .contains(name);
     }
 
     // =====================================================================
@@ -377,41 +418,60 @@ public class GenBlockTextures {
      */
     static int[][] tool(int kind) {
         int[][] m = blank(-1);
-        // Рукоять: диагональ из нижнего правого угла в верхний левый.
-        // Верхний конец приходится на (2,2) — именно туда и садится головка.
-        for (int i = 0; i < 12; i++) {
-            int x = 13 - i, y = 13 - i;
-            put(m, x, y, 2);
-            put(m, x + 1, y, 1);      // тень справа
-            put(m, x - 1, y - 1, 3);  // блик сверху-слева
+        // Толстая трёхцветная рукоять от нижнего правого угла к креплению.
+        // У прежней версии была фактически однопиксельная линия, поэтому в
+        // хотбаре кирка, топор и лопата выглядели одинаковыми палочками.
+        for (int i = 0; i < 10; i++) {
+            int x = 14 - i, y = 15 - i;
+            put(m, x + 1, y, 0);      // холодный внешний контур
+            put(m, x, y + 1, 1);
+            put(m, x, y, 2);          // тело дерева
+            put(m, x - 1, y, 3);
+            put(m, x - 1, y - 1, 4);  // тёплый блик сверху-слева
         }
 
         // Головка — вторая рампа, индексы 5..9.
         switch (kind) {
-            case 0 -> {               // кирка: дуга поперёк верха рукояти
-                for (int i = 0; i <= 9; i++) {
-                    int y = 1 + (int) Math.round(Math.abs(i - 4.5) * 0.55);
-                    put(m, i, y, i < 5 ? 9 : 8);
-                    put(m, i, y + 1, 6);
-                }
-                put(m, 0, 4, 5);
-                put(m, 9, 4, 5);
-            }
-            case 1 -> {               // топор: клин слева от рукояти
-                for (int y = 0; y <= 7; y++)
-                    for (int x = 0; x <= 6; x++) {
-                        int edge = Math.abs(y - 3);
-                        if (x > 6 - edge * 2) continue;
-                        put(m, x, y, x <= 1 ? 9 : (edge == 0 ? 8 : 6));
-                    }
-            }
-            default -> {              // лопата: прямоугольный совок
-                for (int y = 0; y <= 5; y++)
-                    for (int x = 0; x <= 5; x++)
-                        put(m, x, y, (y == 0 || x == 0) ? 9 : ((y == 5 || x == 5) ? 6 : 7));
-            }
+            case 0 -> paint(m, 0, 0,  // кирка: широкая дуга с опущенными концами
+                    "..hhhhhh....",
+                    ".hlllllllh..",
+                    "hmmmmmmmmmlh",
+                    "ossssoosssso",
+                    "oo...oo...oo",
+                    "o....ss....o");
+            case 1 -> paint(m, 0, 0,  // топор: тяжёлый клин и узкий обух
+                    "..hhh.......",
+                    ".hlllh......",
+                    "hllllmo.....",
+                    "hlllmmmo....",
+                    "hlllmmmooo..",
+                    ".hllmmoo....",
+                    "..hmmoo.....",
+                    "....oo......");
+            default -> paint(m, 0, 0, // лопата: округлый совок, суженный к шейке
+                    "...hhhh.....",
+                    "..hllllh....",
+                    ".hllllmmh...",
+                    ".hlllmmmo...",
+                    "..hmmmmo....",
+                    "...hmoo.....",
+                    "....oo......");
         }
         return m;
+    }
+
+    /**
+     * Небольшая ASCII-маска для читаемых силуэтов: o/s/m/l/h — пять стопов
+     * второй рампы от контура до блика, точка — прозрачность.
+     */
+    static void paint(int[][] m, int x0, int y0, String... rows) {
+        String ramp = "osmlh";
+        for (int y = 0; y < rows.length; y++)
+            for (int x = 0; x < rows[y].length(); x++) {
+                int shade = ramp.indexOf(rows[y].charAt(x));
+                if (shade >= 0)
+                    put(m, x0 + x, y0 + y, RAMP_B + shade);
+            }
     }
 
     /**
@@ -1108,6 +1168,210 @@ public class GenBlockTextures {
             m[y][x0] = 0;
             m[y][x1] = clampIdx(m[y][x1] + 2);
         }
+    }
+
+    /** Влажная земля с редкими гладкими лужицами. */
+    static int[][] mud() {
+        int[][] m = blank(2);
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++) {
+                float n = fbm(x, y, 813, new int[] { 4, 8 }, new float[] { 0.7f, 0.3f });
+                m[y][x] = q(0.12f + n * 0.55f, x, y);
+            }
+        for (int x = 2; x <= 7; x++) m[4][x] = x == 2 || x == 7 ? 1 : 0;
+        for (int x = 9; x <= 14; x++) m[11][x] = x % 3 == 0 ? 3 : 1;
+        return m;
+    }
+
+    /** Пепел почти ровный, но с хлопьями и тёмными угольками. */
+    static int[][] ash() {
+        int[][] m = blank(3);
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++) {
+                float n = fbm(x, y, 827, new int[] { 4, 16 }, new float[] { 0.65f, 0.35f });
+                m[y][x] = q(0.28f + n * 0.54f, x, y);
+            }
+        int[] xs = { 2, 6, 11, 14, 8 }, ys = { 3, 12, 5, 9, 1 };
+        for (int i = 0; i < xs.length; i++) m[ys[i]][xs[i]] = 0;
+        return m;
+    }
+
+    /** Булыжник, в швы которого действительно пророс мох. */
+    static int[][] mossyCobble() {
+        int[][] m = cobble();
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++) {
+                boolean seam = m[y][x] <= 1;
+                float growth = noise(x, y, 4, 839);
+                if (seam && growth > 0.42f)
+                    m[y][x] = 5 + q(0.18f + growth * 0.65f, x, y);
+                else if ((x + y * 3) % 29 == 0)
+                    m[y][x] = 7;
+            }
+        return m;
+    }
+
+    /** Вязкие горячие потоки без прозрачного фона. */
+    static int[][] lava() {
+        int[][] m = blank(2);
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++) {
+                float wave = 0.5f + 0.5f * (float) Math.sin((x * 0.8f + y * 0.35f));
+                float n = noise(x, y, 4, 853);
+                m[y][x] = q(0.22f + 0.48f * wave + 0.3f * n, x, y);
+            }
+        for (int y = 1; y < S; y += 5)
+            for (int x = 0; x < S; x++)
+                if ((x + y) % 4 != 0) m[y][x] = 4;
+        return m;
+    }
+
+    /** Тёмное вулканическое стекло с фиолетовыми сколами. */
+    static int[][] obsidian() {
+        int[][] m = blank(1);
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++) {
+                float n = fbm(x, y, 877, new int[] { 4, 8, 16 }, new float[] { .5f, .3f, .2f });
+                m[y][x] = q(0.05f + n * 0.56f, x, y);
+            }
+        for (int i = 0; i < 12; i++) {
+            int x = (i * 7 + 3) & 15, y = (i * 11 + 2) & 15;
+            m[y][x] = 4;
+            put(m, x + 1, y, 3);
+        }
+        return m;
+    }
+
+    /** Тонкий лёд — светлее обычного и покрыт длинными трещинами. */
+    static int[][] thinIce() {
+        int[][] m = blank(3);
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+                m[y][x] = q(0.58f + noise(x, y, 4, 887) * 0.4f, x, y);
+        for (int i = 0; i < 11; i++) {
+            put(m, 2 + i, 3 + i / 3, 1);
+            put(m, 13 - i, 10 + i / 5, 2);
+        }
+        return m;
+    }
+
+    /** Верёвка на прозрачном фоне — два переплетённых волокна. */
+    static int[][] rope() {
+        int[][] m = blank(-1);
+        for (int y = 0; y < S; y++) {
+            int x = 7 + ((y / 2) % 2);
+            put(m, x - 1, y, 1);
+            put(m, x, y, 3);
+            put(m, x + 1, y, 0);
+        }
+        return m;
+    }
+
+    /** Цепь из чередующихся металлических звеньев. */
+    static int[][] chain() {
+        int[][] m = blank(-1);
+        for (int y0 = -1; y0 < S; y0 += 6)
+            for (int y = y0; y <= y0 + 4; y++)
+                for (int x = 5; x <= 10; x++) {
+                    boolean edge = x == 5 || x == 10 || y == y0 || y == y0 + 4;
+                    if (edge) put(m, x, y, x <= 6 || y == y0 ? 4 : 1);
+                }
+        return m;
+    }
+
+    /** Паутина с радиальными нитями и двумя кольцами. */
+    static int[][] cobweb() {
+        int[][] m = blank(-1);
+        for (int i = 0; i < S; i++) {
+            put(m, i, i, i % 3 == 0 ? 4 : 2);
+            put(m, S - 1 - i, i, i % 3 == 0 ? 4 : 2);
+            put(m, 7, i, 3);
+            put(m, i, 7, 3);
+        }
+        for (int x = 4; x <= 11; x++) { put(m, x, 4, 2); put(m, x, 11, 2); }
+        for (int y = 4; y <= 11; y++) { put(m, 4, y, 2); put(m, 11, y, 2); }
+        return m;
+    }
+
+    /** Открытый дневник: красная обложка и две светлые страницы. */
+    static int[][] journal() {
+        int[][] m = blank(-1);
+        for (int y = 3; y <= 13; y++)
+            for (int x = 1; x <= 14; x++) {
+                if ((x <= 2 || x >= 13) && (y == 3 || y == 13)) continue;
+                boolean cover = x == 1 || x == 14 || y == 13;
+                m[y][x] = cover ? 2 : (x == 7 || x == 8 ? 5 : 8);
+            }
+        for (int y = 6; y <= 10; y += 2) {
+            for (int x = 3; x <= 6; x++) m[y][x] = 6;
+            for (int x = 9; x <= 12; x++) m[y][x] = 6;
+        }
+        return m;
+    }
+
+    /** Бок и верх верстака: доски, разметка сетки и инструментальный кант. */
+    static int[][] craftingTable(boolean top) {
+        int[][] m = planks();
+        if (top) {
+            for (int i = 0; i < S; i++) {
+                m[0][i] = m[15][i] = m[i][0] = m[i][15] = 0;
+                m[5][i] = m[10][i] = 1;
+                m[i][5] = m[i][10] = 1;
+            }
+        } else {
+            for (int x = 0; x < S; x++) m[3][x] = x % 2 == 0 ? 4 : 3;
+            for (int y = 4; y < S; y++) {
+                m[y][2] = m[y][13] = 0;
+                if (y % 4 == 0)
+                    for (int x = 3; x <= 12; x++) m[y][x] = 1;
+            }
+        }
+        return m;
+    }
+
+    static int[][] stick() {
+        int[][] m = blank(-1);
+        for (int i = 0; i < 12; i++) {
+            put(m, 13 - i, 14 - i, 1);
+            put(m, 12 - i, 13 - i, 4);
+            put(m, 14 - i, 14 - i, 0);
+        }
+        return m;
+    }
+
+    static int[][] coal() {
+        int[][] m = blank(-1);
+        for (int y = 3; y <= 13; y++)
+            for (int x = 2; x <= 13; x++) {
+                int dx = Math.abs(x - 7), dy = Math.abs(y - 8);
+                if (dx + dy <= 8 && !(x < 4 && y < 5))
+                    m[y][x] = (dx + dy > 6) ? 0 : ((x + y) % 5 == 0 ? 4 : 2);
+            }
+        return m;
+    }
+
+    static int[][] ingot() {
+        int[][] m = blank(-1);
+        for (int y = 5; y <= 12; y++)
+            for (int x = 2; x <= 13; x++) {
+                boolean corner = (y == 5 && (x < 5 || x > 10)) || (y == 12 && (x < 3 || x > 12));
+                if (!corner) m[y][x] = y <= 6 ? 4 : (x <= 3 || y == 12 ? 0 : 2);
+            }
+        return m;
+    }
+
+    static int[][] diamond() {
+        int[][] m = blank(-1);
+        paint(m, 2, 1,
+                "...hh...",
+                ".hllllh.",
+                "hllllmmh",
+                "olmmmmmo",
+                ".ommmmmo",
+                "..ommmo.",
+                "...omo..",
+                "....o...");
+        return m;
     }
 
     // =====================================================================

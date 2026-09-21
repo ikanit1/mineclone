@@ -1,0 +1,2 @@
+{ "name": "железные инструменты", "aliases": ["iron_tools"],
+  "values": ["iron_pickaxe", "iron_axe", "iron_shovel"] }

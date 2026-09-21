@@ -1,0 +1,10 @@
+// Материалы крафта. Отдельные предметы нужны формованным рецептам:
+// рукоять инструмента — палка, руда сначала превращается в пригодный металл.
+{
+  "stick":       { "name": "Палка",           "category": "materials", "mass": 0.1, "icon": "stick",       "fuel": 4 },
+  "coal":        { "name": "Уголь",           "category": "materials", "mass": 0.2, "icon": "coal",        "fuel": 64 },
+  "iron_ingot":  { "name": "Железный слиток", "category": "materials", "mass": 0.8, "icon": "iron_ingot" },
+  "gold_ingot":  { "name": "Золотой слиток",  "category": "materials", "mass": 0.8, "icon": "gold_ingot" },
+  "diamond":     { "name": "Алмаз",           "category": "materials", "mass": 0.2, "icon": "diamond" },
+  "copper_ingot": { "name": "Медный слиток", "category": "materials", "mass": 0.8, "icon": "copper_ingot" }
+}

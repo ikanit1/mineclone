@@ -4,7 +4,7 @@ plugins {
 }
 
 group = 'com.mineclone'
-version = '0.9.0'
+version = '1.0.0-alpha'
 
 java {
     toolchain {
@@ -66,7 +66,10 @@ def appName = 'Mineclone'
 def jpackageInputDir = layout.buildDirectory.dir('jpackage/input')
 def jpackageOutputDir = layout.buildDirectory.dir('jpackage')
 
-tasks.register('prepareJpackageInput', Copy) {
+// Sync, not Copy: Copy leaves behind whatever an earlier build put here, and a
+// stale LWJGL jar beside the current one ships a release with two versions of
+// the same classes on the classpath.
+tasks.register('prepareJpackageInput', Sync) {
     dependsOn tasks.named('jar')
     into jpackageInputDir
 
@@ -94,7 +97,7 @@ tasks.register('jpackage', Exec) {
     commandLine 'jpackage',
             '--type', 'app-image',
             '--name', appName,
-            '--app-version', project.version.toString(),
+            '--app-version', project.version.toString().replaceAll('-.*', ''),
             '--vendor', 'Mineclone',
             '--dest', jpackageOutputDir.get().asFile.absolutePath,
             '--input', jpackageInputDir.get().asFile.absolutePath,

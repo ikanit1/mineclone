@@ -10,9 +10,18 @@ public enum Biome {
     FOREST  (World.SEA_LEVEL + 6,   0.7,       BlockType.GRASS,        BlockType.DIRT,  8,         TreeType.OAK),
     DESERT  (World.SEA_LEVEL + 6,   0.5,       BlockType.SAND,         BlockType.SAND,  2,         TreeType.CACTUS),
     TUNDRA  (World.SEA_LEVEL + 7,   0.8,       BlockType.SNOWY_GRASS,  BlockType.DIRT,  3,         TreeType.SPRUCE),
-    OCEAN   (World.SEA_LEVEL - 18,  0.3,       BlockType.SAND,         BlockType.SAND,  0,         TreeType.NONE);
+    OCEAN   (World.SEA_LEVEL - 18,  0.3,       BlockType.SAND,         BlockType.SAND,  0,         TreeType.NONE),
+    TAIGA   (World.SEA_LEVEL + 10, 0.8,       BlockType.PODZOL,       BlockType.DIRT,  7,         TreeType.SPRUCE),
+    SWAMP   (World.SEA_LEVEL + 1,  0.12,      BlockType.PEAT,         BlockType.MUD,   3,         TreeType.OAK),
+    SAVANNA (World.SEA_LEVEL + 9,  0.5,       BlockType.DRY_GRASS,    BlockType.DIRT,  2,         TreeType.ACACIA),
+    BADLANDS(World.SEA_LEVEL + 19, 0.9,       BlockType.RED_SAND,     BlockType.TERRACOTTA, 1,    TreeType.CACTUS),
+    ALPINE  (World.SEA_LEVEL + 32, 1.6,       BlockType.LIMESTONE,    BlockType.LIMESTONE, 0,     TreeType.NONE),
+    VOLCANIC(World.SEA_LEVEL + 23, 1.1,       BlockType.ASH,          BlockType.BASALT, 0,        TreeType.NONE);
 
-    public enum TreeType { OAK, SPRUCE, CACTUS, NONE }
+    public enum TreeType { OAK, SPRUCE, CACTUS, NONE, ACACIA }
+
+    public boolean isCold() { return this == TUNDRA || this == ALPINE || this == TAIGA; }
+    public boolean isArid() { return this == DESERT || this == BADLANDS || this == VOLCANIC; }
 
     /** Base surface height in blocks. */
     public final int baseHeight;

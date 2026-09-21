@@ -23,6 +23,10 @@ public final class MenuAction {
         SETTINGS_CHANGED,
         /** Экран настроек закрыт — записать options.dat. */
         SETTINGS_CLOSED,
+        /** Открыть мир {@link #worldId} для игры по сети — мы хозяин. */
+        NET_HOST,
+        /** Войти в чужую комнату по настройкам {@link #net}. */
+        NET_JOIN,
         RESUME,
         SAVE,
         MAIN_MENU,
@@ -30,26 +34,30 @@ public final class MenuAction {
         RESPAWN
     }
 
-    public static final MenuAction NONE = new MenuAction(Kind.NONE, null, null, null);
+    public static final MenuAction NONE = new MenuAction(Kind.NONE, null, null, null, null);
 
     public final Kind kind;
     public final Screen screen;
     public final String worldId;
     public final WorldSettings world;
+    /** Настройки сети для {@link Kind#NET_HOST} и {@link Kind#NET_JOIN}. */
+    public final com.mineclone.net.NetSettings net;
 
-    private MenuAction(Kind kind, Screen screen, String worldId, WorldSettings world) {
+    private MenuAction(Kind kind, Screen screen, String worldId, WorldSettings world,
+            com.mineclone.net.NetSettings net) {
         this.kind = kind;
         this.screen = screen;
         this.worldId = worldId;
         this.world = world;
+        this.net = net;
     }
 
     public static MenuAction of(Kind kind) {
-        return kind == Kind.NONE ? NONE : new MenuAction(kind, null, null, null);
+        return kind == Kind.NONE ? NONE : new MenuAction(kind, null, null, null, null);
     }
 
     public static MenuAction push(Screen screen) {
-        return new MenuAction(Kind.PUSH, screen, null, null);
+        return new MenuAction(Kind.PUSH, screen, null, null, null);
     }
 
     public static MenuAction back() {
@@ -57,11 +65,21 @@ public final class MenuAction {
     }
 
     public static MenuAction play(String worldId) {
-        return new MenuAction(Kind.PLAY_WORLD, null, worldId, null);
+        return new MenuAction(Kind.PLAY_WORLD, null, worldId, null, null);
     }
 
     public static MenuAction create(WorldSettings world) {
-        return new MenuAction(Kind.CREATE_WORLD, null, null, world);
+        return new MenuAction(Kind.CREATE_WORLD, null, null, world, null);
+    }
+
+    /** Открыть свой мир по сети. */
+    public static MenuAction netHost(String worldId, com.mineclone.net.NetSettings net) {
+        return new MenuAction(Kind.NET_HOST, null, worldId, null, net);
+    }
+
+    /** Войти в чужой мир. */
+    public static MenuAction netJoin(com.mineclone.net.NetSettings net) {
+        return new MenuAction(Kind.NET_JOIN, null, null, null, net);
     }
 
     public boolean is(Kind k) {

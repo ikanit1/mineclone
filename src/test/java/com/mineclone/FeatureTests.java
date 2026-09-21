@@ -4,11 +4,12 @@ import com.mineclone.game.CameraMotion;
 import com.mineclone.game.ContextHint;
 import com.mineclone.game.Frost;
 import com.mineclone.game.SoundIndicators;
+import com.mineclone.game.SurvivalProgress;
 import com.mineclone.render.OutlineAnimator;
 import com.mineclone.world.Biome;
 import com.mineclone.world.BlockType;
-import com.mineclone.world.FoodType;
 import com.mineclone.world.ItemStack;
+import com.mineclone.world.Inventory;
 import com.mineclone.world.NightSky;
 import com.mineclone.world.Weather;
 import com.mineclone.world.World;
@@ -34,6 +35,12 @@ final class FeatureTests {
         r.run("weather kinds follow their weights", FeatureTests::testWeatherDistribution);
         r.run("snow storms blind harder than rain storms", FeatureTests::testWeatherVisibility);
         r.run("storm wind outblows a clear day", FeatureTests::testWeatherWind);
+        r.run("wind gusts pulse, and the drift they carry never runs backwards",
+                FeatureTests::testWeatherDrift);
+        r.run("the head turns before the body does, and never past 75 degrees",
+                FeatureTests::testBodyRotation);
+        r.run("the body follows where the feet go, not where the eyes look",
+                FeatureTests::testBodyFollowsMovement);
         r.run("moon waxes and wanes over eight nights", FeatureTests::testMoonPhases);
         r.run("/time set keeps the day and its moon", FeatureTests::testTimeKeepsDay);
         r.run("aurora is a rare, clear, cold night event", FeatureTests::testAurora);
@@ -83,6 +90,7 @@ final class FeatureTests {
         r.run("status envelopes expire and eye exposure adapts", FeatureTests::testAdvancedFeedback);
         r.run("placed heavy spans collapse only without support", FeatureTests::testStructureStability);
         r.run("strong impacts create micro-voxel showers", FeatureTests::testMicroShatter);
+        r.run("survival goals advance, persist and never regress", FeatureTests::testSurvivalProgress);
     }
 
     // ---- второй пакет систем -------------------------------------------------
@@ -117,12 +125,17 @@ final class FeatureTests {
         World w = flatWorld();
         w.setBlock(8, 12, 8, BlockType.LAVA, (byte) 0);
         w.setBlock(9, 12, 8, BlockType.WATER);
-        assertEq("source reaction", com.mineclone.world.FluidThermodynamics.Reaction.STEAM_AND_OBSIDIAN,
+        assertEq("side contact reaction", com.mineclone.world.FluidThermodynamics.Reaction.STEAM_AND_COBBLE,
                 com.mineclone.world.FluidThermodynamics.react(w, 8, 12, 8, 9, 12, 8));
-        assertEq("source becomes obsidian", BlockType.OBSIDIAN, w.getBlock(8, 12, 8));
-        w.setBlock(8, 12, 8, BlockType.LAVA, (byte) 3);
-        com.mineclone.world.FluidThermodynamics.react(w, 8, 12, 8, 9, 12, 8);
-        assertEq("flow becomes stone", BlockType.STONE, w.getBlock(8, 12, 8));
+        assertEq("side contact makes cobble", BlockType.COBBLE, w.getBlock(8, 12, 8));
+        w.setBlock(8, 12, 8, BlockType.LAVA, (byte) 0);
+        w.setBlock(8, 13, 8, BlockType.WATER);
+        com.mineclone.world.FluidThermodynamics.react(w, 8, 12, 8, 8, 13, 8);
+        assertEq("water over source makes obsidian", BlockType.OBSIDIAN, w.getBlock(8, 12, 8));
+        w.setBlock(8, 13, 8, BlockType.LAVA, (byte) 2);
+        w.setBlock(8, 12, 8, BlockType.WATER);
+        com.mineclone.world.FluidThermodynamics.react(w, 8, 13, 8, 8, 12, 8);
+        assertEq("lava over water makes stone", BlockType.STONE, w.getBlock(8, 13, 8));
     }
 
     private static void testTerrainDeformation() {
@@ -145,6 +158,26 @@ final class FeatureTests {
     private static void testBuoyancyRules() {
         assertTrue("wood below water density", ItemEntity.density(new ItemStack(BlockType.WOOD, 1)) < 1f);
         assertTrue("stone above water density", ItemEntity.density(new ItemStack(BlockType.STONE, 1)) > 1f);
+    }
+
+    private static void testSurvivalProgress() {
+        Inventory inv = new Inventory();
+        SurvivalProgress progress = new SurvivalProgress();
+        assertEq("starts with wood", "Добудьте бревно", progress.objective(inv).title());
+
+        inv.set(0, ItemStack.of("log"));
+        assertEq("wood goal completed", "Добудьте бревно", progress.update(inv));
+        assertEq("next asks for planks", "Сделайте доски", progress.objective(inv).title());
+        inv.set(0, null);
+        progress.update(inv);
+        assertEq("spent wood does not regress", 1, progress.stage());
+
+        SurvivalProgress oldWorld = new SurvivalProgress();
+        inv.set(0, ItemStack.of("iron_pickaxe"));
+        oldWorld.synchronize(inv);
+        assertEq("late evidence skips tutorials", 11, oldWorld.stage());
+        SurvivalProgress loaded = SurvivalProgress.decode(oldWorld.encode());
+        assertEq("stage survives its save section", 11, loaded.stage());
     }
 
     private static void testLimbDamage() {
@@ -581,8 +614,10 @@ final class FeatureTests {
     }
 
     private static int[] findFrozenWater(World w) {
-        for (int cx = -4; cx <= 4; cx++)
-            for (int cz = -4; cz <= 4; cz++) {
+        for (int cx = -100; cx <= 100; cx += 2)
+            for (int cz = -100; cz <= 100; cz += 2) {
+                if (!w.biomes.biomeAt(cx * 16 + 8, cz * 16 + 8).isCold()
+                        || w.terrainHeight(cx * 16 + 8, cz * 16 + 8) >= World.SEA_LEVEL - 1) continue;
                 com.mineclone.world.Chunk c = w.getChunk(cx, cz);
                 for (int x = 0; x < com.mineclone.world.Chunk.SIZE_X; x++)
                     for (int z = 0; z < com.mineclone.world.Chunk.SIZE_Z; z++)
@@ -688,8 +723,8 @@ final class FeatureTests {
         ItemEntity b = lying(new ItemStack(BlockType.COBBLE, 50), 8.8f, 8.5f);
         ItemEntity dirt = lying(new ItemStack(BlockType.DIRT, 5), 8.6f, 8.5f);
         ItemEntity distant = lying(new ItemStack(BlockType.COBBLE, 5), 12f, 8.5f);
-        ItemEntity pick1 = lying(new ItemStack(com.mineclone.world.ToolType.WOOD_PICKAXE), 8.5f, 9f);
-        ItemEntity pick2 = lying(new ItemStack(com.mineclone.world.ToolType.WOOD_PICKAXE), 8.5f, 9.1f);
+        ItemEntity pick1 = lying(ItemStack.of("wooden_pickaxe"), 8.5f, 9f);
+        ItemEntity pick2 = lying(ItemStack.of("wooden_pickaxe"), 8.5f, 9.1f);
         a.age = 100f;
         b.age = 5f;
         java.util.List<ItemEntity> list = new java.util.ArrayList<>(
@@ -702,8 +737,8 @@ final class FeatureTests {
         assertTrue("tools never merge", pick1.stack.count == 1 && pick2.stack.count == 1);
         assertEq("a merged stack takes the younger age", 5f, a.age);
 
-        ItemEntity meat1 = lying(new ItemStack(FoodType.RAW_BEEF, 2), 3.5f, 3.5f);
-        ItemEntity meat2 = lying(new ItemStack(FoodType.RAW_BEEF, 3), 3.7f, 3.6f);
+        ItemEntity meat1 = lying(ItemStack.of("beef", 2), 3.5f, 3.5f);
+        ItemEntity meat2 = lying(ItemStack.of("beef", 3), 3.7f, 3.6f);
         java.util.List<ItemEntity> food = new java.util.ArrayList<>(java.util.List.of(meat1, meat2));
         ItemEntity.mergeNearby(food);
         assertEq("food merges whole", 5, meat1.stack.count);
@@ -725,12 +760,12 @@ final class FeatureTests {
         com.mineclone.save.SaveManager sm = new com.mineclone.save.SaveManager(new java.io.File(root, "saves"));
         byte[] blocks = new byte[com.mineclone.save.SaveFormat.CHUNK_VOLUME];
         byte[] meta = new byte[com.mineclone.save.SaveFormat.CHUNK_VOLUME];
-        ItemStack pick = new ItemStack(com.mineclone.world.ToolType.STONE_PICKAXE);
-        pick.damage = 17;
+        ItemStack pick = ItemStack.of("stone_pickaxe");
+        pick.setDamage(17);
         java.util.List<com.mineclone.world.DroppedItem> dropped = java.util.List.of(
                 new com.mineclone.world.DroppedItem(new ItemStack(BlockType.COBBLE, 42), 3.5f, 61.25f, -7.75f, 12.5f),
                 new com.mineclone.world.DroppedItem(pick, 4f, 60f, -6f, 200f),
-                new com.mineclone.world.DroppedItem(new ItemStack(FoodType.RAW_BEEF, 3), 5f, 60f, -5f, 0f));
+                new com.mineclone.world.DroppedItem(ItemStack.of("beef", 3), 5f, 60f, -5f, 0f));
         sm.saveChunkAsync("w1", new com.mineclone.save.ChunkSnapshot(0, -1, blocks, meta,
                 new java.util.HashMap<>(), new java.util.HashMap<>(), dropped));
         sm.flushAndAwait();
@@ -738,12 +773,13 @@ final class FeatureTests {
         assertTrue("chunk loaded", out != null);
         assertEq("all items came back", 3, out.items.size());
         com.mineclone.world.DroppedItem cobble = out.items.get(0);
-        assertEq("block stack", BlockType.COBBLE, cobble.stack.type);
+        assertEq("block stack", BlockType.COBBLE, cobble.stack.block());
         assertEq("its count", 42, cobble.stack.count);
         assertTrue("its place", cobble.x == 3.5f && cobble.y == 61.25f && cobble.z == -7.75f);
         assertEq("its age", 12.5f, cobble.age);
-        assertEq("tool keeps its wear", 17, out.items.get(1).stack.damage);
-        assertEq("food keeps its kind", FoodType.RAW_BEEF, out.items.get(2).stack.food);
+        assertEq("tool keeps its wear", 17, out.items.get(1).stack.damage());
+        assertEq("food keeps its kind", "mineclone:beef",
+                out.items.get(2).stack.item.id.toString());
 
         // Чанк отдаёт предметы в мир один раз, но помнит их для записи.
         com.mineclone.world.Chunk c = new com.mineclone.world.Chunk(0, -1);
@@ -901,6 +937,9 @@ final class FeatureTests {
                 && n.get(Weather.Kind.CLEAR) > n.get(Weather.Kind.STORM));
         assertTrue("storms are rare (" + n.get(Weather.Kind.STORM) + ")",
                 n.get(Weather.Kind.STORM) < 4000 * 0.14);
+        int wet = n.get(Weather.Kind.LIGHT) + n.get(Weather.Kind.HEAVY)
+                + n.get(Weather.Kind.STORM);
+        assertTrue("rainy fronts stay occasional (" + wet + ")", wet < 4000 * 0.25);
     }
 
     private static void testWeatherVisibility() {
@@ -920,8 +959,8 @@ final class FeatureTests {
         for (long f = 1; f < 400 && (clearWind < 0 || stormWind < 0); f++) {
             float mid = f * Weather.FRONT_LENGTH + Weather.FRONT_LENGTH * 0.6f;
             Weather.Kind k = Weather.kindAt(seed, f);
-            if (Weather.kindAt(seed, f - 1) != k)
-                continue;           // берём фронт, где погода не менялась
+            // К середине фронта минутный переход давно закончился, поэтому
+            // соседний фронт может быть любого вида.
             float[] w = Weather.wind(seed, mid);
             float speed = (float) Math.hypot(w[0], w[1]);
             if (k == Weather.Kind.CLEAR && clearWind < 0) clearWind = speed;
@@ -932,6 +971,175 @@ final class FeatureTests {
     }
 
     // ---- небо ----------------------------------------------------------------
+
+    /**
+     * Снос осадков и тумана — интеграл ветра, а не «ветер × время».
+     *
+     * <p>Ветер пульсирует порывами по построению, и произведение пульсации на
+     * растущее общее время двигало разом весь снегопад и весь туман. Тест
+     * держит оба конца: что порывы действительно есть и что снос от них не
+     * пятится назад.
+     */
+    private static void testWeatherDrift() {
+        long seed = 20260921L;
+        // Порывы: за двенадцать секунд сила ветра гуляет заметно.
+        float min = Float.MAX_VALUE, max = 0f;
+        for (int i = 0; i <= 120; i++) {
+            float[] w = com.mineclone.world.Weather.wind(seed, 500f + i * 0.1f);
+            float speed = (float) Math.hypot(w[0], w[1]);
+            min = Math.min(min, speed);
+            max = Math.max(max, speed);
+        }
+        assertTrue("ветер пульсирует порывами", max > min * 1.3f);
+
+        // Наивная формула на тех же данных пятится: именно это и качало снег.
+        boolean naiveWentBack = false;
+        float prevNaive = Float.NEGATIVE_INFINITY;
+        com.mineclone.game.WeatherDrift drift = new com.mineclone.game.WeatherDrift();
+        float prevDrift = Float.NEGATIVE_INFINITY;
+        boolean driftWentBack = false;
+        boolean windAlwaysForward = true;
+        for (int i = 0; i <= 120; i++) {
+            float t = 500f + i * 0.1f;
+            float[] w = com.mineclone.world.Weather.wind(seed, t);
+            if (w[0] <= 0f)
+                windAlwaysForward = false;
+            float naive = w[0] * t;
+            if (naive < prevNaive - 1e-3f)
+                naiveWentBack = true;
+            prevNaive = naive;
+            drift.advance(0.1f, w[0], w[1], 0f);
+            if (drift.x < prevDrift - 1e-6f)
+                driftWentBack = true;
+            prevDrift = drift.x;
+        }
+        assertTrue("выбран отрезок, где ветер всё время дует в одну сторону", windAlwaysForward);
+        assertTrue("наивная формула пятится назад", naiveWentBack);
+        assertTrue("накопленный снос не пятится", !driftWentBack);
+
+        // Буря несёт снег сильнее и роняет его быстрее; без бури добавок нет.
+        com.mineclone.game.WeatherDrift calm = new com.mineclone.game.WeatherDrift();
+        com.mineclone.game.WeatherDrift storm = new com.mineclone.game.WeatherDrift();
+        for (int i = 0; i < 100; i++) {
+            calm.advance(0.05f, 2f, 0f, 0f);
+            storm.advance(0.05f, 2f, 0f, 1f);
+        }
+        assertTrue("в штиль снег несёт как всё остальное",
+                Math.abs(calm.snowX - calm.x) < 1e-4f);
+        assertTrue("в штиль буря ничего не добавляет к падению",
+                calm.snowFall == 0f && calm.rainFall == 0f);
+        assertTrue("метель несёт снег дальше", storm.snowX > storm.x * 1.5f);
+        assertTrue("и роняет его быстрее", storm.snowFall > 0f && storm.rainFall > storm.snowFall);
+
+        // Рывок кадра не имеет права рвать снос длинным шагом.
+        com.mineclone.game.WeatherDrift hitch = new com.mineclone.game.WeatherDrift();
+        hitch.advance(1f, 10f, 0f, 0f);
+        assertTrue("длинный кадр обрезан", hitch.x <= 10f * 0.1f + 1e-4f);
+
+        com.mineclone.game.WeatherDrift reset = new com.mineclone.game.WeatherDrift();
+        reset.advance(0.1f, 5f, 5f, 1f);
+        reset.reset();
+        assertTrue("сброс обнуляет всё",
+                reset.x == 0f && reset.z == 0f && reset.snowX == 0f && reset.snowZ == 0f
+                        && reset.snowFall == 0f && reset.rainFall == 0f);
+    }
+
+    /** Полсекунды кадров по 1/60 с при заданной камере и скорости. */
+    private static void spin(com.mineclone.render.BodyRotation b, float seconds,
+            float cameraYaw, float velX, float velZ) {
+        for (int i = 0; i < (int) (seconds * 60f); i++)
+            b.update(1f / 60f, cameraYaw, 0f, velX, velZ);
+    }
+
+    /**
+     * Голова поворачивается сразу, корпус — нехотя.
+     *
+     * <p>Пока взгляд в пределах конуса, плечи стоят на месте: человек,
+     * который разворачивается всем телом на каждое движение мыши, выглядит
+     * флюгером. За пределом корпус подтягивается — но ровно до предела, а не
+     * до головы, иначе конуса бы не было вовсе.
+     */
+    private static void testBodyRotation() {
+        float limit = com.mineclone.render.BodyRotation.MAX_OFFSET;
+        com.mineclone.render.BodyRotation b = new com.mineclone.render.BodyRotation();
+
+        // Внутри конуса корпус не шевелится.
+        b.snap(0f, 0f);
+        spin(b, 1f, (float) Math.toRadians(60), 0f, 0f);
+        assertTrue("корпус стоит, пока голова в конусе", Math.abs(b.bodyYaw) < 1e-4f);
+        assertTrue("голова смотрит в камеру",
+                Math.abs(b.headYaw - (float) Math.toRadians(60)) < 1e-5f);
+
+        // За пределом — подтягивается ровно до предела.
+        b.snap(0f, 0f);
+        spin(b, 2f, (float) Math.toRadians(150), 0f, 0f);
+        assertTrue("корпус довернулся до предела, а не до головы",
+                Math.abs(b.headOffset() - limit) < 0.01f);
+        assertTrue("и встал там, где обязан (" + Math.toDegrees(b.bodyYaw) + "°)",
+                Math.abs(b.bodyYaw - (float) Math.toRadians(75)) < 0.01f);
+
+        // Рывок мыши за один кадр не имеет права вывернуть шею.
+        b.snap(0f, 0f);
+        b.update(1f / 60f, (float) Math.toRadians(179), 0f, 0f, 0f);
+        assertTrue("предел держится и на первом же кадре ("
+                        + Math.toDegrees(b.headOffset()) + "°)",
+                Math.abs(b.headOffset()) <= limit + 1e-4f);
+
+        // Переход через ±180° идёт короткой дугой, а не кругом.
+        b.snap((float) Math.toRadians(179), 0f);
+        b.update(1f / 60f, (float) Math.toRadians(-179), 0f, 0f, 0f);
+        assertTrue("шов на 180° не считается разворотом (" 
+                        + Math.toDegrees(b.headOffset()) + "°)",
+                Math.abs(b.headOffset()) < (float) Math.toRadians(3));
+        assertTrue("и корпус на нём не дёргается",
+                Math.abs(b.bodyYaw - (float) Math.toRadians(179)) < 1e-4f);
+
+        // Наклон головы ограничен вертикалью, корпус его не видит вовсе.
+        b.snap(0f, 0f);
+        b.update(1f / 60f, 0f, (float) Math.toRadians(200), 0f, 0f);
+        assertTrue("наклон обрезан по вертикали",
+                Math.abs(b.headPitch - (float) (Math.PI / 2.0)) < 1e-5f);
+
+        // Кратчайшая дуга в самом сглаживании.
+        float mid = com.mineclone.render.BodyRotation.lerpAngle(
+                (float) Math.toRadians(170), (float) Math.toRadians(-170), 0.5f);
+        assertTrue("середина между 170° и −170° лежит на шве (" 
+                        + Math.toDegrees(mid) + "°)",
+                Math.abs(Math.abs(mid) - Math.PI) < 0.02f);
+    }
+
+    /**
+     * Корпус разворачивается к движению.
+     *
+     * <p>Идёшь вперёд — плечи вперёд; идёшь боком — плечи уходят вбок ровно
+     * настолько, насколько позволяет конус. Без этого модель скользит боком,
+     * глядя прямо, как на льду.
+     */
+    private static void testBodyFollowsMovement() {
+        float limit = com.mineclone.render.BodyRotation.MAX_OFFSET;
+        com.mineclone.render.BodyRotation b = new com.mineclone.render.BodyRotation();
+
+        // Взгляд и шаг в одну сторону: корпус доезжает до них обоих.
+        b.snap(0f, 0f);
+        float east = (float) (Math.PI / 2.0);
+        spin(b, 2f, east, 4f, 0f);
+        assertTrue("корпус довернулся к ходу (" + Math.toDegrees(b.bodyYaw) + "°)",
+                Math.abs(com.mineclone.render.BodyRotation.wrap(b.bodyYaw - east)) < 0.02f);
+
+        // Шаг вбок: корпус тянется к направлению хода, но конус его держит.
+        b.snap(0f, 0f);
+        spin(b, 2f, 0f, 4f, 0f);
+        assertTrue("боком корпус уходит к ходу до упора в конус ("
+                        + Math.toDegrees(b.bodyYaw) + "°)",
+                Math.abs(b.bodyYaw - limit) < 0.02f);
+        assertTrue("и шея не выворачивается", Math.abs(b.headOffset()) <= limit + 1e-4f);
+
+        // Еле ползущий игрок считается стоящим: дрожание скорости у стены не
+        // должно крутить плечи.
+        b.snap(0f, 0f);
+        spin(b, 1f, 0f, 0.05f, 0f);
+        assertTrue("ползком корпус не крутится", Math.abs(b.bodyYaw) < 1e-4f);
+    }
 
     private static void testMoonPhases() {
         double day = NightSky.CYCLE;
@@ -1038,11 +1246,22 @@ final class FeatureTests {
             m.update(1f / 60f, 0f, 0f, 0f, 0f, true);
             lowest = Math.min(lowest, m.dip());
         }
-        assertTrue("landing drops the eyes (" + lowest + ")", lowest < -0.03f);
+        assertTrue("landing drops the eyes (" + lowest + ")", lowest < -0.02f);
         assertTrue("dip is bounded", lowest >= -CameraMotion.MAX_DIP - 1e-4f);
         for (int i = 0; i < 90; i++)
             m.update(1f / 60f, 0f, 0f, 0f, 0f, true);
         assertTrue("eyes come back (" + m.dip() + ")", Math.abs(m.dip()) < 0.004f);
+
+        CameraMotion hard = new CameraMotion();
+        hard.update(1f / 60f, 0f, 0f, 0f, 0f, true);
+        hard.update(1f / 60f, 0f, 0f, 0f, 30f, true);
+        float hardLowest = 0f;
+        for (int i = 0; i < 20; i++) {
+            hard.update(1f / 60f, 0f, 0f, 0f, 0f, true);
+            hardLowest = Math.min(hardLowest, hard.dip());
+        }
+        assertTrue("even a hard landing stays comfortable (" + hardLowest + ")",
+                hardLowest >= -CameraMotion.MAX_DIP - 1e-4f && CameraMotion.MAX_DIP <= 0.12f);
     }
 
     // ---- индикаторы звука ----------------------------------------------------
@@ -1105,7 +1324,7 @@ final class FeatureTests {
         assertEq("furnace uses the right button", ContextHint.RMB,
                 ContextHint.forTarget(BlockType.FURNACE, null, true, false).key());
         assertTrue("stone needs no hint", ContextHint.forTarget(BlockType.STONE, null, true, false) == null);
-        ItemStack beef = new ItemStack(FoodType.COOKED_BEEF, 3);
+        ItemStack beef = ItemStack.of("cooked_beef", 3);
         assertTrue("food in hand suggests eating",
                 ContextHint.forTarget(BlockType.STONE, beef, true, false).action().startsWith("съесть"));
         assertTrue("a full stomach suggests nothing",

@@ -153,11 +153,13 @@ public final class PrecipitationRenderer {
      *
      * @param snowfall сила снегопада 0..1
      * @param rain     сила дождя 0..1
+     * @param drift    пройденный воздухом путь — им смещаются частицы
      * @param storm    буря 0..1 — закрутка, скорость и позёмка
      * @param snowColor,rainColor линейный цвет с учётом освещения кадра
      */
     public void render(Matrix4f proj, Matrix4f view, Vector3f camPos, float time,
-                       float windX, float windZ, float snowfall, float rain, float storm,
+                       float windX, float windZ, com.mineclone.game.WeatherDrift drift,
+                       float snowfall, float rain, float storm,
                        Vector3f snowColor, Vector3f rainColor, float linearOut) {
         if ((snowfall < 0.01f && rain < 0.01f) || uploadedOriginX == Integer.MIN_VALUE)
             return;
@@ -177,6 +179,12 @@ public final class PrecipitationRenderer {
         shader.setVec3("uCamUp", cameraUp);
         shader.setFloat("uTime", time);
         shader.setVec2("uWind", windX, windZ);
+        // Положение частицы считается по пройденному пути: ветер пульсирует
+        // порывами, и «ветер × время» качало бы весь снегопад разом.
+        shader.setVec2("uDrift", drift.x, drift.z);
+        shader.setVec2("uDriftSnow", drift.snowX, drift.snowZ);
+        shader.setFloat("uFallSnow", drift.snowFall);
+        shader.setFloat("uFallRain", drift.rainFall);
         shader.setFloat("uStorm", storm);
         shader.setVec3("uBox", BOX_H, BOX_V, BOX_H);
         shader.setInt("uHeight", HEIGHT_UNIT);

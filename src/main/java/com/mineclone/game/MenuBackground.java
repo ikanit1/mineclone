@@ -49,6 +49,12 @@ public final class MenuBackground {
     static final float MAX_CLOUDS = 0.8f;
     /** С чего начинается фон: утро, солнце невысоко над горизонтом. */
     static final float START_TIME = 0.55f;
+    /**
+     * Сколько мешей фон поднимает на видеокарту за кадр. Два, а не три:
+     * загрузка буфера идёт в главном потоке, и на старте меню все чанки
+     * приезжают разом.
+     */
+    private static final int MESH_UPLOADS_PER_FRAME = 2;
 
     /** Orbit center in world coords. Placed mid-chunk (0,0) so 3-chunk radius covers it. */
     private static final float CENTER_X = Chunk.SIZE_X * 0.5f;
@@ -104,18 +110,16 @@ public final class MenuBackground {
         aurora = NightSky.auroraStrength(SaveFormat.MENU_SEED, gameTime,
                 world.biomes.biomeAt((int) CENTER_X, (int) CENTER_Z), cloudiness);
 
-        // Preload 3x3 around the orbit center if missing — synchronously so the
-        // very first menu frame already shows terrain instead of empty sky.
+        // Чанки фона генерируются только в фоновом пуле. Раньше первый кадр
+        // меню строил 3×3 синхронно, «чтобы сразу была земля» — и стоил двести
+        // миллисекунд: игра замирала на старте ровно там, где игрок на неё
+        // впервые смотрит. Земля появляется на несколько кадров позже, под
+        // проявляющимся титулом этого не видно, а замирания нет.
         int pcx = (int) Math.floor(CENTER_X / Chunk.SIZE_X);
         int pcz = (int) Math.floor(CENTER_Z / Chunk.SIZE_Z);
-        for (int dx = -1; dx <= 1; dx++)
-            for (int dz = -1; dz <= 1; dz++)
-                if (world.getChunkIfExists(pcx + dx, pcz + dz) == null)
-                    world.getChunk(pcx + dx, pcz + dz);  // forces synchronous generation
-
         loader.ensureRadius(pcx, pcz, RADIUS);
         loader.drainLightFlood(2);
-        for (ChunkLoader.Ready r : loader.drainReady(3)) {
+        for (ChunkLoader.Ready r : loader.drainReady(MESH_UPLOADS_PER_FRAME)) {
             Mesh old = meshes.remove(r.key);
             if (old != null) old.destroy();
             Mesh oldW = waterMeshes.remove(r.key);

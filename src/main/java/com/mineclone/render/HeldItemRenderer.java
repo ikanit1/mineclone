@@ -33,12 +33,15 @@ public final class HeldItemRenderer {
     // указывает на плечо, −Y на кулак (как на тайлах скина).
     private static final float ARM_W = 0.22f;
     private static final float ARM_L = 0.72f;
+    private static final float EMPTY_ARM_W = 0.282f;
 
     private final Shader blockShader;
     private final Shader armShader;
     private final Map<BlockType, Mesh> blockMeshes = new EnumMap<>(BlockType.class);
-    private final Map<com.mineclone.world.ToolType, Mesh> toolMeshes =
-            new EnumMap<>(com.mineclone.world.ToolType.class);
+    // Ключ — сам предмет, а не его тайл: два предмета с одной иконкой
+    // остаются двумя предметами, и делить меш между ними незачем.
+    private final Map<com.mineclone.item.Item, Mesh> toolMeshes = new java.util.HashMap<>();
+    private final Map<com.mineclone.item.Item, Mesh> materialMeshes = new java.util.HashMap<>();
     private final int armVao, armVbo;
     private final int armTexture;
 
@@ -119,16 +122,17 @@ public final class HeldItemRenderer {
                     .rotateX((float) Math.toRadians(10f + arc * 10f) - tilt * 0.6f)
                     .scale(ARM_W, ARM_L, ARM_W);
         }
-        // Пустая рука: предплечье наискось из правого нижнего угла, замах
-        // выносит кулак к центру экрана.
+        // Пустая рука: две широкие грани предплечья сходятся у кисти.
+        // Торец отвёрнут от глаз, плечо уходит за нижний край кадра.
+        // Поза подобрана по силуэту при отдельном FOV руки 70 градусов.
         return new Matrix4f()
-                .translate(0.68f + bobX - arc * 0.24f,
-                           -0.64f - drop + bobY + arc * 0.12f,
+                .translate(0.710f + bobX - arc * 0.24f,
+                           -0.680f - drop + bobY + arc * 0.12f,
                            -0.95f - arc * 0.16f)
-                .rotateZ((float) Math.PI + (float) Math.toRadians(18f + arc * 14f))
-                .rotateY((float) Math.toRadians(-15f + yaw * 12f))
-                .rotateX((float) Math.toRadians(-15f + arc * 20f) - tilt)
-                .scale(ARM_W, ARM_L, ARM_W);
+                .rotateZ((float) Math.PI + (float) Math.toRadians(-34f + arc * 14f))
+                .rotateY((float) Math.toRadians(4.4f + yaw * 12f))
+                .rotateX((float) Math.toRadians(52.7f + arc * 20f) - tilt)
+                .scale(EMPTY_ARM_W, ARM_L, EMPTY_ARM_W);
     }
 
     /**
@@ -304,26 +308,27 @@ public final class HeldItemRenderer {
     //  Отрисовка
     // -------------------------------------------------------------------------
 
-    public void render(TextureAtlas atlas, BlockType held, com.mineclone.world.ToolType heldTool,
+    public void render(TextureAtlas atlas, com.mineclone.world.ItemStack held,
             float aspect, float fovDegrees, float equipProgress, float swingProgress,
             float walkDistance, boolean underwater, boolean viewBobbing,
             float daylight, float brightness, float skyFrac, float blockFrac,
             float linearOut) {
-        render(atlas, held, heldTool, aspect, fovDegrees, equipProgress, swingProgress,
+        render(atlas, held, aspect, fovDegrees, equipProgress, swingProgress,
                 walkDistance, underwater, viewBobbing, daylight, brightness, skyFrac, blockFrac,
-                linearOut, 1f, 0f, 0f);
+                linearOut, 0f, 0f);
     }
 
     /**
-     * @param toolCondition остаток прочности инструмента 0..1 — по нему трещины
-     * @param inspect       0..1 — поза осмотра предмета
-     * @param spin          угол вращения предмета при осмотре, радианы
+     * @param inspect 0..1 — поза осмотра предмета
+     * @param spin    угол вращения предмета при осмотре, радианы
      */
-    public void render(TextureAtlas atlas, BlockType held, com.mineclone.world.ToolType heldTool,
+    public void render(TextureAtlas atlas, com.mineclone.world.ItemStack held,
             float aspect, float fovDegrees, float equipProgress, float swingProgress,
             float walkDistance, boolean underwater, boolean viewBobbing,
             float daylight, float brightness, float skyFrac, float blockFrac,
-            float linearOut, float toolCondition, float inspect, float spin) {
+            float linearOut, float inspect, float spin) {
+        BlockType heldBlock = held == null ? null : held.block();
+        com.mineclone.item.Item heldTool = held != null && held.tool() != null ? held.item : null;
 
         // Единый источник правды по свету — уровень освещённости там, где стоит
         // игрок. Рука и предмет берут одну и ту же настройку, поэтому не могут
@@ -336,7 +341,8 @@ public final class HeldItemRenderer {
         Matrix4f projection = projection(aspect, fovDegrees);
         Matrix4f view = new Matrix4f().translate(
                 -0.48f * Math.max(0f, 1f - aspect / (16f / 9f)), 0f, 0f);
-        boolean holding = (held != null && held != BlockType.AIR) || heldTool != null;
+        boolean holding = held != null && held.item != null
+                && (heldBlock != null && heldBlock != BlockType.AIR || heldTool != null || held.iconTile() >= 0);
 
         // Собственный чистый z-буфер на первый план: без него задние грани
         // бокса руки перекрывают передние (обход вершин куба не гарантирован,
@@ -355,6 +361,8 @@ public final class HeldItemRenderer {
         armShader.setMat4("uModel", armPose(equipProgress, swingProgress,
                 walkDistance, viewBobbing, holding, inspect));
         armShader.setInt("uSkin", 0);
+        // Четыре широких пикселя поперёк грани и двенадцать вдоль руки.
+        armShader.setVec2("uSkinGrid", MobSkins.COLS * 4f, MobSkins.ROWS * 12f);
         armShader.setVec2("uTileSize", MobRenderer.TILE_U, MobRenderer.TILE_V);
         armShader.setVec2("uUvFront", MobRenderer.uvX(MobSkins.T_ACCENT),
                 MobRenderer.uvY(MobSkins.T_ACCENT));
@@ -367,7 +375,7 @@ public final class HeldItemRenderer {
         armShader.setFloat("uSkyVis", 1f);
         armShader.setFloat("uBlockVis", 0f);
         // Под водой рука уходит в холодный синий — как и всё остальное.
-        armShader.setVec3("uTint", underwater ? UNDERWATER_TINT : NO_TINT);
+        armShader.setVec3("uTint", underwater ? UNDERWATER_TINT : SKIN_TINT);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, armTexture);
         glBindVertexArray(armVao);
@@ -378,10 +386,12 @@ public final class HeldItemRenderer {
         // --- предмет ---------------------------------------------------------
         if (holding) {
             Mesh mesh = heldTool != null
-                    ? toolMeshes.computeIfAbsent(heldTool, HeldItemRenderer::createToolMesh)
-                    : blockMeshes.computeIfAbsent(held, HeldItemRenderer::createItemMesh);
+                    ? toolMeshes.computeIfAbsent(held.item, HeldItemRenderer::createToolMesh)
+                    : heldBlock != null
+                        ? blockMeshes.computeIfAbsent(heldBlock, HeldItemRenderer::createItemMesh)
+                        : materialMeshes.computeIfAbsent(held.item, HeldItemRenderer::createMaterialMesh);
             // Факел светит сам — не даём ему потемнеть в руке.
-            SceneLighting itemLight = held == BlockType.TORCH && heldTool == null
+            SceneLighting itemLight = heldBlock == BlockType.TORCH && heldTool == null
                     ? SceneLighting.firstPerson(brightness, Math.max(handLevel, 0.85f))
                     : handLight;
             itemLight.linearOut = linearOut;
@@ -401,9 +411,9 @@ public final class HeldItemRenderer {
             blockShader.unbind();
 
             if (heldTool != null) {
-                int stage = crackStage(toolCondition);
+                int stage = crackStage(held.condition());
                 if (stage >= 0)
-                    renderCracks(atlas, mesh, projection, view, pose, heldTool.tile, stage, linearOut);
+                    renderCracks(atlas, mesh, projection, view, pose, held.iconTile(), stage, linearOut);
                 if (inspect < 0.05f)
                     renderTrail(projection, view, equipProgress, swingProgress, walkDistance,
                             viewBobbing, handLevel, linearOut);
@@ -481,44 +491,34 @@ public final class HeldItemRenderer {
         glDisable(GL_BLEND);
     }
 
-    private static final Vector3f NO_TINT = new Vector3f(1f, 1f, 1f);
-    private static final Vector3f UNDERWATER_TINT = new Vector3f(0.62f, 0.78f, 1.0f);
+    private static final Vector3f SKIN_TINT = new Vector3f(0.22f, 0.23f, 0.30f);
+    private static final Vector3f UNDERWATER_TINT = new Vector3f(SKIN_TINT).mul(0.62f, 0.78f, 1.0f);
 
-    /**
-     * Инструмент в руке — плоский спрайт, а не объёмная модель.
-     *
-     * Спрайт двусторонний и развёрнут по диагонали кадра: иконка нарисована
-     * по диагонали тайла, и ровно поставленный квад выглядел бы как открытка
-     * с картинкой, а не как предмет в кулаке.
-     */
-    private static Mesh createToolMesh(com.mineclone.world.ToolType tool) {
+    /** Объёмная модель инструмента: отдельная рукоять и рабочая часть. */
+    private static Mesh createToolMesh(com.mineclone.item.Item tool) {
         List<Float> pos = new ArrayList<>();
         List<Float> uvs = new ArrayList<>();
         List<Float> light = new ArrayList<>();
         List<Float> blockLight = new ArrayList<>();
         List<Integer> indices = new ArrayList<>();
-        float[] uv = TextureAtlas.uv(tool.tile);
-        float u0 = uv[0], v0 = uv[1], u1 = uv[2], v1 = uv[3];
-        float h = 0.62f;
-        float[][][] planes = {
-            { {-h, -h, 0f}, { h, -h, 0f}, { h, h, 0f}, {-h, h, 0f} },   // лицо
-            { { h, -h, 0f}, {-h, -h, 0f}, {-h, h, 0f}, { h, h, 0f} },   // изнанка
-        };
-        float[][] uvQ = { {u0, v1}, {u1, v1}, {u1, v0}, {u0, v0} };
-        float[][] uvQFlipped = { {u1, v1}, {u0, v1}, {u0, v0}, {u1, v0} };
-        for (int p = 0; p < planes.length; p++) {
-            int base = pos.size() / 3;
-            float[][] q = (p == 0) ? uvQ : uvQFlipped;
-            for (int i = 0; i < 4; i++) {
-                pos.add(planes[p][i][0]); pos.add(planes[p][i][1]); pos.add(planes[p][i][2]);
-                uvs.add(q[i][0]); uvs.add(q[i][1]);
-                light.add(1.0f); blockLight.add(0f);
-            }
-            indices.add(base); indices.add(base + 1); indices.add(base + 2);
-            indices.add(base); indices.add(base + 2); indices.add(base + 3);
-        }
+        com.mineclone.item.ToolClass kind = tool.tool.toolClass();
+        int materialTile = tool.id.path().startsWith("gold_") ? 120 : tool.id.path().startsWith("copper_") ? 121 : 122;
+        emitSolidBox(pos, uvs, light, blockLight, indices, materialTile, 0f, -0.18f, 0f, .10f, .72f, .10f);
+        if (kind == com.mineclone.item.ToolClass.PICKAXE)
+            emitSolidBox(pos, uvs, light, blockLight, indices, materialTile, 0f, .27f, 0f, .82f, .12f, .12f);
+        else if (kind == com.mineclone.item.ToolClass.AXE)
+            emitSolidBox(pos, uvs, light, blockLight, indices, materialTile, .25f, .28f, 0f, .38f, .42f, .14f);
+        else if (kind == com.mineclone.item.ToolClass.SHOVEL)
+            emitSolidBox(pos, uvs, light, blockLight, indices, materialTile, 0f, .28f, 0f, .38f, .24f, .18f);
         return new Mesh(toFloatArray(pos), toFloatArray(uvs), toFloatArray(light),
                 toFloatArray(blockLight), toIntArray(indices));
+    }
+
+    private static Mesh createMaterialMesh(com.mineclone.item.Item item) {
+        List<Float> p = new ArrayList<>(), u = new ArrayList<>(), l = new ArrayList<>(), bl = new ArrayList<>();
+        List<Integer> i = new ArrayList<>();
+        emitSolidBox(p, u, l, bl, i, 122, 0f, -0.18f, 0f, .10f, .82f, .10f);
+        return new Mesh(toFloatArray(p), toFloatArray(u), toFloatArray(l), toFloatArray(bl), toIntArray(i));
     }
 
     /** Dispatches to the correct mesh builder for each block type. */
@@ -610,6 +610,52 @@ public final class HeldItemRenderer {
         }
     }
 
+    /** Append a textured cuboid in local first-person coordinates. */
+    private static void emitBox(List<Float> pos, List<Float> uvs, List<Float> light,
+            List<Float> blockLight, List<Integer> indices, int tile,
+            float cx, float cy, float cz, float sx, float sy, float sz) {
+        float a = -.5f, b = .5f;
+        float[][][] faces = {
+                {{a,b},{b,b},{b,a},{a,a}}, {{b,b},{a,b},{a,a},{b,a}},
+                {{b,b},{b,b},{b,a},{b,a}}, {{a,b},{a,b},{a,a},{a,a}},
+                {{a,b},{b,b},{b,b},{a,b}}, {{a,a},{b,a},{b,a},{a,a}}
+        };
+        // Explicit vertices avoid allocations and keep UV orientation consistent with block meshes.
+        float[][][] v = {
+            {{-1,-1,1},{1,-1,1},{1,1,1},{-1,1,1}}, {{1,-1,-1},{-1,-1,-1},{-1,1,-1},{1,1,-1}},
+            {{1,-1,1},{1,-1,-1},{1,1,-1},{1,1,1}}, {{-1,-1,-1},{-1,-1,1},{-1,1,1},{-1,1,-1}},
+            {{-1,1,1},{1,1,1},{1,1,-1},{-1,1,-1}}, {{-1,-1,-1},{1,-1,-1},{1,-1,1},{-1,-1,1}}
+        };
+        float[] uv = TextureAtlas.uv(tile);
+        for (float[][] face : v) {
+            int base = pos.size() / 3;
+            for (int q = 0; q < 4; q++) {
+                pos.add(cx + face[q][0] * sx * .5f); pos.add(cy + face[q][1] * sy * .5f); pos.add(cz + face[q][2] * sz * .5f);
+                float uu = (q == 0 || q == 3) ? uv[0] : uv[2], vv = (q < 2) ? uv[3] : uv[1];
+                uvs.add(uu); uvs.add(vv); light.add(1f); blockLight.add(0f);
+            }
+            indices.add(base); indices.add(base+1); indices.add(base+2); indices.add(base); indices.add(base+2); indices.add(base+3);
+        }
+    }
+
+    /** Same cuboid, but samples the material center so a 2D icon cannot turn into a floating card. */
+    private static void emitSolidBox(List<Float> pos, List<Float> uvs, List<Float> light,
+            List<Float> blockLight, List<Integer> indices, int tile,
+            float cx, float cy, float cz, float sx, float sy, float sz) {
+        float[] uv = TextureAtlas.uv(tile);
+        float u = (uv[0] + uv[2]) * .5f, v = (uv[1] + uv[3]) * .5f;
+        float[][][] faces = {
+            {{-1,-1,1},{1,-1,1},{1,1,1},{-1,1,1}}, {{1,-1,-1},{-1,-1,-1},{-1,1,-1},{1,1,-1}},
+            {{1,-1,1},{1,-1,-1},{1,1,-1},{1,1,1}}, {{-1,-1,-1},{-1,-1,1},{-1,1,1},{-1,1,-1}},
+            {{-1,1,1},{1,1,1},{1,1,-1},{-1,1,-1}}, {{-1,-1,-1},{1,-1,-1},{1,-1,1},{-1,-1,1}}
+        };
+        for (float[][] face : faces) {
+            int base = pos.size() / 3;
+            for (float[] q : face) { pos.add(cx + q[0]*sx*.5f); pos.add(cy + q[1]*sy*.5f); pos.add(cz + q[2]*sz*.5f); uvs.add(u); uvs.add(v); light.add(1f); blockLight.add(0f); }
+            indices.add(base); indices.add(base+1); indices.add(base+2); indices.add(base); indices.add(base+2); indices.add(base+3);
+        }
+    }
+
     private static float clamp01(float v) {
         return Math.max(0f, Math.min(1f, v));
     }
@@ -647,6 +693,8 @@ public final class HeldItemRenderer {
         for (Mesh m : toolMeshes.values())
             m.destroy();
         toolMeshes.clear();
+        for (Mesh m : materialMeshes.values()) m.destroy();
+        materialMeshes.clear();
         blockShader.destroy();
         armShader.destroy();
         crackShader.destroy();

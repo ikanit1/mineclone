@@ -1,0 +1,13 @@
+// Еда: мясо с мирных мобов. Жареное вдвое сытнее сырого — ради этой разницы
+// и строится печь.
+{
+  "beef":            { "name": "Сырая говядина",   "category": "food", "mass": 0.3, "icon": "raw_beef",       "food": { "nutrition": 3 } },
+  "porkchop":        { "name": "Сырая свинина",    "category": "food", "mass": 0.3, "icon": "raw_pork",       "food": { "nutrition": 3 } },
+  "chicken":         { "name": "Сырая курятина",   "category": "food", "mass": 0.3, "icon": "raw_chicken",    "food": { "nutrition": 2 } },
+  "mutton":          { "name": "Сырая баранина",   "category": "food", "mass": 0.3, "icon": "raw_mutton",     "food": { "nutrition": 2 } },
+
+  "cooked_beef":     { "name": "Жареная говядина", "category": "food", "mass": 0.3, "icon": "cooked_beef",    "food": { "nutrition": 7 } },
+  "cooked_porkchop": { "name": "Жареная свинина",  "category": "food", "mass": 0.3, "icon": "cooked_pork",    "food": { "nutrition": 7 } },
+  "cooked_chicken":  { "name": "Жареная курятина", "category": "food", "mass": 0.3, "icon": "cooked_chicken", "food": { "nutrition": 5 } },
+  "cooked_mutton":   { "name": "Жареная баранина", "category": "food", "mass": 0.3, "icon": "cooked_mutton",  "food": { "nutrition": 5 } }
+}

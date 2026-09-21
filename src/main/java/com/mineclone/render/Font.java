@@ -95,12 +95,20 @@ public class Font {
         return -1;
     }
 
+    /** Куда лёг один символ: прямоугольник на экране и его кусок текстуры. */
+    public interface GlyphSink {
+        void glyph(float x0, float y0, float x1, float y1,
+                float s0, float t0, float s1, float t1);
+    }
+
     /**
-     * Builds vertex data (pos.xy + uv.xy interleaved) for a string at (x, y) in screen pixels.
-     * Returns the number of vertices written.
+     * Раскладывает строку по буквам, начиная с (x, y) в экранных пикселях.
+     *
+     * <p>Отдаёт прямоугольники, а не пишет вершины: тот же обход нужен и
+     * пакетному рисовальщику интерфейса, и замеру ширины, и у каждого своя
+     * раскладка вершин.
      */
-    public int buildString(String s, float x, float y, FloatBuffer out) {
-        int verts = 0;
+    public void glyphs(String s, float x, float y, GlyphSink sink) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             FloatBuffer xb = stack.floats(x);
             FloatBuffer yb = stack.floats(y);
@@ -109,25 +117,11 @@ public class Font {
                 int c = s.charAt(i);
                 int r = rangeOf(c);
                 if (r < 0) continue;
-                if (out.remaining() < 24) break;
                 STBTruetype.stbtt_GetPackedQuad(ranges[r], bitmapW, bitmapH, c - RANGES[r][0],
                         xb, yb, q, true);
-
-                float x0 = q.x0(), y0 = q.y0(), x1 = q.x1(), y1 = q.y1();
-                float s0 = q.s0(), t0 = q.t0(), s1 = q.s1(), t1 = q.t1();
-
-                // two triangles, 6 vertices, pos+uv each
-                out.put(x0).put(y0).put(s0).put(t0);
-                out.put(x1).put(y0).put(s1).put(t0);
-                out.put(x1).put(y1).put(s1).put(t1);
-
-                out.put(x0).put(y0).put(s0).put(t0);
-                out.put(x1).put(y1).put(s1).put(t1);
-                out.put(x0).put(y1).put(s0).put(t1);
-                verts += 6;
+                sink.glyph(q.x0(), q.y0(), q.x1(), q.y1(), q.s0(), q.t0(), q.s1(), q.t1());
             }
         }
-        return verts;
     }
 
     /** Pixel width of a string when rendered. */

@@ -113,8 +113,8 @@ public class RenderAtmospherePreview {
         List<com.mineclone.world.entity.ItemEntity> items = new ArrayList<>();
         Object[][] drops = {
                 { new ItemStack(BlockType.COBBLE, 24), 21.4f, 20.6f, 0.4f },
-                { new ItemStack(ToolType.IRON_PICKAXE), 23.3f, 20.9f, 1.9f },
-                { new ItemStack(FoodType.RAW_BEEF, 2), 22.3f, 21.5f, 3.1f },
+                { ItemStack.of("iron_pickaxe"), 23.3f, 20.9f, 1.9f },
+                { ItemStack.of("beef", 2), 22.3f, 21.5f, 3.1f },
                 { new ItemStack(BlockType.WOOD, 1), 24.1f, 19.8f, 0.9f },
                 { new ItemStack(BlockType.TORCH, 3), 20.6f, 21.4f, 2.4f },
         };
@@ -281,8 +281,13 @@ public class RenderAtmospherePreview {
                 precip.updateField(world, eye);
                 Vector3f flake = PrecipitationRenderer.flakeColor(skyAmb, lightCol, fogCol);
                 Vector3f drop = PrecipitationRenderer.dropColor(flake);
-                precip.render(proj, view, eye, 57.3f, s.windX, s.windZ, s.snow, s.rain, s.storm,
-                        flake, drop, 1f);
+                // Снимок статичен, но снос всё равно должен быть путём, а не
+                // «ветер × время»: так кадр показывает ту же картину, что и игра.
+                com.mineclone.game.WeatherDrift drift = new com.mineclone.game.WeatherDrift();
+                for (int step = 0; step < 573; step++)
+                    drift.advance(0.1f, s.windX, s.windZ, s.storm);
+                precip.render(proj, view, eye, 57.3f, s.windX, s.windZ, drift,
+                        s.snow, s.rain, s.storm, flake, drop, 1f);
             }
 
             PostProcess.Settings ps = new PostProcess.Settings();
@@ -296,8 +301,8 @@ public class RenderAtmospherePreview {
             ps.fogTop = World.SEA_LEVEL + 15f;
             ps.fogDepth = 13f;
             ps.fogMaxDist = 64f;
-            ps.fogWindX = s.windX;
-            ps.fogWindZ = s.windZ;
+            ps.fogDriftX = s.windX * 21f;
+            ps.fogDriftZ = s.windZ * 21f;
             ps.fogLight.set(lightCol).mul(0.7f);
             ps.fogAmbient.set(skyAmb).mul(0.6f);
             ps.camPos.set(eye);
@@ -310,8 +315,10 @@ public class RenderAtmospherePreview {
                 ps.dofFocus = 0.3f;
                 ps.dofRange = 0.25f;
                 post.resolveDepth();
-                hand.render(atlas, null, ToolType.IRON_PICKAXE, (float) W / H, 70f, 1f, s.x.swing(),
-                        0f, false, false, daylight, 1f, 1f, 0f, 1f, s.x.condition(), s.x.inspect(), 0.9f);
+                ItemStack inHand = ItemStack.of("iron_pickaxe");
+                inHand.setDamage((int) ((1f - s.x.condition()) * inHand.item.durability));
+                hand.render(atlas, inHand, (float) W / H, 70f, 1f, s.x.swing(),
+                        0f, false, false, daylight, 1f, 1f, 0f, 1f, s.x.inspect(), 0.9f);
                 if (ps.dofStrength > 0f)
                     post.resolveHandDepth();
                 post.resolveColor();

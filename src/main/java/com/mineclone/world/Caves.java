@@ -78,7 +78,8 @@ public final class Caves {
     /** Режем только сам рельеф: воду и бедрок трогать нельзя. */
     private static boolean carvable(BlockType b) {
         return switch (b) {
-            case STONE, DIRT, GRASS, SAND, SNOWY_GRASS -> true;
+            case STONE, DIRT, GRASS, SAND, SNOWY_GRASS, PODZOL, PEAT, MUD,
+                    DRY_GRASS, RED_SAND, TERRACOTTA, LIMESTONE, BASALT, ASH, GRAVEL -> true;
             default -> false;
         };
     }

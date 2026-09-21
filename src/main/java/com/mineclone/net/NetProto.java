@@ -1,0 +1,133 @@
+package com.mineclone.net;
+
+/**
+ * Коды пакетов и версия протокола.
+ *
+ * <p>Пакет — это байт кода и его тело; несколько пакетов уезжают в одном
+ * сообщении транспорта ({@link NetChannel}). Так сделано не ради экономии
+ * байтов, а ради лимита сообщений: у Photon комната считает сообщения, а не
+ * килобайты, и один кадр сети обязан стоить одно сообщение, сколько бы правок
+ * блоков и мобов в него ни попало.
+ *
+ * <p>Кто кому пишет, зашито в имени: {@code S_} — хозяин комнате, {@code C_} —
+ * участник хозяину, {@code X_} — в обе стороны. Модель власти хозяйская: мир
+ * живёт у хозяина комнаты, участники просят, а не решают. ADR:
+ * {@code knowledge/decisions/multiplayer-photon.md}.
+ */
+public final class NetProto {
+
+    private NetProto() {
+    }
+
+    /**
+     * Версия протокола. Сверяется при входе: чужая — отказ с внятным текстом,
+     * а не тихий мир, в котором половина блоков не там.
+     */
+    public static final int VERSION = 2;
+
+    /** Сколько раз в секунду уходит кадр сети. */
+    public static final float TICK_RATE = 12f;
+    /** Как часто хозяин рассылает время суток: оно и так течёт у всех одинаково. */
+    public static final float TIME_SYNC_INTERVAL = 5f;
+    /** Сколько знаков помещается в одно сообщение чата. */
+    public static final int CHAT_LIMIT = 160;
+    /** Предельная длина имени игрока. */
+    public static final int NAME_LIMIT = 20;
+
+    // -------------------------------------------------------- рукопожатие
+
+    /** Участник представляется: версия протокола и имя. */
+    public static final int C_HELLO = 1;
+    /** Хозяин отвечает: сид, имя мира, время, режим — всё, из чего мир рождается. */
+    public static final int S_WELCOME = 2;
+    /** Хозяин отказывает: причина текстом. */
+    public static final int S_REJECT = 3;
+
+    // -------------------------------------------------------------- игроки
+
+    /** Положение, курс, состояние — самый частый пакет, шлётся всеми. */
+    public static final int X_PLAYER_STATE = 10;
+    /** Имя, режим и здоровье: редко, но надёжно. */
+    public static final int X_PLAYER_INFO = 11;
+    /** Игрок умер или возродился — чтобы модель не стояла трупом в воздухе. */
+    public static final int X_PLAYER_LIFE = 12;
+    /** Замах рукой: удар виден соседям. */
+    public static final int X_PLAYER_SWING = 13;
+    /** Игрок поставил или сломал блок: отдельное событие для пространственного звука. */
+    public static final int X_BLOCK_ACTION = 14;
+
+    // ----------------------------------------------------------------- мир
+
+    /** Хозяин: блок стал таким. Признак разрушения — играть звук и пыль. */
+    public static final int S_BLOCK_SET = 20;
+    /** Участник просит поставить или сломать блок. */
+    public static final int C_BLOCK_EDIT = 21;
+    /** Участник просит дельту чанка. */
+    public static final int C_CHUNK_REQUEST = 22;
+    /** Хозяин отдаёт дельту: чем чанк отличается от свежесгенерированного. */
+    public static final int S_CHUNK_DELTA = 23;
+    /** Время суток. */
+    public static final int S_TIME = 24;
+
+    // ------------------------------------------------------------- существа
+
+    /**
+     * Снимок мобов вокруг участника — список целиком, а не «появился/исчез».
+     *
+     * <p>Мобов в мире два десятка, и полный список стоит дешевле, чем
+     * отдельные события на каждого: у списка нет состояния, которое могло бы
+     * разойтись, и потерянный пакет исправляется следующим.
+     */
+    public static final int S_MOBS = 30;
+    /** Снимок предметов на земле — тоже список целиком. */
+    public static final int S_ITEMS = 32;
+    /** Участник ударил моба. */
+    public static final int C_MOB_HIT = 34;
+
+    // ---------------------------------------------------------- контейнеры
+
+    /** Участник открыл сундук или печь — просит содержимое. */
+    public static final int C_CONTAINER_OPEN = 40;
+    /** Хозяин отдаёт содержимое контейнера. */
+    public static final int S_CONTAINER = 41;
+    /** Участник закрыл контейнер: новое содержимое целиком. */
+    public static final int C_CONTAINER_COMMIT = 42;
+
+    // -------------------------------------------------------------- прочее
+
+    /** Строка чата или служебное сообщение. */
+    public static final int X_CHAT = 50;
+    /** Участник просит подобрать предмет: решает всё равно хозяин. */
+    public static final int C_ITEM_PICK = 51;
+    /** Хозяин выдаёт участнику стопку — подобранное или выбитое. */
+    public static final int S_GIVE = 52;
+
+    /** Читаемое имя кода — только для отладочной строки и сообщений об ошибке. */
+    public static String name(int code) {
+        return switch (code) {
+            case C_HELLO -> "HELLO";
+            case S_WELCOME -> "WELCOME";
+            case S_REJECT -> "REJECT";
+            case X_PLAYER_STATE -> "PLAYER_STATE";
+            case X_PLAYER_INFO -> "PLAYER_INFO";
+            case X_PLAYER_LIFE -> "PLAYER_LIFE";
+            case X_PLAYER_SWING -> "PLAYER_SWING";
+            case X_BLOCK_ACTION -> "BLOCK_ACTION";
+            case S_BLOCK_SET -> "BLOCK_SET";
+            case C_BLOCK_EDIT -> "BLOCK_EDIT";
+            case C_CHUNK_REQUEST -> "CHUNK_REQUEST";
+            case S_CHUNK_DELTA -> "CHUNK_DELTA";
+            case S_TIME -> "TIME";
+            case S_MOBS -> "MOBS";
+            case S_ITEMS -> "ITEMS";
+            case C_MOB_HIT -> "MOB_HIT";
+            case C_CONTAINER_OPEN -> "CONTAINER_OPEN";
+            case S_CONTAINER -> "CONTAINER";
+            case C_CONTAINER_COMMIT -> "CONTAINER_COMMIT";
+            case X_CHAT -> "CHAT";
+            case C_ITEM_PICK -> "ITEM_PICK";
+            case S_GIVE -> "GIVE";
+            default -> "code" + code;
+        };
+    }
+}

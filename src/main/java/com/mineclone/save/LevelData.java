@@ -21,6 +21,22 @@ public final class LevelData {
     public final float health;
     /** Сытость 0..20; для сейвов до v9 — полная. */
     public final float hunger;
+    /**
+     * Стопки, которым некуда лечь: курсор открытого окна на момент выхода.
+     *
+     * <p>Курсор — это предметы игрока, просто ни в одном слоте. Потерять их
+     * на выходе из мира нельзя, а класть в инвентарь на записи поздно: он мог
+     * быть полон. При загрузке они уходят в инвентарь, остаток — к ногам.
+     */
+    public final ItemStack[] pending;
+    /**
+     * Секции level.dat, которых эта версия игры не знает.
+     *
+     * <p>Хранятся байтами и пишутся обратно нетронутыми: мир, открытый старой
+     * сборкой, не имеет права терять то, что записала новая. Порядок
+     * сохраняется, чтобы файл не менялся от одного лишь чтения.
+     */
+    public final java.util.Map<String, byte[]> extraSections;
 
     public LevelData(long seed, double px, double py, double pz,
                      float yaw, float pitch, float timeOfDay, int selectedSlot) {
@@ -72,6 +88,20 @@ public final class LevelData {
                      float yaw, float pitch, float timeOfDay, int selectedSlot,
                      ItemStack[] inventory, GameMode gameMode, long lastPlayed, float health,
                      float hunger) {
+        this(name, seed, px, py, pz, spawnX, spawnY, spawnZ, yaw, pitch, timeOfDay,
+                selectedSlot, inventory, gameMode, lastPlayed, health, hunger, null, null);
+    }
+
+    public LevelData(String name, long seed, double px, double py, double pz,
+                     double spawnX, double spawnY, double spawnZ,
+                     float yaw, float pitch, float timeOfDay, int selectedSlot,
+                     ItemStack[] inventory, GameMode gameMode, long lastPlayed, float health,
+                     float hunger, ItemStack[] pending,
+                     java.util.Map<String, byte[]> extraSections) {
+        this.pending = pending == null ? new ItemStack[0] : pending.clone();
+        this.extraSections = extraSections == null || extraSections.isEmpty()
+                ? java.util.Map.of()
+                : java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(extraSections));
         this.hunger = Float.isFinite(hunger) ? Math.max(0f, Math.min(20f, hunger)) : 20f;
         this.health = Float.isFinite(health) ? Math.max(0f, Math.min(20f, health)) : 20f;
         this.name = name != null ? name : "";
@@ -101,6 +131,13 @@ public final class LevelData {
         for (int i = 0; i < hotbar.length; i++)
             inv[i] = new ItemStack(hotbar[i], 1);
         return inv;
+    }
+
+    /** Та же запись, но с другими отложенными стопками — для выхода из мира. */
+    public LevelData withPending(ItemStack[] newPending) {
+        return new LevelData(name, seed, px, py, pz, spawnX, spawnY, spawnZ, yaw, pitch,
+                timeOfDay, selectedSlot, inventory, gameMode, lastPlayed, health, hunger,
+                newPending, extraSections);
     }
 
     private static ItemStack[] normalizeInventory(ItemStack[] src) {

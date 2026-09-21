@@ -96,7 +96,7 @@ public final class Furnace {
     private boolean fits(ItemStack want) {
         if (output == null)
             return true;
-        return output.stacksWith(want) && output.count < ItemStack.MAX_STACK;
+        return output.stacksWith(want) && output.count < output.maxStack();
     }
 
     private static ItemStack shrink(ItemStack s) {

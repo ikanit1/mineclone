@@ -1,188 +1,330 @@
 package com.mineclone.world;
 
+import com.mineclone.item.Item;
+import com.mineclone.item.Items;
+
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Крафт: бесформенные рецепты в сетке 2x2.
+ * Minecraft-подобные рецепты: форма лежит в настоящей сетке 2×2 или 3×3.
  *
- * Без формы — сознательно. Сетка 3x3 и формованные рецепты требуют
- * отдельного блока верстака, своего экрана и понятия «пустая клетка внутри
- * формы»; всё это стоит дорого, а первая вертикаль прогресса (дерево →
- * камень → железо → алмаз) прекрасно кодируется количеством материала:
- * кирка берёт три единицы, топор две, лопата одну.
- *
- * Рукоять — доски, а не палки. Палка была бы четвёртым видом предмета
- * (не блок и не инструмент) и потянула бы за собой ещё одну ветку в модели
- * предметов ради одной позиции.
+ * <p>Рецепт можно сдвигать внутри сетки, а асимметричные формы (топор,
+ * ступени) — отражать. Пустая клетка внутри формы тоже значима: восемь
+ * булыжников кольцом дают печь, а заполненные девять — уже не этот рецепт.
  */
 public final class Recipes {
 
     /**
-     * Один рецепт: что нужно и что получится.
-     *
-     * @param needBlock   основной материал
-     * @param needCount   сколько его нужно
-     * @param handle      второй материал (рукоять) или null
-     * @param handleCount сколько нужно рукояти
+     * {@code need/handle} оставлены как краткая сводка ингредиентов для
+     * справочника и старых тестов. Источник истины — {@code pattern}.
      */
-    public record Recipe(BlockType needBlock, int needCount,
-                         BlockType handle, int handleCount,
-                         ToolType tool, BlockType block, int blockCount) {
+    public record Recipe(Item need, int needCount, Item handle, int handleCount,
+                         Item result, int resultCount,
+                         int width, int height, Item[] pattern,
+                         boolean shapeless, boolean mirrored) {
+        public Recipe {
+            pattern = pattern.clone();
+        }
+
+        @Override
+        public Item[] pattern() {
+            return pattern.clone();
+        }
+
+        public Item at(int x, int y) {
+            return x < 0 || y < 0 || x >= width || y >= height
+                    ? null : pattern[y * width + x];
+        }
 
         public String resultName() {
-            return tool != null ? tool.displayName : block.name();
+            return result.name;
+        }
+
+        public boolean fits(int gridWidth, int gridHeight) {
+            return shapeless ? ingredientCount() <= gridWidth * gridHeight
+                    : width <= gridWidth && height <= gridHeight;
+        }
+
+        public int ingredientCount() {
+            int n = 0;
+            for (Item item : pattern)
+                if (item != null)
+                    n++;
+            return n;
         }
     }
 
-    private static Recipe tool(BlockType mat, int count, ToolType out) {
-        return new Recipe(mat, count, BlockType.PLANKS, 1, out, null, 0);
+    private record Placement(Recipe recipe, int ox, int oy, boolean mirror) {
     }
 
-    private static Recipe blocks(BlockType from, int count, BlockType out, int outCount) {
-        return new Recipe(from, count, null, 0, null, out, outCount);
+    private static Item item(String id) {
+        return Items.get().require(id);
     }
 
-    /**
-     * Порядок важен: совпадения ищутся сверху вниз, и более требовательный
-     * рецепт обязан стоять раньше менее требовательного из того же материала.
-     * Иначе три булыжника всегда уходили бы в лопату.
-     */
-    private static final Recipe[] ALL = {
-            // Кирки
-            tool(BlockType.PLANKS, 3, ToolType.WOOD_PICKAXE),
-            tool(BlockType.COBBLE, 3, ToolType.STONE_PICKAXE),
-            tool(BlockType.IRON_ORE, 3, ToolType.IRON_PICKAXE),
-            tool(BlockType.DIAMOND_ORE, 3, ToolType.DIAMOND_PICKAXE),
-            // Топоры
-            tool(BlockType.PLANKS, 2, ToolType.WOOD_AXE),
-            tool(BlockType.COBBLE, 2, ToolType.STONE_AXE),
-            tool(BlockType.IRON_ORE, 2, ToolType.IRON_AXE),
-            tool(BlockType.DIAMOND_ORE, 2, ToolType.DIAMOND_AXE),
-            // Лопаты
-            tool(BlockType.PLANKS, 1, ToolType.WOOD_SHOVEL),
-            tool(BlockType.COBBLE, 1, ToolType.STONE_SHOVEL),
-            tool(BlockType.IRON_ORE, 1, ToolType.IRON_SHOVEL),
-            tool(BlockType.DIAMOND_ORE, 1, ToolType.DIAMOND_SHOVEL),
-            // Материалы
-            blocks(BlockType.WOOD, 1, BlockType.PLANKS, 4),
-            // Восемь досок — заметная цена, но сундук и должен стоить
-            // похода за деревом: бесплатное хранилище обесценивает инвентарь.
-            blocks(BlockType.PLANKS, 8, BlockType.CHEST, 1),
-            // Спальник: доски на каркас и листва на подстилку. Шерсти в игре
-            // нет, а гонять игрока за несуществующим материалом ради одной
-            // позиции — худший вид «глубины».
-            new Recipe(BlockType.PLANKS, 3, BlockType.LEAVES, 3, null, BlockType.BEDROLL, 1),
-            // Печь дороже ступеней, поэтому стоит выше: иначе восемь
-            // булыжников читались бы как «ступени, но много».
-            blocks(BlockType.COBBLE, 8, BlockType.FURNACE, 1),
-            blocks(BlockType.COBBLE, 4, BlockType.STAIRS, 4),
-            new Recipe(BlockType.COAL_ORE, 1, BlockType.PLANKS, 1, null, BlockType.TORCH, 4),
-    };
+    private static Recipe shaped(String out, int outCount, boolean mirrored,
+            String[] rows, String... keys) {
+        if (rows.length == 0)
+            throw new IllegalArgumentException("empty recipe");
+        int width = rows[0].length();
+        Map<Character, Item> legend = new LinkedHashMap<>();
+        for (int i = 0; i < keys.length; i += 2)
+            legend.put(keys[i].charAt(0), item(keys[i + 1]));
+        Item[] pattern = new Item[width * rows.length];
+        for (int y = 0; y < rows.length; y++) {
+            if (rows[y].length() != width)
+                throw new IllegalArgumentException("ragged recipe " + out);
+            for (int x = 0; x < width; x++) {
+                char c = rows[y].charAt(x);
+                if (c != '.') {
+                    Item ingredient = legend.get(c);
+                    if (ingredient == null)
+                        throw new IllegalArgumentException("unknown recipe key " + c + " in " + out);
+                    pattern[y * width + x] = ingredient;
+                }
+            }
+        }
+        return recipe(item(out), outCount, width, rows.length, pattern, false, mirrored);
+    }
 
-    private Recipes() {}
+    private static Recipe shapeless(String out, int outCount, String... ingredients) {
+        Item[] pattern = new Item[ingredients.length];
+        for (int i = 0; i < ingredients.length; i++)
+            pattern[i] = item(ingredients[i]);
+        return recipe(item(out), outCount, ingredients.length, 1, pattern, true, false);
+    }
 
-    /** Все рецепты — для справочника и тестов. */
+    private static Recipe recipe(Item result, int resultCount, int width, int height,
+            Item[] pattern, boolean shapeless, boolean mirrored) {
+        LinkedHashMap<Item, Integer> counts = new LinkedHashMap<>();
+        for (Item ingredient : pattern)
+            if (ingredient != null)
+                counts.merge(ingredient, 1, Integer::sum);
+        var it = counts.entrySet().iterator();
+        var first = it.next();
+        var second = it.hasNext() ? it.next() : null;
+        return new Recipe(first.getKey(), first.getValue(),
+                second == null ? null : second.getKey(), second == null ? 0 : second.getValue(),
+                result, resultCount, width, height, pattern, shapeless, mirrored);
+    }
+
+    private static Recipe tool(String material, String result, String[] shape, boolean mirror) {
+        return shaped(result, 1, mirror, shape, "M", material, "S", "stick");
+    }
+
+    private static Recipe[] all;
+
+    /** Таблица строится лениво после загрузки реестра предметов. */
+    private static synchronized Recipe[] table() {
+        if (all != null)
+            return all;
+        List<Recipe> recipes = new ArrayList<>();
+
+        // Карманная сетка 2×2.
+        recipes.add(shapeless("planks", 4, "log"));
+        recipes.add(shaped("stick", 4, false, new String[] { "P", "P" }, "P", "planks"));
+        recipes.add(shaped("crafting_table", 1, false,
+                new String[] { "PP", "PP" }, "P", "planks"));
+        recipes.add(shaped("torch", 4, false,
+                new String[] { "C", "S" }, "C", "coal", "S", "stick"));
+
+        // Верстак 3×3: формы совпадают с привычными Minecraft-силуэтами.
+        String[] pickaxe = { "MMM", ".S.", ".S." };
+        String[] axe = { "MM.", "MS.", ".S." };
+        String[] shovel = { ".M.", ".S.", ".S." };
+        String[][] tiers = {
+                { "planks", "wooden" }, { "cobblestone", "stone" },
+                { "iron_ingot", "iron" }, { "diamond", "diamond" },
+                { "gold_ingot", "gold" }, { "copper_ingot", "copper" }
+        };
+        for (String[] tier : tiers) {
+            recipes.add(tool(tier[0], tier[1] + "_pickaxe", pickaxe, false));
+            recipes.add(tool(tier[0], tier[1] + "_axe", axe, true));
+            recipes.add(tool(tier[0], tier[1] + "_shovel", shovel, false));
+        }
+
+        recipes.add(shaped("chest", 1, false,
+                new String[] { "PPP", "P.P", "PPP" }, "P", "planks"));
+        recipes.add(shaped("furnace", 1, false,
+                new String[] { "CCC", "C.C", "CCC" }, "C", "cobblestone"));
+        recipes.add(shaped("stairs", 4, true,
+                new String[] { "P..", "PP.", "PPP" }, "P", "planks"));
+        recipes.add(shaped("door", 3, false,
+                new String[] { "PP", "PP", "PP" }, "P", "planks"));
+        recipes.add(shaped("bedroll", 1, false,
+                new String[] { "LLL", "PPP" }, "L", "leaves", "P", "planks"));
+
+        all = recipes.toArray(Recipe[]::new);
+        return all;
+    }
+
+    private Recipes() {
+    }
+
+    /** Все рецепты — для книги и тестов. */
     public static Recipe[] all() {
-        return ALL.clone();
+        return table().clone();
     }
 
-    /**
-     * Сколько всего материала этого вида лежит в инвентаре.
-     * Инструменты не считаются: они не материал.
-     */
-    public static int count(Inventory inv, BlockType type) {
-        if (type == null)
+    /** Сколько предметов этого вида лежит в инвентаре. */
+    public static int count(Inventory inv, Item item) {
+        if (item == null)
             return 0;
         int n = 0;
         for (int i = 0; i < inv.size(); i++) {
             ItemStack s = inv.get(i);
-            if (s != null && !s.isTool() && !s.isFood() && s.type == type)
+            if (s != null && s.item == item)
                 n += s.count;
         }
         return n;
     }
 
-    /**
-     * Хватает ли материала на рецепт.
-     *
-     * Отдельный случай — когда рукоять того же вида, что и основной материал
-     * (деревянная кирка: три доски плюс доска на рукоять). Тогда считать надо
-     * сумму, иначе одни и те же три доски засчитаются дважды и кирка выйдет
-     * дешевле объявленного.
-     */
-    public static boolean canCraft(Inventory inv, Recipe r) {
-        if (r.handle() == r.needBlock())
-            return count(inv, r.needBlock()) >= r.needCount() + r.handleCount();
-        return count(inv, r.needBlock()) >= r.needCount()
-                && (r.handle() == null || count(inv, r.handle()) >= r.handleCount());
-    }
-
-    /**
-     * Собирает рецепт: списывает материал и кладёт результат.
-     *
-     * Материал списывается только после того, как место под результат
-     * найдено — иначе неудачная сборка съедает ресурсы впустую.
-     *
-     * @return true, если собрали
-     */
-    public static boolean craft(Inventory inv, Recipe r) {
-        if (!canCraft(inv, r))
-            return false;
-        ItemStack out = result(r);
-        if (out.isTool()) {
-            if (!hasFreeSlot(inv))
+    /** Хватает ли суммарных материалов, без учёта их позиции в сетке. */
+    public static boolean canCraft(Inventory inv, Recipe recipe) {
+        for (var e : ingredientCounts(recipe).entrySet())
+            if (count(inv, e.getKey()) < e.getValue())
                 return false;
-        } else if (!inv.canAdd(out.type, out.count)) {
-            return false;
-        }
-        if (r.handle() == r.needBlock()) {
-            take(inv, r.needBlock(), r.needCount() + r.handleCount());
-        } else {
-            take(inv, r.needBlock(), r.needCount());
-            take(inv, r.handle(), r.handleCount());
-        }
-        if (out.isTool())
-            inv.addItem(out);
-        else
-            inv.add(out.type, out.count);
         return true;
     }
 
-    private static boolean hasFreeSlot(Inventory inv) {
-        for (int i = 0; i < inv.size(); i++)
-            if (inv.get(i) == null)
-                return true;
-        return false;
+    /**
+     * Совместимый программный крафт для тестов и будущей книги рецептов.
+     * Игровой интерфейс использует {@link #match} и {@link #consume}.
+     */
+    public static boolean craft(Inventory inv, Recipe recipe) {
+        if (!canCraft(inv, recipe))
+            return false;
+        ItemStack out = result(recipe);
+        if (!inv.canAdd(out, out.count))
+            return false;
+        for (var e : ingredientCounts(recipe).entrySet())
+            take(inv, e.getKey(), e.getValue());
+        inv.add(out);
+        return true;
     }
 
-    private static void take(Inventory inv, BlockType type, int amount) {
-        if (type == null || amount <= 0)
-            return;
-        for (int i = 0; i < inv.size() && amount > 0; i++) {
-            ItemStack s = inv.get(i);
-            if (s == null || s.isTool() || s.isFood() || s.type != type)
+    /** Рецепт, который в точности совпал с содержимым сетки. */
+    public static Recipe match(ItemStack[] grid, int gridWidth) {
+        Placement p = placement(grid, gridWidth);
+        return p == null ? null : p.recipe;
+    }
+
+    /**
+     * Забирает по одному ингредиенту из каждой занятой клетки и возвращает
+     * полный результат. Если форма уже не совпадает — ничего не меняет.
+     */
+    public static ItemStack consume(ItemStack[] grid, int gridWidth) {
+        Placement p = placement(grid, gridWidth);
+        if (p == null)
+            return null;
+        if (p.recipe.shapeless) {
+            boolean[] used = new boolean[grid.length];
+            for (Item wanted : p.recipe.pattern) {
+                for (int i = 0; i < grid.length; i++)
+                    if (!used[i] && grid[i] != null && grid[i].item == wanted) {
+                        shrink(grid, i);
+                        used[i] = true;
+                        break;
+                    }
+            }
+        } else {
+            for (int y = 0; y < p.recipe.height; y++)
+                for (int x = 0; x < p.recipe.width; x++) {
+                    int px = p.mirror ? p.recipe.width - 1 - x : x;
+                    if (p.recipe.at(px, y) != null)
+                        shrink(grid, (p.oy + y) * gridWidth + p.ox + x);
+                }
+        }
+        return result(p.recipe);
+    }
+
+    /** Готовая стопка результата. */
+    public static ItemStack result(Recipe recipe) {
+        return new ItemStack(recipe.result, recipe.resultCount);
+    }
+
+    /** Рецепты, для которых в инвентаре хватает ресурсов. */
+    public static List<Recipe> available(Inventory inv) {
+        List<Recipe> out = new ArrayList<>();
+        for (Recipe recipe : table())
+            if (canCraft(inv, recipe))
+                out.add(recipe);
+        return out;
+    }
+
+    private static Placement placement(ItemStack[] grid, int gridWidth) {
+        if (grid == null || gridWidth <= 0 || grid.length % gridWidth != 0)
+            return null;
+        int gridHeight = grid.length / gridWidth;
+        for (Recipe recipe : table()) {
+            if (!recipe.fits(gridWidth, gridHeight))
                 continue;
-            int used = Math.min(amount, s.count);
-            s.count -= used;
+            if (recipe.shapeless && shapelessMatches(recipe, grid))
+                return new Placement(recipe, 0, 0, false);
+            if (recipe.shapeless)
+                continue;
+            for (int oy = 0; oy <= gridHeight - recipe.height; oy++)
+                for (int ox = 0; ox <= gridWidth - recipe.width; ox++) {
+                    if (shapedMatches(recipe, grid, gridWidth, gridHeight, ox, oy, false))
+                        return new Placement(recipe, ox, oy, false);
+                    if (recipe.mirrored
+                            && shapedMatches(recipe, grid, gridWidth, gridHeight, ox, oy, true))
+                        return new Placement(recipe, ox, oy, true);
+                }
+        }
+        return null;
+    }
+
+    private static boolean shapedMatches(Recipe recipe, ItemStack[] grid,
+            int gridWidth, int gridHeight, int ox, int oy, boolean mirror) {
+        for (int gy = 0; gy < gridHeight; gy++)
+            for (int gx = 0; gx < gridWidth; gx++) {
+                Item expected = null;
+                int rx = gx - ox, ry = gy - oy;
+                if (rx >= 0 && ry >= 0 && rx < recipe.width && ry < recipe.height)
+                    expected = recipe.at(mirror ? recipe.width - 1 - rx : rx, ry);
+                ItemStack actual = grid[gy * gridWidth + gx];
+                if ((actual == null ? null : actual.item) != expected)
+                    return false;
+            }
+        return true;
+    }
+
+    private static boolean shapelessMatches(Recipe recipe, ItemStack[] grid) {
+        IdentityHashMap<Item, Integer> wanted = ingredientCounts(recipe);
+        IdentityHashMap<Item, Integer> actual = new IdentityHashMap<>();
+        for (ItemStack stack : grid)
+            if (stack != null)
+                actual.merge(stack.item, 1, Integer::sum);
+        return actual.equals(wanted);
+    }
+
+    private static IdentityHashMap<Item, Integer> ingredientCounts(Recipe recipe) {
+        IdentityHashMap<Item, Integer> counts = new IdentityHashMap<>();
+        for (Item ingredient : recipe.pattern)
+            if (ingredient != null)
+                counts.merge(ingredient, 1, Integer::sum);
+        return counts;
+    }
+
+    private static void take(Inventory inv, Item item, int amount) {
+        for (int i = 0; i < inv.size() && amount > 0; i++) {
+            ItemStack stack = inv.get(i);
+            if (stack == null || stack.item != item)
+                continue;
+            int used = Math.min(amount, stack.count);
+            stack.count -= used;
             amount -= used;
-            if (s.count <= 0)
+            if (stack.count <= 0)
                 inv.set(i, null);
         }
     }
 
-    /** Готовая стопка-результат рецепта. */
-    public static ItemStack result(Recipe r) {
-        return r.tool() != null ? new ItemStack(r.tool())
-                                : new ItemStack(r.block(), r.blockCount());
-    }
-
-    /** Рецепты, которые прямо сейчас можно собрать из содержимого инвентаря. */
-    public static List<Recipe> available(Inventory inv) {
-        List<Recipe> out = new ArrayList<>();
-        for (Recipe r : ALL)
-            if (canCraft(inv, r))
-                out.add(r);
-        return out;
+    private static void shrink(ItemStack[] grid, int index) {
+        if (grid[index] != null && --grid[index].count <= 0)
+            grid[index] = null;
     }
 }

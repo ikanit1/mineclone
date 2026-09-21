@@ -41,23 +41,25 @@ public class RenderHudPreview {
         TextureAtlas atlas = new TextureAtlas(TextureAtlas.DEFAULT_PATH, false);
         Font font = new Font(AppPaths.path("assets/minecraft.ttf"), 22f);
         Font small = new Font(AppPaths.path("assets/minecraft.ttf"), 14f);
-        TextRenderer text = new TextRenderer();
         UiRenderer ui = new UiRenderer();
+        TextRenderer text = new TextRenderer(ui);
+        ui.setAtlas(atlas.getTextureId());
+        ui.registerFonts(font, small);
         menuUi = ui;
         Hud hud = new Hud(font, small, text, ui, atlas);
 
         Inventory inv = new Inventory();
-        inv.set(0, new ItemStack(ToolType.IRON_PICKAXE));
-        inv.get(0).damage = (int) (ToolType.IRON_PICKAXE.durability * 0.45f);
-        inv.set(1, new ItemStack(ToolType.WOOD_AXE));
-        inv.get(1).damage = (int) (ToolType.WOOD_AXE.durability * 0.85f);
-        inv.set(2, new ItemStack(FoodType.RAW_BEEF, 5));
+        inv.set(0, ItemStack.of("iron_pickaxe"));
+        inv.get(0).setDamage((int) (inv.get(0).item.durability * 0.45f));
+        inv.set(1, ItemStack.of("wooden_axe"));
+        inv.get(1).setDamage((int) (inv.get(1).item.durability * 0.85f));
+        inv.set(2, ItemStack.of("beef", 5));
         inv.set(3, new ItemStack(BlockType.COBBLE, 64));
         inv.set(4, new ItemStack(BlockType.TORCH, 12));
         inv.set(5, new ItemStack(BlockType.DIAMOND_ORE, 3));
         inv.set(6, new ItemStack(BlockType.PLANKS, 30));
         inv.set(9, new ItemStack(BlockType.IRON_ORE, 8));
-        inv.set(10, new ItemStack(FoodType.RAW_CHICKEN, 2));
+        inv.set(10, ItemStack.of("chicken", 2));
         inv.set(11, new ItemStack(BlockType.WOOD, 16));
 
         Files.createDirectories(Path.of("out-test/previews"));
@@ -65,6 +67,8 @@ public class RenderHudPreview {
         // Кадр 1: игровой HUD поверх «неба».
         shot("hud-play", () -> {
             hud.drawCompass(W, H, (float) Math.toRadians(-38), (float) (Math.PI / 6.0));
+            hud.drawSurvivalObjective(W, H,
+                    new com.mineclone.game.SurvivalProgress().objective(new Inventory()));
             hud.drawHotbar(W, H, inv, 3, 0.25f);
             hud.drawHearts(W, H, 13f, 17f);
             hud.drawHunger(W, H, 11f);
@@ -83,37 +87,91 @@ public class RenderHudPreview {
             shot("hud-compass-" + names[k], () -> hud.drawCompass(W, H, yaws[k], times[k]));
         }
 
-        // Кадр 2: экран инвентаря с полкой крафта.
-        shot("hud-inventory", () ->
-                hud.drawInventory(W, H, 0, 0, false, false, inv, 3, null));
+        // Frame: inventory window on the container framework.
+        com.mineclone.ui.MenuTheme windowTheme =
+                new com.mineclone.ui.MenuTheme(ui, text, font, small, atlas);
+        com.mineclone.ui.container.PreviewContext ctx = new com.mineclone.ui.container.PreviewContext(inv);
+        ctx.selected = 3;
+        var inventoryScreen = new com.mineclone.ui.container.InventoryScreen(ctx);
+        shot("hud-inventory", () -> windowFrame(windowTheme, inventoryScreen, at(-1f, -1f)));
 
         // Кадр: экран сундука — его слоты сверху, инвентарь игрока снизу.
         ItemStack[] chest = new ItemStack[com.mineclone.world.Chunk.CHEST_SLOTS];
         chest[0] = new ItemStack(BlockType.COBBLE, 64);
         chest[1] = new ItemStack(BlockType.COAL_ORE, 23);
-        chest[2] = new ItemStack(ToolType.DIAMOND_PICKAXE);
-        chest[4] = new ItemStack(FoodType.RAW_MUTTON, 3);
+        chest[2] = ItemStack.of("diamond_pickaxe");
+        chest[4] = ItemStack.of("mutton", 3);
         chest[9] = new ItemStack(BlockType.PLANKS, 48);
         chest[10] = new ItemStack(BlockType.GLASS, 7);
         chest[17] = new ItemStack(BlockType.TORCH, 31);
         chest[26] = new ItemStack(BlockType.DIAMOND_ORE, 2);
-        shot("hud-chest", () ->
-                hud.drawChest(W, H, 0, 0, false, false, chest, inv, 3, null));
+        var chestScreen = new com.mineclone.ui.container.ChestScreen(ctx, chest, null, null);
+        shot("hud-chest", () -> windowFrame(windowTheme, chestScreen, at(-1f, -1f)));
 
         // Кадр: печь на середине работы — пламя горит, стрелка заполнена.
         var furnace = new com.mineclone.world.Furnace();
-        furnace.input = new ItemStack(FoodType.RAW_BEEF, 6);
-        furnace.fuel = new ItemStack(BlockType.COAL_ORE, 12);
-        furnace.output = new ItemStack(FoodType.COOKED_BEEF, 3);
+        furnace.input = ItemStack.of("beef", 6);
+        furnace.fuel = ItemStack.of("coal", 12);
+        furnace.output = ItemStack.of("cooked_beef", 3);
         furnace.burnMax = com.mineclone.world.Smelting.COOK_TIME * 8f;
         furnace.burnLeft = furnace.burnMax * 0.62f;
         furnace.cook = com.mineclone.world.Smelting.COOK_TIME * 0.45f;
-        shot("hud-furnace", () ->
-                hud.drawFurnace(W, H, 0, 0, false, false, furnace, inv, 3, null));
+        var furnaceScreen = new com.mineclone.ui.container.FurnaceScreen(ctx, furnace, null);
+        shot("hud-furnace", () -> windowFrame(windowTheme, furnaceScreen, at(-1f, -1f)));
 
-        // Кадр 3: творческое меню — блоки, инструменты и еда в одной сетке.
-        shot("hud-creative", () ->
-                hud.drawCreativeMenu(W, H, 0, 0, false, inv, 3));
+        // Frame: the creative window, one grid of every registry item.
+        com.mineclone.ui.container.PreviewContext creativeCtx = new com.mineclone.ui.container.PreviewContext(inv);
+        creativeCtx.mode = com.mineclone.world.GameMode.CREATIVE;
+        var creativeScreen = new com.mineclone.ui.container.CreativeScreen(creativeCtx);
+        shot("hud-creative", () -> windowFrame(windowTheme, creativeScreen, at(-1f, -1f)));
+
+        // Frame: a drag in progress, with the promised counts drawn faintly.
+        Inventory dragInv = new Inventory();
+        dragInv.set(9, new ItemStack(BlockType.COBBLE, 9));
+        com.mineclone.ui.container.PreviewContext dragCtx = new com.mineclone.ui.container.PreviewContext(dragInv);
+        var dragScreen = new com.mineclone.ui.container.InventoryScreen(dragCtx);
+        shot("window-drag-split", () -> {
+            windowFrame(windowTheme, dragScreen, at(-1f, -1f));
+            float[] a = dragScreen.slotCenter("main", 0);
+            windowFrame(windowTheme, dragScreen,
+                    com.mineclone.ui.UiInput.builder().at(a[0], a[1]).click().build());
+            float[] b = dragScreen.slotCenter("main", 1);
+            windowFrame(windowTheme, dragScreen,
+                    com.mineclone.ui.UiInput.builder().at(b[0], b[1]).mousePressed(true).mouseDown(true).build());
+            float[] c = dragScreen.slotCenter("main", 2);
+            windowFrame(windowTheme, dragScreen,
+                    com.mineclone.ui.UiInput.builder().at(c[0], c[1]).mouseDown(true).build());
+            float[] d = dragScreen.slotCenter("main", 3);
+            windowFrame(windowTheme, dragScreen,
+                    com.mineclone.ui.UiInput.builder().at(d[0], d[1]).mouseDown(true).build());
+        });
+
+        // Frame: advanced tooltip at the bottom-right corner, where it flips.
+        Inventory tipInv = new Inventory();
+        tipInv.set(35, ItemStack.of("iron_pickaxe"));
+        tipInv.get(35).setDamage(51);
+        com.mineclone.ui.container.PreviewContext tipCtx = new com.mineclone.ui.container.PreviewContext(tipInv);
+        tipCtx.advanced = true;
+        var tipScreen = new com.mineclone.ui.container.InventoryScreen(tipCtx);
+        shot("window-advanced-tooltip", () -> {
+            windowFrame(windowTheme, tipScreen, at(-1f, -1f));
+            float[] p = tipScreen.slotCenter("main", 26);
+            windowFrame(windowTheme, tipScreen, at(p[0], p[1]));
+            windowFrame(windowTheme, tipScreen, at(p[0], p[1]));
+        });
+
+        // Frame: icon shapes. Stairs, snow and a bedroll are not cubes, and
+        // drawing them as cubes lies about what the player is holding.
+        Inventory shapes = new Inventory();
+        String[] shapeIds = { "stairs", "snow", "bedroll", "stone", "torch", "water",
+                "lava", "cobweb", "iron_pickaxe" };
+        for (int i = 0; i < shapeIds.length; i++)
+            shapes.set(i, ItemStack.of(shapeIds[i], i == 3 ? 42 : 1));
+        shapes.get(8).setDamage(shapes.get(8).item.durability / 3);
+        shot("hud-icon-shapes", () -> {
+            hud.drawHotbar(W, H, shapes, 0, 0f);
+            hud.drawHotbar(W, H, shapes, 4, 0f);
+        });
 
         // Кадр: стекло поверх пёстрого «мира», подсказка у прицела на
         // кириллице, дуги звука и повёрнутый кубик в выбранном слоте. Пёстрые
@@ -214,6 +272,34 @@ public class RenderHudPreview {
         menuShot("menu-title", backdrop, theme, new com.mineclone.ui.TitleScreen(save, settings, 0),
                 at(640f, 398f), 0);
 
+        // Экран игры по сети: оба транспорта и список миров под комнату.
+        com.mineclone.net.NetSettings netSettings = new com.mineclone.net.NetSettings(
+                com.mineclone.net.NetSettings.PHOTON, "Строитель",
+                "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d", "eu", "наша комната",
+                "192.168.1.5", 25566);
+        // Лобби без сети: список комнат подкладывается тем же путём, каким
+        // его приносит транспорт, — снимок обязан показывать живой экран.
+        com.mineclone.net.RoomBrowser lobby = new com.mineclone.net.RoomBrowser();
+        com.mineclone.ui.MultiplayerScreen mp =
+                new com.mineclone.ui.MultiplayerScreen(netSettings, save, s -> { }, lobby);
+        // Список кладётся после конструктора: он сам открывает лобби и чистит
+        // прежние комнаты, а сети в снимке нет.
+        lobby.onRoomList(java.util.List.of(
+                new com.mineclone.net.NetTransport.RoomInfo("Стройка у реки", 3, 8),
+                new com.mineclone.net.NetTransport.RoomInfo("наша комната", 1, 8),
+                new com.mineclone.net.NetTransport.RoomInfo("survival-hard", 8, 8),
+                new com.mineclone.net.NetTransport.RoomInfo("test", 2, 8)));
+        menuShot("menu-net-photon", backdrop, theme, mp, at(640f, 470f), 1);
+        com.mineclone.ui.MultiplayerScreen mpLan = new com.mineclone.ui.MultiplayerScreen(
+                netSettings.withTransport(com.mineclone.net.NetSettings.LAN), save, s -> { });
+        menuShot("menu-net-lan", backdrop, theme, mpLan, at(640f, 470f), 1);
+        com.mineclone.ui.MultiplayerScreen mpWorlds =
+                new com.mineclone.ui.MultiplayerScreen(netSettings, save, s -> { }, lobby);
+        // Кнопка «Открыть свой мир» переводит тот же экран в список миров.
+        menuFrame(backdrop, theme, mpWorlds, at(0f, 0f), 0.1f);
+        menuFrame(backdrop, theme, mpWorlds, click(771f, 468f), 0.2f);
+        menuShot("menu-net-worlds", backdrop, theme, mpWorlds, at(640f, 300f), 1);
+
         com.mineclone.ui.WorldSelectScreen worlds = new com.mineclone.ui.WorldSelectScreen(save, settings);
         worlds.select("preview_b");
         Thread.sleep(300);   // размеры миров считаются в фоне
@@ -237,11 +323,29 @@ public class RenderHudPreview {
         menuShot("menu-create", backdrop, theme, create, at(480f, 594f), 2);
 
         settings.keys.set(com.mineclone.core.KeyBindings.Action.JUMP, org.lwjgl.glfw.GLFW.GLFW_KEY_W);
+        settings.videoModes = new int[][] { { 1280, 720 }, { 1600, 900 }, { 1920, 1080 }, { 2560, 1440 } };
         menuShot("menu-settings-graphics", backdrop, theme, new com.mineclone.ui.SettingsScreen(settings, 0),
                 at(640f, 214f), 1);
-        menuShot("menu-settings-controls", backdrop, theme, new com.mineclone.ui.SettingsScreen(settings, 1),
+        // Вкладка графики прокручена до упора: только так видно нижние разделы
+        // и только так проверяется, что расчёт высоты содержимого до них
+        // вообще дотягивается.
+        com.mineclone.ui.SettingsScreen scrolled = new com.mineclone.ui.SettingsScreen(settings, 0);
+        for (int i = 0; i < 40; i++)
+            menuFrame(backdrop, theme, scrolled,
+                    com.mineclone.ui.UiInput.builder().at(640f, 400f).scroll(-3f).build(), 0.1f);
+        menuShot("menu-settings-graphics-bottom", backdrop, theme, scrolled, at(640f, 400f), 1);
+        // Экран разрешений имеет смысл только в полноэкранном режиме — иначе
+        // на снимке остался бы один серый прочерк.
+        settings.windowMode = 2;
+        settings.resolutionIndex = 2;
+        menuShot("menu-settings-screen", backdrop, theme, new com.mineclone.ui.SettingsScreen(settings, 1),
                 at(640f, 312f), 1);
-        menuShot("menu-settings-audio", backdrop, theme, new com.mineclone.ui.SettingsScreen(settings, 2),
+        settings.windowMode = 0;
+        menuShot("menu-settings-game", backdrop, theme, new com.mineclone.ui.SettingsScreen(settings, 2),
+                at(640f, 280f), 1);
+        menuShot("menu-settings-controls", backdrop, theme, new com.mineclone.ui.SettingsScreen(settings, 3),
+                at(640f, 312f), 1);
+        menuShot("menu-settings-audio", backdrop, theme, new com.mineclone.ui.SettingsScreen(settings, 4),
                 at(0f, 0f), 1);
         com.mineclone.ui.KeybindScreen keys = new com.mineclone.ui.KeybindScreen(settings);
         keys.startCapture(com.mineclone.core.KeyBindings.Action.DROP);
@@ -360,6 +464,16 @@ public class RenderHudPreview {
         theme.endScreen();
         theme.end();
         menuUi.setBackdrop(0);
+    }
+
+    /** One window frame: the same path the game takes, with a given input. */
+    private static void windowFrame(com.mineclone.ui.MenuTheme theme,
+            com.mineclone.ui.container.ContainerScreen screen, com.mineclone.ui.UiInput in) {
+        theme.begin(W, H, in, 0.6f, 1f / 60f);
+        theme.beginScreen(1f, 0f, true);
+        screen.draw(theme);
+        theme.endScreen();
+        theme.end();
     }
 
     private static void menuShot(String name, Backdrop backdrop, com.mineclone.ui.MenuTheme theme,

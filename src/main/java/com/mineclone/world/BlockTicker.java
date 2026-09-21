@@ -113,7 +113,7 @@ public final class BlockTicker {
     private void freezeWater(World world, int wx, int wy, int wz) {
         if (world.getBlock(wx, wy + 1, wz) != BlockType.AIR)
             return;
-        if (world.biomes.biomeAt(wx, wz) != Biome.TUNDRA)
+        if (!world.biomes.biomeAt(wx, wz).isCold())
             return;
         if (world.getBlockLightWorld(wx, wy, wz) >= GRASS_LIGHT_MIN)
             return;
@@ -125,7 +125,7 @@ public final class BlockTicker {
     private void matureThinIce(World world, int wx, int wy, int wz) {
         int age = world.getBlockMeta(wx, wy, wz) & 7;
         int light = maxNeighbourLight(world, wx, wy, wz);
-        if (light >= GRASS_LIGHT_MIN + 1 || world.biomes.biomeAt(wx, wz) != Biome.TUNDRA) {
+        if (light >= GRASS_LIGHT_MIN + 1 || !world.biomes.biomeAt(wx, wz).isCold()) {
             if (rnd.nextInt(3) == 0) world.setBlock(wx, wy, wz, BlockType.WATER);
             return;
         }
@@ -142,7 +142,7 @@ public final class BlockTicker {
     private void meltIce(World world, int wx, int wy, int wz) {
         int light = maxNeighbourLight(world, wx, wy, wz);
         boolean lit = light >= GRASS_LIGHT_MIN + 1;
-        boolean warm = world.biomes.biomeAt(wx, wz) != Biome.TUNDRA;
+        boolean warm = !world.biomes.biomeAt(wx, wz).isCold();
         if ((lit && rnd.nextInt(3) == 0) || (warm && rnd.nextInt(10) == 0))
             world.setBlock(wx, wy, wz, BlockType.WATER);
     }
@@ -151,7 +151,7 @@ public final class BlockTicker {
 
     /** Идёт ли снег именно здесь: осадки есть и биом холодный. */
     private static boolean snowingAt(World world, int wx, int wz, boolean snowfall) {
-        return snowfall && world.biomes.biomeAt(wx, wz) == Biome.TUNDRA;
+        return snowfall && world.biomes.biomeAt(wx, wz).isCold();
     }
 
     /**
@@ -189,7 +189,7 @@ public final class BlockTicker {
         // исчезал бы каждый полдень и погода не оставляла бы следа.
         // Тёплый биом съедает покров всегда — туда снег попадает только
         // из рук игрока.
-        boolean melting = lit || world.biomes.biomeAt(wx, wz) != Biome.TUNDRA;
+        boolean melting = lit || !world.biomes.biomeAt(wx, wz).isCold();
         if (!melting || rnd.nextInt(3) != 0)
             return;
         if (level == 0)

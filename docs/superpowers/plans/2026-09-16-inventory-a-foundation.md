@@ -1,13 +1,13 @@
 ---
 tags: [plan, ui, inventory, data]
-status: in-progress
+status: done
 date: 2026-09-16
 spec: docs/superpowers/specs/2026-09-16-inventory-survival-creative-design.md
 ---
 
 # План A: фундамент меню выживания и креатива
 
-> Исполняется в этой же сессии по `superpowers:executing-plans`. Формат —
+> Исполнен целиком в одной сессии по `superpowers:executing-plans`. Формат —
 > как у недавних планов проекта: задачи с точными файлами, сигнатурами,
 > форматами и именами тестов; дизайн и «почему» — в спеке, здесь не
 > повторяются. Галочки ставятся по ходу.
@@ -22,6 +22,7 @@ spec: docs/superpowers/specs/2026-09-16-inventory-survival-creative-design.md
 (`run.ps1` / компиляция из CLAUDE.md), выживание играбельно — в том числе крафт.
 
 **Базовая линия (13e2c24):** 226 тестов, 0 упавших.
+**Итог:** 290 тестов, 0 упавших; 15 коммитов; автопилот и все снимки зелёные.
 
 ## Карта файлов
 
@@ -60,24 +61,24 @@ src/test/java/com/mineclone/            InventoryTests (новый), правк�
 
 ## Задача 0. Базовая линия замера и снимков
 
-- [ ] `UiRenderer`: статический счётчик `drawCalls` (инкремент у каждого
+- [x] `UiRenderer`: статический счётчик `drawCalls` (инкремент у каждого
       `glDrawArrays`), `resetDrawCalls()`, `drawCalls()`. `TextRenderer` — то же,
       в тот же счётчик. Картинку не меняет.
-- [ ] `tools/BenchUi.java`: скрытое окно 1280×720, атлас, два кегля шрифта,
+- [x] `tools/BenchUi.java`: скрытое окно 1280×720, атлас, два кегля шрифта,
       `UiRenderer`, `TextRenderer`, `Hud`; инвентарь на 20 предметов. Режимы:
       `inventory` (`hud.drawInventory`), `chest` (`hud.drawChest`), `creative`
       (`hud.drawCreativeMenu`). 60 кадров прогрева выбрасываются, затем 300 кадров
       с `glFinish`; печать `mode  ms/frame  draw calls/frame`.
-- [ ] Прогнать: `java -cp "out;libs/*" tools\BenchUi.java`, цифры записать в
+- [x] Прогнать: `java -cp "out;libs/*" tools\BenchUi.java`, цифры записать в
       раздел «Замеры» этого плана.
-- [ ] Снимки старым рендером: `java -cp "out;libs/*" tools\RenderHudPreview.java`,
+- [x] Снимки старым рендером: `java -cp "out;libs/*" tools\RenderHudPreview.java`,
       скопировать `out-test/previews/*.png` в `out-test/previews-baseline/`.
-- [ ] `tools/ComparePreviews.java <base> <new>`: сравнивает одноимённые PNG;
+- [x] `tools/ComparePreviews.java <base> <new>`: сравнивает одноимённые PNG;
       пиксель «разный», если любой канал отличается больше чем на 40; провал,
       если разных пикселей больше 0,3 % кадра или размеры не совпали; печать
       по файлу `name  diff%  OK|FAIL`, код выхода 1 при провале. Кадры, которых
       нет в одной из папок, перечисляются и не валят прогон.
-- [ ] Коммит `chore(ui): draw-call counter, UI bench and preview comparison tools`.
+- [x] Коммит `chore(ui): draw-call counter, UI bench and preview comparison tools`.
 
 ## Задача 1. JSON
 
@@ -111,28 +112,28 @@ public final class JsonObject {
 
 - Разбор: строгий JSON плюс `//`-комментарии до конца строки и висячая запятая
   перед `]` и `}`. Экранирование `\" \\ \/ \b \f \n \r \t \uXXXX`.
-- [ ] Тесты: `json parses nested objects, arrays and escapes`,
+- [x] Тесты: `json parses nested objects, arrays and escapes`,
       `json allows line comments and trailing commas`,
       `json errors carry file, line and column`,
       `json object accessors report the key path`,
       `json allowOnly rejects a typo`.
-- [ ] Коммит `feat(data): JSON parser with comments, trailing commas and precise errors`.
+- [x] Коммит `feat(data): JSON parser with comments, trailing commas and precise errors`.
 
 ## Задача 2. Идентификаторы и пакет данных
 
-- [ ] `data/ResourceId.java`: `record ResourceId(String namespace, String path)`;
+- [x] `data/ResourceId.java`: `record ResourceId(String namespace, String path)`;
       `static ResourceId parse(String s, String defaultNamespace)` (без `:` —
       пространство по умолчанию); проверка `[a-z0-9_]+` для пространства и
       `[a-z0-9_./]+` для пути, иначе `IllegalArgumentException`;
       `toString()` → `ns:path`.
-- [ ] `data/DataPack.java`: корень `assets/data`.
+- [x] `data/DataPack.java`: корень `assets/data`.
       `List<Entry> files(String kind)` — все `<ns>/<kind>/**/*.json`, по
       пространству и пути; `record Entry(String namespace, String relPath, JsonObject json)`.
       `JsonObject root(String ns, String fileName)` — файл верхнего уровня или null.
-- [ ] Тесты: `resource ids parse with and without a namespace`,
+- [x] Тесты: `resource ids parse with and without a namespace`,
       `resource ids reject upper case and spaces`,
       `data pack lists files by kind in a stable order` (временная папка).
-- [ ] Коммит `feat(data): resource ids and data pack scanning`.
+- [x] Коммит `feat(data): resource ids and data pack scanning`.
 
 ## Задача 3. Предметы, категории, теги — только то, что уже есть в игре
 
@@ -268,7 +269,7 @@ public final class Items {
   `Set<Item> members(ResourceId)`; `List<Tag> find(String prefix)` — начало
   пути id, имени или псевдонима, без регистра, «ё» = «е»; `#`-ссылки внутри
   `values` разрешаются рекурсивно, цикл — ошибка.
-- [ ] Тесты: `every placeable block has exactly one item`,
+- [x] Тесты: `every placeable block has exactly one item`,
       `technical blocks have no item`,
       `tools keep their old level, speed and durability` (таблица прежних
       значений `ToolType` прямо в тесте),
@@ -278,7 +279,7 @@ public final class Items {
       `tag includes resolve and a cycle is an error`,
       `registry rejects an unknown property with its path`,
       `missing items are cached placeholders`.
-- [ ] Коммит `feat(item): data-driven item registry, categories and tags`.
+- [x] Коммит `feat(item): data-driven item registry, categories and tags`.
 
 ## Задача 4. Компоненты
 
@@ -319,11 +320,11 @@ public final class ItemComponents {
 - Значения неизменяемы; `LORE` хранится `List.copyOf`. `BlockState` делает
   глубокие копии стопок в конструкторе.
 - VarInt — 7-битная запись, `data/VarInt.java` (`write`, `read`).
-- [ ] Тесты: `components compare regardless of insertion order`,
+- [x] Тесты: `components compare regardless of insertion order`,
       `component codec round-trips every known type`,
       `unknown components survive a round trip byte for byte`,
       `with null removes a component`.
-- [ ] Коммит `feat(item): immutable stack components with binary codecs`.
+- [x] Коммит `feat(item): immutable stack components with binary codecs`.
 
 ## Задача 5. Стопка на реестре; удаление ToolType и FoodType
 
@@ -388,14 +389,14 @@ public final class ItemStack {
     `RenderAtmospherePreview`, `RenderMobPreview` — на `ItemStack.of(...)`.
     Смысл каждого теста сохраняется; утверждения про `ToolType.X.level` —
     через `Items.get().require("x").tool.level()`.
-- [ ] Удалить `world/ToolType.java`, `world/FoodType.java`.
-- [ ] Тесты (новые): `stacks merge only with equal components`,
+- [x] Удалить `world/ToolType.java`, `world/FoodType.java`.
+- [x] Тесты (новые): `stacks merge only with equal components`,
       `unbreakable tools never wear`, `custom name overrides the item name`,
       `inventory add keeps components apart`, `content hash changes when a count changes`.
-- [ ] Полный `.\run-tests.ps1` зелёный; игра запускается, в выживании ломается
+- [x] Полный `.\run-tests.ps1` зелёный; игра запускается, в выживании ломается
       блок, выпадает дроп, крафтится кирка, плавится мясо (ручная проверка
       автопилотом не нужна — это делает задача 14).
-- [ ] Коммит `refactor(item): stacks reference registry items; ToolType and FoodType retired`.
+- [x] Коммит `refactor(item): stacks reference registry items; ToolType and FoodType retired`.
 
 ## Задача 6. Сохранения
 
@@ -444,14 +445,14 @@ v1–5 — `readLegacy`.
 печать `world  chunks  stacks  missing  failures`; код 1 при любом отказе.
 Ничего не пишет.
 
-- [ ] Тесты: `level v9 bytes load into registry items` (писатель v9 скопирован в
+- [x] Тесты: `level v9 bytes load into registry items` (писатель v9 скопирован в
       тест, три вида слотов, износ), `chunk v5 chests, furnaces and dropped items migrate`,
       `level v10 round-trips components, missing items and pending stacks`,
       `unknown level sections survive a save`,
       `options v5 load with default inventory preferences`, `options v6 round-trip`.
-- [ ] Прогон `java -cp "out;libs/*" tools\CheckSaves.java` по 13 мирам — ноль
+- [x] Прогон `java -cp "out;libs/*" tools\CheckSaves.java` по 13 мирам — ноль
       отказов, ноль `missing`; вывод — в раздел «Замеры».
-- [ ] Коммит `feat(save): level v10 with sections, chunk v6 and options v6 on the new stack format`.
+- [x] Коммит `feat(save): level v10 with sections, chunk v6 and options v6 on the new stack format`.
 
 ## Задача 7. Пакетный рендер интерфейса
 
@@ -497,12 +498,12 @@ v1–5 — `readLegacy`.
   `ui.setAtlas(atlas.getTextureId()); ui.registerFonts(font, smallFont);`
   То же в `RenderHudPreview`, `BenchUi`.
 - F3: строка `UI: N draw calls` (счётчик прошлого кадра).
-- [ ] `RenderHudPreview` → `ComparePreviews out-test/previews-baseline out-test/previews`
+- [x] `RenderHudPreview` → `ComparePreviews out-test/previews-baseline out-test/previews`
       — все кадры OK.
-- [ ] `BenchUi` — цифры «после рендера» в «Замеры».
-- [ ] Тесты (без GL): `batch transform scales around its pivot`
+- [x] `BenchUi` — цифры «после рендера» в «Замеры».
+- [x] Тесты (без GL): `batch transform scales around its pivot`
       (`UiRenderer.transformPoint` — статическая функция).
-- [ ] Коммит `perf(ui): one batched draw call per interface layer`.
+- [x] Коммит `perf(ui): one batched draw call per interface layer`.
 
 ## Задача 8. Иконки предметов
 
@@ -523,13 +524,13 @@ public static int boxFaces(float x0, float y0, float z0, float x1, float y1, flo
 - Полоска прочности — прежняя; вращение выбранного слота — прежнее.
 - `Hud.drawHotbar` и старые окна `Hud` переходят на `ItemIcons`;
   `Hud.isoCubeFaces` удаляется (тест `testIsoCubeFaces`, если есть, — на `boxFaces`).
-- [ ] Тесты: `box faces of a cube match the old iso cube at 45 degrees`,
+- [x] Тесты: `box faces of a cube match the old iso cube at 45 degrees`,
       `stairs icon has more faces than a cube`,
       `box faces write into the caller buffer without allocating` (сравнение
       результата двух вызовов в один буфер).
-- [ ] `ComparePreviews` — кадры с кубиками OK; ступени и слои в новом кадре
+- [x] `ComparePreviews` — кадры с кубиками OK; ступени и слои в новом кадре
       `hud-icon-shapes` (новый кадр `RenderHudPreview`).
-- [ ] Коммит `feat(ui): item icons by block shape, shared by hotbar and windows`.
+- [x] Коммит `feat(ui): item icons by block shape, shared by hotbar and windows`.
 
 ## Задача 9. Логика окон
 
@@ -597,7 +598,7 @@ public final class DragSplit {
 - Двойной клик: сначала неполные стопки, потом полные, из всех групп кроме
   `CRAFT_RESULT`, `CREATIVE_SOURCE`, `TRASH`, до предела курсора.
 - Цифра: обмен с `HOTBAR[n]` с учётом `canPlace` обеих сторон.
-- [ ] Тесты: `left and right clicks keep the old inventory rules`,
+- [x] Тесты: `left and right clicks keep the old inventory rules`,
       `take-only slots pull into a matching cursor`,
       `drag split shares evenly and keeps the remainder on the cursor`,
       `right drag places one per slot`, `drag stops adding slots past the cursor count`,
@@ -610,7 +611,7 @@ public final class DragSplit {
       `creative source clicks add one, middle click gives a full stack`,
       `a stack dropped on the creative source or trash disappears`,
       `closing a window returns the cursor to the player`.
-- [ ] Коммит `feat(ui): container menu logic with drag split, shift routes and creative rules`.
+- [x] Коммит `feat(ui): container menu logic with drag split, shift routes and creative rules`.
 
 ## Задача 10. Подсказки, пружины, перелёты
 
@@ -641,14 +642,14 @@ public final class ItemFlights {
   расширенные — id, `damage/durability` у предметов с износом, теги (до 6 и «…»),
   «+N компонентов»; строка «+данные блока» при `BLOCK_STATE`.
 - Перелёт — 0,18 с, сглаженный; слот назначения скрывает иконку до прилёта.
-- [ ] Тесты: `a critically damped spring does not overshoot`,
+- [x] Тесты: `a critically damped spring does not overshoot`,
       `an underdamped spring overshoots a little and settles`,
       `spring stays stable at a 50 ms frame`,
       `tooltip prefers right-below and flips at the right and bottom edges`,
       `tooltip is clamped when no corner fits`,
       `advanced tooltip shows id, durability numbers and tags`,
       `flights hide their target until they land`.
-- [ ] Коммит `feat(ui): springs, edge-aware tooltips and slot-to-slot flights`.
+- [x] Коммит `feat(ui): springs, edge-aware tooltips and slot-to-slot flights`.
 
 ## Задача 11. Экраны и перевод игры на них
 
@@ -706,13 +707,13 @@ public interface WindowContext {
   Furnace/CreativeMenu` удаляются; `Hud.SlotClick`, `drawInventory`,
   `drawChest`, `drawFurnace`, `drawCreativeMenu`, `drawSlotBack` удаляются.
 - Размытие мира под окном (`menuOpen`) — по `State.WINDOW`.
-- [ ] `RenderHudPreview`: кадры `hud-inventory`, `hud-chest`, `hud-furnace`,
+- [x] `RenderHudPreview`: кадры `hud-inventory`, `hud-chest`, `hud-furnace`,
       `hud-creative` рисуются экранами через заглушку `WindowContext`;
       новые кадры `window-drag-split` (протяжка с числами), `window-tooltip-edge`
       (подсказка у правого нижнего края), `window-advanced-tooltip`.
-- [ ] `BenchUi` переводится на экраны; цифры «после» в «Замеры». Цель — не
+- [x] `BenchUi` переводится на экраны; цифры «после» в «Замеры». Цель — не
       больше 3 draw call на инвентарь и 4 на креатив.
-- [ ] Коммит `feat(ui): inventory, chest, furnace and creative windows on the container framework`.
+- [x] Коммит `feat(ui): inventory, chest, furnace and creative windows on the container framework`.
 
 ## Задача 12. Пипетка и F3-сочетания
 
@@ -733,7 +734,7 @@ public interface WindowContext {
 - `Game`: средняя кнопка без F3 — пипетка; F3+средняя — прежний перебор meta;
   F3+H — `advancedTooltips` с тостом «Расширенные подсказки: вкл/выкл» и
   записью `options.dat`; отладка по `TOGGLE_DEBUG`; команда `/debug` — как была.
-- [ ] Тесты: `survival pick selects a hotbar match or swaps from storage`,
+- [x] Тесты: `survival pick selects a hotbar match or swaps from storage`,
       `survival pick does nothing without the item`,
       `creative pick fills the selected slot or the first empty one`,
       `ctrl pick copies chest contents into block state`,
@@ -741,7 +742,7 @@ public interface WindowContext {
       как соседние тесты мира),
       `f3 toggles debug on release only without a combo`,
       `f3+h toggles advanced tooltips and suppresses the debug toggle`.
-- [ ] Коммит `feat(game): pick block with block state, F3 combos and advanced tooltips`.
+- [x] Коммит `feat(game): pick block with block state, F3 combos and advanced tooltips`.
 
 ## Задача 13. Автопилот окон
 
@@ -758,23 +759,23 @@ public interface WindowContext {
   3. Esc — окно закрыто, курсор вернулся в инвентарь (всего 10 булыжника);
   4. F3 зажать, H нажать, F3 отпустить — `advancedTooltips == true`, отладка не показана;
   5. `/gamemode creative`, E — открыт креатив, снимок `window-creative`, Esc.
-- [ ] Прогон:
+- [x] Прогон:
       `java -Dmineclone.autopilot=out-test/autopilot/shots -Dmineclone.savesDir=out-test/autopilot/saves -cp "out;libs/*" com.mineclone.Main`
       — код 0.
-- [ ] Коммит `test(ui): autopilot drives the inventory, drag split, F3+H and creative window`.
+- [x] Коммит `test(ui): autopilot drives the inventory, drag split, F3+H and creative window`.
 
 ## Задача 14. Документы
 
-- [ ] ADR `knowledge/decisions/item-registry-and-components.md`: данные,
+- [x] ADR `knowledge/decisions/item-registry-and-components.md`: данные,
       компоненты, формат стопки и секции `level.dat`, миграция, итог `CheckSaves`.
-- [ ] ADR `knowledge/decisions/inventory-windows.md`: пакетный рендер (цифры
+- [x] ADR `knowledge/decisions/inventory-windows.md`: пакетный рендер (цифры
       `BenchUi` до/после), каркас окон, правила кликов, анимации, пипетка, F3+H.
-- [ ] `CLAUDE.md`: разделы «Предметы и данные», «Окна инвентаря»; раздел про
+- [x] `CLAUDE.md`: разделы «Предметы и данные», «Окна инвентаря»; раздел про
       `ItemStack` и `ToolType` переписан; ручки настройки (`ContainerScreen`
       размеры слота, `Spring` окна, `ItemFlights` длительность, `TooltipLayout`
       поля); команды `BenchUi`, `ComparePreviews`, `CheckSaves`.
-- [ ] План: статус `done`, замеры и отступления.
-- [ ] Коммит `docs: item registry and inventory windows ADRs, CLAUDE.md`.
+- [x] План: статус `done`, замеры и отступления.
+- [x] Коммит `docs: item registry and inventory windows ADRs, CLAUDE.md`.
 
 ---
 
@@ -782,12 +783,12 @@ public interface WindowContext {
 
 | Что | До | После |
 |---|---|---|
-| Инвентарь, draw calls / кадр | | |
-| Инвентарь, мс / кадр | | |
-| Сундук, draw calls / кадр | | |
-| Креатив, draw calls / кадр | | |
-| Креатив, мс / кадр | | |
-| CheckSaves: миры / чанки / стопки / missing / отказы | — | |
+| Инвентарь, draw calls / кадр | 476 | 25 → **1** (задача 11) |
+| Инвентарь, мс / кадр | 2,33 | 0,50 → **0,16** |
+| Сундук, draw calls / кадр (мс) | 633 (3,05) | 36 (0,68) → **1 (0,10)** |
+| Креатив, draw calls / кадр | 355 | 3 → **1** |
+| Креатив, мс / кадр | 1,45 | 0,15 → **0,11** |
+| CheckSaves: миры / чанки / стопки / missing / отказы | — | 13 / 1588 / 132 / 0 / 0 |
 
 ## Решения, принятые по ходу
 

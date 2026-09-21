@@ -112,6 +112,28 @@ public final class Sounds {
         digFiles.put(Material.GLASS, listMatching(ROOT + "/random", "glass"));
     }
 
+    /**
+     * Всё, что игра может заиграть в обычной игре — для прогрева декодера.
+     *
+     * <p>Список, а не «все 2728 файлов из assets/sounds»: там лежат целые
+     * библиотеки, которых эта игра не касается, и разжимать их в память
+     * незачем. Длинных фонов здесь тоже нет намеренно — они дороги по памяти,
+     * а рывка от них больше не будет: декодер всё равно работает в фоне.
+     */
+    public List<String> warmupPaths() {
+        java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
+        for (List<String> l : stepFiles.values()) out.addAll(l);
+        for (List<String> l : digFiles.values()) out.addAll(l);
+        for (String dir : new String[] {
+                ROOT + "/random", ROOT + "/damage", ROOT + "/liquid", ROOT + "/ui/loom",
+                ROOT + "/entity/player/attack", ROOT + "/ambient/weather",
+                ROOT + "/block/azalea_leaves", ROOT + "/block/powder_snow" })
+            out.addAll(listMatching(dir, ""));
+        for (MobType t : MobType.values())
+            out.addAll(listMatching(ROOT + "/mob/" + t.soundDir, ""));
+        return new ArrayList<>(out);
+    }
+
     static List<String> listMatching(String dir, String prefix) {
         File d = AppPaths.file(dir);
         File[] kids = d.listFiles();
@@ -137,12 +159,15 @@ public final class Sounds {
         if (b == null)
             return Material.NONE;
         return switch (b) {
-            case GRASS, DIRT, LEAVES -> Material.GRASS;
-            case STONE, COBBLE, BEDROCK, COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE -> Material.STONE;
-            case SAND -> Material.SAND;
-            case WOOD, PLANKS, TORCH, FIRE -> Material.WOOD;
+            case GRASS, DIRT, LEAVES, PODZOL, DRY_GRASS -> Material.GRASS;
+            case STONE, COBBLE, BEDROCK, COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE,
+                    TERRACOTTA, LIMESTONE, BASALT, MOSSY_COBBLE, OBSIDIAN, CHAIN -> Material.STONE;
+            case SAND, RED_SAND, ASH -> Material.SAND;
+            case PEAT, MUD -> Material.MUD;
+            case GRAVEL -> Material.GRAVEL;
+            case WOOD, PLANKS, TORCH, FIRE, CRAFTING_TABLE -> Material.WOOD;
             case GLASS -> Material.GLASS;
-            case ICE -> Material.ICE;
+            case ICE, THIN_ICE -> Material.ICE;
             case STAIRS, DOOR_CLOSED, DOOR_OPEN, CHEST -> Material.WOOD;
             case FURNACE -> Material.STONE;
             case SNOWY_GRASS, SNOW_LAYER -> Material.SNOW;
@@ -202,6 +227,14 @@ public final class Sounds {
 
     public List<String> waterSplash() {
         return listMatching(ROOT + "/liquid", "splash");
+    }
+
+    public List<String> lavaAmbient() {
+        return List.of(AppPaths.file(ROOT + "/liquid/lava.ogg").getAbsolutePath());
+    }
+
+    public List<String> lavaPop() {
+        return List.of(AppPaths.file(ROOT + "/liquid/lavapop.ogg").getAbsolutePath());
     }
 
     public List<String> waterSwim() {

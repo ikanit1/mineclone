@@ -65,7 +65,7 @@ public class TextureAtlas {
             "cobblestone", // 10
             "planks", // 11
             "torch", // 12
-            "particle", // 13 – solid white circle for coloured flame/smoke particles
+            "pixel_spark", // 13 – hard-edged pixel chips
             "glass", // 14
             "door",     // 15
             "door_top", // 16
@@ -74,7 +74,7 @@ public class TextureAtlas {
             "water_flow_04", "water_flow_05", "water_flow_06", "water_flow_07",
             "water_flow_08", "water_flow_09", "water_flow_10", "water_flow_11",
             "water_flow_12", "water_flow_13", "water_flow_14", "water_flow_15",
-            "water_particle", // 33
+            "pixel_water", // 33
             "heart_empty",    // 34
             "heart_full",     // 35
             "heart_half",     // 36
@@ -104,6 +104,19 @@ public class TextureAtlas {
             "cooked_beef", "cooked_pork", "cooked_chicken", "cooked_mutton",      // 82..85
             "ice",                                                                // 86
             "bedroll_top", "bedroll_side",                                        // 87..88
+            // У продвинутых блоков больше нет временных чужих текстур.
+            "mud", "ash", "mossy_cobblestone", "lava", "obsidian", "thin_ice", // 89..94
+            "rope", "chain", "cobweb", "journal",                               // 95..98
+            "crafting_table_side", "crafting_table_top",                           // 99..100
+            // Плоские материалы крафта.
+            "stick", "coal", "iron_ingot", "gold_ingot", "diamond",             // 101..105
+            "podzol", "peat", "dry_grass", "red_sand",                          // 106..109
+            "terracotta", "limestone", "basalt", "gravel",                     // 110..113
+            "lava_flow", "gold_pickaxe", "gold_axe", "gold_shovel",              // 114..117
+            "copper_pickaxe", "copper_axe",                                       // 118..119
+            "tool_gold", "tool_copper", "tool_wood",                             // 120..122
+            "copper_ingot",                                                        // 123
+            "pixel_smoke", "pixel_flame", "pixel_lava", "pixel_snow",             // 124..127
     };
 
     /** First tile index of the water_flow animation strip (16 frames). */

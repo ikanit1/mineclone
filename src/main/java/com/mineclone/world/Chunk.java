@@ -19,7 +19,22 @@ public class Chunk {
     private final PaletteStorage blocks = new PaletteStorage(SIZE_X * SIZE_Y * SIZE_Z);
     private int[] waterCells = new int[64];
     private int waterCount;
+    private int[] lavaCells = new int[32];
+    private int lavaCount;
     private final long[] solidMask = new long[SIZE_X * SIZE_Y * SIZE_Z / 64];
+    /**
+     * Пропускает ли ячейка небесный свет. Та же идея, что у {@code solidMask},
+     * но предикат другой ({@code AIR || transparent}), поэтому и маска своя.
+     * Без неё заливка света заново строила {@code boolean[32768]} и дёргала
+     * палитру на каждую ячейку.
+     */
+    private final long[] clearMask = new long[SIZE_X * SIZE_Y * SIZE_Z / 64];
+    /**
+     * Небесный свет до размытия — то, что считает BFS. Игра и меш читают
+     * размытую копию {@link #skyLight}, а продолжать заливку по ней нельзя:
+     * размытие необратимо. Две копии — цена инкрементального света.
+     */
+    private final byte[] skyRaw = new byte[SIZE_X * SIZE_Y * SIZE_Z];
     private final byte[] skyLight = new byte[SIZE_X * SIZE_Y * SIZE_Z];
     // blockLight is written on the main thread (flood fill) and read on mesh
     // threads.
@@ -76,6 +91,10 @@ public class Chunk {
     public Chunk(int cx, int cz) {
         this.cx = cx;
         this.cz = cz;
+        // Пустой чанк — сплошной воздух, а воздух прозрачен. Нулевая маска
+        // означала бы «всё глухое», и первый же расчёт света дал бы чёрный чанк:
+        // set() на неизменившемся типе выходит рано и маску не трогает.
+        java.util.Arrays.fill(clearMask, ~0L);
     }
 
     public static int idx(int x, int y, int z) {
@@ -117,8 +136,16 @@ public class Chunk {
         } else if (oldWater && !newWater) {
             for (int n = 0; n < waterCount; n++) if (waterCells[n] == i) { waterCells[n] = waterCells[--waterCount]; break; }
         }
+        if (old != BlockType.LAVA && t == BlockType.LAVA) {
+            if (lavaCount == lavaCells.length) lavaCells = java.util.Arrays.copyOf(lavaCells, lavaCount * 2);
+            lavaCells[lavaCount++] = i;
+        } else if (old == BlockType.LAVA && t != BlockType.LAVA) {
+            for (int n = 0; n < lavaCount; n++) if (lavaCells[n] == i) { lavaCells[n] = lavaCells[--lavaCount]; break; }
+        }
         if (t.solid) solidMask[i >>> 6] |= 1L << (i & 63);
         else solidMask[i >>> 6] &= ~(1L << (i & 63));
+        if (transparent(t)) clearMask[i >>> 6] |= 1L << (i & 63);
+        else clearMask[i >>> 6] &= ~(1L << (i & 63));
         if (old.emittedLight > 0 && t.emittedLight <= 0)
             removeEmitter(i);
         else if (old.emittedLight <= 0 && t.emittedLight > 0)
@@ -243,10 +270,59 @@ public class Chunk {
         return blockLight[idx(x, y, z)] & 0xFF;
     }
 
+    /**
+     * Есть ли в чанке хоть одна светящаяся ячейка.
+     *
+     * <p>Флаг взводится и не снимается: он нужен только чтобы дёшево ответить
+     * «здесь света не было никогда». Именно этот ответ и важен — в свежем
+     * мире без факелов подсев света от соседей перебирал 8 192 граничные
+     * ячейки на каждый загруженный чанк, чтобы найти там нули.
+     */
+    private volatile boolean anyBlockLight;
+
+    public boolean hasBlockLight() {
+        return anyBlockLight;
+    }
+
     public void setBlockLight(int x, int y, int z, int val) {
         if (!inBounds(x, y, z))
             return;
-        blockLight[idx(x, y, z)] = (byte) Math.max(0, Math.min(15, val));
+        int v = Math.max(0, Math.min(15, val));
+        blockLight[idx(x, y, z)] = (byte) v;
+        if (v > 0)
+            anyBlockLight = true;
+    }
+
+    /**
+     * Гасит блочный свет в локальной коробке и помечает чанк грязным один раз.
+     *
+     * <p>Раньше это делал мир по одной ячейке: куб 31×31×31 — почти тридцать
+     * тысяч вызовов, в каждом {@code floorDiv}, поиск чанка в
+     * {@code ConcurrentHashMap} с упаковкой ключа в {@code Long} и
+     * {@code markDirty()} под монитором. В освещённой пещере один удар киркой
+     * стоил тысяч таких проходов.
+     *
+     * @return true, если хоть одна ячейка погасла
+     */
+    public boolean clearBlockLightBox(int x0, int x1, int y0, int y1, int z0, int z1) {
+        x0 = Math.max(0, x0); x1 = Math.min(SIZE_X - 1, x1);
+        y0 = Math.max(0, y0); y1 = Math.min(SIZE_Y - 1, y1);
+        z0 = Math.max(0, z0); z1 = Math.min(SIZE_Z - 1, z1);
+        boolean any = false;
+        for (int y = y0; y <= y1; y++) {
+            for (int z = z0; z <= z1; z++) {
+                int row = (y * SIZE_Z + z) * SIZE_X;
+                for (int x = x0; x <= x1; x++) {
+                    if (blockLight[row + x] != 0) {
+                        blockLight[row + x] = 0;
+                        any = true;
+                    }
+                }
+            }
+        }
+        if (any)
+            markDirty();
+        return any;
     }
 
     public byte getMeta(int x, int y, int z) {
@@ -265,40 +341,40 @@ public class Chunk {
     }
 
     /**
-     * Chunk-local sky light flood. Cheap and gives the closed-box-is-dark behavior.
+     * Полная заливка небесного света чанка: вертикальный посев, BFS вширь и
+     * одно размытие. Зовётся при генерации и после восстановления из сейва —
+     * то есть один раз на чанк, в фоновом потоке.
      *
-     * <p>Зовётся не только при генерации, но и на каждый удар по блоку,
-     * меняющий прозрачность — а на границе чанка сразу для трёх чанков, в
-     * главном потоке. Отсюда две вещи, без которых копание заметно дёргается:
-     * очередь хранит упакованные индексы в {@code int[]}, а не объекты {@code int[3]}
-     * — в открытом чанке их набиралось около восемнадцати тысяч на один
-     * вызов; а прозрачность снимается в маску один раз, а не по семь раз на ячейку
-     * в размытии. Результат бит в бит тот же.
+     * <p>На каждый удар по блоку она больше НЕ зовётся: там работает
+     * {@link #updateSkyLightAt}, которая трогает только окрестность правки.
+     * Полный проход стоил 5–15 мс в главном потоке, и это был самый заметный
+     * рывок в игре — по одному на каждый сломанный блок.
+     *
+     * <p>Результат BFS лежит в {@link #skyRaw}, а размытая копия — в
+     * {@link #skyLight}, которую и читают меш и игра. Две копии нужны ровно
+     * ради инкрементальности: размытие необратимо, и по сглаженным числам
+     * продолжить заливку нельзя.
      */
     public void computeSkyLight() {
-        final int len = blocks.length;
         final int planeXZ = SIZE_X * SIZE_Z;
-        java.util.Arrays.fill(skyLight, (byte) 0);
-
-        // Маска прозрачности: дальше она читается шесть раз на шаг BFS и семь
-        // на ячейку в размытии. Поиск типа блока каждый раз был самой
-        // дорогой частью функции.
-        boolean[] clear = new boolean[len];
-        for (int i = 0; i < len; i++)
-            clear[i] = transparent(BlockType.byId(blocks.get(i)));
+        java.util.Arrays.fill(skyRaw, (byte) 0);
 
         int[] queue = new int[8192];
         int head = 0, tail = 0;
 
-        // Vertical pass: each column gets 15 from the top down through transparent
-        // blocks.
+        // Direct sky does not decay in air, but translucent materials consume
+        // their own amount per block (water, leaves, glass, thin ice).
         for (int x = 0; x < SIZE_X; x++) {
             for (int z = 0; z < SIZE_Z; z++) {
+                int level = MAX_LIGHT;
                 for (int y = SIZE_Y - 1; y >= 0; y--) {
                     int i = idx(x, y, z);
-                    if (!clear[i])
+                    if (!clearAt(i))
                         break;
-                    skyLight[i] = MAX_LIGHT;
+                    level -= skyAttenuation(BlockType.byId(blocks.get(i)));
+                    if (level <= 0)
+                        break;
+                    skyRaw[i] = (byte) level;
                     if (tail == queue.length)
                         queue = java.util.Arrays.copyOf(queue, queue.length * 2);
                     queue[tail++] = i;
@@ -314,65 +390,280 @@ public class Chunk {
                 queue = java.util.Arrays.copyOf(queue, queue.length * 2);
 
             int i = queue[head++];
-            int next = (skyLight[i] & 0xFF) - 1;
-            if (next <= 0)
+            int source = skyRaw[i] & 0xFF;
+            if (source <= 1)
                 continue;
             // Распаковка idx: (y * SIZE_Z + z) * SIZE_X + x.
             int x = i % SIZE_X;
             int rest = i / SIZE_X;
             int z = rest % SIZE_Z;
             int y = rest / SIZE_Z;
-            if (x + 1 < SIZE_X && lift(i + 1, next, clear))        queue[tail++] = i + 1;
-            if (x - 1 >= 0     && lift(i - 1, next, clear))        queue[tail++] = i - 1;
-            if (z + 1 < SIZE_Z && lift(i + SIZE_X, next, clear))   queue[tail++] = i + SIZE_X;
-            if (z - 1 >= 0     && lift(i - SIZE_X, next, clear))   queue[tail++] = i - SIZE_X;
-            if (y + 1 < SIZE_Y && lift(i + planeXZ, next, clear))  queue[tail++] = i + planeXZ;
-            if (y - 1 >= 0     && lift(i - planeXZ, next, clear))  queue[tail++] = i - planeXZ;
+            if (x + 1 < SIZE_X && lift(i + 1, source))        queue[tail++] = i + 1;
+            if (x - 1 >= 0     && lift(i - 1, source))        queue[tail++] = i - 1;
+            if (z + 1 < SIZE_Z && lift(i + SIZE_X, source))   queue[tail++] = i + SIZE_X;
+            if (z - 1 >= 0     && lift(i - SIZE_X, source))   queue[tail++] = i - SIZE_X;
+            if (y + 1 < SIZE_Y && lift(i + planeXZ, source))  queue[tail++] = i + planeXZ;
+            if (y - 1 >= 0     && lift(i - planeXZ, source))  queue[tail++] = i - planeXZ;
         }
 
-        smoothSkyLight(clear);
+        blurSkyLight(0, SIZE_X - 1, 0, SIZE_Y - 1, 0, SIZE_Z - 1);
+    }
+
+    /**
+     * Прозрачна ли ячейка для небесного света. Маска ведётся в {@link #set} и
+     * {@code restore} рядом с {@code solidMask}: раньше заливка строила
+     * {@code boolean[32768]} заново на каждый вызов и тянула тип блока из
+     * палитры на каждую ячейку — это и была половина её стоимости.
+     */
+    private boolean clearAt(int i) {
+        return (clearMask[i >>> 6] & (1L << (i & 63))) != 0;
     }
 
     /**
      * Поднимает свет в ячейке до {@code next}, если та прозрачна и там сейчас
      * темнее. Возвращает true, если ячейку надо поставить в очередь.
      */
-    private boolean lift(int i, int next, boolean[] clear) {
-        if (!clear[i] || (skyLight[i] & 0xFF) >= next)
+    private boolean lift(int i, int source) {
+        int next = source - Math.max(1, skyAttenuation(BlockType.byId(blocks.get(i))));
+        if (!clearAt(i) || (skyRaw[i] & 0xFF) >= next)
             return false;
-        skyLight[i] = (byte) next;
+        skyRaw[i] = (byte) next;
         return true;
     }
 
+    // ---- инкрементальный небесный свет -------------------------------------
+
     /**
-     * One self-weighted blur pass over transparent cells to soften the BFS step
-     * gradient.
+     * Очередь локальной заливки. Только главный поток: правки блоков идут
+     * через {@code World.setBlock}, а он главный поток и есть.
+     * Переиспользуется между вызовами — копать игрок может несколько раз в
+     * секунду.
      */
-    private void smoothSkyLight(boolean[] clear) {
-        byte[] src = skyLight.clone();
+    private int[] skyQueue = new int[1024];
+    private int[] skyReadd = new int[256];
+
+    /** Границы изменённой области — по ним размывается ровно то, что поехало. */
+    private int dirtyMinX, dirtyMaxX, dirtyMinY, dirtyMaxY, dirtyMinZ, dirtyMaxZ;
+
+    /**
+     * Небесный свет после смены прозрачности блока в (x, y, z).
+     *
+     * <p>Вместо полной перезаливки чанка — снятие света ограниченным BFS и
+     * возврат его от уцелевших соседей. Небо особенное: прямой столб идёт вниз
+     * без затухания, поэтому вниз свет и снимается, и возвращается целиком,
+     * пока уровень равен {@link #MAX_LIGHT}. Без этого поставленный блок
+     * оставлял бы под собой светящуюся шахту.
+     */
+    public void updateSkyLightAt(int x, int y, int z) {
+        if (!inBounds(x, y, z))
+            return;
+        int i = idx(x, y, z);
+        dirtyMinX = dirtyMaxX = x;
+        dirtyMinY = dirtyMaxY = y;
+        dirtyMinZ = dirtyMaxZ = z;
+        if (clearAt(i))
+            addSkyFrom(i);
+        else
+            removeSkyFrom(i);
+        blurSkyLight(Math.max(0, dirtyMinX - 1), Math.min(SIZE_X - 1, dirtyMaxX + 1),
+                Math.max(0, dirtyMinY - 1), Math.min(SIZE_Y - 1, dirtyMaxY + 1),
+                Math.max(0, dirtyMinZ - 1), Math.min(SIZE_Z - 1, dirtyMaxZ + 1));
+    }
+
+    private void touch(int i) {
+        int x = i % SIZE_X;
+        int rest = i / SIZE_X;
+        int z = rest % SIZE_Z;
+        int y = rest / SIZE_Z;
+        if (x < dirtyMinX) dirtyMinX = x;
+        if (x > dirtyMaxX) dirtyMaxX = x;
+        if (y < dirtyMinY) dirtyMinY = y;
+        if (y > dirtyMaxY) dirtyMaxY = y;
+        if (z < dirtyMinZ) dirtyMinZ = z;
+        if (z > dirtyMaxZ) dirtyMaxZ = z;
+    }
+
+    /** Ячейка стала непрозрачной: гасим её и всё, что питалось от неё. */
+    private void removeSkyFrom(int origin) {
+        int level = skyRaw[origin] & 0xFF;
+        skyRaw[origin] = 0;
+        touch(origin);
+        if (level == 0)
+            return;
+        int head = 0, tail = 0, readd = 0;
+        skyQueue = push(skyQueue, tail, origin | (level << 16));
+        tail++;
         final int planeXZ = SIZE_X * SIZE_Z;
-        for (int x = 0; x < SIZE_X; x++) {
-            for (int y = 0; y < SIZE_Y; y++) {
-                for (int z = 0; z < SIZE_Z; z++) {
+        while (head < tail) {
+            int e = skyQueue[head++];
+            int j = e & 0xFFFF;
+            int lvl = e >>> 16;
+            int x = j % SIZE_X;
+            int rest = j / SIZE_X;
+            int zz = rest % SIZE_Z;
+            int yy = rest / SIZE_Z;
+            for (int d = 0; d < 6; d++) {
+                int k;
+                if (d == 0)      { if (x + 1 >= SIZE_X) continue;  k = j + 1; }
+                else if (d == 1) { if (x - 1 < 0) continue;        k = j - 1; }
+                else if (d == 2) { if (zz + 1 >= SIZE_Z) continue; k = j + SIZE_X; }
+                else if (d == 3) { if (zz - 1 < 0) continue;       k = j - SIZE_X; }
+                else if (d == 4) { if (yy + 1 >= SIZE_Y) continue; k = j + planeXZ; }
+                else             { if (yy - 1 < 0) continue;       k = j - planeXZ; }
+                if (!clearAt(k))
+                    continue;
+                int nl = skyRaw[k] & 0xFF;
+                if (nl == 0)
+                    continue;
+                // Вниз по прямому столбу свет не затухает, поэтому и гаснет он
+                // там весь, а не «на уровень ниже».
+                boolean column = d == 5 && lvl == MAX_LIGHT && nl == MAX_LIGHT;
+                if (nl < lvl || column) {
+                    skyRaw[k] = 0;
+                    touch(k);
+                    skyQueue = push(skyQueue, tail, k | (nl << 16));
+                    tail++;
+                } else {
+                    skyReadd = push(skyReadd, readd, k);
+                    readd++;
+                }
+            }
+        }
+        // Уцелевшие соседи заливают погасшее обратно.
+        if (readd > 0)
+            spread(skyReadd, readd);
+    }
+
+    /** Ячейка стала прозрачной: берём максимум у соседей и разливаем дальше. */
+    private void addSkyFrom(int origin) {
+        final int planeXZ = SIZE_X * SIZE_Z;
+        int x = origin % SIZE_X;
+        int rest = origin / SIZE_X;
+        int z = rest % SIZE_Z;
+        int y = rest / SIZE_Z;
+        int best = 0;
+        if (y + 1 >= SIZE_Y)
+            best = MAX_LIGHT;                                  // прямо под небом
+        else if (clearAt(origin + planeXZ) && (skyRaw[origin + planeXZ] & 0xFF) == MAX_LIGHT)
+            best = MAX_LIGHT;                                  // продолжение столба
+        if (x + 1 < SIZE_X && clearAt(origin + 1))       best = Math.max(best, (skyRaw[origin + 1] & 0xFF) - 1);
+        if (x - 1 >= 0     && clearAt(origin - 1))       best = Math.max(best, (skyRaw[origin - 1] & 0xFF) - 1);
+        if (z + 1 < SIZE_Z && clearAt(origin + SIZE_X))  best = Math.max(best, (skyRaw[origin + SIZE_X] & 0xFF) - 1);
+        if (z - 1 >= 0     && clearAt(origin - SIZE_X))  best = Math.max(best, (skyRaw[origin - SIZE_X] & 0xFF) - 1);
+        if (y + 1 < SIZE_Y && clearAt(origin + planeXZ)) best = Math.max(best, (skyRaw[origin + planeXZ] & 0xFF) - 1);
+        if (y - 1 >= 0     && clearAt(origin - planeXZ)) best = Math.max(best, (skyRaw[origin - planeXZ] & 0xFF) - 1);
+        skyRaw[origin] = (byte) Math.max(0, best);
+        touch(origin);
+        skyReadd = push(skyReadd, 0, origin);
+        spread(skyReadd, 1);
+    }
+
+    /** BFS-долив: из перечисленных ячеек свет расходится, пока кому-то темнее. */
+    private void spread(int[] seeds, int count) {
+        final int planeXZ = SIZE_X * SIZE_Z;
+        int head = 0, tail = 0;
+        for (int n = 0; n < count; n++) {
+            skyQueue = push(skyQueue, tail, seeds[n]);
+            tail++;
+        }
+        while (head < tail) {
+            if (tail + 6 > skyQueue.length)
+                skyQueue = java.util.Arrays.copyOf(skyQueue, skyQueue.length * 2);
+            int j = skyQueue[head++];
+            int lvl = skyRaw[j] & 0xFF;
+            if (lvl <= 1)
+                continue;
+            int x = j % SIZE_X;
+            int rest = j / SIZE_X;
+            int zz = rest % SIZE_Z;
+            int yy = rest / SIZE_Z;
+            int next = lvl - 1;
+            if (x + 1 < SIZE_X  && raise(j + 1, next))       skyQueue[tail++] = j + 1;
+            if (x - 1 >= 0      && raise(j - 1, next))       skyQueue[tail++] = j - 1;
+            if (zz + 1 < SIZE_Z && raise(j + SIZE_X, next))  skyQueue[tail++] = j + SIZE_X;
+            if (zz - 1 >= 0     && raise(j - SIZE_X, next))  skyQueue[tail++] = j - SIZE_X;
+            if (yy + 1 < SIZE_Y && raise(j + planeXZ, next)) skyQueue[tail++] = j + planeXZ;
+            // Вниз прямой столб идёт без затухания — как в вертикальном посеве.
+            if (yy - 1 >= 0 && raise(j - planeXZ, lvl == MAX_LIGHT ? MAX_LIGHT : next))
+                skyQueue[tail++] = j - planeXZ;
+        }
+    }
+
+    private boolean raise(int i, int next) {
+        if (next <= 0 || !clearAt(i) || (skyRaw[i] & 0xFF) >= next)
+            return false;
+        skyRaw[i] = (byte) next;
+        touch(i);
+        return true;
+    }
+
+    private static int[] push(int[] arr, int at, int value) {
+        if (at == arr.length)
+            arr = java.util.Arrays.copyOf(arr, arr.length * 2);
+        arr[at] = value;
+        return arr;
+    }
+
+    /**
+     * Одно самовзвешенное размытие {@link #skyRaw} в {@link #skyLight} по
+     * коробке. Границы задаёт вызывающий: полная заливка размывает чанк
+     * целиком, точечная правка — только то, что сдвинулось, плюс ячейка
+     * вокруг (размытие читает соседей).
+     */
+    private void blurSkyLight(int x0, int x1, int y0, int y1, int z0, int z1) {
+        final int planeXZ = SIZE_X * SIZE_Z;
+        for (int x = x0; x <= x1; x++) {
+            for (int y = y0; y <= y1; y++) {
+                for (int z = z0; z <= z1; z++) {
                     int i = idx(x, y, z);
-                    if (!clear[i])
+                    if (!clearAt(i)) {
+                        skyLight[i] = 0;
                         continue;
-                    int sum = 2 * (src[i] & 0xFF);
+                    }
+                    int sum = 2 * (skyRaw[i] & 0xFF);
                     int cnt = 2;
-                    if (x + 1 < SIZE_X && clear[i + 1])       { sum += src[i + 1] & 0xFF; cnt++; }
-                    if (x - 1 >= 0     && clear[i - 1])       { sum += src[i - 1] & 0xFF; cnt++; }
-                    if (z + 1 < SIZE_Z && clear[i + SIZE_X])  { sum += src[i + SIZE_X] & 0xFF; cnt++; }
-                    if (z - 1 >= 0     && clear[i - SIZE_X])  { sum += src[i - SIZE_X] & 0xFF; cnt++; }
-                    if (y + 1 < SIZE_Y && clear[i + planeXZ]) { sum += src[i + planeXZ] & 0xFF; cnt++; }
-                    if (y - 1 >= 0     && clear[i - planeXZ]) { sum += src[i - planeXZ] & 0xFF; cnt++; }
+                    if (x + 1 < SIZE_X && clearAt(i + 1))       { sum += skyRaw[i + 1] & 0xFF; cnt++; }
+                    if (x - 1 >= 0     && clearAt(i - 1))       { sum += skyRaw[i - 1] & 0xFF; cnt++; }
+                    if (z + 1 < SIZE_Z && clearAt(i + SIZE_X))  { sum += skyRaw[i + SIZE_X] & 0xFF; cnt++; }
+                    if (z - 1 >= 0     && clearAt(i - SIZE_X))  { sum += skyRaw[i - SIZE_X] & 0xFF; cnt++; }
+                    if (y + 1 < SIZE_Y && clearAt(i + planeXZ)) { sum += skyRaw[i + planeXZ] & 0xFF; cnt++; }
+                    if (y - 1 >= 0     && clearAt(i - planeXZ)) { sum += skyRaw[i - planeXZ] & 0xFF; cnt++; }
                     skyLight[i] = (byte) ((sum + cnt / 2) / cnt);
                 }
             }
         }
     }
 
+    /**
+     * Пропускает ли блок небесный свет.
+     *
+     * <p>Публичная, потому что то же правило обязан знать {@link World#setBlock}:
+     * пересчитывать свет надо ровно тогда, когда меняется этот ответ. Раньше он
+     * решал по своей мерке («непрозрачный» без учёта cutout), и поставленная в
+     * воздухе листва не гасила под собой ничего — расхождение всплывало только
+     * при следующей полной перезаливке чанка.
+     */
+    public static boolean letsSkyThrough(BlockType bt) {
+        if (bt == BlockType.AIR || bt.transparent)
+            return true;
+        return bt == BlockType.LEAVES || bt == BlockType.GLASS
+                || bt == BlockType.ROPE || bt == BlockType.CHAIN || bt == BlockType.WEB;
+    }
+
+    /** Light levels absorbed when direct or propagated skylight enters a block. */
+    public static int skyAttenuation(BlockType bt) {
+        if (!letsSkyThrough(bt)) return MAX_LIGHT;
+        return switch (bt) {
+            case WATER, WATER_FLOW -> 2;
+            case LAVA, LEAVES -> 3;
+            case WEB -> 2;
+            case GLASS, THIN_ICE, SNOW_LAYER -> 1;
+            default -> 0;
+        };
+    }
+
     private static boolean transparent(BlockType bt) {
-        return bt == BlockType.AIR || bt.transparent;
+        return letsSkyThrough(bt);
     }
 
     // ---- сундуки -----------------------------------------------------------
@@ -546,6 +837,8 @@ public class Chunk {
     public int blockStorageBytes() { return blocks.payloadBytes(); }
     public int waterCellCount() { return waterCount; }
     public int waterCellAt(int index) { return waterCells[index]; }
+    public int lavaCellCount() { return lavaCount; }
+    public int lavaCellAt(int index) { return lavaCells[index]; }
 
     public byte[] copyBlocks() {
         return blocks.copy();
@@ -565,16 +858,25 @@ public class Chunk {
     public void restore(byte[] srcBlocks, byte[] srcMeta) {
         blocks.restore(srcBlocks);
         waterCount = 0;
+        lavaCount = 0;
         for (int i = 0; i < srcBlocks.length; i++) {
             BlockType bt = BlockType.byId(srcBlocks[i]);
             if (bt == BlockType.WATER || bt == BlockType.WATER_FLOW) {
                 if (waterCount == waterCells.length) waterCells = java.util.Arrays.copyOf(waterCells, waterCount * 2);
                 waterCells[waterCount++] = i;
             }
+            if (bt == BlockType.LAVA) {
+                if (lavaCount == lavaCells.length) lavaCells = java.util.Arrays.copyOf(lavaCells, lavaCount * 2);
+                lavaCells[lavaCount++] = i;
+            }
         }
         java.util.Arrays.fill(solidMask, 0L);
-        for (int i = 0; i < srcBlocks.length; i++)
-            if (BlockType.byId(srcBlocks[i]).solid) solidMask[i >>> 6] |= 1L << (i & 63);
+        java.util.Arrays.fill(clearMask, 0L);
+        for (int i = 0; i < srcBlocks.length; i++) {
+            BlockType bt = BlockType.byId(srcBlocks[i]);
+            if (bt.solid) solidMask[i >>> 6] |= 1L << (i & 63);
+            if (transparent(bt)) clearMask[i >>> 6] |= 1L << (i & 63);
+        }
         System.arraycopy(srcMeta, 0, meta, 0, meta.length);
         // Блоки пришли массивом мимо set(), инкрементальный учёт их не видел.
         rebuildEmitters();

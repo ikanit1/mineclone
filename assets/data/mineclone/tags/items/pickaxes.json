@@ -1,0 +1,2 @@
+{ "name": "кирки", "aliases": ["pickaxes"],
+  "values": ["wooden_pickaxe", "stone_pickaxe", "iron_pickaxe", "diamond_pickaxe"] }

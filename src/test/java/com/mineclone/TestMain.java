@@ -19,10 +19,9 @@ import com.mineclone.world.GameMode;
 import com.mineclone.world.Inventory;
 import com.mineclone.world.ItemStack;
 import com.mineclone.world.Recipes;
-import com.mineclone.world.FoodType;
-import com.mineclone.world.ToolType;
 import com.mineclone.game.Player;
 import com.mineclone.game.Hud;
+import com.mineclone.render.Camera;
 import com.mineclone.render.PlayerRenderer;
 import com.mineclone.render.ShadowMap;
 import com.mineclone.render.SunLight;
@@ -53,6 +52,7 @@ public final class TestMain {
 
     public static void main(String[] args) {
         run("optimization invariants", OptimizationTests::run);
+        run("biome assets, sparse structures, seams and falling-block conservation", WorldGenerationTests::run);
         run("a stale mesh never overwrites a fresher one", TestMain::testMeshVersionRejectsStale);
         run("the emitter list tracks the blocks it describes", TestMain::testEmitterListMatchesChunk);
         run("player edits jump the mesh queue ahead of distance", TestMain::testMeshPriorityOrder);
@@ -86,6 +86,8 @@ public final class TestMain {
         run("Mob animation moves at rest and settles after walking", TestMain::testMobAnimation);
         run("chunk save/load round-trip", TestMain::testChunkRoundTrip);
         run("options.dat save/load round-trip", TestMain::testOptionsRoundTrip);
+        run("screen, graphics and gameplay options survive a save",
+                TestMain::testVideoOptionsRoundTrip);
         run("sun light direction never grazes the horizon", TestMain::testSunLightDirection);
         run("shadow strength fades across sunrise", TestMain::testShadowStrength);
         run("shadow cascade covers its radius and snaps to texels",
@@ -107,6 +109,10 @@ public final class TestMain {
         run("cactus grows up to its limit", TestMain::testCactusGrowth);
         run("setBlock skips relighting when opacity is unchanged",
                 TestMain::testSetBlockSkipsRelight);
+        run("incremental sky light matches a full reflood",
+                TestMain::testIncrementalSkyLight);
+        run("water and leaves attenuate skylight by material",
+                TestMain::testMaterialSkyAttenuation);
         run("fire spreads along fuel and eats it", TestMain::testFireSpreadsAndConsumes);
         run("fire without fuel burns out", TestMain::testFireDiesWithoutFuel);
         run("water and rain put fire out, a roof saves it",
@@ -115,6 +121,8 @@ public final class TestMain {
                 TestMain::testSnowAccumulation);
         run("player stops striding when he stops walking",
                 TestMain::testPlayerWalkAmplitude);
+        run("player model faces the same direction as the camera",
+                TestMain::testPlayerModelFacing);
         run("hotbar selection spring starts and settles",
                 TestMain::testSelectSpring);
         run("compass heading turns the right way", TestMain::testCompassHeading);
@@ -199,6 +207,8 @@ public final class TestMain {
         FeatureTests.runAll((name, check) -> run(name, check::run));
         MenuTests.runAll((name, check) -> run(name, check::run));
         MusicTests.runAll((name, check) -> run(name, check::run));
+        InventoryTests.runAll((name, check) -> run(name, check::run));
+        NetworkTests.runAll((name, check) -> run(name, check::run));
 
         System.out.println();
         System.out.println("==== " + passed + " passed, " + failed + " failed ====");
@@ -233,14 +243,14 @@ public final class TestMain {
     }
 
     private static void testBiomeParams() {
-        assertEq("5 biomes", 5, Biome.values().length);
+        assertEq("11 biomes", 11, Biome.values().length);
         assertTrue("ocean floor below sea level", Biome.OCEAN.baseHeight < World.SEA_LEVEL);
         assertTrue("tundra surface is snowy grass", Biome.TUNDRA.surfaceBlock == BlockType.SNOWY_GRASS);
         assertTrue("desert surface is sand", Biome.DESERT.surfaceBlock == BlockType.SAND);
         assertTrue("forest denser than plains", Biome.FOREST.treesPer128 > Biome.PLAINS.treesPer128);
         assertTrue("ocean has no trees", Biome.OCEAN.treeType == Biome.TreeType.NONE);
         for (Biome b : Biome.values())
-            assertTrue(b + " amplitude in (0,1]", b.amplitude > 0 && b.amplitude <= 1.0);
+            assertTrue(b + " amplitude in (0,2]", b.amplitude > 0 && b.amplitude <= 2.0);
     }
 
     private static void testByIdGuard() {
@@ -272,7 +282,7 @@ public final class TestMain {
         sm.renameWorld("w1", "Renamed");
         assertEq("rename keeps health", 7.5f, sm.loadLevel("w1").health);
         assertEq("gameMode", GameMode.SURVIVAL, out.gameMode);
-        assertEq("inv[0] type", BlockType.COBBLE, out.inventory[0].type);
+        assertEq("inv[0] type", BlockType.COBBLE, out.inventory[0].block());
         assertEq("inv[0] count", 17, out.inventory[0].count);
     }
 
@@ -311,6 +321,83 @@ public final class TestMain {
     }
 
     /**
+     * Настройки экрана, графики и игры переживают запись — и старый файл тоже.
+     *
+     * <p>Хвост v7 самоописывающийся: незнакомый ключ читается по виду
+     * значения и пропускается. Проверяем и это — иначе первая же новая
+     * настройка тихо обнулит соседние при чтении сборкой постарше.
+     */
+    private static void testVideoOptionsRoundTrip() throws Exception {
+        SaveManager sm = freshManager();
+        Options.Video video = new Options.Video(1, 3, 75, 8);
+        Options.Graphics gfx = new Options.Graphics(3, false, false, false, true, 1, 0, 45, false, false);
+        Options.Gameplay play = new Options.Gameplay(false, false, false, 2);
+        Options in = new Options(8, 90, 0.7f, 0.5f, 144, false, true, false,
+                1.5f, true, 0.25f, 0.9f, 2, 3, new com.mineclone.core.KeyBindings(),
+                true, false, true, "all", 0, video, gfx, play);
+        sm.saveOptions(in);
+        Options out = sm.loadOptions();
+        assertEq("windowMode", 1, out.video.windowMode());
+        assertEq("resolutionIndex", 3, out.video.resolutionIndex());
+        assertEq("renderScale", 75, out.video.renderScale());
+        assertEq("antialiasing", 8, out.video.antialiasing());
+        assertEq("shadows", 3, out.graphics.shadows());
+        assertTrue("bloom off", !out.graphics.bloom());
+        assertTrue("water reflections on", out.graphics.waterReflections());
+        assertEq("particles", 1, out.graphics.particles());
+        assertEq("weather", 0, out.graphics.weather());
+        assertEq("entityDistance", 45, out.graphics.entityDistance());
+        assertTrue("occlusion off", !out.graphics.occlusion());
+        assertTrue("chunk lod off", !out.graphics.chunkLod());
+        assertTrue("camera shake off", !out.gameplay.cameraShake());
+        assertEq("fpsDisplay", 2, out.gameplay.fpsDisplay());
+        assertTrue("advanced tooltips survive", out.advancedTooltips);
+
+        // Настоящий файл шестой версии, собранный байтами: новых настроек в
+        // нём нет, и они обязаны стать умолчаниями, а не нулями. Через
+        // saveOptions такой файл не получить — он всегда пишет текущую версию.
+        File root = freshRoot();
+        SaveManager old6 = new SaveManager(new File(root, "saves"));
+        writeOptionsV6(new File(root, SaveFormat.OPTIONS_FILE));
+        Options legacy = old6.loadOptions();
+        assertEq("legacy render radius", 4, legacy.renderRadius);
+        assertEq("legacy gui scale", 1, legacy.guiScale);
+        assertEq("legacy render scale", Options.Video.defaults().renderScale(),
+                legacy.video.renderScale());
+        assertEq("legacy shadows", Options.Graphics.defaults().shadows(), legacy.graphics.shadows());
+        assertTrue("legacy occlusion", legacy.graphics.occlusion());
+    }
+
+    /** options.dat ровно в том виде, в каком его писала шестая версия. */
+    private static void writeOptionsV6(File f) throws Exception {
+        try (java.io.DataOutputStream out = new java.io.DataOutputStream(
+                new java.util.zip.GZIPOutputStream(new java.io.FileOutputStream(f)))) {
+            out.writeInt(SaveFormat.MAGIC);
+            out.writeInt(6);
+            out.writeInt(4);          // renderRadius
+            out.writeInt(70);         // fov
+            out.writeFloat(1f);       // brightness
+            out.writeFloat(1f);       // master
+            out.writeInt(0);          // maxFps
+            out.writeBoolean(true);   // vsync
+            out.writeBoolean(false);  // fullscreen
+            out.writeBoolean(true);   // viewBobbing
+            out.writeFloat(1f);       // sensitivity
+            out.writeBoolean(false);  // invertY
+            out.writeFloat(1f);       // music
+            out.writeFloat(1f);       // effects
+            out.writeInt(1);          // guiScale
+            out.writeInt(1);          // shaderQuality
+            out.writeInt(0);          // раскладка клавиш: пусто — значит по умолчанию
+            out.writeBoolean(false);  // advancedTooltips
+            out.writeBoolean(false);  // recipeBookOpen
+            out.writeBoolean(false);  // recipeBookCraftable
+            out.writeUTF("all");
+            out.writeInt(0);          // sortMode
+        }
+    }
+
+    /**
      * walkedDistance монотонен и на месте не убывает, поэтому размах шага
      * обязан гаснуть отдельной амплитудой — иначе остановившийся игрок
      * застывает с раскинутыми ногами.
@@ -327,6 +414,64 @@ public final class TestMain {
         // Амплитуда выше единицы не должна выкручивать ноги за предел.
         assertTrue("amplitude is clamped",
                 Math.abs(PlayerRenderer.swingOf(mid, 5f) - PlayerRenderer.swingOf(mid, 1f)) < 1e-6f);
+    }
+
+    /**
+     * Лицевая грань скина лежит на локальной -Z. При переводе yaw/pitch камеры
+     * в поворот модели она должна смотреть в тот же вектор, а не зеркально от
+     * него: иначе удалённый игрок при повороте оказывается боком или спиной.
+     */
+    private static void testPlayerModelFacing() {
+        Camera camera = new Camera();
+        camera.yaw = (float) Math.toRadians(90);
+        camera.pitch = (float) Math.toRadians(25);
+
+        Vector3f modelForward = playerHeadForward(camera.yaw, camera.pitch);
+        Vector3f cameraForward = camera.forward();
+        assertTrue("model X follows camera (" + modelForward + " vs " + cameraForward + ")",
+                Math.abs(modelForward.x - cameraForward.x) < 1e-5f);
+        assertTrue("model Y follows camera (" + modelForward + " vs " + cameraForward + ")",
+                Math.abs(modelForward.y - cameraForward.y) < 1e-5f);
+        assertTrue("model Z follows camera (" + modelForward + " vs " + cameraForward + ")",
+                Math.abs(modelForward.z - cameraForward.z) < 1e-5f);
+
+        // Корпус развёрнут на предел в сторону — голова обязана остаться на
+        // курсе взгляда, иначе иерархия «корпус → голова» собрана неверно.
+        float bodyYaw = camera.yaw - com.mineclone.render.BodyRotation.MAX_OFFSET;
+        Vector3f turned = playerHeadForward(bodyYaw, camera.yaw, camera.pitch);
+        assertTrue("head keeps the camera direction over a turned body ("
+                        + turned + " vs " + cameraForward + ")",
+                Math.abs(turned.x - cameraForward.x) < 1e-5f
+                        && Math.abs(turned.y - cameraForward.y) < 1e-5f
+                        && Math.abs(turned.z - cameraForward.z) < 1e-5f);
+    }
+
+    /** Calls the shared colour/shadow transform without needing an OpenGL context. */
+    private static Vector3f playerHeadForward(float yaw, float pitch) {
+        return playerHeadForward(yaw, yaw, pitch);
+    }
+
+    /**
+     * То же, но корпус и голова врозь.
+     *
+     * <p>Голова обязана смотреть туда, куда смотрит камера, каким бы ни был
+     * курс корпуса: иерархия «корпус → голова» на то и заведена.
+     */
+    private static Vector3f playerHeadForward(float bodyYaw, float headYaw, float pitch) {
+        try {
+            var body = PlayerRenderer.class.getDeclaredField("BODY");
+            body.setAccessible(true);
+            Object head = java.lang.reflect.Array.get(body.get(null), 1);
+            var matrix = Arrays.stream(PlayerRenderer.class.getDeclaredMethods())
+                    .filter(method -> method.getName().equals("partMatrix"))
+                    .findFirst().orElseThrow();
+            matrix.setAccessible(true);
+            Matrix4f out = new Matrix4f();
+            matrix.invoke(null, new Vector3f(), bodyYaw, headYaw, pitch, 0f, 0f, 0f, head, out);
+            return out.transformDirection(new Vector3f(0f, 0f, -1f)).normalize();
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError("cannot inspect player head transform", e);
+        }
     }
 
     /**
@@ -754,9 +899,9 @@ public final class TestMain {
 
         ItemStack[] slots = new ItemStack[Chunk.CHEST_SLOTS];
         slots[0] = new ItemStack(BlockType.COBBLE, 41);
-        slots[5] = new ItemStack(ToolType.IRON_PICKAXE);
-        slots[5].damage = 77;
-        slots[26] = new ItemStack(FoodType.RAW_PORK, 3);
+        slots[5] = ItemStack.of("iron_pickaxe");
+        slots[5].setDamage(77);
+        slots[26] = ItemStack.of("porkchop", 3);
         var chests = new java.util.HashMap<Integer, ItemStack[]>();
         chests.put(key, slots);
 
@@ -767,11 +912,11 @@ public final class TestMain {
         ItemStack[] back = out.chests.get(key);
         assertTrue("chest came back", back != null);
         assertEq("slot count survived", Chunk.CHEST_SLOTS, back.length);
-        assertEq("blocks survived", BlockType.COBBLE, back[0].type);
+        assertEq("blocks survived", BlockType.COBBLE, back[0].block());
         assertEq("count survived", 41, back[0].count);
-        assertTrue("tool survived", back[5] != null && back[5].isTool());
-        assertEq("tool wear survived", 77, back[5].damage);
-        assertTrue("food survived", back[26] != null && back[26].isFood());
+        assertTrue("tool survived", back[5] != null && back[5].hasDurability());
+        assertEq("tool wear survived", 77, back[5].damage());
+        assertTrue("food survived", back[26] != null && back[26].food() != null);
         assertTrue("empty slots stayed empty", back[1] == null);
 
         // Чанк без сундуков сохраняется и читается как раньше.
@@ -839,9 +984,9 @@ public final class TestMain {
         assertEq("four left on the cursor", 4, cursor.count);
 
         // Инструмент не делится.
-        box[7] = new ItemStack(ToolType.STONE_AXE);
+        box[7] = ItemStack.of("stone_axe");
         ItemStack tool = Inventory.rightClick(box, 7, null);
-        assertTrue("a tool comes whole", tool != null && tool.isTool());
+        assertTrue("a tool comes whole", tool != null && tool.hasDurability());
         assertTrue("its slot is empty", box[7] == null);
 
         // Выход за границы массива ничего не портит.
@@ -945,8 +1090,8 @@ public final class TestMain {
 
     private static void testFurnaceSmelting() {
         var f = new com.mineclone.world.Furnace();
-        f.input = new ItemStack(FoodType.RAW_BEEF, 3);
-        f.fuel = new ItemStack(BlockType.COAL_ORE, 1);
+        f.input = ItemStack.of("beef", 3);
+        f.fuel = ItemStack.of("coal", 1);
 
         // Первый же тик поджигает печь и съедает единицу топлива.
         assertTrue("lighting the furnace changes the slots", f.tick(0.1f));
@@ -958,8 +1103,8 @@ public final class TestMain {
         stepFurnace(f, cookTime - 0.2f, 0.1f);
         assertTrue("nothing is done early", f.output == null);
         stepFurnace(f, 0.4f, 0.1f);
-        assertTrue("one item came out", f.output != null && f.output.isFood());
-        assertEq("and it is cooked", FoodType.COOKED_BEEF, f.output.food);
+        assertTrue("one item came out", f.output != null && f.output.food() != null);
+        assertEq("and it is cooked", item("cooked_beef"), f.output.item);
         assertEq("one went in", 2, f.input.count);
 
         // Уголь тянет восемь переплавок — трёх кусков ему хватит с запасом.
@@ -979,10 +1124,10 @@ public final class TestMain {
         // Полный выходной слот останавливает печь: иначе результат исчезает.
         var f = new com.mineclone.world.Furnace();
         f.input = new ItemStack(BlockType.SAND, 10);
-        f.fuel = new ItemStack(BlockType.COAL_ORE, 5);
-        f.output = new ItemStack(BlockType.GLASS, ItemStack.MAX_STACK);
+        f.fuel = ItemStack.of("coal", 5);
+        f.output = new ItemStack(BlockType.GLASS, 64);
         stepFurnace(f, 30f, 0.25f);
-        assertEq("a full output stops the furnace", ItemStack.MAX_STACK, f.output.count);
+        assertEq("a full output stops the furnace", 64, f.output.count);
         assertEq("nothing was smelted", 10, f.input.count);
         assertEq("and no fuel was spent", 5, f.fuel.count);
 
@@ -995,14 +1140,14 @@ public final class TestMain {
         // Что не плавится — не плавится.
         var idle = new com.mineclone.world.Furnace();
         idle.input = new ItemStack(BlockType.DIRT, 5);
-        idle.fuel = new ItemStack(BlockType.COAL_ORE, 1);
+        idle.fuel = ItemStack.of("coal", 1);
         stepFurnace(idle, 30f, 0.25f);
         assertTrue("dirt does not smelt", idle.output == null);
         assertEq("and burns no coal", 1, idle.fuel.count);
         assertTrue("tools are not fuel",
-                !com.mineclone.world.Smelting.isFuel(new ItemStack(ToolType.WOOD_AXE)));
+                !com.mineclone.world.Smelting.isFuel(ItemStack.of("wooden_axe")));
         assertTrue("cooked meat does not cook twice",
-                com.mineclone.world.Smelting.result(new ItemStack(FoodType.COOKED_BEEF, 1)) == null);
+                com.mineclone.world.Smelting.result(ItemStack.of("cooked_beef", 1)) == null);
 
         // Состояние переживает сохранение чанка.
         SaveManager sm = freshManager();
@@ -1026,7 +1171,7 @@ public final class TestMain {
         var back = out.furnaces.get(key);
         assertTrue("furnace came back", back != null);
         assertEq("input survived", 7, back.input.count);
-        assertEq("fuel survived", BlockType.WOOD, back.fuel.type);
+        assertEq("fuel survived", BlockType.WOOD, back.fuel.block());
         assertEq("output survived", 4, back.output.count);
         assertTrue("burn survived", Math.abs(back.burnLeft - 3.5f) < 1e-4f);
         assertTrue("progress survived", Math.abs(back.cook - 2.25f) < 1e-4f);
@@ -1038,19 +1183,28 @@ public final class TestMain {
      */
     private static void testCookedFoodBalance() {
         assertTrue("beef is worth cooking",
-                FoodType.COOKED_BEEF.nutrition > FoodType.RAW_BEEF.nutrition);
+                item("cooked_beef").food.nutrition() > item("beef").food.nutrition());
         assertTrue("pork is worth cooking",
-                FoodType.COOKED_PORK.nutrition > FoodType.RAW_PORK.nutrition);
+                item("cooked_porkchop").food.nutrition() > item("porkchop").food.nutrition());
         assertTrue("chicken is worth cooking",
-                FoodType.COOKED_CHICKEN.nutrition > FoodType.RAW_CHICKEN.nutrition);
+                item("cooked_chicken").food.nutrition() > item("chicken").food.nutrition());
         assertTrue("mutton is worth cooking",
-                FoodType.COOKED_MUTTON.nutrition > FoodType.RAW_MUTTON.nutrition);
+                item("cooked_mutton").food.nutrition() > item("mutton").food.nutrition());
         // Каждый сырой кусок обязан иметь жареную пару, иначе часть добычи
         // становится бессмысленной.
-        for (FoodType t : FoodType.VALUES)
-            if (t.name().startsWith("RAW_"))
-                assertTrue("there is a cooked form of " + t,
-                        com.mineclone.world.Smelting.result(new ItemStack(t, 1)) != null);
+        for (String raw : new String[] { "beef", "porkchop", "chicken", "mutton" })
+            assertTrue("there is a cooked form of " + raw,
+                    com.mineclone.world.Smelting.result(ItemStack.of(raw, 1)) != null);
+    }
+
+    /** Item by registry id — short form for assertions. */
+    static com.mineclone.item.Item item(String id) {
+        return com.mineclone.item.Items.get().require(id);
+    }
+
+    /** The item that places this block. */
+    static com.mineclone.item.Item item(BlockType b) {
+        return com.mineclone.item.Items.get().forBlock(b);
     }
 
     private static void stepFurnace(com.mineclone.world.Furnace f, float seconds, float dt) {
@@ -1324,16 +1478,16 @@ public final class TestMain {
 
         // Собирается из досок и листвы.
         Inventory inv = new Inventory();
-        inv.add(BlockType.PLANKS, 3);
-        inv.add(BlockType.LEAVES, 3);
+        inv.add(new ItemStack(BlockType.PLANKS, 3));
+        inv.add(new ItemStack(BlockType.LEAVES, 3));
         var recipe = findRecipe(BlockType.BEDROLL);
         assertTrue("there is a bedroll recipe", recipe != null);
         assertTrue("and the materials are enough",
                 com.mineclone.world.Recipes.canCraft(inv, recipe));
         assertTrue("crafting works", com.mineclone.world.Recipes.craft(inv, recipe));
-        assertEq("one bedroll made", 1, com.mineclone.world.Recipes.count(inv, BlockType.BEDROLL));
-        assertEq("planks spent", 0, com.mineclone.world.Recipes.count(inv, BlockType.PLANKS));
-        assertEq("leaves spent", 0, com.mineclone.world.Recipes.count(inv, BlockType.LEAVES));
+        assertEq("one bedroll made", 1, com.mineclone.world.Recipes.count(inv, item(BlockType.BEDROLL)));
+        assertEq("planks spent", 0, com.mineclone.world.Recipes.count(inv, item(BlockType.PLANKS)));
+        assertEq("leaves spent", 0, com.mineclone.world.Recipes.count(inv, item(BlockType.LEAVES)));
     }
 
     /**
@@ -1366,7 +1520,7 @@ public final class TestMain {
 
     private static com.mineclone.world.Recipes.Recipe findRecipe(BlockType out) {
         for (var r : com.mineclone.world.Recipes.all())
-            if (r.block() == out)
+            if (r.result() == item(out))
                 return r;
         return null;
     }
@@ -1375,8 +1529,8 @@ public final class TestMain {
 
     /** Ищет колонку тундры с открытым небом: снег ложится только там. */
     private static int[] findTundraColumn(World w) {
-        for (int cx = -3; cx <= 3; cx++)
-            for (int cz = -3; cz <= 3; cz++) {
+        for (int cx = -100; cx <= 100; cx += 4)
+            for (int cz = -100; cz <= 100; cz += 4) {
                 if (w.biomes.biomeAt(cx * Chunk.SIZE_X + 8, cz * Chunk.SIZE_Z + 8) != Biome.TUNDRA)
                     continue;
                 Chunk c = w.getChunk(cx, cz);
@@ -1618,6 +1772,87 @@ public final class TestMain {
      * тики блоков делают десятки таких замен в секунду, и полная BFS-заливка
      * неба на каждую травинку съедала бы кадр.
      */
+    /**
+     * Точечная правка света обязана давать ровно то же, что полная заливка.
+     *
+     * Инкрементальный свет — это оптимизация, а не новая механика: стоит ему
+     * разойтись с эталоном, и в мире появятся тёмные пятна, которые видно
+     * только глазами и только иногда. Поэтому проверка сравнивает все 32 768
+     * ячеек после каждой пачки случайных правок: ломаем, ставим, роем шахту,
+     * накрываем крышей — и сверяемся с {@code computeSkyLight()}.
+     */
+    private static void testIncrementalSkyLight() {
+        java.util.Random rnd = new java.util.Random(20260920L);
+        for (int trial = 0; trial < 6; trial++) {
+            World w = new World(700L + trial);
+            Chunk c = w.getChunk(0, 0);
+            for (int step = 0; step < 40; step++) {
+                int x = rnd.nextInt(Chunk.SIZE_X);
+                int z = rnd.nextInt(Chunk.SIZE_Z);
+                int y = 1 + rnd.nextInt(Chunk.SIZE_Y - 2);
+                BlockType t = switch (rnd.nextInt(4)) {
+                    case 0 -> BlockType.AIR;
+                    case 1 -> BlockType.STONE;
+                    case 2 -> BlockType.GLASS;
+                    default -> BlockType.LEAVES;
+                };
+                w.setBlock(x, y, z, t);
+            }
+            // Вертикальная шахта и крыша над ней — самые злые случаи: столб
+            // неба режется и восстанавливается целиком.
+            for (int y = 60; y < 100; y++)
+                w.setBlock(5, y, 5, BlockType.AIR);
+            w.processPendingSkyRelights(Integer.MAX_VALUE);
+            byte[] incremental = skySnapshot(c);
+            w.setBlock(5, 99, 5, BlockType.STONE);
+            w.processPendingSkyRelights(Integer.MAX_VALUE);
+            byte[] roofed = skySnapshot(c);
+            w.setBlock(5, 99, 5, BlockType.AIR);
+            w.processPendingSkyRelights(Integer.MAX_VALUE);
+
+            byte[] afterEdits = skySnapshot(c);
+            c.computeSkyLight();
+            assertTrue("reopened shaft matches a full reflood",
+                    java.util.Arrays.equals(afterEdits, skySnapshot(c)));
+            assertTrue("a shaft is brighter than the same shaft with a roof",
+                    brightness(incremental) > brightness(roofed));
+        }
+    }
+
+    private static void testMaterialSkyAttenuation() {
+        Chunk air = new Chunk(0, 0);
+        air.computeSkyLight();
+        Chunk water = new Chunk(0, 0);
+        Chunk leaves = new Chunk(0, 0);
+        for (int x = 0; x < Chunk.SIZE_X; x++)
+            for (int z = 0; z < Chunk.SIZE_Z; z++)
+                for (int y = 110; y < 114; y++) {
+                    water.set(x, y, z, BlockType.WATER);
+                    leaves.set(x, y, z, BlockType.LEAVES);
+                }
+        water.computeSkyLight();
+        leaves.computeSkyLight();
+        assertTrue("water darkens its column", water.getSkyLight(8, 109, 8) < air.getSkyLight(8, 109, 8));
+        assertTrue("leaves attenuate harder than water",
+                leaves.getSkyLight(8, 109, 8) < water.getSkyLight(8, 109, 8));
+    }
+
+    private static byte[] skySnapshot(Chunk c) {
+        byte[] out = new byte[Chunk.SIZE_X * Chunk.SIZE_Y * Chunk.SIZE_Z];
+        for (int x = 0; x < Chunk.SIZE_X; x++)
+            for (int y = 0; y < Chunk.SIZE_Y; y++)
+                for (int z = 0; z < Chunk.SIZE_Z; z++)
+                    out[Chunk.idx(x, y, z)] = (byte) c.getSkyLight(x, y, z);
+        return out;
+    }
+
+    private static long brightness(byte[] light) {
+        long sum = 0;
+        for (byte b : light)
+            sum += b & 0xFF;
+        return sum;
+    }
+
     private static void testSetBlockSkipsRelight() {
         World w = flatWorld(34L);
         int y = 70;
@@ -1771,17 +2006,18 @@ public final class TestMain {
         World w = new World(seed);
         int found = 0, scanned = 0;
         // Признак постройки — рукотворный блок на поверхности или над ней.
-        for (int cx = -6; cx <= 6; cx++)
-            for (int cz = -6; cz <= 6; cz++) {
-                Chunk c = w.getChunk(cx, cz);
+        for (int cx = -60; cx <= 60; cx++)
+            for (int cz = -60; cz <= 60; cz++) {
                 scanned++;
+                if (com.mineclone.world.Structures.candidateKind(cx, cz, seed) < 0) continue;
+                Chunk c = w.getChunk(cx, cz);
                 boolean hit = false;
                 for (int x = 0; x < Chunk.SIZE_X && !hit; x++)
                     for (int z = 0; z < Chunk.SIZE_Z && !hit; z++)
-                        for (int y = World.SEA_LEVEL; y < Chunk.SIZE_Y - 1; y++) {
+                        for (int y = 1; y < Chunk.SIZE_Y - 1; y++) {
                             BlockType b = c.get(x, y, z);
                             if (b == BlockType.COBBLE || b == BlockType.PLANKS
-                                    || b == BlockType.GLASS) {
+                                    || b == BlockType.GLASS || b == BlockType.MOSSY_COBBLE || b == BlockType.TORCH) {
                                 hit = true;
                                 // Постройка обязана целиком лежать внутри чанка:
                                 // генерация пишет только в свой чанк, и на
@@ -1963,7 +2199,7 @@ public final class TestMain {
         for (int x = -4000; x <= 4000; x += 32)
             for (int z = -4000; z <= 4000; z += 32)
                 seen.add(p.biomeAt(x, z));
-        assertEq("all five biomes occur within 4000 blocks", 5, seen.size());
+        assertEq("all eleven biomes occur within 4000 blocks", 11, seen.size());
     }
 
     private static int surfaceY(Chunk c, int x, int z) {
@@ -1993,9 +2229,8 @@ public final class TestMain {
                         int y = surfaceY(c, x, z);
                         if (caves.isCave(wx, y + 1, wz))
                             continue;   // колонка вскрыта пещерой
-                        Biome b = bp.biomeAtGrid(Math.floorDiv(wx, BiomeProvider.GRID_STEP),
-                                Math.floorDiv(wz, BiomeProvider.GRID_STEP));
-                        BlockType expected = (y <= World.SEA_LEVEL + 1) ? BlockType.SAND : b.surfaceBlock;
+                        Biome b = bp.biomeAt(wx, wz);
+                        BlockType expected = World.surfaceFor(b, y);
                         BlockType actual = c.get(x, y, z);
                         assertTrue("surface @" + wx + "," + wz + " biome=" + b
                                 + " expected=" + expected + " got=" + actual, actual == expected);
@@ -2029,8 +2264,13 @@ public final class TestMain {
         long seed = 1001L;
         World w = new World(seed);
         boolean sawCactus = false, sawTrunk = false;
-        for (int cx = -6; cx <= 6; cx++)
-            for (int cz = -6; cz <= 6; cz++) {
+        int[] sampled = new int[Biome.values().length];
+        for (int cx = -150; cx <= 150; cx += 3)
+            for (int cz = -150; cz <= 150; cz += 3) {
+                Biome biome = w.biomes.biomeAt(cx * 16 + 8, cz * 16 + 8);
+                if (biome.treeType == Biome.TreeType.NONE || sampled[biome.ordinal()] >= 4
+                        || w.terrainHeight(cx * 16 + 8, cz * 16 + 8) <= World.SEA_LEVEL + 1) continue;
+                sampled[biome.ordinal()]++;
                 Chunk c = w.getChunk(cx, cz);
                 for (int x = 0; x < Chunk.SIZE_X; x++)
                     for (int z = 0; z < Chunk.SIZE_Z; z++)
@@ -2039,14 +2279,14 @@ public final class TestMain {
                             BlockType below = c.get(x, y - 1, z);
                             if (t == BlockType.CACTUS) {
                                 sawCactus = true;
-                                assertTrue("cactus on sand/cactus @" + x + "," + y + "," + z,
-                                        below == BlockType.SAND || below == BlockType.CACTUS);
+                                assertTrue("cactus on sand/cactus @" + (cx * 16 + x) + "," + y + "," + (cz * 16 + z) + ", got " + below,
+                                        below == BlockType.SAND || below == BlockType.RED_SAND || below == BlockType.CACTUS);
                                 assertTrue("cactus above water line", y > World.SEA_LEVEL + 1);
                             }
                             if (t == BlockType.WOOD && below != BlockType.WOOD) {
                                 sawTrunk = true;
                                 assertTrue("trunk base on grass/snowy grass, got " + below,
-                                        below == BlockType.GRASS || below == BlockType.SNOWY_GRASS);
+                                        below.isSoil());
                             }
                         }
             }
@@ -2068,6 +2308,7 @@ public final class TestMain {
         assertEq("snowy grass drops dirt", BlockType.DIRT, BlockType.SNOWY_GRASS.getDrop());
         assertEq("leaves drop nothing", BlockType.AIR, BlockType.LEAVES.getDrop());
         assertEq("water drops nothing", BlockType.AIR, BlockType.WATER.getDrop());
+        assertEq("torch drops itself", BlockType.TORCH, BlockType.TORCH.getDrop());
         assertEq("dirt drops itself", BlockType.DIRT, BlockType.DIRT.getDrop());
         assertEq("wood drops itself", BlockType.WOOD, BlockType.WOOD.getDrop());
     }
@@ -2966,33 +3207,33 @@ public final class TestMain {
     // ---- Еда и голод ------------------------------------------------------
 
     private static void testFoodStacks() {
-        ItemStack beef = new ItemStack(FoodType.RAW_BEEF, 4);
-        assertTrue("food is food", beef.isFood());
-        assertTrue("food is not a tool", !beef.isTool());
-        assertTrue("same food stacks", beef.stacksWith(new ItemStack(FoodType.RAW_BEEF, 1)));
+        ItemStack beef = ItemStack.of("beef", 4);
+        assertTrue("food is food", beef.food() != null);
+        assertTrue("food is not a tool", !beef.hasDurability());
+        assertTrue("same food stacks", beef.stacksWith(ItemStack.of("beef", 1)));
         assertTrue("different food does not stack",
-                !beef.stacksWith(new ItemStack(FoodType.RAW_PORK, 1)));
+                !beef.stacksWith(ItemStack.of("porkchop", 1)));
         assertTrue("food never stacks with blocks",
                 !beef.stacksWith(new ItemStack(BlockType.STONE, 1)));
         assertTrue("food never stacks with tools",
-                !beef.stacksWith(new ItemStack(ToolType.WOOD_AXE)));
+                !beef.stacksWith(ItemStack.of("wooden_axe")));
 
         // Инвентарь обязан сливать одинаковую еду и не путать её с блоками.
         Inventory inv = new Inventory();
-        inv.addFood(FoodType.RAW_BEEF, 10);
-        inv.addFood(FoodType.RAW_BEEF, 5);
-        inv.add(BlockType.STONE, 5);
+        inv.add(ItemStack.of("beef", 10));
+        inv.add(ItemStack.of("beef", 5));
+        inv.add(new ItemStack(BlockType.STONE, 5));
         int beefSlots = 0, beefTotal = 0;
         for (int i = 0; i < inv.size(); i++) {
             ItemStack st = inv.get(i);
-            if (st != null && st.isFood() && st.food == FoodType.RAW_BEEF) {
+            if (st != null && st.food() != null && st.item == item("beef")) {
                 beefSlots++;
                 beefTotal += st.count;
             }
         }
         assertEq("beef merged into one stack", 1, beefSlots);
         assertEq("beef total is right", 15, beefTotal);
-        assertEq("stone kept its own stack", 5, Recipes.count(inv, BlockType.STONE));
+        assertEq("stone kept its own stack", 5, Recipes.count(inv, item(BlockType.STONE)));
     }
 
     private static void testHunger() {
@@ -3050,10 +3291,10 @@ public final class TestMain {
     }
 
     private static void testMobDrops() {
-        assertEq("cow drops beef", FoodType.RAW_BEEF, MobType.COW.drop());
-        assertEq("pig drops pork", FoodType.RAW_PORK, MobType.PIG.drop());
-        assertEq("chicken drops chicken", FoodType.RAW_CHICKEN, MobType.CHICKEN.drop());
-        assertEq("sheep drops mutton", FoodType.RAW_MUTTON, MobType.SHEEP.drop());
+        assertEq("cow drops beef", item("beef"), item(MobType.COW.drop()));
+        assertEq("pig drops pork", item("porkchop"), item(MobType.PIG.drop()));
+        assertEq("chicken drops chicken", item("chicken"), item(MobType.CHICKEN.drop()));
+        assertEq("sheep drops mutton", item("mutton"), item(MobType.SHEEP.drop()));
         // Зомби ничего не даёт: иначе ночь превращается в ферму и сидеть в
         // темноте становится выгоднее, чем строить дом.
         assertTrue("zombie drops nothing", MobType.ZOMBIE.drop() == null);
@@ -3065,20 +3306,20 @@ public final class TestMain {
     private static void testFoodSaveRoundTrip() throws Exception {
         SaveManager sm = freshManager();
         ItemStack[] inv = LevelData.emptyInventory();
-        inv[0] = new ItemStack(FoodType.RAW_PORK, 7);
-        inv[1] = new ItemStack(ToolType.WOOD_AXE);
+        inv[0] = ItemStack.of("porkchop", 7);
+        inv[1] = ItemStack.of("wooden_axe");
         inv[2] = new ItemStack(BlockType.PLANKS, 12);
         sm.saveLevel("w1", new LevelData("w", 5L, 1, 2, 3, 1, 2, 3, 0f, 0f, 0f, 0,
                 inv, GameMode.SURVIVAL, 0L, 13f, 8.5f));
 
         LevelData out = sm.loadLevel("w1");
         assertTrue("level loaded", out != null);
-        assertTrue("food survived", out.inventory[0] != null && out.inventory[0].isFood());
-        assertEq("food kind survived", FoodType.RAW_PORK, out.inventory[0].food);
+        assertTrue("food survived", out.inventory[0] != null && out.inventory[0].food() != null);
+        assertEq("food kind survived", item("porkchop"), out.inventory[0].item);
         assertEq("food count survived", 7, out.inventory[0].count);
-        assertTrue("tool still fine", out.inventory[1] != null && out.inventory[1].isTool());
+        assertTrue("tool still fine", out.inventory[1] != null && out.inventory[1].hasDurability());
         assertTrue("block still fine", out.inventory[2] != null
-                && !out.inventory[2].isTool() && !out.inventory[2].isFood());
+                && !out.inventory[2].hasDurability() && out.inventory[2].food() == null);
         assertTrue("hunger survived", Math.abs(out.hunger - 8.5f) < 1e-4f);
         assertTrue("health survived", Math.abs(out.health - 13f) < 1e-4f);
     }
@@ -3086,30 +3327,30 @@ public final class TestMain {
     // ---- Инструменты и крафт ---------------------------------------------
 
     private static void testToolStacks() {
-        ItemStack pick = new ItemStack(ToolType.STONE_PICKAXE);
-        assertTrue("a tool is a tool", pick.isTool());
+        ItemStack pick = ItemStack.of("stone_pickaxe");
+        assertTrue("a tool is a tool", pick.hasDurability());
         assertTrue("a tool is always a single item", pick.count == 1);
         assertTrue("a tool is always full", pick.isFull());
         assertTrue("a tool never stacks with another tool",
-                !pick.stacksWith(new ItemStack(ToolType.STONE_PICKAXE)));
+                !pick.stacksWith(ItemStack.of("stone_pickaxe")));
         assertTrue("a tool never stacks with blocks",
                 !pick.stacksWith(new ItemStack(BlockType.STONE, 1)));
         assertEq("pouring into a tool changes nothing", 5, pick.addUpTo(5));
 
         // Износ обязан переживать копирование: иначе перекладывание кирки
         // в другой слот её чинит.
-        pick.damage = 40;
+        pick.setDamage(40);
         ItemStack copy = pick.copy();
-        assertEq("wear survives a copy", 40, copy.damage);
+        assertEq("wear survives a copy", 40, copy.damage());
         assertTrue("condition drops with wear", copy.condition() < 1f);
 
         // Инвентарь не должен сливать инструменты в стопку.
         Inventory inv = new Inventory();
-        inv.addItem(new ItemStack(ToolType.WOOD_AXE));
-        inv.addItem(new ItemStack(ToolType.WOOD_AXE));
+        inv.addItem(ItemStack.of("wooden_axe"));
+        inv.addItem(ItemStack.of("wooden_axe"));
         int tools = 0;
         for (int i = 0; i < inv.size(); i++)
-            if (inv.get(i) != null && inv.get(i).isTool())
+            if (inv.get(i) != null && inv.get(i).hasDurability())
                 tools++;
         assertEq("two axes occupy two slots", 2, tools);
     }
@@ -3123,29 +3364,29 @@ public final class TestMain {
 
         // Класс инструмента.
         assertTrue("stone is a pickaxe job",
-                ToolType.STONE_PICKAXE.suits(BlockType.STONE));
+                item("stone_pickaxe").tool.suits(BlockType.STONE));
         assertTrue("a pickaxe is useless on dirt",
-                !ToolType.STONE_PICKAXE.suits(BlockType.DIRT));
+                !item("stone_pickaxe").tool.suits(BlockType.DIRT));
         assertTrue("a shovel is the dirt tool",
-                ToolType.WOOD_SHOVEL.suits(BlockType.DIRT));
+                item("wooden_shovel").tool.suits(BlockType.DIRT));
         assertTrue("an axe is the wood tool",
-                ToolType.WOOD_AXE.suits(BlockType.PLANKS));
+                item("wooden_axe").tool.suits(BlockType.PLANKS));
 
         // Вертикаль прогресса: уровень растёт вместе с материалом.
-        assertTrue("stone beats wood", ToolType.STONE_PICKAXE.level > ToolType.WOOD_PICKAXE.level);
-        assertTrue("iron beats stone", ToolType.IRON_PICKAXE.level > ToolType.STONE_PICKAXE.level);
-        assertTrue("diamond beats iron", ToolType.DIAMOND_PICKAXE.level > ToolType.IRON_PICKAXE.level);
+        assertTrue("stone beats wood", item("stone_pickaxe").tool.level() > item("wooden_pickaxe").tool.level());
+        assertTrue("iron beats stone", item("iron_pickaxe").tool.level() > item("stone_pickaxe").tool.level());
+        assertTrue("diamond beats iron", item("diamond_pickaxe").tool.level() > item("iron_pickaxe").tool.level());
         assertTrue("better material digs faster",
-                ToolType.DIAMOND_PICKAXE.speed > ToolType.WOOD_PICKAXE.speed);
+                item("diamond_pickaxe").tool.speed() > item("wooden_pickaxe").tool.speed());
     }
 
     private static void testToolWear() {
-        ItemStack pick = new ItemStack(ToolType.WOOD_PICKAXE);
+        ItemStack pick = ItemStack.of("wooden_pickaxe");
         int uses = 0;
         while (!pick.wear() && uses < 10000)
             uses++;
         assertEq("a tool lasts exactly its durability",
-                ToolType.WOOD_PICKAXE.durability - 1, uses);
+                item("wooden_pickaxe").durability - 1, uses);
         assertTrue("a worn out tool has no condition left", pick.condition() <= 0f);
         // Блок износом не интересуется.
         assertTrue("blocks never wear", !new ItemStack(BlockType.STONE, 1).wear());
@@ -3153,54 +3394,66 @@ public final class TestMain {
 
     private static void testCrafting() {
         Inventory inv = new Inventory();
-        inv.add(BlockType.COBBLE, 3);
-        inv.add(BlockType.PLANKS, 1);
+        inv.add(new ItemStack(BlockType.COBBLE, 3));
+        inv.add(ItemStack.of("stick", 2));
+
+        ItemStack[] grid = new ItemStack[9];
+        grid[0] = new ItemStack(BlockType.COBBLE, 1);
+        grid[1] = new ItemStack(BlockType.COBBLE, 1);
+        grid[2] = new ItemStack(BlockType.COBBLE, 1);
+        grid[4] = ItemStack.of("stick");
+        grid[7] = ItemStack.of("stick");
+        var shaped = Recipes.match(grid, 3);
+        assertTrue("3x3 shape offers a stone pickaxe",
+                shaped != null && shaped.result() == item("stone_pickaxe"));
+        assertTrue("shape consumes its five cells", Recipes.consume(grid, 3) != null
+                && grid[0] == null && grid[4] == null && grid[7] == null);
 
         var list = Recipes.available(inv);
         assertTrue("stone pickaxe is offered", list.stream()
-                .anyMatch(r -> r.tool() == ToolType.STONE_PICKAXE));
+                .anyMatch(r -> r.result() == item("stone_pickaxe")));
 
         var pickRecipe = java.util.Arrays.stream(Recipes.all())
-                .filter(r -> r.tool() == ToolType.STONE_PICKAXE).findFirst().orElse(null);
+                .filter(r -> r.result() == item("stone_pickaxe")).findFirst().orElse(null);
         assertTrue("recipe table has the stone pickaxe", pickRecipe != null);
         assertTrue("crafting succeeds", Recipes.craft(inv, pickRecipe));
 
         // Списалось ровно по рецепту, ни блоком больше.
-        assertEq("cobble spent", 0, Recipes.count(inv, BlockType.COBBLE));
-        assertEq("plank spent", 0, Recipes.count(inv, BlockType.PLANKS));
+        assertEq("cobble spent", 0, Recipes.count(inv, item(BlockType.COBBLE)));
+        assertEq("plank spent", 0, Recipes.count(inv, item(BlockType.PLANKS)));
         int tools = 0;
         for (int i = 0; i < inv.size(); i++)
-            if (inv.get(i) != null && inv.get(i).isTool())
+            if (inv.get(i) != null && inv.get(i).hasDurability())
                 tools++;
         assertEq("got exactly one pickaxe", 1, tools);
 
         // Второй раз собрать не из чего.
         assertTrue("cannot craft without materials", !Recipes.craft(inv, pickRecipe));
 
-        // Рукоять того же вида считается отдельно: деревянная кирка это
-        // три доски плюс доска, а не три доски.
+        // Рукоять — отдельный материал: деревянная кирка это три доски плюс
+        // две палки, а не четыре доски.
         Inventory wood = new Inventory();
-        wood.add(BlockType.PLANKS, 3);
+        wood.add(new ItemStack(BlockType.PLANKS, 3));
         var woodPick = java.util.Arrays.stream(Recipes.all())
-                .filter(r -> r.tool() == ToolType.WOOD_PICKAXE).findFirst().orElse(null);
+                .filter(r -> r.result() == item("wooden_pickaxe")).findFirst().orElse(null);
         assertTrue("three planks are not enough for a wooden pickaxe",
                 !Recipes.canCraft(wood, woodPick));
-        wood.add(BlockType.PLANKS, 1);
-        assertTrue("four planks are", Recipes.canCraft(wood, woodPick));
+        wood.add(ItemStack.of("stick", 2));
+        assertTrue("three planks and two sticks are enough",
+                Recipes.canCraft(wood, woodPick));
     }
 
     private static void testRecipeTable() {
         for (var r : Recipes.all()) {
-            assertTrue("recipe needs something", r.needCount() > 0 && r.needBlock() != null);
-            assertTrue("recipe produces something", r.tool() != null || r.block() != null);
-            if (r.block() != null)
-                assertTrue("block recipe yields at least one", r.blockCount() > 0);
+            assertTrue("recipe needs something", r.needCount() > 0 && r.need() != null);
+            assertTrue("recipe produces something", r.result() != null);
+            assertTrue("recipe yields at least one", r.resultCount() > 0);
             // Ровно то, ради чего таблица и существует: рецепт должен быть
             // выполним из материалов, которые в мире вообще добываются.
             Inventory inv = new Inventory();
-            inv.add(r.needBlock(), r.needCount() + r.handleCount());
-            if (r.handle() != null && r.handle() != r.needBlock())
-                inv.add(r.handle(), r.handleCount());
+            inv.add(new ItemStack(r.need(), r.needCount() + r.handleCount()));
+            if (r.handle() != null && r.handle() != r.need())
+                inv.add(new ItemStack(r.handle(), r.handleCount()));
             assertTrue("recipe for " + r.resultName() + " is satisfiable",
                     Recipes.canCraft(inv, r));
         }
@@ -3209,8 +3462,8 @@ public final class TestMain {
     private static void testToolSaveRoundTrip() throws Exception {
         SaveManager sm = freshManager();
         ItemStack[] inv = LevelData.emptyInventory();
-        ItemStack pick = new ItemStack(ToolType.IRON_PICKAXE);
-        pick.damage = 77;
+        ItemStack pick = ItemStack.of("iron_pickaxe");
+        pick.setDamage(77);
         inv[0] = pick;
         inv[1] = new ItemStack(BlockType.COBBLE, 30);
         sm.saveLevel("w1", new LevelData("w", 5L, 1, 2, 3, 1, 2, 3, 0f, 0f, 0f, 0,
@@ -3219,32 +3472,32 @@ public final class TestMain {
         LevelData out = sm.loadLevel("w1");
         assertTrue("level loaded", out != null);
         assertTrue("tool survived the round trip", out.inventory[0] != null
-                && out.inventory[0].isTool());
-        assertEq("tool type survived", ToolType.IRON_PICKAXE, out.inventory[0].tool);
-        assertEq("tool wear survived", 77, out.inventory[0].damage);
+                && out.inventory[0].hasDurability());
+        assertEq("tool type survived", item("iron_pickaxe"), out.inventory[0].item);
+        assertEq("tool wear survived", 77, out.inventory[0].damage());
         assertTrue("block stack still works", out.inventory[1] != null
-                && !out.inventory[1].isTool());
+                && !out.inventory[1].hasDurability());
         assertEq("block count survived", 30, out.inventory[1].count);
     }
 
     private static void testItemStack() {
         ItemStack s = new ItemStack(BlockType.STONE, 1);
-        assertEq("type", BlockType.STONE, s.type);
+        assertEq("type", BlockType.STONE, s.block());
         assertEq("count", 1, s.count);
         assertTrue("isFull false at 1", !s.isFull());
 
-        s.count = ItemStack.MAX_STACK;
+        s.count = 64;
         assertTrue("isFull true at MAX", s.isFull());
 
         // add returns leftover that didn't fit
         ItemStack t = new ItemStack(BlockType.DIRT, 60);
         int left = t.addUpTo(10); // 60 + 10 = 70 -> capped 64, leftover 6
-        assertEq("count capped", ItemStack.MAX_STACK, t.count);
+        assertEq("count capped", 64, t.count);
         assertEq("leftover", 6, left);
 
         ItemStack copy = t.copy();
         assertTrue("copy distinct", copy != t);
-        assertEq("copy type", BlockType.DIRT, copy.type);
+        assertEq("copy type", BlockType.DIRT, copy.block());
         assertEq("copy count", t.count, copy.count);
 
         // constructor clamping edges
@@ -3258,38 +3511,40 @@ public final class TestMain {
 
     private static void testInventoryAdd() {
         Inventory inv = new Inventory();
-        int left = inv.add(BlockType.STONE, 10);
+        int left = inv.add(new ItemStack(BlockType.STONE, 10));
         assertEq("no leftover", 0, left);
         assertEq("slot0 count", 10, inv.get(0).count);
 
         // merges into the same existing stack first
-        inv.add(BlockType.STONE, 5);
+        inv.add(new ItemStack(BlockType.STONE, 5));
         assertEq("merged into slot0", 15, inv.get(0).count);
         assertTrue("slot1 still empty", inv.get(1) == null);
 
         // overflow spills into the next free slot
-        inv.add(BlockType.STONE, 60); // 15 + 60 = 75 -> 64 in slot0, 11 in next free
+        inv.add(new ItemStack(BlockType.STONE, 60)); // 15 + 60 = 75 -> 64 in slot0, 11 in next free
         assertEq("slot0 full", 64, inv.get(0).count);
         assertEq("spill slot count", 11, inv.get(1).count);
 
         // full inventory returns leftover
         Inventory full = new Inventory();
         for (int i = 0; i < 36; i++) full.set(i, new ItemStack(BlockType.DIRT, 64));
-        int rem = full.add(BlockType.DIRT, 5);
+        int rem = full.add(new ItemStack(BlockType.DIRT, 5));
         assertEq("leftover when full", 5, rem);
-        assertTrue("cannot fit a mined drop", !full.canAdd(BlockType.STONE, 1));
+        assertTrue("cannot fit a mined drop", !full.canAdd(new ItemStack(BlockType.STONE, 1), 1));
         full.get(0).count = 63;
-        assertTrue("matching stack has capacity", full.canAdd(BlockType.DIRT, 1));
+        assertTrue("matching stack has capacity", full.canAdd(new ItemStack(BlockType.DIRT, 1), 1));
         assertTrue("capacity query does not mutate", full.get(0).count == 63);
         ItemStack cursor = full.rightClick(0, null);
         full.set(1, new ItemStack(BlockType.STONE, 64));
         cursor = full.leftClick(1, cursor);
-        assertEq("swapped cursor cannot be silently returned", 64, full.add(cursor.type, cursor.count));
+        assertEq("swapped cursor cannot be silently returned", 64, full.add(cursor));
 
         // add with amount <= 0 returns 0
         Inventory inv2 = new Inventory();
-        assertEq("add(0) returns 0", 0, inv2.add(BlockType.STONE, 0));
-        assertEq("add(-1) returns 0", 0, inv2.add(BlockType.STONE, -1));
+        assertEq("add(0) returns 0", 0, inv2.add(null));
+        ItemStack none = new ItemStack(BlockType.STONE, 1);
+        none.count = 0;
+        assertEq("add(empty) returns 0", 0, inv2.add(none));
         assertTrue("no slot filled", inv2.get(0) == null);
     }
 
@@ -3337,8 +3592,8 @@ public final class TestMain {
         inv.set(1, new ItemStack(BlockType.DIRT, 3));
         cursor = new ItemStack(BlockType.WOOD, 2);
         cursor = inv.leftClick(1, cursor);
-        assertEq("slot took wood", BlockType.WOOD, inv.get(1).type);
-        assertEq("cursor took dirt", BlockType.DIRT, cursor.type);
+        assertEq("slot took wood", BlockType.WOOD, inv.get(1).block());
+        assertEq("cursor took dirt", BlockType.DIRT, cursor.block());
     }
 
     // ---- harness ----

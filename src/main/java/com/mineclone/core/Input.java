@@ -21,6 +21,12 @@ public class Input {
     private boolean grabAllowed = true;
     /** Клавиша, нажатая программно на один кадр, или −1. */
     private int injected = -1;
+    /** Клавиши, зажатые программно, — автопилоту нужны сочетания вроде F3+H. */
+    private final boolean[] heldByCode = new boolean[512];
+    /** Кнопки мыши, зажатые программно; действуют со следующего update. */
+    private final boolean[] injectedMouse = new boolean[8];
+    private boolean cursorOverridden;
+    private double overrideX, overrideY;
 
     public Input(long window) {
         this.window = window;
@@ -58,9 +64,13 @@ public class Input {
             keysCur[injected] = true;
             injected = -1;   // в следующем кадре клавиша отпускается сама
         }
+        for (int k = 0; k < heldByCode.length && k < keysCur.length; k++)
+            if (heldByCode[k])
+                keysCur[k] = true;
         System.arraycopy(mouseCur, 0, mousePrev, 0, mouseCur.length);
         for (int b = 0; b < mouseCur.length; b++) {
-            mouseCur[b] = glfwGetMouseButton(window, b) == GLFW_PRESS;
+            mouseCur[b] = glfwGetMouseButton(window, b) == GLFW_PRESS
+                    || (b < injectedMouse.length && injectedMouse[b]);
         }
     }
 
@@ -103,6 +113,39 @@ public class Input {
         injected = key;
     }
 
+    /**
+     * Зажать или отпустить клавишу программно.
+     *
+     * <p>Отдельно от {@link #inject}: сочетание F3+H нельзя собрать из двух
+     * однокадровых нажатий, потому что F3 к следующему кадру уже отпущена.
+     */
+    public void holdKey(int key, boolean down) {
+        if (key >= 0 && key < heldByCode.length)
+            heldByCode[key] = down;
+    }
+
+    /** Нажать или отпустить кнопку мыши; действует со следующего {@link #update}. */
+    public void injectMouseButton(int button, boolean down) {
+        if (button >= 0 && button < injectedMouse.length)
+            injectedMouse[button] = down;
+    }
+
+    /**
+     * Подменить положение курсора.
+     *
+     * <p>Двигать настоящий курсор автопилот не имеет права: окно скрыто, а
+     * мышь на машине разработчика — чужая.
+     */
+    public void overrideCursor(double x, double y) {
+        cursorOverridden = true;
+        overrideX = x;
+        overrideY = y;
+    }
+
+    public void clearCursorOverride() {
+        cursorOverridden = false;
+    }
+
     public void setGrabAllowed(boolean allowed) {
         grabAllowed = allowed;
         if (!allowed)
@@ -119,12 +162,16 @@ public class Input {
 
     /** Cursor position in window pixels (top-left origin). Useful when cursor is released for menus. */
     public double getCursorX() {
+        if (cursorOverridden)
+            return overrideX;
         double[] x = new double[1], y = new double[1];
         glfwGetCursorPos(window, x, y);
         return x[0];
     }
 
     public double getCursorY() {
+        if (cursorOverridden)
+            return overrideY;
         double[] x = new double[1], y = new double[1];
         glfwGetCursorPos(window, x, y);
         return y[0];

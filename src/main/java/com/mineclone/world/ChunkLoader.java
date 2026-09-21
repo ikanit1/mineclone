@@ -90,6 +90,12 @@ public class ChunkLoader {
 
     /** Чанк игрока — центр, от которого считается приоритет очереди. */
     private volatile int centerX = 0, centerZ = 0;
+    /**
+     * Упрощать ли дальние чанки. Настройка, а не константа: LOD экономит
+     * вершины, но на дальнем краю видно, как меняется затенение — кому это
+     * мешает, тот его выключает и платит за это кадрами.
+     */
+    private volatile boolean lod = true;
 
     private final Set<Long> pendingGen  = ConcurrentHashMap.newKeySet();
     private final Set<Long> pendingMesh = ConcurrentHashMap.newKeySet();
@@ -129,6 +135,11 @@ public class ChunkLoader {
                 new PriorityBlockingQueue<>(64), daemon("mineclone-mesh"));
     }
 
+    /** Включить или выключить упрощение дальних чанков. */
+    public void setLodEnabled(boolean on) {
+        lod = on;
+    }
+
     /**
      * Куда сместился игрок. Очередь меширования упорядочена по расстоянию до
      * этой точки: без неё дальний край радиуса обслуживался наравне с
@@ -153,7 +164,8 @@ public class ChunkLoader {
                 Chunk existing = world.getChunkIfExists(cx, cz);
                 if (existing != null) {
                     int distance = Math.max(Math.abs(dx), Math.abs(dz));
-                    existing.setMeshLod(Boolean.getBoolean("mineclone.fullDetail") ? 0 : distance <= 3 ? 0 : distance <= 5 ? 1 : 2);
+                    existing.setMeshLod(!lod || Boolean.getBoolean("mineclone.fullDetail")
+                            ? 0 : distance <= 3 ? 0 : distance <= 5 ? 1 : 2);
                 }
                 if (world.getChunkIfExists(cx, cz) == null) {
                     submitGen(cx, cz, k);
@@ -217,6 +229,8 @@ public class ChunkLoader {
             c.setPendingItems(snap.items);
             c.computeSkyLight();
             c.modified = false;
+            world.falling.scanRestored(c);
+            LavaSimulator.activateChunkIfLava(world, c.cx, c.cz);
         }
         // Always queue this chunk: flood its own emitters and inherit border light
         // from already-lit neighbours via injectNeighbourLight in drainLightFlood.

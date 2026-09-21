@@ -1,0 +1,1085 @@
+package com.mineclone.net;
+
+import com.mineclone.save.ChunkSnapshot;
+import com.mineclone.save.ItemStackCodec;
+import com.mineclone.world.BlockType;
+import com.mineclone.world.Chunk;
+import com.mineclone.world.Furnace;
+import com.mineclone.world.ItemStack;
+import com.mineclone.world.World;
+import com.mineclone.world.entity.ItemEntity;
+import com.mineclone.world.entity.Mob;
+import com.mineclone.world.entity.MobType;
+import org.joml.Vector3f;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+/**
+ * Сетевая сессия: кто хозяин, кто где стоит и что стало с блоком.
+ *
+ * <p>Власть хозяйская. Мир живёт у хозяина комнаты: он его генерирует, тикает,
+ * сохраняет и рассылает изменения. Участник не «сам себе мир с подсказками», а
+ * зеркало: свои правки он применяет сразу, чтобы кирка не залипала, но
+ * последнее слово всегда за хозяином. Разойтись они не могут — хозяин
+ * рассылает результат каждой правки всем, включая того, кто её попросил.
+ *
+ * <p>Мир по сети не передаётся. Генерация детерминирована по сиду и это
+ * проверено тестом, поэтому участник строит тот же рельеф сам, а по проводу
+ * едет только разница: чем чанк отличается от свежесгенерированного. У
+ * нетронутого чанка разницы нет вовсе, и это самый частый случай — поэтому
+ * вход в чужой мир стоит десятки килобайт, а не десятки мегабайт. ADR:
+ * {@code knowledge/decisions/multiplayer-photon.md}.
+ *
+ * <p>Класс не знает ни про GL, ни про окно, ни про {@code Game}: всё, что ему
+ * нужно от игры, приходит через {@link NetContext}. Поэтому сессию поднимают
+ * в тестах парой и гоняют настоящий обмен без единого кадра.
+ */
+public final class Multiplayer implements NetTransport.Listener {
+
+    /** Роль в комнате. */
+    public enum Role {
+        NONE, HOST, CLIENT
+    }
+
+    /** Сколько заявок на дельту чанка участник шлёт за один тик. */
+    private static final int CHUNK_REQUESTS_PER_TICK = 6;
+    /** Через сколько молчания чужой игрок считается отвалившимся. */
+    private static final float SILENCE_LIMIT = 12f;
+    /** Как часто хозяин рассылает предметы на земле. */
+    private static final float ITEM_SYNC_INTERVAL = 0.25f;
+    /** Сколько строк чата помнится. */
+    private static final int CHAT_HISTORY = 48;
+    /** Вид контейнера в пакете. */
+    public static final int CONTAINER_CHEST = 0;
+    public static final int CONTAINER_FURNACE = 1;
+
+    private final NetContext ctx;
+    private NetTransport transport;
+    private NetChannel channel;
+    private Role role = Role.NONE;
+
+    private String nickname = "Игрок";
+    private String roomName = "";
+    private int hostActor;
+    private boolean joined;
+    /** Участник: пришло ли уже описание мира. */
+    private boolean worldReady;
+    private String status = "";
+    private String lastError = "";
+
+    private final Map<Integer, RemotePlayer> players = new LinkedHashMap<>();
+    private final Deque<String> chat = new ArrayDeque<>();
+
+    private float tickTimer;
+    private float timeSyncTimer;
+    private float itemSyncTimer;
+    /** Пока true, правка блока пришла по сети и обратно не уходит. */
+    private boolean applyingRemote;
+    private boolean swingPending;
+    private float infoTimer;
+    private float lastSentHealth = -1f;
+
+    // ---- участник: какие чанки уже спрошены ----
+    private final Set<Long> requestedChunks = new HashSet<>();
+    private final Deque<Long> chunkQueue = new ArrayDeque<>();
+
+    // ---- хозяин: нумерация существ и фоновой расчёт дельт ----
+    private final Map<Mob, Integer> mobIds = new IdentityHashMap<>();
+    private final Map<ItemEntity, Integer> itemIds = new IdentityHashMap<>();
+    private int nextEntityId = 1;
+    private ExecutorService deltaWorker;
+    private World pristine;
+    private final ConcurrentLinkedQueue<Runnable> deltaResults = new ConcurrentLinkedQueue<>();
+
+    // ---- участник: существа по номеру ----
+    private final Map<Integer, Mob> shownMobs = new HashMap<>();
+    private final Map<Integer, ItemEntity> shownItems = new HashMap<>();
+    /** Предметы, о которых заявка уже ушла: повторять её нечего. */
+    private final Set<Integer> pickRequested = new HashSet<>();
+    private final Random visualRandom = new Random(0x5EED);
+
+    public Multiplayer(NetContext ctx) {
+        this.ctx = ctx;
+    }
+
+    // ------------------------------------------------------------- запуск
+
+    /**
+     * Начать сессию.
+     *
+     * @param create создаём комнату (значит будем хозяином) или входим в чужую
+     */
+    public void start(NetTransport t, String room, boolean create, String nick) {
+        stop(null);
+        this.transport = t;
+        this.channel = new NetChannel(t);
+        this.roomName = room == null ? "" : room;
+        this.nickname = (nick == null || nick.isBlank()) ? "Игрок" : nick.trim();
+        if (this.nickname.length() > NetProto.NAME_LIMIT)
+            this.nickname = this.nickname.substring(0, NetProto.NAME_LIMIT);
+        this.role = Role.NONE;
+        this.status = "подключение…";
+        this.lastError = "";
+        t.connect(this.roomName, create, this.nickname);
+    }
+
+    public void stop(String reason) {
+        if (transport != null) {
+            if (channel != null)
+                channel.discard();
+            transport.disconnect();
+        }
+        transport = null;
+        channel = null;
+        role = Role.NONE;
+        joined = false;
+        worldReady = false;
+        hostActor = 0;
+        players.clear();
+        requestedChunks.clear();
+        chunkQueue.clear();
+        mobIds.clear();
+        itemIds.clear();
+        shownMobs.clear();
+        shownItems.clear();
+        pickRequested.clear();
+        deltaResults.clear();
+        if (deltaWorker != null) {
+            deltaWorker.shutdownNow();
+            deltaWorker = null;
+        }
+        pristine = null;
+        if (reason != null && !reason.isEmpty()) {
+            lastError = reason;
+            status = reason;
+        }
+    }
+
+    // ------------------------------------------------------------- сведения
+
+    public boolean active() {
+        return transport != null;
+    }
+
+    public boolean isHost() {
+        return role == Role.HOST;
+    }
+
+    public boolean isClient() {
+        return role == Role.CLIENT;
+    }
+
+    /** Участник уже знает, в какой мир он попал. */
+    public boolean worldReady() {
+        return role == Role.HOST || worldReady;
+    }
+
+    public boolean joined() {
+        return joined;
+    }
+
+    public String status() {
+        return status;
+    }
+
+    public String lastError() {
+        return lastError;
+    }
+
+    public String roomName() {
+        return roomName;
+    }
+
+    public String nickname() {
+        return nickname;
+    }
+
+    public Collection<RemotePlayer> players() {
+        return players.values();
+    }
+
+    public List<String> chatLog() {
+        return new ArrayList<>(chat);
+    }
+
+    /** Строка для отладочного экрана. */
+    public String debugLine() {
+        if (transport == null)
+            return "offline";
+        return (role == Role.HOST ? "host" : role == Role.CLIENT ? "client" : "…")
+                + " " + transport.describe()
+                + " peers=" + players.size()
+                + " msg=" + (channel == null ? 0 : channel.messagesSent())
+                + " tx=" + (channel == null ? 0 : channel.bytesSent() / 1024) + "k";
+    }
+
+    // --------------------------------------------------------------- кадр
+
+    /** Один кадр сессии. Зовётся из игрового потока. */
+    public void update(float dt) {
+        if (transport == null)
+            return;
+        transport.poll();
+        // Результаты фоновых дельт применяются здесь же: рассылка обязана
+        // идти из того потока, что и всё остальное.
+        Runnable r;
+        while ((r = deltaResults.poll()) != null)
+            r.run();
+        if (transport == null)
+            return;
+
+        for (RemotePlayer p : players.values())
+            p.update(dt);
+        players.values().removeIf(p -> p.silence > SILENCE_LIMIT);
+
+        if (!joined)
+            return;
+        tickTimer += dt;
+        float interval = 1f / NetProto.TICK_RATE;
+        if (tickTimer < interval)
+            return;
+        tickTimer = 0f;
+        sendPlayerState();
+        if (role == Role.HOST) {
+            timeSyncTimer += interval;
+            if (timeSyncTimer >= NetProto.TIME_SYNC_INTERVAL) {
+                timeSyncTimer = 0f;
+                channel.packet(NetProto.S_TIME, true, NetChannel.ALL).f32(ctx.timeOfDay());
+            }
+            sendMobs();
+            itemSyncTimer += interval;
+            if (itemSyncTimer >= ITEM_SYNC_INTERVAL) {
+                itemSyncTimer = 0f;
+                sendItems();
+            }
+        } else {
+            pumpChunkRequests();
+        }
+        channel.flush();
+    }
+
+    private void sendPlayerState() {
+        Vector3f p = ctx.playerPosition();
+        if (p == null)
+            return;
+        PacketBuf b = channel.packet(NetProto.X_PLAYER_STATE, false, NetChannel.ALL);
+        b.f32(p.x).f32(p.y).f32(p.z).f32(ctx.playerYaw()).f32(ctx.playerPitch())
+                .u8(ctx.playerFlags());
+        if (swingPending) {
+            swingPending = false;
+            channel.send(NetProto.X_PLAYER_SWING, true, NetChannel.ALL);
+        }
+        // Здоровье и режим — редко и надёжно: каждый тик они не меняются, а
+        // потерянный пакет с ними оставил бы чужую полоску здоровья враньём.
+        infoTimer += 1f / NetProto.TICK_RATE;
+        float health = ctx.playerHealth();
+        if (infoTimer >= 2f || Math.abs(health - lastSentHealth) > 0.01f) {
+            infoTimer = 0f;
+            lastSentHealth = health;
+            sendInfo(NetChannel.ALL);
+        }
+    }
+
+    private void sendInfo(int target) {
+        channel.packet(NetProto.X_PLAYER_INFO, true, target)
+                .str(nickname).u8(ctx.gameMode()).f32(ctx.playerHealth());
+    }
+
+    // -------------------------------------------------------------- блоки
+
+    /**
+     * Мир изменился у нас — рассказать остальным.
+     *
+     * <p>Зовётся наблюдателем мира, то есть на любую правку: и на удар киркой,
+     * и на растёкшуюся воду, и на выросший кактус. У хозяина это рассылка
+     * результата, у участника — просьба.
+     */
+    public void onWorldBlockChanged(int x, int y, int z, BlockType old, BlockType now, byte meta) {
+        if (!joined || applyingRemote || channel == null)
+            return;
+        boolean broke = now == BlockType.AIR && old != BlockType.AIR;
+        if (role == Role.HOST) {
+            PacketBuf b = channel.packet(NetProto.S_BLOCK_SET, true, NetChannel.ALL);
+            b.blockPos(x, y, z).u8(now.ordinal()).u8(meta).u8(broke ? 1 : 0);
+        } else if (role == Role.CLIENT) {
+            PacketBuf b = channel.packet(NetProto.C_BLOCK_EDIT, true, hostActor);
+            b.blockPos(x, y, z).u8(now.ordinal()).u8(meta).u8(broke ? 1 : 0);
+        }
+    }
+
+    /** Участник: чанк появился — спросить, чем он отличается от чистого. */
+    public void noteChunkLoaded(int cx, int cz) {
+        if (role != Role.CLIENT || !joined)
+            return;
+        long key = World.key(cx, cz);
+        if (requestedChunks.add(key))
+            chunkQueue.add(key);
+    }
+
+    private void pumpChunkRequests() {
+        for (int i = 0; i < CHUNK_REQUESTS_PER_TICK && !chunkQueue.isEmpty(); i++) {
+            long key = chunkQueue.poll();
+            channel.packet(NetProto.C_CHUNK_REQUEST, true, hostActor)
+                    .i32((int) (key >> 32)).i32((int) key);
+        }
+    }
+
+    /** Замах рукой: уйдёт в ближайшем тике. */
+    public void noteSwing() {
+        swingPending = true;
+    }
+
+    /**
+     * Поставлен или сломан блок. Само изменение мира уже едет своим пакетом,
+     * но он также описывает тихие тики воды и растений — звук нужен только
+     * для явного действия игрока.
+     */
+    public void noteBlockAction(BlockType block, boolean broke, int x, int y, int z) {
+        if (!joined || channel == null || block == null)
+            return;
+        channel.packet(NetProto.X_BLOCK_ACTION, true, NetChannel.ALL)
+                .blockPos(x, y, z).u8(block.ordinal()).u8(broke ? 1 : 0);
+    }
+
+    public void sendChat(String text) {
+        if (!joined || text == null || text.isBlank())
+            return;
+        String line = text.trim();
+        if (line.length() > NetProto.CHAT_LIMIT)
+            line = line.substring(0, NetProto.CHAT_LIMIT);
+        channel.packet(NetProto.X_CHAT, true, NetChannel.ALL).str(line);
+        channel.flush();
+        addChat(nickname + ": " + line);
+    }
+
+    private void addChat(String line) {
+        chat.addLast(line);
+        while (chat.size() > CHAT_HISTORY)
+            chat.removeFirst();
+        ctx.chatLine(line);
+    }
+
+    // ---------------------------------------------------------- контейнеры
+
+    /** Участник открыл сундук или печь — попросить настоящее содержимое. */
+    public void requestContainer(int x, int y, int z) {
+        if (role != Role.CLIENT || !joined)
+            return;
+        channel.packet(NetProto.C_CONTAINER_OPEN, true, hostActor).blockPos(x, y, z);
+        channel.flush();
+    }
+
+    /** Участник закрыл контейнер — отдать хозяину то, что получилось. */
+    public void commitContainer(int x, int y, int z, int kind, ItemStack[] slots,
+            float burnLeft, float burnMax, float cook) {
+        if (role != Role.CLIENT || !joined)
+            return;
+        PacketBuf b = channel.packet(NetProto.C_CONTAINER_COMMIT, true, hostActor);
+        writeContainer(b, x, y, z, kind, slots, burnLeft, burnMax, cook);
+        channel.flush();
+    }
+
+    /**
+     * Участник дотянулся до предмета — решает всё равно хозяин.
+     *
+     * <p>Заявка на предмет уходит один раз. Игровой кадр зовёт этот метод
+     * шестьдесят раз в секунду, пока предмет в руках, и без памяти о
+     * попрошенном в каждое сообщение уходило бы по пять одинаковых заявок.
+     */
+    public void requestPickup(ItemEntity e) {
+        if (role != Role.CLIENT || !joined)
+            return;
+        Integer id = idOf(shownItems, e);
+        if (id == null || !pickRequested.add(id))
+            return;
+        channel.packet(NetProto.C_ITEM_PICK, true, hostActor).varInt(id);
+    }
+
+    /** Участник ударил моба: урон и отброс считает хозяин. */
+    public void requestMobHit(Mob m, float damage, float knockback, float fromX, float fromZ) {
+        if (role != Role.CLIENT || !joined)
+            return;
+        Integer id = idOf(shownMobs, m);
+        if (id == null)
+            return;
+        channel.packet(NetProto.C_MOB_HIT, true, hostActor)
+                .varInt(id).f32(damage).f32(knockback).f32(fromX).f32(fromZ);
+    }
+
+    /** Номер существа в карте показываемых; поиск по ссылке, а не по равенству. */
+    private static <T> Integer idOf(Map<Integer, T> shown, T value) {
+        for (Map.Entry<Integer, T> e : shown.entrySet())
+            if (e.getValue() == value)
+                return e.getKey();
+        return null;
+    }
+
+    // -------------------------------------------------- ответы транспорта
+
+    @Override
+    public void onState(NetTransport.State state, String detail) {
+        switch (state) {
+            case CONNECTING -> status = detail;
+            case JOINED -> status = "в комнате " + detail;
+            case FAILED -> {
+                lastError = detail;
+                ctx.netStopped(detail);
+                stop(detail);
+            }
+            case CLOSED -> status = "отключено";
+            default -> {
+            }
+        }
+    }
+
+    @Override
+    public void onJoined(int myActor, boolean created) {
+        joined = true;
+        role = created ? Role.HOST : Role.CLIENT;
+        hostActor = created ? myActor : transport.masterActor();
+        status = role == Role.HOST ? "мир открыт" : "вход в мир…";
+        if (role == Role.HOST) {
+            deltaWorker = Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "mineclone-net-chunks");
+                t.setDaemon(true);
+                return t;
+            });
+            pristine = new World(ctx.seed());
+            worldReady = true;
+            addChat("Мир открыт: комната «" + roomName + "»");
+        } else {
+            channel.packet(NetProto.C_HELLO, true, hostActor)
+                    .varInt(NetProto.VERSION).str(nickname);
+            channel.flush();
+        }
+    }
+
+    @Override
+    public void onActorJoin(int actor, String name) {
+        players.computeIfAbsent(actor, a -> new RemotePlayer(a, name)).name = name;
+        if (role == Role.HOST)
+            addChat(displayName(actor) + " подключается…");
+        // Новому соседу надо знать, кто мы: он только что пришёл и наш
+        // редкий пакет сведений мог уйти задолго до него.
+        if (joined && channel != null)
+            sendInfo(actor);
+    }
+
+    @Override
+    public void onActorLeave(int actor) {
+        RemotePlayer gone = players.remove(actor);
+        if (gone != null)
+            addChat(gone.name.isEmpty() ? "Игрок вышел" : gone.name + " вышел");
+        if (role == Role.CLIENT && actor == hostActor) {
+            // Мир жил у хозяина. Переезжать некуда: у нас нет ни содержимого
+            // сундуков, ни состояния мобов, ни права писать сейв.
+            ctx.netStopped("хозяин мира вышел");
+            stop("хозяин мира вышел");
+        }
+    }
+
+    @Override
+    public void onRoomList(List<NetTransport.RoomInfo> rooms) {
+        // Список комнат нужен экрану, а не сессии: она к этому моменту уже
+        // знает, куда идёт.
+    }
+
+    @Override
+    public void onPayload(int from, byte[] data) {
+        PacketBuf in = PacketBuf.reading(data);
+        while (in.hasMore()) {
+            int code = in.readU8();
+            // Незнакомый код или оборванное тело — дальше в этом сообщении
+            // каша: длина пакета нигде не написана, и следующий байт уже не
+            // код. Остаток выбрасывается целиком.
+            if (!handle(from, code, in) || in.truncated())
+                return;
+        }
+    }
+
+    private boolean handle(int from, int code, PacketBuf in) {
+        switch (code) {
+            case NetProto.C_HELLO -> onHello(from, in);
+            case NetProto.S_WELCOME -> onWelcome(from, in);
+            case NetProto.S_REJECT -> {
+                String why = in.readStr();
+                ctx.netStopped(why);
+                stop(why);
+            }
+            case NetProto.X_PLAYER_STATE -> {
+                float x = in.readF32(), y = in.readF32(), z = in.readF32();
+                float yaw = in.readF32(), pitch = in.readF32();
+                int flags = in.readU8();
+                if (!in.truncated())
+                    player(from).accept(x, y, z, yaw, pitch, flags);
+            }
+            case NetProto.X_PLAYER_INFO -> {
+                String name = in.readStr();
+                int mode = in.readU8();
+                float health = in.readF32();
+                if (in.truncated())
+                    return false;
+                RemotePlayer p = player(from);
+                p.name = name;
+                p.gameMode = mode;
+                p.health = health;
+            }
+            case NetProto.X_PLAYER_SWING -> player(from).startSwing();
+            case NetProto.X_BLOCK_ACTION -> {
+                int[] at = in.readBlockPos();
+                int id = in.readU8();
+                boolean broke = in.readU8() != 0;
+                if (!in.truncated())
+                    ctx.remoteBlockAction(from, at[0], at[1], at[2], (byte) id, broke);
+            }
+            case NetProto.X_PLAYER_LIFE -> in.readU8();
+            case NetProto.S_BLOCK_SET -> {
+                int[] at = in.readBlockPos();
+                int id = in.readU8();
+                int meta = in.readU8();
+                boolean broke = in.readU8() != 0;
+                if (!in.truncated() && role == Role.CLIENT && from == hostActor)
+                    applyRemote(at[0], at[1], at[2], (byte) id, (byte) meta, broke);
+            }
+            case NetProto.C_BLOCK_EDIT -> {
+                int[] at = in.readBlockPos();
+                int id = in.readU8();
+                int meta = in.readU8();
+                boolean broke = in.readU8() != 0;
+                if (!in.truncated() && role == Role.HOST)
+                    // Хозяин применяет правку у себя, а наблюдатель мира сам
+                    // разошлёт её всем — включая того, кто просил.
+                    ctx.applyRemoteBlock(at[0], at[1], at[2], (byte) id, (byte) meta, broke);
+            }
+            case NetProto.C_CHUNK_REQUEST -> {
+                int cx = in.readI32(), cz = in.readI32();
+                if (!in.truncated() && role == Role.HOST)
+                    queueChunkDelta(from, cx, cz);
+            }
+            case NetProto.S_CHUNK_DELTA -> onChunkDelta(from, in);
+            case NetProto.S_TIME -> {
+                float t = in.readF32();
+                if (!in.truncated() && role == Role.CLIENT && from == hostActor)
+                    ctx.setTimeOfDay(t);
+            }
+            case NetProto.S_MOBS -> onMobs(from, in);
+            case NetProto.S_ITEMS -> onItems(from, in);
+            case NetProto.C_MOB_HIT -> {
+                int id = in.readVarInt();
+                float damage = in.readF32(), knockback = in.readF32();
+                float fx = in.readF32(), fz = in.readF32();
+                if (!in.truncated() && role == Role.HOST)
+                    hostMobHit(id, damage, knockback, fx, fz);
+            }
+            case NetProto.C_ITEM_PICK -> {
+                int id = in.readVarInt();
+                if (!in.truncated() && role == Role.HOST)
+                    hostPickup(from, id);
+            }
+            case NetProto.S_GIVE -> {
+                ItemStack s = readStack(in);
+                if (!in.truncated() && s != null)
+                    ctx.give(s);
+            }
+            case NetProto.X_CHAT -> {
+                String line = in.readStr();
+                if (!in.truncated()) {
+                    player(from).say(line);
+                    addChat(displayName(from) + ": " + line);
+                }
+            }
+            case NetProto.C_CONTAINER_OPEN -> {
+                int[] at = in.readBlockPos();
+                if (!in.truncated() && role == Role.HOST)
+                    sendContainer(from, at[0], at[1], at[2]);
+            }
+            case NetProto.S_CONTAINER -> onContainer(from, in);
+            case NetProto.C_CONTAINER_COMMIT -> onContainerCommit(from, in);
+            default -> {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private RemotePlayer player(int actor) {
+        return players.computeIfAbsent(actor,
+                a -> new RemotePlayer(a, transport == null ? "" : transport.actorName(a)));
+    }
+
+    private String displayName(int actor) {
+        RemotePlayer p = players.get(actor);
+        if (p != null && !p.name.isEmpty())
+            return p.name;
+        String n = transport == null ? "" : transport.actorName(actor);
+        return n.isEmpty() ? "Игрок " + actor : n;
+    }
+
+    // ------------------------------------------------------- рукопожатие
+
+    private void onHello(int from, PacketBuf in) {
+        int version = in.readVarInt();
+        String name = in.readStr();
+        if (in.truncated() || role != Role.HOST)
+            return;
+        player(from).name = name;
+        if (version != NetProto.VERSION) {
+            channel.packet(NetProto.S_REJECT, true, from)
+                    .str("другая версия игры: у вас " + version + ", у хозяина " + NetProto.VERSION);
+            channel.flush();
+            return;
+        }
+        Vector3f spawn = ctx.spawn();
+        PacketBuf b = channel.packet(NetProto.S_WELCOME, true, from);
+        b.i64(ctx.seed()).str(ctx.worldName()).f32(ctx.timeOfDay()).u8(ctx.gameMode())
+                .f32(spawn.x).f32(spawn.y).f32(spawn.z);
+        sendInfo(from);
+        channel.flush();
+        addChat(name + " вошёл в мир");
+    }
+
+    private void onWelcome(int from, PacketBuf in) {
+        long seed = in.readI64();
+        String name = in.readStr();
+        float time = in.readF32();
+        int mode = in.readU8();
+        float sx = in.readF32(), sy = in.readF32(), sz = in.readF32();
+        if (in.truncated() || role != Role.CLIENT)
+            return;
+        hostActor = from;
+        worldReady = true;
+        status = "мир «" + name + "»";
+        requestedChunks.clear();
+        chunkQueue.clear();
+        ctx.startRemoteWorld(seed, name, time, mode, sx, sy, sz);
+        addChat("Вошли в мир «" + name + "»");
+    }
+
+    private void applyRemote(int x, int y, int z, byte id, byte meta, boolean broke) {
+        applyingRemote = true;
+        try {
+            ctx.applyRemoteBlock(x, y, z, id, meta, broke);
+        } finally {
+            applyingRemote = false;
+        }
+    }
+
+    // ------------------------------------------------------- дельты чанков
+
+    /**
+     * Посчитать, чем чанк отличается от чистой генерации, и отправить разницу.
+     *
+     * <p>Живой чанк читается здесь, в игровом потоке: у {@link Chunk} чтение
+     * без блокировок, но читать его параллельно с правкой блока всё равно
+     * значит получить кашу из двух состояний. А генерация чистой копии и само
+     * сравнение уходят в фоновый поток — вместе они стоят миллисекунды,
+     * которых в кадре нет.
+     */
+    private void queueChunkDelta(int actor, int cx, int cz) {
+        World world = ctx.world();
+        if (world == null || deltaWorker == null)
+            return;
+        Chunk live = world.getChunkIfExists(cx, cz);
+        byte[] blocks;
+        byte[] meta;
+        if (live != null) {
+            blocks = live.copyBlocks();
+            meta = live.copyMeta();
+        } else {
+            // Чанка нет в памяти — но он мог быть изменён когда-то раньше и
+            // лежать в сейве. Пустой ответ был бы тихой потерей построек.
+            ChunkSnapshot saved = ctx.loadSavedChunk(cx, cz);
+            if (saved == null) {
+                sendEmptyDelta(actor, cx, cz);
+                return;
+            }
+            blocks = saved.blocks;
+            meta = saved.meta;
+        }
+        final byte[] fBlocks = blocks, fMeta = meta;
+        // Чистый мир берётся сюда, а не читается из поля в задаче: сессию
+        // могут закрыть, пока задача ещё в очереди, и поле к тому моменту
+        // уже пустое.
+        final World base = pristine;
+        deltaWorker.execute(() -> {
+            try {
+                if (base == null)
+                    return;
+                PacketBuf body = buildDelta(base, cx, cz, fBlocks, fMeta);
+                deltaResults.add(() -> {
+                    if (channel == null)
+                        return;
+                    PacketBuf out = channel.packet(NetProto.S_CHUNK_DELTA, true, actor);
+                    out.i32(cx).i32(cz).bytes(body.toBytes());
+                });
+            } catch (RuntimeException e) {
+                System.err.println("chunk delta failed for " + cx + "," + cz + ": " + e);
+            }
+        });
+    }
+
+    private void sendEmptyDelta(int actor, int cx, int cz) {
+        channel.packet(NetProto.S_CHUNK_DELTA, true, actor)
+                .i32(cx).i32(cz).bytes(new PacketBuf(1).varInt(0).toBytes());
+    }
+
+    /** Сравнение с чистой генерацией. Работает в фоновом потоке. */
+    private static PacketBuf buildDelta(World base, int cx, int cz, byte[] blocks, byte[] meta) {
+        Chunk fresh = base.getChunk(cx, cz);
+        byte[] baseBlocks = fresh.copyBlocks();
+        byte[] baseMeta = fresh.copyMeta();
+        base.removeChunk(cx, cz);
+        PacketBuf cells = new PacketBuf(1024);
+        int count = 0;
+        PacketBuf body = new PacketBuf(1024);
+        int n = Math.min(blocks.length, baseBlocks.length);
+        for (int i = 0; i < n; i++) {
+            byte b = blocks[i];
+            byte m = i < meta.length ? meta[i] : 0;
+            byte bb = baseBlocks[i];
+            byte bm = i < baseMeta.length ? baseMeta[i] : 0;
+            if (b == bb && m == bm)
+                continue;
+            cells.varInt(i).u8(b).u8(m);
+            count++;
+        }
+        body.varInt(count);
+        byte[] tail = cells.toBytes();
+        for (byte t : tail)
+            body.u8(t);
+        return body;
+    }
+
+    private void onChunkDelta(int from, PacketBuf in) {
+        int cx = in.readI32(), cz = in.readI32();
+        byte[] body = in.readBytes();
+        if (in.truncated() || role != Role.CLIENT || from != hostActor)
+            return;
+        World world = ctx.world();
+        if (world == null || world.getChunkIfExists(cx, cz) == null) {
+            // Чанк успели выгрузить, пока ответ летел: спросим снова, когда он
+            // снова появится.
+            requestedChunks.remove(World.key(cx, cz));
+            return;
+        }
+        PacketBuf cells = PacketBuf.reading(body);
+        int count = cells.readVarInt();
+        applyingRemote = true;
+        try {
+            for (int i = 0; i < count && !cells.truncated(); i++) {
+                int index = cells.readVarInt();
+                int id = cells.readU8();
+                int meta = cells.readU8();
+                if (index < 0 || index >= Chunk.SIZE_X * Chunk.SIZE_Y * Chunk.SIZE_Z)
+                    continue;
+                int x = index % Chunk.SIZE_X;
+                int rest = index / Chunk.SIZE_X;
+                int z = rest % Chunk.SIZE_Z;
+                int y = rest / Chunk.SIZE_Z;
+                ctx.applyRemoteBlock(cx * Chunk.SIZE_X + x, y, cz * Chunk.SIZE_Z + z,
+                        (byte) id, (byte) meta, false);
+            }
+        } finally {
+            applyingRemote = false;
+        }
+    }
+
+    // ------------------------------------------------------------ существа
+
+    private void sendMobs() {
+        List<Mob> mobs = ctx.mobs();
+        if (mobs == null)
+            return;
+        PacketBuf b = channel.packet(NetProto.S_MOBS, false, NetChannel.ALL);
+        b.varInt(mobs.size());
+        for (Mob m : mobs) {
+            int id = mobIds.computeIfAbsent(m, k -> nextEntityId++);
+            int flags = (m.dead ? 1 : 0) | (m.burning ? 2 : 0) | (m.inWater ? 4 : 0)
+                    | (m.onGround ? 8 : 0);
+            b.varInt(id).u8(m.type.ordinal())
+                    .f32(m.position.x).f32(m.position.y).f32(m.position.z)
+                    .f32(m.yaw)
+                    .u8(Math.max(0, Math.min(255, Math.round(m.health))))
+                    .u8(flags);
+        }
+        mobIds.keySet().retainAll(new HashSet<>(mobs));
+    }
+
+    private void onMobs(int from, PacketBuf in) {
+        int count = in.readVarInt();
+        if (role != Role.CLIENT || from != hostActor) {
+            // Прочитать всё равно надо: за этим пакетом в сообщении могут
+            // идти другие.
+            skipMobs(in, count);
+            return;
+        }
+        List<Mob> out = ctx.mobs();
+        if (out == null) {
+            skipMobs(in, count);
+            return;
+        }
+        Set<Integer> seen = new HashSet<>();
+        MobType[] types = MobType.values();
+        for (int i = 0; i < count && !in.truncated(); i++) {
+            int id = in.readVarInt();
+            int type = in.readU8();
+            float x = in.readF32(), y = in.readF32(), z = in.readF32();
+            float yaw = in.readF32();
+            int health = in.readU8();
+            int flags = in.readU8();
+            if (type < 0 || type >= types.length)
+                continue;
+            seen.add(id);
+            Mob m = shownMobs.get(id);
+            if (m == null || m.type != types[type]) {
+                m = new Mob(types[type], x, y, z, visualRandom);
+                shownMobs.put(id, m);
+            }
+            // Размах шага — из пройденного пути, как у чужих игроков: у
+            // участника мобы не думают, они только едут.
+            float moved = (float) Math.hypot(x - m.position.x, z - m.position.z);
+            m.walkedDistance += moved;
+            m.walkAmount = Math.min(1f, moved * NetProto.TICK_RATE / 3.2f);
+            m.position.set(x, y, z);
+            m.yaw = yaw;
+            m.lookYaw = yaw;
+            m.health = health;
+            m.dead = (flags & 1) != 0;
+            m.burning = (flags & 2) != 0;
+            m.inWater = (flags & 4) != 0;
+            m.onGround = (flags & 8) != 0;
+        }
+        shownMobs.keySet().retainAll(seen);
+        out.clear();
+        out.addAll(shownMobs.values());
+    }
+
+    private static void skipMobs(PacketBuf in, int count) {
+        for (int i = 0; i < count && !in.truncated(); i++) {
+            in.readVarInt();
+            in.readU8();
+            in.readF32();
+            in.readF32();
+            in.readF32();
+            in.readF32();
+            in.readU8();
+            in.readU8();
+        }
+    }
+
+    private void sendItems() {
+        List<ItemEntity> items = ctx.groundItems();
+        if (items == null)
+            return;
+        PacketBuf b = channel.packet(NetProto.S_ITEMS, true, NetChannel.ALL);
+        b.varInt(items.size());
+        for (ItemEntity e : items) {
+            int id = itemIds.computeIfAbsent(e, k -> nextEntityId++);
+            b.varInt(id).f32(e.position.x).f32(e.position.y).f32(e.position.z);
+            writeStack(b, e.stack);
+        }
+        itemIds.keySet().retainAll(new HashSet<>(items));
+    }
+
+    private void onItems(int from, PacketBuf in) {
+        int count = in.readVarInt();
+        boolean mine = role == Role.CLIENT && from == hostActor;
+        List<ItemEntity> out = mine ? ctx.groundItems() : null;
+        Set<Integer> seen = new HashSet<>();
+        for (int i = 0; i < count && !in.truncated(); i++) {
+            int id = in.readVarInt();
+            float x = in.readF32(), y = in.readF32(), z = in.readF32();
+            ItemStack stack = readStack(in);
+            if (out == null || stack == null)
+                continue;
+            seen.add(id);
+            ItemEntity e = shownItems.get(id);
+            if (e == null || !e.stack.stacksWith(stack)) {
+                e = new ItemEntity(stack, x, y, z, 0f, (id * 0.37f) % 6.283f);
+                shownItems.put(id, e);
+            } else {
+                e.stack.count = stack.count;
+            }
+            e.position.set(x, y, z);
+        }
+        if (out == null)
+            return;
+        shownItems.keySet().retainAll(seen);
+        // Предмет исчез — и заявка на него больше не в силе: следующий с тем
+        // же номером будет уже другим предметом.
+        pickRequested.retainAll(seen);
+        out.clear();
+        out.addAll(shownItems.values());
+    }
+
+    /**
+     * Удар участника по мобу.
+     *
+     * <p>Урон и отброс считает хозяин, потому что у него живёт сам моб. У
+     * участника удар при этом отыгрывается сразу — звук, брызги, вспышка, —
+     * и поправляется следующим снимком: ждать ответа сервера, чтобы меч
+     * зазвенел, значит превратить бой в переписку.
+     */
+    private void hostMobHit(int id, float damage, float knockback, float fromX, float fromZ) {
+        if (damage <= 0f || damage > 100f)
+            return;
+        for (Map.Entry<Mob, Integer> e : mobIds.entrySet()) {
+            if (e.getValue() != id)
+                continue;
+            Mob m = e.getKey();
+            if (!m.dead)
+                m.hurt(damage, fromX, fromZ, Math.max(0f, Math.min(4f, knockback)), true);
+            return;
+        }
+    }
+
+    private void hostPickup(int actor, int id) {
+        List<ItemEntity> items = ctx.groundItems();
+        if (items == null)
+            return;
+        for (Map.Entry<ItemEntity, Integer> e : itemIds.entrySet()) {
+            if (e.getValue() != id)
+                continue;
+            ItemEntity ent = e.getKey();
+            if (!items.remove(ent))
+                return;
+            PacketBuf b = channel.packet(NetProto.S_GIVE, true, actor);
+            writeStack(b, ent.stack);
+            itemIds.remove(ent);
+            return;
+        }
+    }
+
+    // ---------------------------------------------------------- контейнеры
+
+    private void sendContainer(int actor, int x, int y, int z) {
+        World world = ctx.world();
+        if (world == null)
+            return;
+        BlockType t = world.getBlock(x, y, z);
+        if (t == BlockType.CHEST) {
+            ItemStack[] slots = world.getChest(x, y, z);
+            if (slots == null)
+                slots = new ItemStack[Chunk.CHEST_SLOTS];
+            PacketBuf b = channel.packet(NetProto.S_CONTAINER, true, actor);
+            writeContainer(b, x, y, z, CONTAINER_CHEST, slots, 0f, 0f, 0f);
+        } else if (t == BlockType.FURNACE) {
+            Furnace f = world.getFurnace(x, y, z);
+            ItemStack[] slots = f == null ? new ItemStack[3]
+                    : new ItemStack[] { f.input, f.fuel, f.output };
+            PacketBuf b = channel.packet(NetProto.S_CONTAINER, true, actor);
+            writeContainer(b, x, y, z, CONTAINER_FURNACE, slots,
+                    f == null ? 0f : f.burnLeft, f == null ? 0f : f.burnMax,
+                    f == null ? 0f : f.cook);
+        }
+        channel.flush();
+    }
+
+    private void onContainer(int from, PacketBuf in) {
+        int[] at = in.readBlockPos();
+        int kind = in.readU8();
+        int n = in.readVarInt();
+        ItemStack[] slots = new ItemStack[Math.max(0, Math.min(64, n))];
+        for (int i = 0; i < slots.length && !in.truncated(); i++)
+            slots[i] = readStack(in);
+        float burnLeft = in.readF32(), burnMax = in.readF32(), cook = in.readF32();
+        if (in.truncated() || role != Role.CLIENT || from != hostActor)
+            return;
+        ctx.containerFromHost(at[0], at[1], at[2], kind, slots, burnLeft, burnMax, cook);
+    }
+
+    private void onContainerCommit(int from, PacketBuf in) {
+        int[] at = in.readBlockPos();
+        int kind = in.readU8();
+        int n = in.readVarInt();
+        ItemStack[] slots = new ItemStack[Math.max(0, Math.min(64, n))];
+        for (int i = 0; i < slots.length && !in.truncated(); i++)
+            slots[i] = readStack(in);
+        float burnLeft = in.readF32(), burnMax = in.readF32(), cook = in.readF32();
+        if (in.truncated() || role != Role.HOST)
+            return;
+        World world = ctx.world();
+        if (world == null)
+            return;
+        int x = at[0], y = at[1], z = at[2];
+        if (kind == CONTAINER_CHEST && world.getBlock(x, y, z) == BlockType.CHEST) {
+            ItemStack[] live = world.createChest(x, y, z);
+            for (int i = 0; i < live.length; i++)
+                live[i] = i < slots.length ? slots[i] : null;
+            world.markChestDirty(x, z);
+            // Остальным, кто смотрит в тот же сундук, — новое содержимое.
+            for (Integer a : transport.actors())
+                if (a != from)
+                    sendContainer(a, x, y, z);
+        } else if (kind == CONTAINER_FURNACE && world.getBlock(x, y, z) == BlockType.FURNACE) {
+            Furnace f = world.createFurnace(x, y, z);
+            f.input = slots.length > 0 ? slots[0] : null;
+            f.fuel = slots.length > 1 ? slots[1] : null;
+            f.output = slots.length > 2 ? slots[2] : null;
+            f.burnLeft = burnLeft;
+            f.burnMax = burnMax;
+            f.cook = cook;
+            world.markChestDirty(x, z);
+        }
+    }
+
+    private static void writeContainer(PacketBuf b, int x, int y, int z, int kind,
+            ItemStack[] slots, float burnLeft, float burnMax, float cook) {
+        b.blockPos(x, y, z).u8(kind).varInt(slots.length);
+        for (ItemStack s : slots)
+            writeStack(b, s);
+        b.f32(burnLeft).f32(burnMax).f32(cook);
+    }
+
+    // ------------------------------------------------------------- стопки
+
+    /**
+     * Стопка едет тем же кодеком, что и в сейв.
+     *
+     * <p>Свой формат «id и количество» пришлось бы чинить каждый раз, когда у
+     * предмета появляется новая часть: износ инструмента, своё имя, начинка
+     * блока. Кодек сейва уже умеет всё это и переживает незнакомые компоненты.
+     */
+    static void writeStack(PacketBuf b, ItemStack s) {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream(32);
+        try (DataOutputStream out = new DataOutputStream(bytes)) {
+            ItemStackCodec.write(out, s);
+        } catch (IOException e) {
+            // Запись в массив в памяти не падает; если это всё же случилось,
+            // отправим пустую стопку вместо поломки всего сообщения.
+            b.bytes(new byte[0]);
+            return;
+        }
+        b.bytes(bytes.toByteArray());
+    }
+
+    static ItemStack readStack(PacketBuf b) {
+        byte[] raw = b.readBytes();
+        if (raw.length == 0)
+            return null;
+        try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(raw))) {
+            return ItemStackCodec.read(in);
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+}
