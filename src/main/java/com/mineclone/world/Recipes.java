@@ -135,6 +135,7 @@ public final class Recipes {
         String[] pickaxe = { "MMM", ".S.", ".S." };
         String[] axe = { "MM.", "MS.", ".S." };
         String[] shovel = { ".M.", ".S.", ".S." };
+        String[] sword = { ".M.", ".M.", ".S." };
         String[][] tiers = {
                 { "planks", "wooden" }, { "cobblestone", "stone" },
                 { "iron_ingot", "iron" }, { "diamond", "diamond" },
@@ -144,7 +145,19 @@ public final class Recipes {
             recipes.add(tool(tier[0], tier[1] + "_pickaxe", pickaxe, false));
             recipes.add(tool(tier[0], tier[1] + "_axe", axe, true));
             recipes.add(tool(tier[0], tier[1] + "_shovel", shovel, false));
+            recipes.add(tool(tier[0], tier[1] + "_sword", sword, false));
         }
+
+        // Лук и стрелы. Тетива — паутина: своей нити в игре нет, а паутина
+        // уже стоит в шаблоне данжа, так что лук добывается в выживании и
+        // стоит похода под землю. Форма — привычный майнкрафтовский силуэт.
+        recipes.add(shaped("bow", 1, false,
+                new String[] { ".SY", "S.Y", ".SY" }, "S", "stick", "Y", "cobweb"));
+        // Наконечник из гравия: кремня отдельным предметом нет, а гравий и
+        // есть то, из чего его набивают. Оперение опущено — у рецепта может
+        // быть только два разных ингредиента.
+        recipes.add(shaped("arrow", 2, false,
+                new String[] { "G", "S" }, "G", "gravel", "S", "stick"));
 
         recipes.add(shaped("chest", 1, false,
                 new String[] { "PPP", "P.P", "PPP" }, "P", "planks"));

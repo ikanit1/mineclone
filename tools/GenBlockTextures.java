@@ -102,6 +102,9 @@ public class GenBlockTextures {
     /** Головка каменного инструмента — светлее камня, иначе сливается с ним. */
     static final int[] R_TOOLSTONE = pal("4A4C56", "63646C", "7C7C80", "979691", "B3B0A6");
     static final int[] R_TOOLIRON  = pal("6B6B72", "8D8D93", "AFAFB2", "CBCBCB", "E8E8E6");
+    static final int[] R_TOOLCOPPER = pal("5A2A16", "8A4522", "B26134", "D4854D", "EFAE76");
+    static final int[] R_STRING  = pal("3A342A", "5C5445", "807663", "A59A85", "C9BEA8");
+    static final int[] R_FLINT   = pal("1B1B20", "33333B", "4D4D56", "6B6B74", "8E8E95");
     // Мясо: тёмная мякоть и светлый жир. Оттенки разведены по видам, иначе
     // четыре куска в хотбаре неразличимы.
     static final int[] R_BEEF    = pal("4A1418", "6E1E22", "94302E", "B8493F", "D2705F");
@@ -215,6 +218,19 @@ public class GenBlockTextures {
         tiles.add(new Tile("iron_ingot", R_TOOLIRON, ingot()));
         tiles.add(new Tile("gold_ingot", R_GOLD, ingot()));
         tiles.add(new Tile("diamond", merge(R_DIAMOND, R_DIAMOND), diamond()));
+        // Оружие. Меч — та же пара рамп, что у инструмента: рукоять в
+        // первой, сталь во второй. Медь и золото есть только у оружия и
+        // импортированных инструментов, поэтому рампы стоят тут же.
+        int[][] blades = { R_WOOD, R_TOOLSTONE, R_TOOLCOPPER, R_TOOLIRON, R_GOLD, R_DIAMOND };
+        String[] blademats = { "wood", "stone", "copper", "iron", "gold", "diamond" };
+        for (int m = 0; m < blademats.length; m++)
+            tiles.add(new Tile(blademats[m] + "_sword", merge(R_HANDLE, blades[m]), sword()));
+        // Лук: три стадии. Плечо распрямляется, тетива уходит назад — по
+        // этому и читается натяжение, а не по подписи.
+        for (int stage = 0; stage < 3; stage++)
+            tiles.add(new Tile(stage == 0 ? "bow" : "bow_pull_" + stage,
+                    merge(R_HANDLE, R_STRING), bow(stage)));
+        tiles.add(new Tile("arrow", merge(R_HANDLE, R_FLINT), arrow()));
 
         // По умолчанию генератор дописывает недостающее и не трогает то,
         // что уже лежит в папке. Источник правды по текстурам — папка
@@ -247,7 +263,9 @@ public class GenBlockTextures {
     }
 
     static boolean isToolSprite(String name) {
-        return name.endsWith("_pickaxe") || name.endsWith("_axe") || name.endsWith("_shovel");
+        return name.endsWith("_pickaxe") || name.endsWith("_axe") || name.endsWith("_shovel")
+                || name.endsWith("_sword") || name.equals("bow") || name.startsWith("bow_pull_")
+                || name.equals("arrow");
     }
 
     static boolean isGameplaySprite(String name) {
@@ -416,6 +434,110 @@ public class GenBlockTextures {
      *
      * @param kind 0 — кирка, 1 — топор, 2 — лопата
      */
+    /**
+     * Меч: короткая рукоять, крестовина поперёк и длинный клинок.
+     *
+     * Рукоять короче инструментной нарочно — у меча длину занимает клинок.
+     * Крестовина обязана идти <b>поперёк</b> оси: вдоль она сливается с
+     * клинком, и меч читается как ещё одна палка.
+     */
+    static int[][] sword() {
+        int[][] m = blank(-1);
+        // Рукоять: три звена от нижнего правого угла.
+        for (int i = 0; i < 3; i++) {
+            int x = 14 - i, y = 14 - i;
+            put(m, x + 1, y, 0);
+            put(m, x, y, 2);
+            put(m, x - 1, y - 1, 4);
+        }
+        put(m, 15, 15, 1);
+        // Крестовина — перпендикуляр к оси клинка, направление (1, -1).
+        for (int i = -3; i <= 3; i++) {
+            put(m, 11 + i, 11 - i, RAMP_B + 1);
+            put(m, 11 + i, 12 - i, RAMP_B);
+        }
+        // Клинок: тёмная спинка снизу-справа, тело, светлая кромка сверху-слева.
+        for (int i = 0; i < 10; i++) {
+            int x = 10 - i, y = 10 - i;
+            put(m, x + 1, y + 1, RAMP_B);
+            put(m, x + 1, y, RAMP_B + 1);
+            put(m, x, y, RAMP_B + 3);
+            put(m, x, y - 1, RAMP_B + 4);
+        }
+        put(m, 1, 0, RAMP_B + 4);
+        put(m, 0, 0, RAMP_B + 2);
+        return m;
+    }
+
+    /**
+     * Лук на стадии натяжения 0..2.
+     *
+     * Натягиваясь, плечи гнутся <b>сильнее</b>, а тетива уходит назад к
+     * стрелку — стадия читается по силуэту, как в Minecraft. Три независимых
+     * спрайта разъехались бы при первой же правке формы, поэтому форма одна
+     * с параметром.
+     */
+    static int[][] bow(int pull) {
+        int[][] m = blank(-1);
+        float bend = 4.0f + pull * 1.4f;     // плечи гнутся сильнее
+        float draw = 1.0f + pull * 2.4f;     // тетива оттягивается назад
+        int[] armX = new int[16];
+        for (int y = 1; y <= 14; y++) {
+            float t = (y - 1) / 13f;
+            float arc = (float) Math.sin(t * Math.PI);
+            int x = Math.round(9.0f - arc * bend);
+            armX[y] = x;
+            put(m, x + 1, y, 0);
+            put(m, x, y, 2);
+            put(m, x - 1, y, 4);
+        }
+        // Рога загибаются внутрь — иначе тетива крепится в воздухе.
+        put(m, armX[1] + 1, 0, 1);
+        put(m, armX[14] + 1, 15, 1);
+        // Тетива: от рога к рогу через точку оттяжки посередине.
+        float topX = armX[1] + 1, bottomX = armX[14] + 1;
+        float pullX = 10.5f + draw;
+        for (int y = 0; y <= 15; y++) {
+            float t = y / 15f;
+            float x = t < 0.5f
+                    ? topX + (pullX - topX) * (t / 0.5f)
+                    : pullX + (bottomX - pullX) * ((t - 0.5f) / 0.5f);
+            put(m, Math.round(x), y, RAMP_B + 4);
+        }
+        return m;
+    }
+
+    /**
+     * Стрела: тонкое древко по диагонали, кремнёвый наконечник, оперение.
+     *
+     * Оперение берётся из второй рампы, а не из древесной: пером цвета
+     * древка стрела выходит однотонной палкой, и пятку от острия не
+     * отличить.
+     */
+    static int[][] arrow() {
+        int[][] m = blank(-1);
+        for (int i = 0; i < 10; i++) {
+            int x = 4 + i, y = 11 - i;
+            put(m, x, y, 2);
+            put(m, x, y + 1, 0);
+        }
+        // Наконечник — кремень: темнее и холоднее древка, со светлой гранью.
+        paint(m, 12, 0,
+                "..hh",
+                ".shh",
+                "ssm.",
+                "os..");
+        // Оперение: три пера уступами у пятки, светлым по второй рампе.
+        for (int i = 0; i < 3; i++) {
+            int x = 1 + i, y = 14 - i;
+            put(m, x, y, RAMP_B + 4);
+            put(m, x, y - 1, RAMP_B + 3);
+            put(m, x + 1, y + 1, RAMP_B + 1);
+        }
+        put(m, 0, 15, RAMP_B + 2);
+        return m;
+    }
+
     static int[][] tool(int kind) {
         int[][] m = blank(-1);
         // Толстая трёхцветная рукоять от нижнего правого угла к креплению.

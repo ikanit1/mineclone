@@ -2335,21 +2335,17 @@ public class Game {
     private float breakProgress = 0f;
     private float breakDigTimer = 0f;
     private BlockBreakOverlay breakOverlay;
-    /** Дальность удара рукой по мобу. */
+    /** Дальность удара по мобу. */
     private static final float MOB_REACH = 4.5f;
-    /** Урон рукой — 1 сердце. */
-    private static final float HAND_DAMAGE = 2f;
     /**
-     * Кулдаун удара игрока. Вместе с окном неуязвимости моба
-     * ({@code Mob.INVULN_TIME}) это и есть защита от закликивания: без них урон
-     * определялся тем, как быстро игрок щёлкает мышью.
+     * Откат удара — свой у каждого оружия ({@link com.mineclone.item.Combat}).
+     * Бить можно и раньше, но слабее; закликать при этом невыгодно, потому что
+     * моб после попадания неуязвим {@code Mob.INVULN_TIME}, и лишние клики
+     * уходят в пустоту, снижая только урон.
      */
-    private static final float ATTACK_COOLDOWN = 0.5f;
-    /** Множитель урона при ударе в падении (MC-крит). */
-    private static final float CRIT_MULTIPLIER = 1.5f;
-    /** Во сколько раз сильнее отброс при ударе в спринте. */
-    private static final float SPRINT_KNOCKBACK = 1.6f;
     private float attackCooldown = 0f;
+    /** Откат, из которого он отсчитывается: нужен, чтобы показать готовность. */
+    private float attackCooldownSpan = 0.5f;
 
     private void handleInteraction(float dt) {
         Vector3f origin = new Vector3f(player.camera.position);
@@ -2372,15 +2368,18 @@ public class Game {
 
         com.mineclone.world.entity.Mob aimedMob = pickAimedMob(origin, dir);
         aimingAtMob = aimedMob != null && !aimedMob.dead;
-        if (aimedMob != null && attackCooldown <= 0f
-                && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
-            attackCooldown = ATTACK_COOLDOWN;
+        if (aimedMob != null && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
+            com.mineclone.item.Item weapon = heldItem();
+            float span = com.mineclone.item.Combat.cooldown(weapon);
+            float ready = com.mineclone.item.Combat.readiness(attackCooldown, attackCooldownSpan);
+            attackCooldown = span;
+            attackCooldownSpan = span;
             startHandSwing();
             // Крит — как в MC: удар в падении бьёт сильнее. Спринт-удар не
             // добавляет урона, но отбрасывает заметно дальше.
             boolean crit = !player.onGround && player.velocity.y < -0.1f;
-            float damage = crit ? HAND_DAMAGE * CRIT_MULTIPLIER : HAND_DAMAGE;
-            float knockback = player.isSprinting ? SPRINT_KNOCKBACK : 1f;
+            float damage = com.mineclone.item.Combat.damage(weapon, ready, crit);
+            float knockback = com.mineclone.item.Combat.knockback(player.isSprinting);
             float hitT = aimedMob.rayHitDistance(origin, dir);
             float hitY = origin.y + dir.y * Math.max(0f, hitT);
             float normalizedY = (hitY - aimedMob.position.y) / Math.max(0.1f, aimedMob.type.height);
@@ -2396,6 +2395,8 @@ public class Game {
                 sound.playOneOfAt(sounds.playerAttack(crit ? "crit" : "strong"),
                         aimedMob.soundPosition(), 0.55f, 0.95f + 0.1f * (float) Math.random());
                 emitHitImpact(aimedMob, origin, dir, Math.max(0f, hitT), crit);
+                // Оружие тупится о живое так же, как инструмент о камень.
+                wearHeldTool();
             }
         }
 
@@ -2407,7 +2408,8 @@ public class Game {
             // ещё и свистит — без этого клик по воздуху выглядит зависанием.
             if (aimedMob == null && attackCooldown <= 0f
                     && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
-                attackCooldown = ATTACK_COOLDOWN * 0.6f;
+                attackCooldownSpan = com.mineclone.item.Combat.cooldown(heldItem()) * 0.6f;
+                attackCooldown = attackCooldownSpan;
                 startHandSwing();
                 if (heldTool() != null)
                     sound.playOneOf(sounds.playerAttack("sweep"), 0.25f,
@@ -3266,6 +3268,12 @@ public class Game {
      * Отдельный метод, потому что «что в руке» спрашивают и скорость копания,
      * и износ, и дроп — и все трое обязаны спрашивать одно и то же.
      */
+    /** Предмет в руке, или null у пустой. Оружие спрашивает именно его. */
+    private com.mineclone.item.Item heldItem() {
+        com.mineclone.world.ItemStack s = inventory.get(selectedSlot);
+        return s == null ? null : s.item;
+    }
+
     private com.mineclone.world.ItemStack heldTool() {
         com.mineclone.world.ItemStack s = inventory.get(selectedSlot);
         return s != null && s.tool() != null ? s : null;
@@ -5338,6 +5346,9 @@ public class Game {
                 if (player.eyeInWater && hud != null)
                     hud.drawWaterOverlay(vw, vh);
                 crosshair.render(vw, vh);
+                // Готовность удара — сразу под прицелом, там же, где взгляд.
+                hud.drawAttackReady(vw, vh,
+                        com.mineclone.item.Combat.readiness(attackCooldown, attackCooldownSpan));
                 if (hintAlpha > 0.01f && shownHint != null)
                     hud.drawHint(vw, vh, shownHint, hintAlpha);
                 hud.drawSoundCues(vw, vh, soundCues, player.camera.yaw);

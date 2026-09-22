@@ -117,6 +117,11 @@ public class TextureAtlas {
             "tool_gold", "tool_copper", "tool_wood",                             // 120..122
             "copper_ingot",                                                        // 123
             "pixel_smoke", "pixel_flame", "pixel_lava", "pixel_snow",             // 124..127
+            // Оружие. Меч экструдируется тем же ItemSpriteMesh, что кирка;
+            // у лука три стадии натяжения, как в MC, — силуэт меняется.
+            "wood_sword", "stone_sword", "copper_sword",                          // 128..130
+            "iron_sword", "gold_sword", "diamond_sword",                          // 131..133
+            "bow", "bow_pull_1", "bow_pull_2", "arrow",                            // 134..137
     };
 
     /** First tile index of the water_flow animation strip (16 frames). */
@@ -224,6 +229,14 @@ public class TextureAtlas {
     }
 
     /** Load a sprite PNG and ensure it is TILE×TILE ARGB. Null if absent/bad. */
+    /** Same pixels used by the atlas and by the extruded held-item geometry. */
+    public static BufferedImage sprite(int tile) {
+        if (tile < 0 || tile >= TILE_NAMES.length)
+            return placeholder();
+        BufferedImage image = loadTile(new File(AppPaths.file(BLOCKS_DIR), TILE_NAMES[tile] + ".png"));
+        return image == null ? placeholder() : image;
+    }
+
     private static BufferedImage loadTile(File f) {
         try {
             if (!f.exists())

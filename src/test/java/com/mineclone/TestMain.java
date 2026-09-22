@@ -56,6 +56,7 @@ public final class TestMain {
         RoomAcousticsTests.runAll((name, check) -> run(name, check::run));
         LightningTests.runAll((name, check) -> run(name, check::run));
         StormTests.runAll((name, check) -> run(name, check::run));
+        CombatTests.runAll((name, check) -> run(name, check::run));
         PlayerAnimationTests.runAll((name, check) -> run(name, check::run));
         MobAnimationTests.runAll((name, check) -> run(name, check::run));
         run("optimization invariants", OptimizationTests::run);

@@ -235,6 +235,30 @@ public class Hud {
      * @param ghost здоровье, которое «догоняет» текущее: полоса потери
      *              оседает медленнее, чем само здоровье падает
      */
+    /**
+     * Полоска готовности удара — короткая черта под прицелом.
+     *
+     * Видна <b>только пока оружие не готово</b>: постоянный элемент под
+     * прицелом мешал бы целиться, а вся нужная информация — «уже можно» или
+     * «ещё рано» — читается самим его появлением. Без неё разная скорость
+     * оружия остаётся невидимой механикой, и игрок просто закликивает.
+     */
+    public void drawAttackReady(int screenW, int screenH, float readiness) {
+        if (readiness >= 0.999f)
+            return;
+        float w = 58f, h = 3f;
+        float x = screenW / 2f - w / 2f;
+        float y = screenH / 2f + 11f;
+        float k = Math.max(0f, Math.min(1f, readiness));
+        ui.begin(screenW, screenH);
+        ui.quad(x - 1f, y - 1f, w + 2f, h + 2f, 0f, 0f, 0f, 0.45f);
+        ui.quad(x, y, w, h, 0.16f, 0.16f, 0.18f, 0.75f);
+        // Наливается тёплым и белеет к полной готовности: цвет меняется
+        // вместе с длиной, поэтому край шкалы виден и боковым зрением.
+        ui.quad(x, y, w * k, h, 0.55f + 0.45f * k, 0.42f + 0.55f * k, 0.28f + 0.68f * k, 0.95f);
+        ui.end();
+    }
+
     public void drawHearts(int screenW, int screenH, float health, float ghost) {
         // Mirror hotbar geometry so hearts sit flush above its left edge
         float slot = 52f, pad = 4f;
