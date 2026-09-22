@@ -196,6 +196,17 @@ final class FeatureTests {
         var T = com.mineclone.world.entity.MobTactics.class;
         assertEq("lonely wounded mob panics", com.mineclone.world.entity.MobTactics.Morale.PANIC,
                 com.mineclone.world.entity.MobTactics.morale(0.1f, true, 0));
+        // Нежить не отступает: убегающий от добивания зомби читается как
+        // поломка, а не как тактика.
+        assertEq("a wounded zombie keeps coming",
+                com.mineclone.world.entity.MobTactics.Morale.STEADY,
+                com.mineclone.world.entity.MobTactics.morale(0.05f, true, 0, true));
+        assertEq("and calls its own instead of fleeing",
+                com.mineclone.world.entity.MobTactics.Morale.CALL_HELP,
+                com.mineclone.world.entity.MobTactics.morale(0.05f, false, 4, true));
+        assertTrue("the undead are the fearless ones",
+                com.mineclone.world.entity.MobTactics.fearless(com.mineclone.world.entity.MobType.ZOMBIE)
+                        && !com.mineclone.world.entity.MobTactics.fearless(com.mineclone.world.entity.MobType.RABBIT));
         assertEq("night is a hostile hunting shift", com.mineclone.world.entity.MobTactics.Routine.HUNT,
                 com.mineclone.world.entity.MobTactics.routine(com.mineclone.world.entity.MobType.ZOMBIE, 0.7f, false, false));
         for (int i = 0; i < 100; i++)

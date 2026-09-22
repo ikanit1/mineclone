@@ -12,6 +12,51 @@ public class Player {
     public float statusSpeedMultiplier = 1f;
     public boolean onGround = false;
     public boolean flying = false;
+    private com.mineclone.world.GameMode gameMode = com.mineclone.world.GameMode.SURVIVAL;
+    private float jumpTapTimer = Float.MAX_VALUE;
+
+    public void setGameMode(com.mineclone.world.GameMode mode) {
+        if (mode == com.mineclone.world.GameMode.CREATIVE) {
+            health = MAX_HEALTH;
+            hunger = MAX_HUNGER;
+        }
+        if (gameMode == mode) return;
+        gameMode = mode;
+        jumpTapTimer = Float.MAX_VALUE;
+        fallDistance = lastFallDamage = lastFallDistance = 0f;
+        hurtCooldown = regenDelay = regenTimer = 0f;
+        if (isCreative()) {
+            health = MAX_HEALTH;
+            hunger = MAX_HUNGER;
+        } else {
+            flying = false;
+            velocity.y = 0f;
+        }
+    }
+
+    public boolean isCreative() {
+        return gameMode == com.mineclone.world.GameMode.CREATIVE;
+    }
+
+    /** Called with key edges: holding Space cannot count as a second tap. */
+    public void updateFlightControls(float dt, boolean enabled, boolean jumpPressed, boolean flyPressed) {
+        jumpTapTimer = Math.min(Float.MAX_VALUE / 2, jumpTapTimer + dt);
+        if (!enabled || !isCreative()) {
+            jumpTapTimer = Float.MAX_VALUE;
+            return;
+        }
+        boolean toggle = flyPressed;
+        if (jumpPressed) {
+            toggle |= jumpTapTimer <= DOUBLE_TAP_WINDOW;
+            jumpTapTimer = toggle ? Float.MAX_VALUE : 0f;
+        }
+        if (toggle) {
+            flying = !flying;
+            velocity.y = 0f;
+            fallDistance = 0f;
+            onGround = false;
+        }
+    }
     public boolean inWater = false;
     public boolean eyeInWater = false;
     /** Downward speed captured before water drag on the frame of entry. */
@@ -104,11 +149,9 @@ public class Player {
             camera.rotate((float) (input.getDx() * sens),
                     (float) (input.getDy() * (invertY ? -sens : sens)));
 
-        // toggle fly
-        if (controlsEnabled && input.pressed(com.mineclone.core.KeyBindings.Action.FLY)) {
-            flying = !flying;
-            if (flying) isSprinting = false;
-        }
+        updateFlightControls(dt, controlsEnabled,
+                controlsEnabled && input.pressed(com.mineclone.core.KeyBindings.Action.JUMP),
+                controlsEnabled && input.pressed(com.mineclone.core.KeyBindings.Action.FLY));
 
         // horizontal input
         Vector3f fwd = camera.forward();
@@ -132,12 +175,12 @@ public class Player {
         if (wish.lengthSquared() > 0.0001)
             wish.normalize();
 
-        float speed = (flying ? flySpeed : (isSprinting ? SPRINT_SPEED : WALK_SPEED))
-                * Math.max(0.15f, statusSpeedMultiplier);
+        float speed = (flying ? flySpeed * (isSprinting ? 2f : 1f) : (isSprinting ? SPRINT_SPEED : WALK_SPEED))
+                * (isCreative() ? 1f : Math.max(0.15f, statusSpeedMultiplier));
         boolean jumpDown = controlsEnabled && input.down(com.mineclone.core.KeyBindings.Action.JUMP);
 
-        inWater = !flying && touchingWater(world);
-        eyeInWater = !flying && eyeBlockIsWater(world);
+        inWater = touchingWater(world);
+        eyeInWater = eyeBlockIsWater(world);
         if (inWater && !wetAtFrameStart)
             waterEntrySpeed = Math.max(0f, -entryVelocityY);
 
@@ -204,29 +247,36 @@ public class Player {
         float prevY = position.y;
 
         // Move with collisions axis by axis (AABB sweep)
-        moveAxis(world, velocity.x * dt, 0, 0);
-        moveAxis(world, 0, velocity.y * dt, 0);
-        moveAxis(world, 0, 0, velocity.z * dt);
+        // Substeps keep fast flight from tunnelling through one-block walls.
+        int steps = Math.max(1, (int) Math.ceil(velocity.length() * dt / 0.2f));
+        float stepDt = dt / steps;
+        for (int step = 0; step < steps; step++) {
+            moveAxis(world, velocity.x * stepDt, 0, 0);
+            boolean descending = velocity.y < 0f;
+            moveAxis(world, 0, velocity.y * stepDt, 0);
+            if (flying && descending && onGround) flying = false;
+            moveAxis(world, 0, 0, velocity.z * stepDt);
+        }
         if (!flying && inWater && !eyeInWater && jumpDown) {
             tryClimbWaterLedge(world, wish);
         }
 
         // Refresh water contact after movement (player may have entered water this frame)
-        inWater = !flying && touchingWater(world);
-        eyeInWater = !flying && eyeBlockIsWater(world);
+        inWater = touchingWater(world);
+        eyeInWater = eyeBlockIsWater(world);
         if (inWater && !wetAtFrameStart)
             waterEntrySpeed = Math.max(0f, -entryVelocityY);
 
         // Flight and water end the current fall. Include the landing frame's
         // descent, but never carry a previous fall through a flying stop.
-        if (inWater || flying)
+        if (inWater || flying || isCreative())
             fallDistance = 0f;
         else if (position.y < prevY)
             fallDistance += prevY - position.y;
 
         // Landing: apply fall damage (guard !inWater covers same-frame water+ground)
         if (onGround && !wasOnGround) {
-            if (!inWater && !flying) {
+            if (!inWater && !flying && !isCreative()) {
                 float dmg = Math.max(0f, fallDistance - 3f);
                 lastFallDamage = dmg;
                 if (dmg > 0f) {
@@ -266,7 +316,7 @@ public class Player {
      * должен становиться уязвимым, а добивать его должен зомби.
      */
     public void tickHunger(float dt, boolean active) {
-        if (!active || flying || health <= 0f)
+        if (!active || isCreative() || flying || health <= 0f)
             return;
         float drain = HUNGER_IDLE_DRAIN * dt;
         if (isSprinting)
@@ -282,7 +332,7 @@ public class Player {
      * GLFW-ввода нельзя.
      */
     public boolean canRegen() {
-        return regenDelay <= 0f && health > 0f && hunger >= REGEN_HUNGER_MIN;
+        return !isCreative() && regenDelay <= 0f && health > 0f && hunger >= REGEN_HUNGER_MIN;
     }
 
     /** Съесть: поднимает сытость, но не выше предела. */
@@ -406,7 +456,7 @@ public class Player {
 
         // Double-tap W: second press within DOUBLE_TAP_WINDOW activates sprint
         if (wPressed) {
-            if (wDoubleTapTimer < DOUBLE_TAP_WINDOW && !flying && !inWater)
+            if (wDoubleTapTimer < DOUBLE_TAP_WINDOW && (flying || !inWater))
                 isSprinting = true;
             wDoubleTapTimer = 0f;
         } else {
@@ -414,20 +464,19 @@ public class Player {
         }
 
         // Ctrl + W: immediate activation
-        if (ctrlDown && wDown && !flying && !inWater)
+        if (ctrlDown && wDown && (flying || !inWater))
             isSprinting = true;
 
         // Cancel: W not held, or entered water/fly
-        if (!wDown || flying || inWater)
+        if (!wDown || (inWater && !flying))
             isSprinting = false;
     }
 
-    private void moveAxis(World world, float dx, float dy, float dz) {
+    /** Пакетная видимость ради теста физики: он живёт в этом же пакете. */
+    void moveAxis(World world, float dx, float dy, float dz) {
         position.x += dx;
         position.y += dy;
         position.z += dz;
-        if (flying)
-            return;
 
         float hw = WIDTH / 2f;
         float minX = position.x - hw, maxX = position.x + hw;
@@ -561,32 +610,33 @@ public class Player {
                 velocity.y = 0;
             }
         } else {
+            // Автоподъёма на ступень здесь больше нет. Он ставил игрока на
+            // верх ступени одним присваиванием, то есть мгновенно, и это
+            // читалось как телепорт — тем сильнее, чем выше оказывалась
+            // поверхность: у одного из направлений подъём выходил на целый
+            // блок за два кадра подряд. Ступень теперь упирает, как любой
+            // другой блок, и берётся прыжком.
             if (position.y < topSurface && position.y + HEIGHT > by) {
-                float stepDelta = topSurface - position.y;
-                if (stepDelta <= 0.55f) {
-                    position.y = topSurface + 1e-4f;
-                    onGround = true;
-                } else {
-                    if (dx > 0) {
-                        position.x = bx - hw - 1e-4f;
-                        velocity.x = 0;
-                    } else if (dx < 0) {
-                        position.x = bx + 1 + hw + 1e-4f;
-                        velocity.x = 0;
-                    }
-                    if (dz > 0) {
-                        position.z = bz - hw - 1e-4f;
-                        velocity.z = 0;
-                    } else if (dz < 0) {
-                        position.z = bz + 1 + hw + 1e-4f;
-                        velocity.z = 0;
-                    }
+                if (dx > 0) {
+                    position.x = bx - hw - 1e-4f;
+                    velocity.x = 0;
+                } else if (dx < 0) {
+                    position.x = bx + 1 + hw + 1e-4f;
+                    velocity.x = 0;
+                }
+                if (dz > 0) {
+                    position.z = bz - hw - 1e-4f;
+                    velocity.z = 0;
+                } else if (dz < 0) {
+                    position.z = bz + 1 + hw + 1e-4f;
+                    velocity.z = 0;
                 }
             }
         }
     }
 
     public void takeDamage(float amount) {
+        if (isCreative()) return;
         health = Math.max(0f, health - amount);
     }
 
@@ -601,7 +651,7 @@ public class Player {
      * @return true, если урон прошёл
      */
     public boolean takeAttackDamage(float amount) {
-        if (hurtCooldown > 0f)
+        if (isCreative() || hurtCooldown > 0f)
             return false;
         hurtCooldown = HURT_INVULN_TIME;
         regenDelay = REGEN_DELAY_AFTER_HIT;
@@ -625,7 +675,7 @@ public class Player {
         eyeInWater = false;
         wasOnGround = false;
         isSprinting = false;
-        wDoubleTapTimer = Float.MAX_VALUE;
+        wDoubleTapTimer = jumpTapTimer = Float.MAX_VALUE;
         camera.position.set(position.x, position.y + EYE_HEIGHT, position.z);
     }
 

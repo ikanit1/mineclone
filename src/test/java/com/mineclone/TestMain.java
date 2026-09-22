@@ -58,6 +58,7 @@ public final class TestMain {
         StormTests.runAll((name, check) -> run(name, check::run));
         CombatTests.runAll((name, check) -> run(name, check::run));
         ProjectileTests.runAll((name, check) -> run(name, check::run));
+        com.mineclone.game.PlayerPhysicsTests.runAll((name, check) -> run(name, check::run));
         PlayerAnimationTests.runAll((name, check) -> run(name, check::run));
         MobAnimationTests.runAll((name, check) -> run(name, check::run));
         run("optimization invariants", OptimizationTests::run);

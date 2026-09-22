@@ -16,9 +16,32 @@ public final class MobTactics {
     private MobTactics() {}
 
     public static Morale morale(float healthFraction, boolean leaderAlive, int alliesNearby) {
+        return morale(healthFraction, leaderAlive, alliesNearby, false);
+    }
+
+    /**
+     * Мораль с поправкой на бесстрашие.
+     *
+     * <p><b>Нежить не отступает.</b> Раненый зомби, убегающий от игрока,
+     * читается не как тактика, а как поломка: мертвецу нечего терять, и
+     * погоня, обрывающаяся на добивании, ломает весь смысл встречи с ним.
+     * Звать своих он по-прежнему может — это делает стаю опаснее, а не
+     * пугливее.
+     *
+     * @param fearless вид не отступает ни при каких ранах
+     */
+    public static Morale morale(float healthFraction, boolean leaderAlive, int alliesNearby,
+                                boolean fearless) {
+        if (fearless)
+            return alliesNearby > 1 ? Morale.CALL_HELP : Morale.STEADY;
         if (healthFraction < 0.18f) return alliesNearby > 1 ? Morale.RETREAT : Morale.PANIC;
         if (!leaderAlive) return alliesNearby > 2 ? Morale.CALL_HELP : Morale.RETREAT;
         return Morale.STEADY;
+    }
+
+    /** Кто не отступает: нежить прёт до конца. */
+    public static boolean fearless(MobType type) {
+        return type.temper == MobType.Temper.HOSTILE;
     }
 
     public static Routine routine(MobType type, float dayPhase, boolean thirsty, boolean hungry) {
@@ -82,7 +105,7 @@ public final class MobTactics {
             for (Mob o : mobs)
                 if (o != m && !o.dead && o.type == m.type && o.position.distanceSquared(m.position) < 144f)
                     allies++;
-            m.morale = morale(m.health / m.type.maxHealth, true, allies);
+            m.morale = morale(m.health / m.type.maxHealth, true, allies, fearless(m.type));
             boolean thirsty = ((m.animationTime + m.position.x * 0.13f) % 45f) > 40f;
             m.routine = routine(m.type, dayPhase, thirsty, m.hungerTimer <= 0f);
             // Group composition and daily routine cannot change meaningfully
@@ -102,7 +125,7 @@ public final class MobTactics {
             for (Mob o : mobs)
                 if (o != m && !o.dead && o.type == m.type
                         && o.position.distanceSquared(m.position) < 12f * 12f) allies++;
-            m.morale = morale(m.health / m.type.maxHealth, false, allies);
+            m.morale = morale(m.health / m.type.maxHealth, false, allies, fearless(m.type));
             m.moraleTimer = 8f;
         }
     }

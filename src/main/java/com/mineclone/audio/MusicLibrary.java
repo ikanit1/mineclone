@@ -53,9 +53,9 @@ public final class MusicLibrary {
             // Края получили свои треки, и прежняя растяжка снята: раздавать
             // лесу и пустыне один и тот же трек больше не нужно.
             new Entry("Forest Room", -0.6f,
-                    MusicMood.WOODS, MusicMood.DAY, MusicMood.BUILD),
+                    MusicMood.MENU, MusicMood.WOODS, MusicMood.DAY, MusicMood.BUILD),
             new Entry("Vast Wilderness", -0.8f,
-                    MusicMood.ARID, MusicMood.EXPLORE, MusicMood.DAY),
+                    MusicMood.MENU, MusicMood.ARID, MusicMood.EXPLORE, MusicMood.DAY),
             new Entry("Frozen Atmosphere", -0.5f,
                     MusicMood.FROZEN, MusicMood.NIGHT),
             new Entry("Frozen Atmosphere (1)", -0.4f,
@@ -63,7 +63,7 @@ public final class MusicLibrary {
             new Entry("Swamp Whispers", -1.1f,
                     MusicMood.WETLAND, MusicMood.DUSK),
             new Entry("Starry Night", -0.6f,
-                    MusicMood.SEA, MusicMood.NIGHT, MusicMood.HOME),
+                    MusicMood.MENU, MusicMood.SEA, MusicMood.NIGHT, MusicMood.HOME),
             // Без DANGER и DAWN нарочно: эти настроения держат по одному
             // треку, и второй кандидат делал бы «в бою играет боевое»
             // случайностью вместо правила.
