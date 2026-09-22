@@ -42,16 +42,21 @@ public class RenderAtmospherePreview {
 
     /**
      * Туман, иней, тени и рука от первого лица — то, чего нет в погодных кадрах.
-     * {@code juice} — сцена «сочности»: неоновая рамка, обломки, искры удара и
+     * {@code juice} — сцена «сочности»: контур выделения, обломки, искры удара и
      * предметы на земле.
      */
     record Extra(float mist, float haze, float frost, boolean shadows, boolean hand,
-                 float inspect, float swing, float condition, boolean juice) {
+                 float inspect, float swing, float condition, boolean juice, float lightning) {
         static final Extra NONE = new Extra(0f, 0f, 0f, false, false, 0f, 0f, 1f);
 
         Extra(float mist, float haze, float frost, boolean shadows, boolean hand,
               float inspect, float swing, float condition) {
-            this(mist, haze, frost, shadows, hand, inspect, swing, condition, false);
+            this(mist, haze, frost, shadows, hand, inspect, swing, condition, false, 0f);
+        }
+
+        Extra(float mist, float haze, float frost, boolean shadows, boolean hand,
+              float inspect, float swing, float condition, boolean juice) {
+            this(mist, haze, frost, shadows, hand, inspect, swing, condition, juice, 0f);
         }
     }
 
@@ -77,6 +82,7 @@ public class RenderAtmospherePreview {
         PrecipitationRenderer precip = new PrecipitationRenderer();
         HeldItemRenderer hand = new HeldItemRenderer();
         BlockOutline outline = new BlockOutline();
+        LightningRenderer lightningRenderer = new LightningRenderer();
         DebrisRenderer debrisRenderer = new DebrisRenderer();
         ItemRenderer itemRenderer = new ItemRenderer();
         ParticleSystem particles = new ParticleSystem();
@@ -154,12 +160,18 @@ public class RenderAtmospherePreview {
                     new Extra(0f, 0.002f, 1f, false, false, 0f, 0f, 1f)),
             new Shot("inspect", 1.2f, 0f, 0f, 0f, 0f, 1f, 0f, 0, -0.05f, 0.5f, 0.2f,
                     new Extra(0f, 0.002f, 0f, true, true, 1f, 0f, 0.18f)),
+            new Shot("held-tool", 1.2f, 0f, 0f, 0f, 0f, 1f, 0f, 0, -0.05f, 0.5f, 0.2f,
+                    new Extra(0f, 0.002f, 0f, true, true, 0f, 0f, 1f)),
             new Shot("swing-trail", 1.2f, 0f, 0f, 0f, 0f, 1f, 0f, 0, -0.05f, 0.5f, 0.2f,
                     new Extra(0f, 0.002f, 0f, true, true, 0f, 0.62f, 0.9f)),
             new Shot("juice", 1.2f, 0f, 0f, 0f, 0f, 1f, 0f, 0, -0.62f, 0.5f, 0.2f,
                     new Extra(0f, 0.0015f, 0f, true, false, 0f, 0f, 1f, true)),
             new Shot("juice-night", 4.4f, 0f, 0f, 0f, 0f, 1f, 0f, 0, -0.62f, 0.5f, 0.2f,
                     new Extra(0f, 0.0015f, 0f, false, false, 0f, 0f, 1f, true)),
+            // Разряд в ночном ливне: вспышка освещает мир, болт светится за
+            // дождём. Ночь выбрана нарочно — днём вспышку не различить.
+            new Shot("lightning", 4.1f, 0f, 1f, 1f, 1f, 0.5f, 0f, 0, 0.05f, 1.5f, 3.0f,
+                    new Extra(0f, 0.002f, 0f, false, false, 0f, 0f, 1f, false, 1f)),
         };
 
         Files.createDirectories(Path.of("out-test/previews"));
@@ -200,6 +212,12 @@ public class RenderAtmospherePreview {
             l.groundLight.set(SunLight.groundAmbient(skyAmb));
             l.torchColor.set(1.55f, 0.88f, 0.42f);
             l.ambientColor.set(0.030f, 0.034f, 0.052f).mul(0.65f + 0.35f * daylight);
+            if (s.x.lightning() > 0f) {
+                float lit = s.x.lightning() * 1.6f;
+                l.skyLight.add(0.52f * lit, 0.58f * lit, 0.78f * lit);
+                l.groundLight.add(0.28f * lit, 0.30f * lit, 0.40f * lit);
+                l.ambientColor.add(0.09f * lit, 0.10f * lit, 0.14f * lit);
+            }
             l.fogColor.set(fogCol);
             l.fogSunColor.set(lightCol).mul(0.22f);
             float fogEnd = java.lang.Math.max(18f, RADIUS * Chunk.SIZE_X * 1.05f * s.visibility);
@@ -267,7 +285,7 @@ public class RenderAtmospherePreview {
                 debrisRenderer.render(proj, view, debris, atlas, l, daylight);
                 itemRenderer.render(proj, view, items, world, atlas, l, daylight);
                 outline.renderBox(proj, view, new float[] { 23f, gy + 1f, 18f, 24f, gy + 2f, 19f }, eye,
-                        1f, OutlineAnimator.pulse(0.4f), 1f);
+                        1f, 1f);
                 particles.emitHitImpact(24.6f, gy + 1.9f, 17.2f, -0.3f, 0f, -0.95f, true,
                         new float[] { 0.35f, 0.55f, 0.25f }, 1f, 0f);
                 particles.update(0.035f);
@@ -288,6 +306,15 @@ public class RenderAtmospherePreview {
                     drift.advance(0.1f, s.windX, s.windZ, s.storm);
                 precip.render(proj, view, eye, 57.3f, s.windX, s.windZ, drift,
                         s.snow, s.rain, s.storm, flake, drop, 1f);
+            }
+
+            if (s.x.lightning() > 0f) {
+                // Удар в стороне от камеры и чуть впереди, чтобы болт целиком
+                // попал в кадр вместе с землёй, в которую он бьёт.
+                int bx = (int) eye.x + 14, bz = (int) eye.z - 46;
+                var strike = new Lightning.Strike(bx, bz, 0f, 0x5EEDL);
+                lightningRenderer.render(proj, view,
+                        Lightning.bolt(strike, surfaceOf(world, bx, bz)), s.x.lightning(), 1f);
             }
 
             PostProcess.Settings ps = new PostProcess.Settings();

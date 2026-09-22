@@ -68,6 +68,11 @@ public class Game {
     private final Crosshair crosshair;
     private final BlockOutline outline;
     private final TrajectoryRenderer trajectoryRenderer;
+    private final LightningRenderer lightningRenderer;
+    /** Живая гроза: вспышки, болты и раскаты, которые ещё летят. */
+    private final Storm storm = new Storm();
+    /** Насколько ярко разряд освещает мир в пике вспышки. */
+    private static final float FLASH_LIGHT = 1.6f;
     private final RopeRenderer ropeRenderer;
     private final SkyRenderer skyRenderer;
     private final com.mineclone.render.PlayerRenderer playerRenderer;
@@ -589,6 +594,7 @@ public class Game {
         this.crosshair = new Crosshair();
         this.outline = new BlockOutline();
         this.trajectoryRenderer = new TrajectoryRenderer();
+        this.lightningRenderer = new LightningRenderer();
         this.ropeRenderer = new RopeRenderer();
         this.breakOverlay = new BlockBreakOverlay();
         this.mobRenderer = new com.mineclone.render.MobRenderer();
@@ -1213,6 +1219,7 @@ public class Game {
         mobSpawner = new com.mineclone.world.entity.MobSpawner(world.seed ^ 0x51E7B0BL);
         simulation = new WorldSimulation(world.seed);
         atmosphere.snap();
+        storm.reset();
         musicSense.reset();
         mobSpawnTimer = 0f;
 
@@ -1551,6 +1558,7 @@ public class Game {
         // Погода идёт по игровому времени, а не по сессии: она сохраняется
         // вместе с часами мира и не сбрасывается в ясно при каждом заходе.
         atmosphere.update(dt, world, gameTime, gameTime / TIME_SCALE, player.position);
+        updateStorm(dt);
         splashTimer -= dt;
         if (splashTimer <= 0f && state == State.PLAYING) {
             // В морось отдельные удары редки, в ливень сливаются в плотный,
@@ -3020,6 +3028,73 @@ public class Game {
      * это работа, растущая с дальностью прорисовки.
      */
     /**
+     * Куда бьёт молния: верх первой твёрдой колонны под открытым небом.
+     *
+     * Незагруженный чанк отказывает — поджигать там нечего, а болт из
+     * пустоты выглядит как ошибка. Сканирование идёт сверху, поэтому первый
+     * же твёрдый блок и есть тот, до которого достаёт небо.
+     */
+    private final Storm.Ground stormGround = (x, z) -> {
+        if (world == null)
+            return -1;
+        if (world.getChunkIfExists(Math.floorDiv(x, Chunk.SIZE_X),
+                Math.floorDiv(z, Chunk.SIZE_Z)) == null)
+            return -1;
+        for (int y = Chunk.SIZE_Y - 2; y > 0; y--) {
+            BlockType b = world.getBlock(x, y, z);
+            if (b != BlockType.AIR && b.solid)
+                return y + 1;
+        }
+        return -1;
+    };
+
+    /**
+     * Гроза на этот кадр: разряды, поджог и раскаты.
+     *
+     * Гром не играется в момент удара — он ставится в очередь и звучит, когда
+     * долетит. Огонь дальше живёт сам: {@code BlockTicker} его и раскидывает,
+     * и тушит дождём, а гроза — это ливень, так что подожжённое ею же гасится.
+     * Дом целиком не сгорит, но полыхнёт заметно.
+     */
+    private void updateStorm(float dt) {
+        if (world == null || state != State.PLAYING && state != State.WINDOW)
+            return;
+        var tick = storm.update(dt, world.seed, gameTime / TIME_SCALE,
+                atmosphere.storm, atmosphere.snow,
+                (int) Math.floor(player.position.x), (int) Math.floor(player.position.z),
+                stormGround);
+        for (var s : tick.struck())
+            ignite(s.x(), s.z());
+        for (float distance : tick.thunder())
+            rollThunder(distance);
+    }
+
+    /** Поджигает место удара, если там есть чему гореть. */
+    private void ignite(int x, int z) {
+        int y = stormGround.surfaceUnderSky(x, z);
+        if (y < 1 || world.getBlock(x, y, z) != BlockType.AIR)
+            return;
+        // На голом камне огню не за что зацепиться, и тик потушил бы его
+        // первым же заходом. Молния бьёт всюду, но горит не всюду.
+        boolean fuel = false;
+        for (int dx = -Storm.IGNITE_RANGE; dx <= Storm.IGNITE_RANGE && !fuel; dx++)
+            for (int dy = -Storm.IGNITE_RANGE; dy <= Storm.IGNITE_RANGE && !fuel; dy++)
+                for (int dz = -Storm.IGNITE_RANGE; dz <= Storm.IGNITE_RANGE && !fuel; dz++)
+                    fuel = world.getBlock(x + dx, y + dy, z + dz).isFlammable();
+        if (fuel)
+            world.setBlock(x, y, z, BlockType.FIRE, (byte) 0);
+    }
+
+    /** Раскат долетел: чем дальше бил разряд, тем глуше и ниже он звучит. */
+    private void rollThunder(float distance) {
+        if (sound == null || sounds == null)
+            return;
+        float near = 1f - Math.min(1f, distance / Storm.RANGE);
+        sound.playOneOf(sounds.ambientThunder(), 0.55f + 0.45f * near,
+                0.82f + 0.22f * near);
+    }
+
+    /**
      * Фоновая атмосфера: пещера, дождь, гром, вода.
      *
      * Звук пещеры играется не в голове, а из случайной тёмной точки рядом —
@@ -4073,6 +4148,15 @@ public class Game {
         lighting.groundLight.set(groundAmb);
         lighting.torchColor.set(1.55f, 0.88f, 0.42f);
         lighting.ambientColor.set(0.030f, 0.034f, 0.052f).mul(0.65f + 0.35f * daylight);
+        // Разряд освещает мир целиком, а не рисует пятно на небе: поднимаем
+        // полусферный ambient, и вспышку ловят все поверхности разом.
+        float bolt = storm.flash();
+        if (bolt > 0f) {
+            float lit = bolt * bolt * FLASH_LIGHT;
+            lighting.skyLight.add(0.52f * lit, 0.58f * lit, 0.78f * lit);
+            lighting.groundLight.add(0.28f * lit, 0.30f * lit, 0.40f * lit);
+            lighting.ambientColor.add(0.09f * lit, 0.10f * lit, 0.14f * lit);
+        }
         lighting.fogColor.set(fogCol);
         lighting.fogSunColor.set(lightCol).mul(underwater ? 0f : 0.22f);
         lighting.fogStart = fogStart;
@@ -4321,6 +4405,12 @@ public class Game {
         }
 
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // restore before outline/particles/UI
+
+        // Разряд рисуется после осадков и до рамки: он аддитивный и читает
+        // глубину, поэтому холм его закроет, а дождь — нет.
+        for (Storm.Bolt b : storm.bolts())
+            lightningRenderer.render(proj, view, b.segments(),
+                    b.life() / Storm.BOLT_TIME, hdr ? 1f : 0f);
 
         // Рамка выделения доезжает до нового блока и плавно гаснет, а не
         // прыгает: при ведении прицела по стене скачки читались мерцанием.
