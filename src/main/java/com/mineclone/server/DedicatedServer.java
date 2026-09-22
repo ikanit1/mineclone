@@ -60,10 +60,9 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * подгружаются около каждого, печи и случайные тики идут около первого из них.
  * Нет никого — сервер тикает время и дремлет.
  *
- * <p><b>Чего он пока не делает:</b> мобы у него ходят и дерутся между собой, но
- * ударить участника не могут — в протоколе нет пакета «хозяин ранил гостя».
- * Это ограничение не сервера, а всей игры по сети: в комнате, поднятой из
- * игры, мобы точно так же не трогают гостя.
+ * <p>Мобы у него бьют и участников: пакет «хозяин ранил гостя»
+ * ({@code S_PLAYER_HURT}) появился вместе со снарядами, и прежнее ограничение
+ * всей игры по сети снято.
  */
 public final class DedicatedServer implements NetContext {
 
@@ -85,6 +84,9 @@ public final class DedicatedServer implements NetContext {
     private MobSpawner spawner;
     private final List<Mob> mobs = new ArrayList<>();
     private final List<ItemEntity> groundItems = new ArrayList<>();
+    /** Летящие снаряды: сервер их симулирует и рассылает. */
+    private final List<com.mineclone.world.entity.Projectile> projectiles =
+            new java.util.ArrayList<>();
     private final Vector3f spawn = new Vector3f(8.5f, 80f, 8.5f);
 
     private CompositeTransport transport;
@@ -666,6 +668,28 @@ public final class DedicatedServer implements NetContext {
     @Override
     public List<ItemEntity> groundItems() {
         return groundItems;
+    }
+
+    @Override
+    public List<com.mineclone.world.entity.Projectile> projectiles() {
+        return projectiles;
+    }
+
+    /** Выстрел участника: сервер выпускает снаряд у себя и рассылает его всем. */
+    @Override
+    public void shootFor(int actor, float x, float y, float z,
+                         float vx, float vy, float vz, float damage) {
+        var shot = new com.mineclone.world.entity.Projectile("arrow",
+                net == null ? null : net.playerOf(actor), true, damage);
+        shot.position.set(x, y, z);
+        shot.velocity.set(vx, vy, vz);
+        shot.heading.set(vx, vy, vz).normalize();
+        projectiles.add(shot);
+    }
+
+    /** У сервера своего игрока нет — ранить в нём некого. */
+    @Override
+    public void hurtByHost(float damage) {
     }
 
     @Override

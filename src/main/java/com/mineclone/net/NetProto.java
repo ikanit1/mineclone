@@ -23,12 +23,16 @@ public final class NetProto {
      * Версия протокола. Сверяется при входе: чужая — отказ с внятным текстом,
      * а не тихий мир, в котором половина блоков не там.
      *
+     * <p>v5: selected item appearance with reliable equipment updates.
+     *
+     * <p>v4: complete mob animation snapshots and monotonic batch sequence.
+     *
      * <p>v3: у прямого соединения появился кадр «я ещё здесь»
      * ({@code F_PING}), и сборка v2, получив его, сочла бы поток испорченным и
      * молча оборвала связь. Она же отделяет объявления маяка локальной сети:
      * мир чужой версии не должен попадать в список, где по нему можно щёлкнуть.
      */
-    public static final int VERSION = 3;
+    public static final int VERSION = 6;
 
     /** Сколько раз в секунду уходит кадр сети. */
     public static final float TICK_RATE = 12f;
@@ -60,6 +64,8 @@ public final class NetProto {
     public static final int X_PLAYER_SWING = 13;
     /** Игрок поставил или сломал блок: отдельное событие для пространственного звука. */
     public static final int X_BLOCK_ACTION = 14;
+    /** Selected item appearance, including an empty hand. */
+    public static final int X_PLAYER_EQUIPMENT = 15;
 
     // ----------------------------------------------------------------- мир
 
@@ -88,6 +94,18 @@ public final class NetProto {
     public static final int S_ITEMS = 32;
     /** Участник ударил моба. */
     public static final int C_MOB_HIT = 34;
+
+    /** Хозяин рассылает летящие и воткнувшиеся снаряды. */
+    public static final int S_PROJECTILES = 35;
+    /** Участник просит хозяина выпустить снаряд: стреляет всегда хозяин. */
+    public static final int C_SHOOT = 36;
+    /**
+     * Хозяин сообщает участнику, что тот получил урон.
+     *
+     * До этого пакета мобы не могли ранить участника вовсе: урон считался у
+     * хозяина, а сказать о нём было нечем.
+     */
+    public static final int S_PLAYER_HURT = 37;
 
     // ---------------------------------------------------------- контейнеры
 
@@ -118,6 +136,7 @@ public final class NetProto {
             case X_PLAYER_LIFE -> "PLAYER_LIFE";
             case X_PLAYER_SWING -> "PLAYER_SWING";
             case X_BLOCK_ACTION -> "BLOCK_ACTION";
+            case X_PLAYER_EQUIPMENT -> "PLAYER_EQUIPMENT";
             case S_BLOCK_SET -> "BLOCK_SET";
             case C_BLOCK_EDIT -> "BLOCK_EDIT";
             case C_CHUNK_REQUEST -> "CHUNK_REQUEST";
@@ -126,6 +145,9 @@ public final class NetProto {
             case S_MOBS -> "MOBS";
             case S_ITEMS -> "ITEMS";
             case C_MOB_HIT -> "MOB_HIT";
+            case S_PROJECTILES -> "PROJECTILES";
+            case C_SHOOT -> "SHOOT";
+            case S_PLAYER_HURT -> "PLAYER_HURT";
             case C_CONTAINER_OPEN -> "CONTAINER_OPEN";
             case S_CONTAINER -> "CONTAINER";
             case C_CONTAINER_COMMIT -> "CONTAINER_COMMIT";

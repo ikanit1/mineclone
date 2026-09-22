@@ -88,6 +88,9 @@ public interface NetContext {
 
     float playerHealth();
 
+    /** Appearance of the selected slot; no inventory authority is transferred. */
+    default ItemStack playerHeldItem() { return null; }
+
     // ------------------------------------------------------------- существа
 
     /** Мобы мира: у хозяина — живые, у участника — присланные. */
@@ -95,6 +98,23 @@ public interface NetContext {
 
     /** Предметы на земле. */
     List<ItemEntity> groundItems();
+
+    /** Летящие и воткнувшиеся снаряды: хозяин их рассылает, участник показывает. */
+    List<com.mineclone.world.entity.Projectile> projectiles();
+
+    /**
+     * Выпустить снаряд по просьбе участника.
+     *
+     * Стреляет всегда хозяин — как и с правкой блока, местный выстрел у
+     * гостя нужен только ради отклика.
+     *
+     * @param actor чей выстрел: в стрелка снаряд не попадает
+     */
+    void shootFor(int actor, float x, float y, float z, float vx, float vy, float vz,
+            float damage);
+
+    /** Хозяин сообщил, что игрок получил урон. */
+    void hurtByHost(float damage);
 
     // ------------------------------------------------------- обратная связь
 

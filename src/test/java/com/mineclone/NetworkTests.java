@@ -67,6 +67,15 @@ final class NetworkTests {
     }
 
     static void runAll(Runner r) {
+        r.run("selected equipment changes and empty hands replicate both ways", NetworkTests::testEquipment);
+        r.run("invalid stale and truncated equipment preserve the last valid item", NetworkTests::testBadEquipment);
+        r.run("invalid player snapshots leave the last valid pose intact", NetworkTests::testInvalidPlayerState);
+        r.run("only the host can reject a connected guest", NetworkTests::testRejectAuthority);
+        r.run("world welcome and inventory grants require the host", NetworkTests::testHostPacketAuthority);
+        r.run("remote angles wrap in bounded time and pitch stays upright", NetworkTests::testRemoteAngles);
+        r.run("remote mob heads stay relative and idle animations advance", NetworkTests::testRemoteMobPose);
+        r.run("every mob transmits its complete visual state", NetworkTests::testFullMobPose);
+        r.run("stale corrupt and untrusted mob batches preserve valid entities", NetworkTests::testInvalidMobBatch);
         r.run("packet buffer round-trips ints, strings and block positions",
                 NetworkTests::testPacketBuf);
         r.run("truncated packet reads zeroes instead of throwing",
@@ -95,6 +104,9 @@ final class NetworkTests {
                 NetworkTests::testPlayerState);
         r.run("mobs stream to the guest and the guest's hit lands on the host",
                 NetworkTests::testMobs);
+        r.run("a guest's shot is fired by the host and seen by both",
+                NetworkTests::testProjectiles);
+        r.run("the host can finally hurt a guest", NetworkTests::testHostHurtsGuest);
         r.run("chat reaches both sides with the sender's name", NetworkTests::testChat);
         r.run("chat appears above its sender, then expires", NetworkTests::testChatBubble);
         r.run("host leaving ends the guest's session", NetworkTests::testHostLeaves);
@@ -143,6 +155,181 @@ final class NetworkTests {
     }
 
     // ------------------------------------------------------------ примитивы
+
+    private static void testInvalidPlayerState() {
+        Pair p = Pair.open(3L, "World", 0.5f);
+        try {
+            RemotePlayer seen = p.guestNet.players().iterator().next();
+            seen.update(1f);
+            Vector3f before = new Vector3f(seen.position);
+            for (float bad : new float[] { Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY }) {
+                for (int field = 0; field < 5; field++) {
+                    float[] values = { before.x, before.y, before.z, 0f, 0f };
+                    values[field] = bad;
+                    PacketBuf packet = new PacketBuf().u8(NetProto.X_PLAYER_STATE);
+                    for (float value : values) packet.f32(value);
+                    packet.u8(RemotePlayer.F_ON_GROUND);
+                    p.guestNet.onPayload(seen.actor, packet.toBytes());
+                    // A second valid snapshot would otherwise interpolate from a poisoned pose.
+                    assertTrue("bad snapshot must not change position", seen.position.equals(before));
+                    assertTrue("bad snapshot must not change angles", Float.isFinite(seen.yaw) && Float.isFinite(seen.pitch));
+                }
+            }
+            seen.update(0.05f);
+            assertTrue("interpolation remains finite", seen.position.isFinite() && Float.isFinite(seen.yaw));
+        } finally { p.close(); }
+    }
+
+    private static void testRejectAuthority() {
+        Pair p = Pair.open(3L, "World", 0.5f);
+        try {
+            byte[] reject = new PacketBuf().u8(NetProto.S_REJECT).str("spoofed").toBytes();
+            p.guestNet.onPayload(999, reject);
+            assertTrue("another guest cannot disconnect the client", p.guestNet.active());
+            p.hostNet.onPayload(999, reject);
+            assertTrue("a guest cannot stop the host", p.hostNet.active());
+        } finally { p.close(); }
+    }
+
+    private static void testHostPacketAuthority() throws Exception {
+        Pair p = Pair.open(3L, "World", 0.5f);
+        try {
+            int host = p.guestNet.players().iterator().next().actor;
+            PacketBuf welcome = new PacketBuf().u8(NetProto.S_WELCOME).i64(99L).str("wrong")
+                    .f32(0f).u8(0).f32(0f).f32(70f).f32(0f);
+            p.guestNet.onPayload(999, welcome.toBytes());
+            assertEq("untrusted welcome cannot replace the world", 3L, p.guest.seed());
+            var bytes = new java.io.ByteArrayOutputStream();
+            try (var out = new java.io.DataOutputStream(bytes)) {
+                com.mineclone.save.ItemStackCodec.write(out, new ItemStack(BlockType.STONE, 2));
+            }
+            byte[] give = new PacketBuf().u8(NetProto.S_GIVE).bytes(bytes.toByteArray()).toBytes();
+            p.guestNet.onPayload(999, give);
+            p.hostNet.onPayload(999, give);
+            assertTrue("untrusted grant ignored on both roles", p.guest.given.isEmpty() && p.host.given.isEmpty());
+            p.guestNet.onPayload(host, give);
+            assertEq("host grant still works", 1, p.guest.given.size());
+        } finally { p.close(); }
+    }
+
+    private static void testRemoteAngles() {
+        RemotePlayer player = new RemotePlayer(1, "test");
+        player.accept(0, 0, 0, (float) Math.toRadians(179), 0, 1);
+        player.accept(0, 0, 0, (float) Math.toRadians(-179), 0, 1);
+        player.update(0.05f);
+        assertTrue("short arc across the seam", Math.abs(player.yaw) > 3f);
+        player.accept(0, 0, 0, Float.MAX_VALUE, Float.MAX_VALUE, 1);
+        player.update(0.05f);
+        assertTrue("yaw normalized", Float.isFinite(player.yaw) && Math.abs(player.yaw) <= Math.PI + 1e-6);
+        player.update(1f);
+        assertTrue("pitch cannot invert the head", Math.abs(player.pitch) <= Math.PI / 2 + 1e-6);
+    }
+
+    private static void testEquipment() {
+        Pair p=Pair.open(3L,"World",.5f);
+        try {
+            var seen=p.guestNet.players().iterator().next();
+            for (var item:com.mineclone.item.Items.get().all()) {
+                if(item.tool==null) continue;
+                p.host.held=new ItemStack(item,1); p.pump(1);
+                assertTrue("all tool variants reach the guest",seen.heldItem!=null && seen.heldItem.item==item);
+            }
+            p.host.held=ItemStack.of("stone"); p.pump(1);
+            assertTrue("block selection reaches guest",seen.heldItem.block()==BlockType.STONE);
+            p.guest.held=ItemStack.of("iron_pickaxe");p.pump(1);
+            assertTrue("guest equipment reaches host",p.hostNet.players().iterator().next().heldItem.item==p.guest.held.item);
+            p.host.held=null; p.guest.held=null; p.pump(1);
+            assertTrue("empty hands clear both models",seen.heldItem==null && p.hostNet.players().iterator().next().heldItem==null);
+        } finally {p.close();}
+    }
+
+    private static void testBadEquipment() {
+        Pair p=Pair.open(3L,"World",.5f);
+        try {
+            var seen=p.guestNet.players().iterator().next();
+            PacketBuf good=new PacketBuf().u8(NetProto.X_PLAYER_EQUIPMENT).i64(1000).str("iron_pickaxe");
+            p.guestNet.onPayload(seen.actor,good.toBytes());
+            var item=seen.heldItem;
+            p.guestNet.onPayload(seen.actor,new PacketBuf().u8(NetProto.X_PLAYER_EQUIPMENT).i64(999).str("").toBytes());
+            p.guestNet.onPayload(seen.actor,new PacketBuf().u8(NetProto.X_PLAYER_EQUIPMENT).i64(1001).str("missing:item").toBytes());
+            byte[] clear=new PacketBuf().u8(NetProto.X_PLAYER_EQUIPMENT).i64(1001).str("").toBytes();
+            p.guestNet.onPayload(seen.actor,java.util.Arrays.copyOf(clear,clear.length-1));
+            assertTrue("bad appearance cannot replace equipment",seen.heldItem==item);
+            p.guestNet.onPayload(seen.actor,clear);
+            assertTrue("valid empty slot still applies",seen.heldItem==null);
+        } finally {p.close();}
+    }
+
+    private static void testFullMobPose() {
+        Pair p = Pair.open(3L, "World", 0.5f);
+        try {
+            for (var type : com.mineclone.world.entity.MobType.values()) {
+                Mob m = new Mob(type, type.ordinal(), 70, 0, new java.util.Random(1));
+                m.lookYaw=.45f; m.grazeAmount=.7f; m.airborneAmount=.8f; m.velocity.y=3;
+                m.walkedDistance=1.2f; m.walkAmount=.8f; m.legOffsetA=.12f; m.legOffsetB=-.2f;
+                m.dead=true; m.topple=1.4f; m.enraged=true;
+                m.elite=com.mineclone.world.entity.MobTactics.Elite.FROST;
+                p.host.mobs.add(m);
+            }
+            p.pump(3);
+            assertEq("all species visible", p.host.mobs.size(), p.guest.mobs.size());
+            for (Mob seen : p.guest.mobs) {
+                Mob source=p.host.mobs.get(seen.type.ordinal());
+                assertTrue("head gait flight terrain and death pose match host",
+                        Math.abs(seen.lookYaw-source.lookYaw)<1e-5
+                        && Math.abs(seen.grazeAmount-source.grazeAmount)<1e-5
+                        && Math.abs(seen.walkedDistance-source.walkedDistance)<1e-5
+                        && Math.abs(seen.airborneAmount-source.airborneAmount)<1e-5
+                        && Math.abs(seen.legOffsetA-source.legOffsetA)<1e-5
+                        && Math.abs(seen.legOffsetB-source.legOffsetB)<1e-5
+                        && seen.velocity.y==3 && seen.topple==1.4f && seen.dead
+                        && seen.enraged && seen.elite==source.elite);
+            }
+        } finally { p.close(); }
+    }
+
+    private static void testInvalidMobBatch() {
+        Pair p = Pair.open(3L, "World", 0.5f);
+        try {
+            int host=p.guestNet.players().iterator().next().actor;
+            Mob m=new Mob(com.mineclone.world.entity.MobType.COW,10,70,10,new java.util.Random(1));
+            PacketBuf good=new PacketBuf().u8(NetProto.S_MOBS).i64(1000).varInt(1);
+            com.mineclone.net.MobSnapshot.capture(1,m).write(good);
+            p.guestNet.onPayload(host,good.toBytes());
+            assertEq("initial batch",1,p.guest.mobs.size());
+            byte[] empty=new PacketBuf().u8(NetProto.S_MOBS).i64(1001).varInt(0).toBytes();
+            p.guestNet.onPayload(999,empty);
+            p.guestNet.onPayload(host,new PacketBuf().u8(NetProto.S_MOBS).i64(999).varInt(0).toBytes());
+            assertEq("untrusted and stale removals ignored",1,p.guest.mobs.size());
+            PacketBuf bad=new PacketBuf().u8(NetProto.S_MOBS).i64(1001).varInt(2);
+            m.position.x=12; com.mineclone.net.MobSnapshot.capture(1,m).write(bad);
+            m.position.x=Float.NaN; com.mineclone.net.MobSnapshot.capture(2,m).write(bad);
+            p.guestNet.onPayload(host,bad.toBytes());
+            p.guestNet.onPayload(host,java.util.Arrays.copyOf(good.toBytes(),good.size()-3));
+            p.guestNet.update(.05f);
+            assertEq("corrupt batches must not remove valid mobs",1,p.guest.mobs.size());
+            assertTrue("corrupt batches must not partially move mobs",p.guest.mobs.get(0).position.x==10);
+            p.guestNet.onPayload(host,empty);
+            assertEq("valid removal still works after invalid sequence",0,p.guest.mobs.size());
+        } finally { p.close(); }
+    }
+
+    private static void testRemoteMobPose() {
+        Pair p = Pair.open(3L, "World", 0.5f);
+        try {
+            Mob chicken = new Mob(com.mineclone.world.entity.MobType.CHICKEN, 10f, 70f, 10f,
+                    new java.util.Random(1));
+            chicken.yaw = 2.8f;
+            p.host.mobs.add(chicken);
+            p.pump(3);
+            Mob seen = p.guest.mobs.get(0);
+            assertTrue("world yaw must not be applied twice to the head",
+                    Math.abs(com.mineclone.render.MobAnimation.headYaw(seen)) < 0.2f);
+            float before = seen.animationTime;
+            p.guestNet.update(0.01f);
+            assertTrue("wings and idle poses animate between network ticks", seen.animationTime > before);
+        } finally { p.close(); }
+    }
 
     private static void testPacketBuf() {
         PacketBuf b = new PacketBuf();
@@ -562,6 +749,53 @@ final class NetworkTests {
         p.close();
     }
 
+    /**
+     * Выстрел участника исполняет хозяин, и снаряд видят обе стороны.
+     *
+     * Местный снаряд у гостя — только отклик; настоящий летит у хозяина и
+     * приезжает обратно снимком.
+     */
+    private static void testProjectiles() {
+        Pair p = Pair.open(7171L, "Мир", 0.5f);
+        var shot = new com.mineclone.world.entity.Projectile("arrow", null, true, 6f);
+        shot.position.set(4f, 70f, 4f);
+        shot.velocity.set(20f, 0f, 0f);
+        p.guestNet.requestShot(shot);
+        p.pump(3);
+        assertEq("хозяин выпустил снаряд по просьбе гостя", 1, p.host.shots.size());
+        assertTrue("с тем же уроном", Math.abs(p.host.shots.get(0).damage - 6f) < 1e-4);
+        p.pump(3);
+        assertEq("и гость видит его снимок", 1, p.guest.shots.size());
+        assertTrue("на том же месте",
+                p.guest.shots.get(0).position.distance(p.host.shots.get(0).position) < 0.01f);
+
+        p.host.shots.clear();
+        p.pump(3);
+        assertEq("упавший снаряд исчезает и у гостя", 0, p.guest.shots.size());
+        p.close();
+    }
+
+    /**
+     * Ограничение, которое здесь снимается: до пакета S_PLAYER_HURT мобы не
+     * могли ранить участника вовсе — урон считался у хозяина, а сказать о нём
+     * было нечем.
+     */
+    private static void testHostHurtsGuest() {
+        Pair p = Pair.open(3131L, "Мир", 0.5f);
+        p.pump(2);
+        var known = p.hostNet.players();
+        assertTrue("хозяин знает о госте", !known.isEmpty());
+        var guestOnHost = known.iterator().next();
+
+        // Так это и происходит в игре: стрела моба попадает в гостя, а тот
+        // узнаёт об этом пакетом.
+        guestOnHost.takeProjectile(4f, 0f, 0f, 0.6f, false);
+        p.pump(3);
+        assertTrue("гость получил урон, посланный хозяином: " + p.guest.hurtTaken,
+                Math.abs(p.guest.hurtTaken - 4f) < 1e-4);
+        p.close();
+    }
+
     private static void testChat() {
         Pair p = Pair.open(5L, "Мир", 0.5f);
         p.hostNet.sendChat("привет");
@@ -877,6 +1111,8 @@ final class NetworkTests {
         final Vector3f spawn = new Vector3f(8f, 80f, 8f);
         final Vector3f position = new Vector3f(8f, 80f, 8f);
         float yaw, pitch, health = 20f;
+        ItemStack held;
+        @Override public ItemStack playerHeldItem() { return held; }
         final List<Mob> mobs = new ArrayList<>();
         final List<ItemEntity> items = new ArrayList<>();
         final List<String> chat = new ArrayList<>();
@@ -1004,6 +1240,30 @@ final class NetworkTests {
         @Override
         public List<ItemEntity> groundItems() {
             return items;
+        }
+
+        final List<com.mineclone.world.entity.Projectile> shots = new java.util.ArrayList<>();
+        /** Сколько урона хозяин прислал этому игроку. */
+        float hurtTaken;
+
+        @Override
+        public List<com.mineclone.world.entity.Projectile> projectiles() {
+            return shots;
+        }
+
+        @Override
+        public void shootFor(int actor, float x, float y, float z,
+                             float vx, float vy, float vz, float damage) {
+            var p = new com.mineclone.world.entity.Projectile("arrow", null, true, damage);
+            p.position.set(x, y, z);
+            p.velocity.set(vx, vy, vz);
+            p.heading.set(vx, vy, vz).normalize();
+            shots.add(p);
+        }
+
+        @Override
+        public void hurtByHost(float damage) {
+            hurtTaken += damage;
         }
 
         @Override

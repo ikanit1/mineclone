@@ -10,6 +10,7 @@ import com.mineclone.world.World;
 import com.mineclone.world.entity.ItemEntity;
 import com.mineclone.world.entity.Mob;
 import com.mineclone.world.entity.MobType;
+import com.mineclone.world.entity.Projectile;
 import org.joml.Vector3f;
 
 import java.io.ByteArrayInputStream;
@@ -140,6 +141,10 @@ public final class Multiplayer implements NetTransport.Listener {
 
     // ---- участник: существа по номеру ----
     private final Map<Integer, Mob> shownMobs = new HashMap<>();
+    private final Map<Integer, RemoteMob> mobPoses = new HashMap<>();
+    private long mobSequence, lastMobSequence = -1;
+    private long equipmentSequence;
+    private String lastHeldId;
     private final Map<Integer, ItemEntity> shownItems = new HashMap<>();
     /** Предметы, о которых заявка уже ушла: повторять её нечего. */
     private final Set<Integer> pickRequested = new HashSet<>();
@@ -211,6 +216,11 @@ public final class Multiplayer implements NetTransport.Listener {
         mobIds.clear();
         itemIds.clear();
         shownMobs.clear();
+        mobPoses.clear();
+        mobSequence = 0;
+        equipmentSequence = 0;
+        lastHeldId = null;
+        lastMobSequence = -1;
         shownItems.clear();
         pickRequested.clear();
         deltaResults.clear();
@@ -315,6 +325,11 @@ public final class Multiplayer implements NetTransport.Listener {
 
         for (RemotePlayer p : players.values())
             p.update(dt);
+        // На клиенте AI/физика мобов не тикают. Часы визуальных поз всё же
+        // идут каждый кадр, иначе крылья и дыхание навсегда замирают.
+        if (role == Role.CLIENT)
+            for (RemoteMob pose : mobPoses.values())
+                pose.update(dt);
         players.values().removeIf(p -> p.silence > SILENCE_LIMIT);
 
         if (!joined)
@@ -337,6 +352,10 @@ public final class Multiplayer implements NetTransport.Listener {
                 itemSyncTimer = 0f;
                 sendItems();
             }
+            // Снаряды идут каждым сетевым кадром, а не раз в секунду, как
+            // предметы: стрела живёт секунду-две, и снимок раз в секунду
+            // показал бы её телепортом или не показал вовсе.
+            sendProjectiles();
         } else {
             pumpChunkRequests();
         }
@@ -350,6 +369,11 @@ public final class Multiplayer implements NetTransport.Listener {
         PacketBuf b = channel.packet(NetProto.X_PLAYER_STATE, false, NetChannel.ALL);
         b.f32(p.x).f32(p.y).f32(p.z).f32(ctx.playerYaw()).f32(ctx.playerPitch())
                 .u8(ctx.playerFlags());
+        String heldId = heldItemId();
+        if (!heldId.equals(lastHeldId)) {
+            sendEquipment(NetChannel.ALL);
+            lastHeldId = heldId;
+        }
         if (swingPending) {
             swingPending = false;
             channel.send(NetProto.X_PLAYER_SWING, true, NetChannel.ALL);
@@ -365,7 +389,22 @@ public final class Multiplayer implements NetTransport.Listener {
         }
     }
 
+    private String heldItemId() {
+        ItemStack held = ctx.playerHeldItem();
+        return held == null || held.count <= 0 ? "" : held.item.id.toString();
+    }
+
+    private void sendEquipment(int target) {
+        channel.packet(NetProto.X_PLAYER_EQUIPMENT, true, target)
+                .i64(++equipmentSequence).str(heldItemId());
+    }
+
     private void sendInfo(int target) {
+        sendIdentity(target);
+        sendEquipment(target);
+    }
+
+    private void sendIdentity(int target) {
         channel.packet(NetProto.X_PLAYER_INFO, true, target)
                 .str(nickname).u8(ctx.gameMode()).f32(ctx.playerHealth());
     }
@@ -491,6 +530,11 @@ public final class Multiplayer implements NetTransport.Listener {
                 .varInt(id).f32(damage).f32(knockback).f32(fromX).f32(fromZ);
     }
 
+    /** Удалённый игрок по номеру, либо null: нужен снаряду, чтобы не бить стрелка. */
+    public RemotePlayer playerOf(int actor) {
+        return players.get(actor);
+    }
+
     /** Номер существа в карте показываемых; поиск по ссылке, а не по равенству. */
     private static <T> Integer idOf(Map<Integer, T> shown, T value) {
         for (Map.Entry<Integer, T> e : shown.entrySet())
@@ -575,6 +619,11 @@ public final class Multiplayer implements NetTransport.Listener {
         requestedChunks.clear();
         chunkQueue.clear();
         shownMobs.clear();
+        mobPoses.clear();
+        mobSequence = 0;
+        equipmentSequence = 0;
+        lastHeldId = null;
+        lastMobSequence = -1;
         shownItems.clear();
         pickRequested.clear();
     }
@@ -652,13 +701,16 @@ public final class Multiplayer implements NetTransport.Listener {
 
     @Override
     public void onActorJoin(int actor, String name) {
-        players.computeIfAbsent(actor, a -> new RemotePlayer(a, name)).name = name;
+        RemotePlayer joinedPlayer = players.computeIfAbsent(actor, a -> new RemotePlayer(a, name));
+        joinedPlayer.name = name;
+        joinedPlayer.onHurt = damage -> hurtPlayer(actor, (float) damage);
         if (role == Role.HOST)
             addChat(displayName(actor) + " подключается…");
         // Новому соседу надо знать, кто мы: он только что пришёл и наш
         // редкий пакет сведений мог уйти задолго до него.
         if (joined && channel != null)
-            sendInfo(actor);
+            // Keep the pre-handshake message readable by older builds so they can read S_REJECT.
+            sendIdentity(actor);
     }
 
     @Override
@@ -699,8 +751,10 @@ public final class Multiplayer implements NetTransport.Listener {
             case NetProto.S_WELCOME -> onWelcome(from, in);
             case NetProto.S_REJECT -> {
                 String why = in.readStr();
-                ctx.netStopped(why);
-                stop(why);
+                if (!in.truncated() && role == Role.CLIENT && from == hostActor) {
+                    ctx.netStopped(why);
+                    stop(why);
+                }
             }
             case NetProto.X_PLAYER_STATE -> {
                 float x = in.readF32(), y = in.readF32(), z = in.readF32();
@@ -708,6 +762,11 @@ public final class Multiplayer implements NetTransport.Listener {
                 int flags = in.readU8();
                 if (!in.truncated())
                     player(from).accept(x, y, z, yaw, pitch, flags);
+            }
+            case NetProto.X_PLAYER_EQUIPMENT -> {
+                long sequence = in.readI64();
+                String id = in.readStr();
+                if (!in.truncated()) player(from).acceptEquipment(sequence, id);
             }
             case NetProto.X_PLAYER_INFO -> {
                 String name = in.readStr();
@@ -760,6 +819,9 @@ public final class Multiplayer implements NetTransport.Listener {
             }
             case NetProto.S_MOBS -> onMobs(from, in);
             case NetProto.S_ITEMS -> onItems(from, in);
+            case NetProto.S_PROJECTILES -> onProjectiles(from, in);
+            case NetProto.C_SHOOT -> onShoot(from, in);
+            case NetProto.S_PLAYER_HURT -> onPlayerHurt(from, in);
             case NetProto.C_MOB_HIT -> {
                 int id = in.readVarInt();
                 float damage = in.readF32(), knockback = in.readF32();
@@ -774,7 +836,7 @@ public final class Multiplayer implements NetTransport.Listener {
             }
             case NetProto.S_GIVE -> {
                 ItemStack s = readStack(in);
-                if (!in.truncated() && s != null)
+                if (!in.truncated() && s != null && role == Role.CLIENT && from == hostActor)
                     ctx.give(s);
             }
             case NetProto.X_CHAT -> {
@@ -800,7 +862,12 @@ public final class Multiplayer implements NetTransport.Listener {
 
     private RemotePlayer player(int actor) {
         return players.computeIfAbsent(actor,
-                a -> new RemotePlayer(a, transport == null ? "" : transport.actorName(a)));
+                a -> {
+                    RemotePlayer made = new RemotePlayer(a,
+                            transport == null ? "" : transport.actorName(a));
+                    made.onHurt = damage -> hurtPlayer(a, (float) damage);
+                    return made;
+                });
     }
 
     private String displayName(int actor) {
@@ -840,7 +907,7 @@ public final class Multiplayer implements NetTransport.Listener {
         float time = in.readF32();
         int mode = in.readU8();
         float sx = in.readF32(), sy = in.readF32(), sz = in.readF32();
-        if (in.truncated() || role != Role.CLIENT)
+        if (in.truncated() || role != Role.CLIENT || from != hostActor)
             return;
         hostActor = from;
         boolean returning = worldReady && ctx.world() != null && ctx.seed() == seed;
@@ -993,83 +1060,127 @@ public final class Multiplayer implements NetTransport.Listener {
 
     private void sendMobs() {
         List<Mob> mobs = ctx.mobs();
-        if (mobs == null)
-            return;
+        if (mobs == null) return;
         PacketBuf b = channel.packet(NetProto.S_MOBS, false, NetChannel.ALL);
-        b.varInt(mobs.size());
-        for (Mob m : mobs) {
-            int id = mobIds.computeIfAbsent(m, k -> nextEntityId++);
-            int flags = (m.dead ? 1 : 0) | (m.burning ? 2 : 0) | (m.inWater ? 4 : 0)
-                    | (m.onGround ? 8 : 0);
-            b.varInt(id).u8(m.type.ordinal())
-                    .f32(m.position.x).f32(m.position.y).f32(m.position.z)
-                    .f32(m.yaw)
-                    .u8(Math.max(0, Math.min(255, Math.round(m.health))))
-                    .u8(flags);
-        }
+        b.i64(++mobSequence).varInt(mobs.size());
+        for (Mob m : mobs)
+            MobSnapshot.capture(mobIds.computeIfAbsent(m, k -> nextEntityId++), m).write(b);
         mobIds.keySet().retainAll(new HashSet<>(mobs));
     }
 
     private void onMobs(int from, PacketBuf in) {
+        long sequence = in.readI64();
         int count = in.readVarInt();
-        if (role != Role.CLIENT || from != hostActor) {
-            // Прочитать всё равно надо: за этим пакетом в сообщении могут
-            // идти другие.
-            skipMobs(in, count);
+        if (count < 0 || count > in.remaining() / MobSnapshot.MIN_BYTES) {
+            // A corrupt count loses framing; discard the remainder of this message.
+            while (in.hasMore()) in.readU8();
             return;
         }
-        List<Mob> out = ctx.mobs();
-        if (out == null) {
-            skipMobs(in, count);
-            return;
-        }
+        List<MobSnapshot> snapshots = new ArrayList<>(count);
         Set<Integer> seen = new HashSet<>();
-        MobType[] types = MobType.values();
-        for (int i = 0; i < count && !in.truncated(); i++) {
-            int id = in.readVarInt();
-            int type = in.readU8();
-            float x = in.readF32(), y = in.readF32(), z = in.readF32();
-            float yaw = in.readF32();
-            int health = in.readU8();
-            int flags = in.readU8();
-            if (type < 0 || type >= types.length)
-                continue;
-            seen.add(id);
-            Mob m = shownMobs.get(id);
-            if (m == null || m.type != types[type]) {
-                m = new Mob(types[type], x, y, z, visualRandom);
-                shownMobs.put(id, m);
+        boolean valid = true;
+        for (int i = 0; i < count; i++) {
+            MobSnapshot s = MobSnapshot.read(in);
+            valid &= s.valid() && seen.add(s.id());
+            snapshots.add(s);
+        }
+        // Read first, apply atomically. A truncated batch must not despawn valid mobs.
+        if (!valid || in.truncated() || role != Role.CLIENT || from != hostActor
+                || sequence <= lastMobSequence || ctx.mobs() == null) return;
+        lastMobSequence = sequence;
+        for (MobSnapshot s : snapshots) {
+            Mob m = shownMobs.get(s.id());
+            if (m == null || m.type.ordinal() != s.type()) {
+                m = new Mob(MobType.values()[s.type()], s.x(), s.y(), s.z(), visualRandom);
+                shownMobs.put(s.id(), m);
+                mobPoses.put(s.id(), new RemoteMob(m));
             }
-            // Размах шага — из пройденного пути, как у чужих игроков: у
-            // участника мобы не думают, они только едут.
-            float moved = (float) Math.hypot(x - m.position.x, z - m.position.z);
-            m.walkedDistance += moved;
-            m.walkAmount = Math.min(1f, moved * NetProto.TICK_RATE / 3.2f);
-            m.position.set(x, y, z);
-            m.yaw = yaw;
-            m.lookYaw = yaw;
-            m.health = health;
-            m.dead = (flags & 1) != 0;
-            m.burning = (flags & 2) != 0;
-            m.inWater = (flags & 4) != 0;
-            m.onGround = (flags & 8) != 0;
+            mobPoses.get(s.id()).accept(s);
         }
         shownMobs.keySet().retainAll(seen);
+        mobPoses.keySet().retainAll(seen);
+        List<Mob> out = ctx.mobs();
         out.clear();
         out.addAll(shownMobs.values());
     }
 
-    private static void skipMobs(PacketBuf in, int count) {
+    /**
+     * Снаряды хозяина — всем.
+     *
+     * Летит только то, что нужно нарисовать: позиция, курс и «воткнулся ли».
+     * Урон и владелец остаются у хозяина — участник по снаряду не считает
+     * ничего, и подделать попадание ему нечем.
+     */
+    private void sendProjectiles() {
+        List<Projectile> shots = ctx.projectiles();
+        if (shots == null)
+            return;
+        PacketBuf b = channel.packet(NetProto.S_PROJECTILES, false, NetChannel.ALL);
+        b.varInt(shots.size());
+        for (Projectile p : shots)
+            b.f32(p.position.x).f32(p.position.y).f32(p.position.z)
+                    .f32(p.heading.x).f32(p.heading.y).f32(p.heading.z)
+                    .varInt(p.stuck ? 1 : 0);
+    }
+
+    private void onProjectiles(int from, PacketBuf in) {
+        int count = in.readVarInt();
+        boolean mine = role == Role.CLIENT && from == hostActor;
+        List<Projectile> out = mine ? ctx.projectiles() : null;
+        if (out != null)
+            out.clear();
         for (int i = 0; i < count && !in.truncated(); i++) {
-            in.readVarInt();
-            in.readU8();
-            in.readF32();
-            in.readF32();
-            in.readF32();
-            in.readF32();
-            in.readU8();
-            in.readU8();
+            float x = in.readF32(), y = in.readF32(), z = in.readF32();
+            float hx = in.readF32(), hy = in.readF32(), hz = in.readF32();
+            boolean stuck = in.readVarInt() != 0;
+            if (out == null)
+                continue;
+            // Снимок, а не сущность: участник снаряды не симулирует, поэтому
+            // список каждый раз пересобирается целиком. Сверять их по номерам
+            // незачем — живут они секунды.
+            Projectile p = new Projectile("arrow", null, false, 0f);
+            p.position.set(x, y, z);
+            p.heading.set(hx, hy, hz);
+            p.stuck = stuck;
+            out.add(p);
         }
+    }
+
+    /** Участник просит выстрелить: стреляет хозяин. */
+    public void requestShot(Projectile shot) {
+        if (role != Role.CLIENT || !joined)
+            return;
+        channel.packet(NetProto.C_SHOOT, true, hostActor)
+                .f32(shot.position.x).f32(shot.position.y).f32(shot.position.z)
+                .f32(shot.velocity.x).f32(shot.velocity.y).f32(shot.velocity.z)
+                .f32(shot.damage);
+    }
+
+    private void onShoot(int from, PacketBuf in) {
+        float x = in.readF32(), y = in.readF32(), z = in.readF32();
+        float vx = in.readF32(), vy = in.readF32(), vz = in.readF32();
+        float damage = in.readF32();
+        if (role != Role.HOST || in.truncated())
+            return;
+        ctx.shootFor(from, x, y, z, vx, vy, vz, damage);
+    }
+
+    /**
+     * Хозяин сообщает участнику, что тот получил урон.
+     *
+     * Ровно этого пакета не хватало, чтобы мобы могли ранить гостя: урон
+     * всегда считался у хозяина, а сказать о нём было нечем.
+     */
+    public void hurtPlayer(int actor, float damage) {
+        if (role != Role.HOST || damage <= 0f)
+            return;
+        channel.packet(NetProto.S_PLAYER_HURT, true, actor).f32(damage);
+    }
+
+    private void onPlayerHurt(int from, PacketBuf in) {
+        float damage = in.readF32();
+        if (role == Role.CLIENT && from == hostActor && !in.truncated())
+            ctx.hurtByHost(damage);
     }
 
     private void sendItems() {

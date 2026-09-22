@@ -2927,6 +2927,9 @@ public class Game {
                 player.velocity.z * 0.4f);
         shot.heading.set(fwd);
         addProjectile(shot);
+        // У участника выстрел считает хозяин: местный снаряд нужен только
+        // ради отклика и будет заменён ближайшим снимком.
+        net.requestShot(shot);
         wearBow();
         sound.playOneOf(sounds.playerAttack("sweep"), 0.35f, 1.35f + 0.12f * (float) Math.random());
         startHandSwing();
@@ -2960,6 +2963,9 @@ public class Game {
         boolean client = net.isClient();
         java.util.List<com.mineclone.world.entity.Hittable> targets = new java.util.ArrayList<>(mobs);
         targets.add(playerTarget);
+        // Гости — такие же мишени: без них стрела хозяина пролетала бы
+        // сквозь них, а стрела моба никого бы не задела.
+        targets.addAll(net.players());
         for (var it = projectiles.iterator(); it.hasNext(); ) {
             var p = it.next();
             if (!client)
@@ -6152,6 +6158,31 @@ public class Game {
             @Override
             public java.util.List<com.mineclone.world.entity.ItemEntity> groundItems() {
                 return world == null ? null : items;
+            }
+
+            @Override
+            public java.util.List<com.mineclone.world.entity.Projectile> projectiles() {
+                return world == null ? null : projectiles;
+            }
+
+            /** Выстрел участника: снаряд рождается у хозяина и летит у него же. */
+            @Override
+            public void shootFor(int actor, float x, float y, float z,
+                                 float vx, float vy, float vz, float damage) {
+                var shot = new com.mineclone.world.entity.Projectile(
+                        com.mineclone.item.Bow.AMMO, net.playerOf(actor), true, damage);
+                shot.position.set(x, y, z);
+                shot.velocity.set(vx, vy, vz);
+                if (shot.velocity.lengthSquared() > 1e-6f)
+                    shot.heading.set(shot.velocity).normalize();
+                addProjectile(shot);
+            }
+
+            @Override
+            public void hurtByHost(float damage) {
+                // Обратную связь поднимет updateDamageFeedback по самой
+                // потере здоровья — ей всё равно, кто и чем ударил.
+                player.takeAttackDamage(damage);
             }
 
             @Override

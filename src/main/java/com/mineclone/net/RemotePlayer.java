@@ -16,7 +16,7 @@ import org.joml.Vector3f;
  * стоящий игрок не машет ногами, потому что расстояние не растёт, а не потому,
  * что кто-то прислал ноль.
  */
-public final class RemotePlayer {
+public final class RemotePlayer implements com.mineclone.world.entity.Hittable {
 
     /** Флаги состояния в пакете {@link NetProto#X_PLAYER_STATE}. */
     public static final int F_ON_GROUND = 1;
@@ -45,6 +45,8 @@ public final class RemotePlayer {
     public float health = 20f;
     public int gameMode;
     public int flags;
+    public com.mineclone.world.ItemStack heldItem;
+    private long equipmentSequence = -1;
 
     /** Где рисовать. */
     public final Vector3f position = new Vector3f();
@@ -89,6 +91,12 @@ public final class RemotePlayer {
 
     /** Пришёл снимок. */
     public void accept(float x, float y, float z, float newYaw, float newPitch, int newFlags) {
+        // Повреждённый снимок не должен отравить следующую интерполяцию.
+        if (!Float.isFinite(x) || !Float.isFinite(y) || !Float.isFinite(z)
+                || !Float.isFinite(newYaw) || !Float.isFinite(newPitch))
+            return;
+        newYaw = com.mineclone.render.BodyRotation.wrap(newYaw);
+        newPitch = Math.max(-(float) Math.PI / 2f, Math.min((float) Math.PI / 2f, newPitch));
         boolean teleport = placed && position.distanceSquared(x, y, z)
                 > TELEPORT_DISTANCE * TELEPORT_DISTANCE;
         if (!placed || teleport) {
@@ -115,6 +123,14 @@ public final class RemotePlayer {
         silence = 0f;
     }
 
+    public void acceptEquipment(long sequence, String id) {
+        if (sequence <= equipmentSequence || id == null || id.length() > 128) return;
+        var item = id.isEmpty() ? null : com.mineclone.item.Items.get().get(id);
+        if (!id.isEmpty() && item == null) return;
+        equipmentSequence = sequence;
+        heldItem = item == null ? null : new com.mineclone.world.ItemStack(item, 1);
+    }
+
     public void startSwing() {
         swingTimer = SWING_TIME;
         swingStarted = true;
@@ -127,6 +143,38 @@ public final class RemotePlayer {
     }
 
     /** Текст реплики или пустая строка после её исчезновения. */
+    /**
+     * Куда уходит попадание по этому игроку.
+     *
+     * Ставит {@code Multiplayer}: сам по себе удалённый игрок — это снимок,
+     * он не знает ни о каком протоколе, а урон обязан уехать пакетом тому, в
+     * кого попали.
+     */
+    public java.util.function.DoubleConsumer onHurt;
+
+    @Override
+    public float rayHitDistance(Vector3f origin, Vector3f dir) {
+        float hw = com.mineclone.game.Player.WIDTH / 2f;
+        return com.mineclone.world.entity.EntityPhysics.rayAabbDistance(
+                origin.x, origin.y, origin.z, dir.x, dir.y, dir.z,
+                position.x - hw, position.y, position.z - hw,
+                position.x + hw, position.y + com.mineclone.game.Player.HEIGHT,
+                position.z + hw);
+    }
+
+    @Override
+    public boolean hittable() {
+        // Творческий режим и мёртвые не ловят стрел — как и свой игрок.
+        return health > 0f && gameMode != com.mineclone.world.GameMode.CREATIVE.ordinal();
+    }
+
+    @Override
+    public void takeProjectile(float damage, float fromX, float fromZ, float knockback,
+                               boolean fromPlayer) {
+        if (onHurt != null)
+            onHurt.accept(damage);
+    }
+
     public String chatText() {
         return chatText;
     }
@@ -165,7 +213,7 @@ public final class RemotePlayer {
             lerp = Math.min(1f, lerp + dt / CATCH_UP);
             float k = lerp * lerp * (3f - 2f * lerp);
             position.set(from).lerp(to, k);
-            yaw = lerpAngle(yawFrom, yawTo, k);
+            yaw = com.mineclone.render.BodyRotation.lerpAngle(yawFrom, yawTo, k);
             pitch = pitchFrom + (pitchTo - pitchFrom) * k;
         } else {
             position.set(to);
@@ -229,13 +277,4 @@ public final class RemotePlayer {
         return placed;
     }
 
-    /** Кратчайший путь между углами: иначе разворот на 359° шёл бы через круг. */
-    private static float lerpAngle(float a, float b, float k) {
-        float d = b - a;
-        while (d > Math.PI)
-            d -= (float) (Math.PI * 2);
-        while (d < -Math.PI)
-            d += (float) (Math.PI * 2);
-        return a + d * k;
-    }
 }
