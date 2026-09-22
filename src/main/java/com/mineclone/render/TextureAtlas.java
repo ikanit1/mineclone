@@ -329,6 +329,19 @@ public class TextureAtlas {
         glDeleteTextures(arrayId);
     }
 
+    /**
+     * Индекс тайла по имени, либо −1.
+     *
+     * Линейный поиск: зовут его при загрузке и раз за кадр на вид снаряда, а
+     * не в цикле по вершинам.
+     */
+    public static int tileIndex(String name) {
+        for (int i = 0; i < TILE_NAMES.length; i++)
+            if (TILE_NAMES[i].equals(name))
+                return i;
+        return -1;
+    }
+
     /** UV coordinates for a tile index. Returns {u0, v0, u1, v1}. */
     public static float[] uv(int tileIndex) {
         int col = tileIndex % TILES_PER_ROW;

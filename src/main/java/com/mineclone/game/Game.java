@@ -69,6 +69,7 @@ public class Game {
     private final BlockOutline outline;
     private final TrajectoryRenderer trajectoryRenderer;
     private final LightningRenderer lightningRenderer;
+    private final ProjectileRenderer projectileRenderer;
     /** Живая гроза: вспышки, болты и раскаты, которые ещё летят. */
     private final Storm storm = new Storm();
     /** Насколько ярко разряд освещает мир в пике вспышки. */
@@ -145,6 +146,13 @@ public class Game {
     private static final float THROW_CHARGE_TIME = 1.15f;
     private float throwCharge;
     private boolean chargingThrow;
+    /** Сколько секунд удерживается натяжение лука; −1 — лук не натянут. */
+    private float bowHeld = -1f;
+    /** Летящие и воткнувшиеся снаряды. Симулирует их хозяин, гость только видит. */
+    private final java.util.List<com.mineclone.world.entity.Projectile> projectiles =
+            new java.util.ArrayList<>();
+    /** Игрок как мишень для чужих снарядов. */
+    private final PlayerTarget playerTarget = new PlayerTarget();
     private boolean throwWholeStack;
     /** Дальше этого звук не даёт дуги — столько же, сколько слышит OpenAL. */
     private static final float SOUND_CUE_RANGE = 24f;
@@ -595,6 +603,7 @@ public class Game {
         this.outline = new BlockOutline();
         this.trajectoryRenderer = new TrajectoryRenderer();
         this.lightningRenderer = new LightningRenderer();
+        this.projectileRenderer = new ProjectileRenderer();
         this.ropeRenderer = new RopeRenderer();
         this.breakOverlay = new BlockBreakOverlay();
         this.mobRenderer = new com.mineclone.render.MobRenderer();
@@ -1416,7 +1425,7 @@ public class Game {
         }
 
         handleHotbar();
-        updateChargedThrow(dt);
+        updateWeapons(dt);
         updateHeldItem(dt);
         if (gameMode == com.mineclone.world.GameMode.SURVIVAL && player.flying)
             player.flying = false;
@@ -1580,6 +1589,7 @@ public class Game {
         particles.update(dt);
         debris.update(world, dt);
         updateItems(dt);
+        updateProjectiles(dt);
         if (decals != null)
             decals.update(dt);
         updateWaterFlowSound(dt);
@@ -2843,6 +2853,158 @@ public class Game {
         startHandSwing();
     }
 
+    /** Натянут ли лук прямо сейчас и насколько: это же видит и рука, и прицел. */
+    float bowDraw() {
+        return bowHeld < 0f ? 0f : com.mineclone.item.Bow.draw(bowHeld);
+    }
+
+    /**
+     * Лук: правая кнопка тянет, отпускание стреляет.
+     *
+     * Натяжение сбрасывается и при смене слота, и при открытии окна — иначе
+     * лук «помнит» натяжение, которого игрок уже не держит.
+     */
+    private void updateBow(float dt) {
+        boolean holding = !photoMode && state == State.PLAYING
+                && heldItem() != null
+                && com.mineclone.item.Bow.ITEM.equals(heldItem().id.path());
+        if (!holding) {
+            bowHeld = -1f;
+            return;
+        }
+        if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT) && hasAmmo())
+            bowHeld = 0f;
+        else if (bowHeld >= 0f && input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_RIGHT))
+            bowHeld += dt;
+        else if (bowHeld >= 0f) {
+            releaseBow(com.mineclone.item.Bow.draw(bowHeld));
+            bowHeld = -1f;
+        }
+    }
+
+    /** Есть ли чем стрелять. В творческом режиме стрелы не кончаются. */
+    private boolean hasAmmo() {
+        if (gameMode == com.mineclone.world.GameMode.CREATIVE)
+            return true;
+        for (int i = 0; i < inventory.size(); i++) {
+            var s = inventory.get(i);
+            if (s != null && com.mineclone.item.Bow.AMMO.equals(s.item.id.path()))
+                return true;
+        }
+        return false;
+    }
+
+    /** Снимает одну стрелу; false — стрелять нечем. */
+    private boolean takeAmmo() {
+        if (gameMode == com.mineclone.world.GameMode.CREATIVE)
+            return true;
+        for (int i = 0; i < inventory.size(); i++) {
+            var s = inventory.get(i);
+            if (s == null || !com.mineclone.item.Bow.AMMO.equals(s.item.id.path()))
+                continue;
+            if (--s.count <= 0)
+                inventory.set(i, null);
+            return true;
+        }
+        return false;
+    }
+
+    private void releaseBow(float draw) {
+        if (!com.mineclone.item.Bow.canRelease(draw) || !takeAmmo())
+            return;
+        Vector3f eye = new Vector3f(player.camera.position);
+        Vector3f fwd = player.camera.forward();
+        float speed = com.mineclone.item.Bow.speed(draw);
+        var shot = new com.mineclone.world.entity.Projectile(com.mineclone.item.Bow.AMMO,
+                playerTarget, true, com.mineclone.item.Bow.damage(draw));
+        shot.position.set(eye).fma(0.6f, fwd).add(0f, -0.12f, 0f);
+        // Скорость игрока складывается с выстрелом: стрела, пущенная на бегу,
+        // летит дальше — как и брошенный предмет.
+        shot.velocity.set(fwd).mul(speed).add(player.velocity.x * 0.4f, 0f,
+                player.velocity.z * 0.4f);
+        shot.heading.set(fwd);
+        addProjectile(shot);
+        wearBow();
+        sound.playOneOf(sounds.playerAttack("sweep"), 0.35f, 1.35f + 0.12f * (float) Math.random());
+        startHandSwing();
+    }
+
+    /** Лук тупится о тетиву: у него есть прочность, но нет инструментальной части. */
+    private void wearBow() {
+        var held = inventory.get(selectedSlot);
+        if (held != null && held.item.durability > 0 && held.wear())
+            inventory.set(selectedSlot, null);
+    }
+
+    void addProjectile(com.mineclone.world.entity.Projectile p) {
+        projectiles.add(p);
+    }
+
+    /** Все снаряды — их рисует рендер и рассылает сеть. */
+    java.util.List<com.mineclone.world.entity.Projectile> projectiles() {
+        return projectiles;
+    }
+
+    /**
+     * Двигает снаряды и подбирает воткнувшиеся.
+     *
+     * Симуляция только у хозяина — как вода, лава и мобы. У гостя снаряды
+     * приезжают готовыми и только доживают на экране до следующего снимка.
+     */
+    private void updateProjectiles(float dt) {
+        if (projectiles.isEmpty() || world == null)
+            return;
+        boolean client = net.isClient();
+        java.util.List<com.mineclone.world.entity.Hittable> targets = new java.util.ArrayList<>(mobs);
+        targets.add(playerTarget);
+        for (var it = projectiles.iterator(); it.hasNext(); ) {
+            var p = it.next();
+            if (!client)
+                p.step(world, dt, targets);
+            if (p.dead) {
+                it.remove();
+                continue;
+            }
+            // Подбирает тот, кто рядом, — и только своё: чужая стрела в
+            // мультиплеере достаётся хозяину её цели, а не первому встречному.
+            if (!client && p.stuck && p.fromPlayer && !player.isDead()
+                    && p.canPickUp(player.position)
+                    && giveStack(com.mineclone.world.ItemStack.of(p.itemId)) == 0) {
+                sound.playOneOf(sounds.pickup(), 0.25f, 1.1f + 0.1f * (float) Math.random());
+                it.remove();
+            }
+        }
+    }
+
+    /** Игрок глазами чужого снаряда. */
+    private final class PlayerTarget implements com.mineclone.world.entity.Hittable {
+        @Override
+        public float rayHitDistance(Vector3f origin, Vector3f dir) {
+            float hw = com.mineclone.game.Player.WIDTH / 2f;
+            return com.mineclone.world.entity.EntityPhysics.rayAabbDistance(
+                    origin.x, origin.y, origin.z, dir.x, dir.y, dir.z,
+                    player.position.x - hw, player.position.y, player.position.z - hw,
+                    player.position.x + hw, player.position.y + com.mineclone.game.Player.HEIGHT,
+                    player.position.z + hw);
+        }
+
+        @Override
+        public boolean hittable() {
+            return !player.isDead() && gameMode != com.mineclone.world.GameMode.CREATIVE;
+        }
+
+        @Override
+        public void takeProjectile(float damage, float fromX, float fromZ, float knockback,
+                                   boolean fromPlayer) {
+            if (fromPlayer)
+                return;               // своя стрела игрока не кусает
+            // Вспышку, толчок камеры и тень на сердцах поднимает
+            // updateDamageFeedback по самой потере здоровья — источник ему
+            // не нужен, и новый вид урона не требует его вспоминать.
+            player.takeAttackDamage(damage);
+        }
+    }
+
     private void updateChargedThrow(float dt) {
         if (photoMode) {
             chargingThrow = false;
@@ -2862,6 +3024,11 @@ public class Game {
             chargingThrow = false;
             throwCharge = 0f;
         }
+    }
+
+    private void updateWeapons(float dt) {
+        updateChargedThrow(dt);
+        updateBow(dt);
     }
 
     /**
@@ -4429,6 +4596,16 @@ public class Game {
         if (ropeRenderer != null)
             ropeRenderer.render(world, player.position, proj, view, lastDt,
                     atmosphere.windX, atmosphere.windZ, hdr ? 1f : 0f);
+        // Натянутый лук показывает ту же дугу, что заряженный бросок: у них
+        // одна баллистика, и рисовальщик для неё уже есть.
+        float draw = bowDraw();
+        if (draw > 0.02f) {
+            Vector3f from = new Vector3f(player.camera.position).add(0f, -0.15f, 0f);
+            Vector3f aim = new Vector3f(player.camera.forward())
+                    .mul(com.mineclone.item.Bow.speed(draw))
+                    .add(player.velocity.x * 0.4f, 0f, player.velocity.z * 0.4f);
+            trajectoryRenderer.render(proj, view, from, aim, hdr ? 1f : 0f, draw);
+        }
         if (chargingThrow && throwCharge > 0.02f) {
             Vector3f start = new Vector3f(player.camera.position).add(0f, -0.3f, 0f);
             Vector3f fwd = player.camera.forward();
@@ -4446,6 +4623,9 @@ public class Game {
 
         // Следы кладутся до частиц: они лежат на грани, а частицы летают
         // над ней, и порядок между ними определяет глубина, а не удача.
+        if (!projectiles.isEmpty())
+            projectileRenderer.render(proj, view, projectiles, world, atlas, lighting, daylight);
+
         if (decals != null)
             decals.render(proj, view, atlas.getTextureId(), hdr);
 
@@ -4473,6 +4653,7 @@ public class Game {
             // рука рисуется поверх чистого z-буфера и в третьем лице висела
             // бы отдельным куском мяса посреди экрана.
             if (viewMode == ViewMode.FIRST) {
+                heldItemRenderer.setBowDraw(bowDraw());
                 heldItemRenderer.render(atlas, inventory.get(selectedSlot),
                         window.getAspect(), currentFov,
                         equipProgress, handSwing, walkedDistance, player.eyeInWater, viewBobbing,

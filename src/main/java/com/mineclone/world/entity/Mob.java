@@ -11,7 +11,7 @@ import java.util.Random;
  * One mob: state plus AI state machine. The class stays independent from GL
  * and Player; Game translates tick flags into sounds, particles and damage.
  */
-public class Mob {
+public class Mob implements Hittable {
     public enum State {
         IDLE, WANDER, FLEE, CHASE, ATTACK, INVESTIGATE, SEEK_SHELTER,
         /** Нежить отступает из-под яркого света в темноту. */
@@ -181,6 +181,10 @@ public class Mob {
     public float walkAmount;
     public float lookYaw;
     public float grazeAmount;
+    /** Smooth takeoff and landing pose weight. */
+    public float airborneAmount;
+    /** Client-only replicated mood; authoritative AI uses angryTimer. */
+    public boolean visualAngry;
 
     /** >0 — зомби замахивается, рендер поднимает руки. */
     public float attackSwing;
@@ -436,6 +440,8 @@ public class Mob {
             walkStep(world, dt);
         }
         updateLegIk(world, dt);
+        airborneAmount += ((!onGround && !inWater ? 1f : 0f) - airborneAmount)
+                * (1f - (float) Math.exp(-14f * dt));
 
         if (attackSwing > 0f)
             attackSwing = Math.max(0f, attackSwing - dt);
@@ -1316,10 +1322,24 @@ public class Mob {
 
     /** Зол ли хищник на игрока. */
     public boolean isAngry() {
-        return angryTimer > 0f;
+        return angryTimer > 0f || visualAngry;
+    }
+
+    /** Попасть в моба можно, пока он жив: труп стрела прошивает насквозь. */
+    @Override
+    public boolean hittable() {
+        return !dead;
+    }
+
+    /** Попадание снарядом — тот же урон и отброс, что от удара. */
+    @Override
+    public void takeProjectile(float damage, float fromX, float fromZ, float knockback,
+                               boolean fromPlayer) {
+        hurt(damage, fromX, fromZ, knockback, fromPlayer);
     }
 
     /** Дистанция до попадания луча в AABB моба, либо -1. */
+    @Override
     public float rayHitDistance(Vector3f origin, Vector3f dir) {
         float hw = type.width / 2f;
         return EntityPhysics.rayAabbDistance(origin.x, origin.y, origin.z, dir.x, dir.y, dir.z,

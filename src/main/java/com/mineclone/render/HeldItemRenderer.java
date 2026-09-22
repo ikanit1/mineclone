@@ -20,8 +20,8 @@ import static org.lwjgl.opengl.GL30.glDeleteVertexArrays;
  *
  * Рука — обычный текстурированный бокс из {@link PlayerSkin}, рисуемый тем же
  * кубом и шейдером, что и части тела мобов ({@link MobRenderer}). Она видна
- * ВСЕГДА: и с пустой ладонью, и когда игрок держит блок — предмет висит перед
- * кулаком, а не сам по себе.
+ * с пустой ладонью и блоками. Инструменты используют самостоятельный общий
+ * шаблон первого лица: рукоять выходит из нижнего правого угла без кулака.
  *
  * Позы вынесены в статические {@link #armPose} и {@link #itemPose}: это чистая
  * матричная математика без GL, её можно считать в оффлайне и смотреть, что
@@ -41,6 +41,10 @@ public final class HeldItemRenderer {
     // Ключ — сам предмет, а не его тайл: два предмета с одной иконкой
     // остаются двумя предметами, и делить меш между ними незачем.
     private final Map<com.mineclone.item.Item, Mesh> toolMeshes = new java.util.HashMap<>();
+    /** Меши по тайлу: у лука три стадии натяжения и на каждую своя форма. */
+    private final Map<Integer, Mesh> stageMeshes = new java.util.HashMap<>();
+    /** Текущее натяжение лука 0..1. Ставится игрой перед кадром. */
+    private float bowDraw;
     private final Map<com.mineclone.item.Item, Mesh> materialMeshes = new java.util.HashMap<>();
     private final int armVao, armVbo;
     private final int armTexture;
@@ -96,8 +100,8 @@ public final class HeldItemRenderer {
     }
 
     /**
-     * @param inspect 0..1 — насколько игрок сейчас разглядывает предмет: кисть
-     *                уходит ниже, уступая центр кадра самому предмету
+     * @param inspect 0..1 — насколько игрок сейчас разглядывает предмет:
+     *                кисть с предметом поднимается ближе к центру кадра
      */
     public static Matrix4f armPose(float equipProgress, float swingProgress,
                                    float walkDistance, boolean viewBobbing, boolean holding,
@@ -114,9 +118,9 @@ public final class HeldItemRenderer {
         if (holding) {
             // Кулак под предметом: почти вертикально, чуть завален внутрь.
             return new Matrix4f()
-                    .translate(0.74f + bobX + arc * 0.04f,
-                               -0.80f - drop + bobY + arc * 0.10f,
-                               -0.80f - arc * 0.06f)
+                    .translate(lerp(0.74f, 0.56f, ins) + bobX + arc * 0.04f,
+                               -0.80f - drop + ins * 0.60f + bobY + arc * 0.10f,
+                               lerp(-0.80f, -1.10f, ins) - arc * 0.06f)
                     .rotateZ((float) Math.PI + (float) Math.toRadians(30f + arc * 6f))
                     .rotateY((float) Math.toRadians(-14f + yaw * 6f))
                     .rotateX((float) Math.toRadians(10f + arc * 10f) - tilt * 0.6f)
@@ -174,11 +178,8 @@ public final class HeldItemRenderer {
     /**
      * Матрица инструмента.
      *
-     * Своя, а не общая с блоком: блок — это куб вокруг центра, а инструмент —
-     * плоский спрайт, который держат за рукоять. Общая поза вешала его в
-     * воздухе рядом с кулаком. На спрайте рукоять внизу справа, а головка
-     * сверху слева, поэтому доворачивать его почти не нужно — нужно посадить
-     * правый нижний угол в кулак.
+     * Единая поза всех инструментов: рукоять снизу справа, рабочая часть
+     * направлена вверх-вправо. Форма и материал не меняют точку хвата.
      */
     public static Matrix4f toolPose(float equipProgress, float swingProgress,
                                     float walkDistance, boolean viewBobbing) {
@@ -188,25 +189,7 @@ public final class HeldItemRenderer {
     public static Matrix4f toolPose(float equipProgress, float swingProgress,
                                     float walkDistance, boolean viewBobbing,
                                     float inspect, float spin) {
-        float arc = swingArc(swingProgress) * (1f - inspect);
-        float yaw = swingYaw(swingProgress) * (1f - inspect);
-        float eq = equipEase(equipProgress);
-        float drop = (1f - eq) * 0.62f;
-        float tilt = (1f - eq) * (float) Math.toRadians(55f);
-        float k = smooth01(inspect);
-
-        // Смещения замаха повторяют руку знак в знак: разойдись они — кирка
-        // на пике удара отрывается от кулака и летит отдельно. Сам удар
-        // читается доворотом, а не расхождением.
-        return new Matrix4f()
-                .translate(lerp(0.33f + bobX(walkDistance, viewBobbing) + arc * 0.04f, 0.07f, k),
-                           lerp(-0.26f - drop + bobY(walkDistance, viewBobbing) + arc * 0.10f, -0.10f, k),
-                           lerp(-0.74f - arc * 0.06f, -0.62f, k))
-                .rotateY(lerp((float) Math.toRadians(14f + yaw * 12f), spin, k))
-                .rotateZ(lerp((float) Math.toRadians(-8f - arc * 26f), (float) Math.toRadians(-38f), k))
-                .rotateX(lerp((float) Math.toRadians(-6f - arc * 18f) + tilt * 0.6f,
-                        (float) Math.toRadians(-8f), k))
-                .scale(lerp(0.42f, 0.52f, k));
+        return HeldToolTemplate.pose(equipProgress, swingProgress, walkDistance, viewBobbing, inspect, spin);
     }
 
     // -------------------------------------------------------------------------
@@ -322,13 +305,23 @@ public final class HeldItemRenderer {
      * @param inspect 0..1 — поза осмотра предмета
      * @param spin    угол вращения предмета при осмотре, радианы
      */
+    /** Насколько натянут лук в руке: от этого зависит, какую форму он примет. */
+    public void setBowDraw(float draw) {
+        bowDraw = Math.max(0f, Math.min(1f, draw));
+    }
+
     public void render(TextureAtlas atlas, com.mineclone.world.ItemStack held,
             float aspect, float fovDegrees, float equipProgress, float swingProgress,
             float walkDistance, boolean underwater, boolean viewBobbing,
             float daylight, float brightness, float skyFrac, float blockFrac,
             float linearOut, float inspect, float spin) {
         BlockType heldBlock = held == null ? null : held.block();
-        com.mineclone.item.Item heldTool = held != null && held.tool() != null ? held.item : null;
+        // Лук держат как инструмент, хотя инструментальной части у него нет:
+        // иначе он рисуется бруском материала, а не луком.
+        boolean bow = held != null && held.item != null
+                && com.mineclone.item.Bow.ITEM.equals(held.item.id.path());
+        com.mineclone.item.Item heldTool = held != null && (held.tool() != null || bow)
+                ? held.item : null;
 
         // Единый источник правды по свету — уровень освещённости там, где стоит
         // игрок. Рука и предмет берут одну и ту же настройку, поэтому не могут
@@ -354,38 +347,42 @@ public final class HeldItemRenderer {
         glDisable(GL_BLEND);
         glDisable(GL_CULL_FACE);
 
-        // --- рука: видна всегда, в том числе с предметом ---------------------
-        armShader.bind();
-        armShader.setMat4("uProjection", projection);
-        armShader.setMat4("uView", view);
-        armShader.setMat4("uModel", armPose(equipProgress, swingProgress,
-                walkDistance, viewBobbing, holding, inspect));
-        armShader.setInt("uSkin", 0);
-        // Четыре широких пикселя поперёк грани и двенадцать вдоль руки.
-        armShader.setVec2("uSkinGrid", MobSkins.COLS * 4f, MobSkins.ROWS * 12f);
-        armShader.setVec2("uTileSize", MobRenderer.TILE_U, MobRenderer.TILE_V);
-        armShader.setVec2("uUvFront", MobRenderer.uvX(MobSkins.T_ACCENT),
-                MobRenderer.uvY(MobSkins.T_ACCENT));
-        armShader.setVec2("uUvSide", MobRenderer.uvX(MobSkins.T_LIMB),
-                MobRenderer.uvY(MobSkins.T_LIMB));
-        armShader.setVec2("uUvTop", MobRenderer.uvX(MobSkins.T_BODY_TOP),
-                MobRenderer.uvY(MobSkins.T_BODY_TOP));
-        handLight.apply(armShader);
-        // Яркость уже сидит в цветах handLight — видимость здесь единичная.
-        armShader.setFloat("uSkyVis", 1f);
-        armShader.setFloat("uBlockVis", 0f);
-        // Под водой рука уходит в холодный синий — как и всё остальное.
-        armShader.setVec3("uTint", underwater ? UNDERWATER_TINT : SKIN_TINT);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, armTexture);
-        glBindVertexArray(armVao);
-        glDrawArrays(GL_TRIANGLES, 0, MobRenderer.VERTEX_COUNT);
-        glBindVertexArray(0);
-        armShader.unbind();
+        // Tools use the reference-style item-only view; empty hand/blocks keep the arm.
+        if (heldTool == null) {
+            armShader.bind();
+            armShader.setMat4("uProjection", projection);
+            armShader.setMat4("uView", view);
+            armShader.setMat4("uModel", armPose(equipProgress, swingProgress,
+                    walkDistance, viewBobbing, holding, inspect));
+            armShader.setInt("uSkin", 0);
+            // Четыре широких пикселя поперёк грани и двенадцать вдоль руки.
+            armShader.setVec2("uSkinGrid", MobSkins.COLS * 4f, MobSkins.ROWS * 12f);
+            armShader.setVec2("uTileSize", MobRenderer.TILE_U, MobRenderer.TILE_V);
+            armShader.setVec2("uUvFront", MobRenderer.uvX(MobSkins.T_ACCENT),
+                    MobRenderer.uvY(MobSkins.T_ACCENT));
+            armShader.setVec2("uUvSide", MobRenderer.uvX(MobSkins.T_LIMB),
+                    MobRenderer.uvY(MobSkins.T_LIMB));
+            armShader.setVec2("uUvTop", MobRenderer.uvX(MobSkins.T_BODY_TOP),
+                    MobRenderer.uvY(MobSkins.T_BODY_TOP));
+            handLight.apply(armShader);
+            // Яркость уже сидит в цветах handLight — видимость здесь единичная.
+            armShader.setFloat("uSkyVis", 1f);
+            armShader.setFloat("uBlockVis", 0f);
+            // Под водой рука уходит в холодный синий — как и всё остальное.
+            armShader.setVec3("uTint", underwater ? UNDERWATER_TINT : SKIN_TINT);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, armTexture);
+            glBindVertexArray(armVao);
+            glDrawArrays(GL_TRIANGLES, 0, MobRenderer.VERTEX_COUNT);
+            glBindVertexArray(0);
+            armShader.unbind();
+        }
 
         // --- предмет ---------------------------------------------------------
         if (holding) {
-            Mesh mesh = heldTool != null
+            Mesh mesh = bow
+                    ? stageMeshes.computeIfAbsent(bowTile(), HeldItemRenderer::createStageMesh)
+                    : heldTool != null
                     ? toolMeshes.computeIfAbsent(held.item, HeldItemRenderer::createToolMesh)
                     : heldBlock != null
                         ? blockMeshes.computeIfAbsent(heldBlock, HeldItemRenderer::createItemMesh)
@@ -413,7 +410,7 @@ public final class HeldItemRenderer {
             if (heldTool != null) {
                 int stage = crackStage(held.condition());
                 if (stage >= 0)
-                    renderCracks(atlas, mesh, projection, view, pose, held.iconTile(), stage, linearOut);
+                    renderCracks(atlas, mesh, projection, view, pose, stage, linearOut);
                 if (inspect < 0.05f)
                     renderTrail(projection, view, equipProgress, swingProgress, walkDistance,
                             viewBobbing, handLevel, linearOut);
@@ -429,8 +426,7 @@ public final class HeldItemRenderer {
      * ровно тот же язык «оно скоро сломается», что у копаемого блока.
      */
     private void renderCracks(TextureAtlas atlas, Mesh mesh, Matrix4f projection, Matrix4f view,
-                              Matrix4f pose, int toolTile, int stage, float linearOut) {
-        float[] tuv = TextureAtlas.uv(toolTile);
+                              Matrix4f pose, int stage, float linearOut) {
         float[] cuv = TextureAtlas.uv(TextureAtlas.CRACK_TILE_0 + stage);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -442,9 +438,9 @@ public final class HeldItemRenderer {
         crackShader.setMat4("uModel", pose);
         crackShader.setInt("uAtlas", 0);
         crackShader.setFloat("uWindSway", 0f);
-        crackShader.setVec2("uToolUv0", tuv[0], tuv[1]);
+        crackShader.setFloat("uAtlasTiles", TextureAtlas.TILES_PER_ROW);
         crackShader.setVec2("uCrackUv0", cuv[0], cuv[1]);
-        crackShader.setVec2("uSpan", tuv[2] - tuv[0], tuv[3] - tuv[1]);
+        crackShader.setVec2("uSpan", cuv[2] - cuv[0], cuv[3] - cuv[1]);
         crackShader.setFloat("uLinearOut", linearOut);
         // Чем глубже износ, тем заметнее трещина: на первых стадиях это
         // царапины, на последних — раскол через весь инструмент.
@@ -494,24 +490,22 @@ public final class HeldItemRenderer {
     private static final Vector3f SKIN_TINT = new Vector3f(0.22f, 0.23f, 0.30f);
     private static final Vector3f UNDERWATER_TINT = new Vector3f(SKIN_TINT).mul(0.62f, 0.78f, 1.0f);
 
-    /** Объёмная модель инструмента: отдельная рукоять и рабочая часть. */
+    /** Толщина по непрозрачному силуэту; цвет и форма берутся из иконки. */
     private static Mesh createToolMesh(com.mineclone.item.Item tool) {
-        List<Float> pos = new ArrayList<>();
-        List<Float> uvs = new ArrayList<>();
-        List<Float> light = new ArrayList<>();
-        List<Float> blockLight = new ArrayList<>();
-        List<Integer> indices = new ArrayList<>();
-        com.mineclone.item.ToolClass kind = tool.tool.toolClass();
-        int materialTile = tool.id.path().startsWith("gold_") ? 120 : tool.id.path().startsWith("copper_") ? 121 : 122;
-        emitSolidBox(pos, uvs, light, blockLight, indices, materialTile, 0f, -0.18f, 0f, .10f, .72f, .10f);
-        if (kind == com.mineclone.item.ToolClass.PICKAXE)
-            emitSolidBox(pos, uvs, light, blockLight, indices, materialTile, 0f, .27f, 0f, .82f, .12f, .12f);
-        else if (kind == com.mineclone.item.ToolClass.AXE)
-            emitSolidBox(pos, uvs, light, blockLight, indices, materialTile, .25f, .28f, 0f, .38f, .42f, .14f);
-        else if (kind == com.mineclone.item.ToolClass.SHOVEL)
-            emitSolidBox(pos, uvs, light, blockLight, indices, materialTile, 0f, .28f, 0f, .38f, .24f, .18f);
-        return new Mesh(toFloatArray(pos), toFloatArray(uvs), toFloatArray(light),
-                toFloatArray(blockLight), toIntArray(indices));
+        return HeldToolTemplate.mesh(tool).upload();
+    }
+
+    /** Тайл лука под нынешнее натяжение. */
+    private int bowTile() {
+        int stage = com.mineclone.item.Bow.stage(bowDraw);
+        String name = stage == 0 ? "bow" : "bow_pull_" + stage;
+        int tile = TextureAtlas.tileIndex(name);
+        return tile < 0 ? TextureAtlas.tileIndex("bow") : tile;
+    }
+
+    /** Экструзия произвольного тайла — для форм, которых нет у предмета. */
+    private static Mesh createStageMesh(int tile) {
+        return ItemSpriteMesh.buildTool(TextureAtlas.sprite(tile), tile).upload();
     }
 
     private static Mesh createMaterialMesh(com.mineclone.item.Item item) {
@@ -522,7 +516,7 @@ public final class HeldItemRenderer {
     }
 
     /** Dispatches to the correct mesh builder for each block type. */
-    private static Mesh createItemMesh(BlockType block) {
+    static Mesh createItemMesh(BlockType block) {
         if (block == BlockType.TORCH) return createTorchMesh();
         return createBlockMesh(block);
     }

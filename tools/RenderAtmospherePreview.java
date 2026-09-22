@@ -83,6 +83,7 @@ public class RenderAtmospherePreview {
         HeldItemRenderer hand = new HeldItemRenderer();
         BlockOutline outline = new BlockOutline();
         LightningRenderer lightningRenderer = new LightningRenderer();
+        ProjectileRenderer projectileRenderer = new ProjectileRenderer();
         DebrisRenderer debrisRenderer = new DebrisRenderer();
         ItemRenderer itemRenderer = new ItemRenderer();
         ParticleSystem particles = new ParticleSystem();
@@ -288,6 +289,23 @@ public class RenderAtmospherePreview {
                         1f, 1f);
                 particles.emitHitImpact(24.6f, gy + 1.9f, 17.2f, -0.3f, 0f, -0.95f, true,
                         new float[] { 0.35f, 0.55f, 0.25f }, 1f, 0f);
+                // Стрелы: одна в полёте, одна воткнувшаяся. Без кадра
+                // «нарисована ли стрела вообще» проверить нечем.
+                List<com.mineclone.world.entity.Projectile> arrows =
+                        new ArrayList<com.mineclone.world.entity.Projectile>();
+                com.mineclone.world.entity.Projectile flying =
+                        new com.mineclone.world.entity.Projectile("arrow", null, true, 6f);
+                flying.position.set(20.2f, gy + 2.3f, 19.6f);
+                flying.heading.set(0.82f, -0.14f, -0.55f).normalize();
+                arrows.add(flying);
+                com.mineclone.world.entity.Projectile planted =
+                        new com.mineclone.world.entity.Projectile("arrow", null, true, 6f);
+                planted.position.set(23.5f, gy + 1.5f, 18.2f);
+                planted.heading.set(0.1f, -0.35f, -0.93f).normalize();
+                planted.stuck = true;
+                arrows.add(planted);
+                projectileRenderer.render(proj, view, arrows, world, atlas, l, daylight);
+
                 particles.update(0.035f);
                 Vector3f right = new Vector3f(fwd).cross(0f, 1f, 0f).normalize();
                 Vector3f up = new Vector3f(right).cross(fwd).normalize();
