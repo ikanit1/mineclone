@@ -20,6 +20,24 @@ public enum Biome {
 
     public enum TreeType { OAK, SPRUCE, CACTUS, NONE, ACACIA }
 
+    /**
+     * В каком краю звучит этот биом.
+     *
+     * Свой трек каждому из одиннадцати биомов не написать, да и не нужно:
+     * лес и тайга просят одного настроения. Switch без {@code default} —
+     * нарочно: новый биом обязан уронить сборку, а не тихо замолчать.
+     */
+    public com.mineclone.audio.MusicMood musicMood() {
+        return switch (this) {
+            case PLAINS, FOREST, TAIGA -> com.mineclone.audio.MusicMood.WOODS;
+            case DESERT, BADLANDS, SAVANNA -> com.mineclone.audio.MusicMood.ARID;
+            case TUNDRA, ALPINE -> com.mineclone.audio.MusicMood.FROZEN;
+            case SWAMP -> com.mineclone.audio.MusicMood.WETLAND;
+            case OCEAN -> com.mineclone.audio.MusicMood.SEA;
+            case VOLCANIC -> com.mineclone.audio.MusicMood.ASHEN;
+        };
+    }
+
     public boolean isCold() { return this == TUNDRA || this == ALPINE || this == TAIGA; }
     public boolean isArid() { return this == DESERT || this == BADLANDS || this == VOLCANIC; }
 

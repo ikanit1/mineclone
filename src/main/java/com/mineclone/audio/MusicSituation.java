@@ -19,6 +19,7 @@ import java.util.Set;
  * @param building    игрок строит
  * @param flying      полёт в творческом режиме
  * @param underwater  голова под водой
+ * @param region      край под ногами, или null вне мира
  */
 public record MusicSituation(
         Scene scene,
@@ -30,7 +31,16 @@ public record MusicSituation(
         boolean exploring,
         boolean building,
         boolean flying,
-        boolean underwater) {
+        boolean underwater,
+        MusicMood region) {
+
+    /** Прежняя форма без края: край неизвестен. */
+    public MusicSituation(Scene scene, boolean paused, MusicMood dayPart, boolean underground,
+                          boolean sheltered, boolean danger, boolean exploring, boolean building,
+                          boolean flying, boolean underwater) {
+        this(scene, paused, dayPart, underground, sheltered, danger, exploring, building,
+                flying, underwater, null);
+    }
 
     public enum Scene {
         /** Меню и загрузка. */
@@ -102,6 +112,10 @@ public record MusicSituation(
                         out.add(MusicMood.EXPLORE);
                     else if (home())
                         out.add(MusicMood.HOME);
+                    // Край важнее времени суток, но слабее занятия: игрок,
+                    // который строит, слушает стройку и в лесу, и в пустыне.
+                    if (region != null)
+                        out.add(region);
                     out.add(dayPart);
                 }
             }
@@ -132,6 +146,12 @@ public record MusicSituation(
                     out.addAll(neighbours(dayPart));
                     if (sheltered)
                         out.add(MusicMood.HOME);
+                    // Терпим и соседние края: игрок, вышедший из леса в
+                    // саванну, не должен слышать обрыв на границе.
+                    if (region != null) {
+                        out.add(region);
+                        out.addAll(REGIONS);
+                    }
                 }
                 if (exploring)
                     out.add(MusicMood.EXPLORE);
@@ -145,6 +165,10 @@ public record MusicSituation(
         }
         return out;
     }
+
+    /** Все края разом: любой из них терпим, пока игрок на поверхности. */
+    public static final Set<MusicMood> REGIONS = EnumSet.of(MusicMood.WOODS, MusicMood.ARID,
+            MusicMood.FROZEN, MusicMood.WETLAND, MusicMood.SEA, MusicMood.ASHEN);
 
     /** Соседние части суток: рассвет граничит с ночью и днём и так по кругу. */
     public static Set<MusicMood> neighbours(MusicMood part) {

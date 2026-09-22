@@ -43,6 +43,8 @@ final class MusicTests {
         r.run("cave and shelter probes read the column above the head", MusicTests::testSenseProbes);
         r.run("building and travel counters rise and fade", MusicTests::testSenseActivity);
         r.run("only a hunting hostile counts as danger", MusicTests::testSenseDanger);
+        r.run("walking a biome border does not flip the region", MusicTests::testRegionHysteresis);
+        r.run("every biome names a region", MusicTests::testRegions);
     }
 
     // ---- каталог и ситуация ----------------------------------------------------
@@ -78,6 +80,66 @@ final class MusicTests {
         assertTrue("the menu has a choice of tracks", menu >= 2);
         assertTrue("Deep Pressure is the danger track",
                 lib.byId("Deep Pressure") != null && lib.byId("Deep Pressure").has(MusicMood.DANGER));
+    }
+
+    /**
+     * Дребезг границы — главная ловушка биомной музыки.
+     *
+     * Биом квантуется по четыре блока, и идущий вдоль опушки пересекает
+     * границу десятки раз. Без выдержки край менялся бы на каждом шаге, и
+     * музыка дёргалась бы вместе с ним.
+     */
+    private static void testRegionHysteresis() {
+        com.mineclone.game.MusicSense sense = new com.mineclone.game.MusicSense();
+        com.mineclone.game.Player pl = new com.mineclone.game.Player();
+        pl.position.set(0f, 70f, 0f);
+        java.util.List<com.mineclone.world.entity.Mob> none = java.util.List.of();
+        float noon = (float) (Math.PI / 2);
+        MusicSituation.Scene w = MusicSituation.Scene.WORLD;
+        // Мир нужен настоящий: край берётся из биома под ногами.
+        com.mineclone.world.World world = new com.mineclone.world.World(20250922L);
+
+        // Ищем границу двух краёв и ходим по ней туда-сюда.
+        MusicMood here = world.biomes.biomeAt(0, 0).musicMood();
+        int border = -1;
+        for (int x = 1; x < 4000 && border < 0; x++)
+            if (world.biomes.biomeAt(x, 0).musicMood() != here)
+                border = x;
+        assertTrue("the test world must have a border to walk", border > 0);
+
+        sense.sample(DT, w, false, world, pl, none, noon);
+        MusicMood settled = sense.region();
+        assertTrue("the first region is taken at once, not after a wait", settled != null);
+        // Шаг за границу и обратно, быстрее выдержки: край держится.
+        for (int i = 0; i < 40; i++) {
+            pl.position.x = i % 2 == 0 ? border + 1 : border - 1;
+            sense.sample(0.25f, w, false, world, pl, none, noon);
+        }
+        assertEq("jittering on the border keeps the region", settled, sense.region());
+
+        // Уход в другой край и жизнь там дольше выдержки: край меняется.
+        pl.position.x = border + 24;
+        MusicMood beyond = world.biomes.biomeAt((int) pl.position.x, 0).musicMood();
+        for (float t = 0f; t < com.mineclone.game.MusicSense.REGION_HOLD + 2f; t += 0.25f)
+            sense.sample(0.25f, w, false, world, pl, none, noon);
+        assertEq("staying put finally changes it", beyond, sense.region());
+    }
+
+    /**
+     * Ни один биом не должен остаться без края. Switch в
+     * {@code Biome.musicMood} без {@code default} ловит это на сборке, а
+     * здесь — на случай, если кто-то допишет ветку наугад.
+     */
+    private static void testRegions() {
+        EnumSet<MusicMood> named = EnumSet.noneOf(MusicMood.class);
+        for (com.mineclone.world.Biome b : com.mineclone.world.Biome.values()) {
+            MusicMood m = b.musicMood();
+            assertTrue(b + " names a region", m != null && MusicSituation.REGIONS.contains(m));
+            named.add(m);
+        }
+        assertEq("every region is inhabited by some biome", MusicSituation.REGIONS, named);
+        // Что у каждого края есть трек, проверяет testCatalog: он требует
+        // покрытия всех настроений разом, а края теперь среди них.
     }
 
     private static void testUnknownTrack() {

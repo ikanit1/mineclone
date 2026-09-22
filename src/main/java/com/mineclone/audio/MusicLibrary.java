@@ -23,6 +23,12 @@ public final class MusicLibrary {
     }
 
     /**
+     * Края розданы по тону существующих треков, и это **временная
+     * раскладка**: семь треков на шесть краёв — растяжка, а не замысел. У
+     * каждого края свой трек, так что в пустыне и в тундре уже звучит
+     * по-разному, но настоящая биомная музыка начинается с отдельного трека
+     * на край. Новый файл вносится сюда строкой и ничего в коде не двигает.
+     *
      * Поправки — до уровня самого тихого трека по интегральной громкости:
      * Deep Pressure −15,5 LUFS, Fading into Warmth −15,0, Svetloe Pianino
      * −14,9, Walking over −14,5, Warm Moog Entry −13,8, Weightless Lullaby
@@ -31,19 +37,22 @@ public final class MusicLibrary {
      */
     public static final List<Entry> CATALOG = List.of(
             new Entry("Svetloe Pianino", -0.6f,
-                    MusicMood.MENU, MusicMood.DAY, MusicMood.BUILD),
+                    MusicMood.MENU, MusicMood.DAY, MusicMood.BUILD, MusicMood.WOODS),
             new Entry("Warm Moog Entry", -1.7f,
-                    MusicMood.MENU, MusicMood.DAWN, MusicMood.EXPLORE, MusicMood.FLIGHT),
+                    MusicMood.MENU, MusicMood.DAWN, MusicMood.EXPLORE, MusicMood.FLIGHT,
+                    MusicMood.ARID),
             new Entry("Walking over", -0.9f,
-                    MusicMood.EXPLORE, MusicMood.DAY, MusicMood.DUSK),
+                    MusicMood.EXPLORE, MusicMood.DAY, MusicMood.DUSK, MusicMood.WOODS),
             new Entry("Fading into Warmth", -0.5f,
-                    MusicMood.MENU, MusicMood.DUSK, MusicMood.HOME, MusicMood.BUILD),
+                    MusicMood.MENU, MusicMood.DUSK, MusicMood.HOME, MusicMood.BUILD,
+                    MusicMood.WETLAND),
             new Entry("Weightless Lullaby", -1.7f,
-                    MusicMood.MENU, MusicMood.NIGHT, MusicMood.HOME, MusicMood.FLIGHT),
+                    MusicMood.MENU, MusicMood.NIGHT, MusicMood.HOME, MusicMood.FLIGHT,
+                    MusicMood.FROZEN),
             new Entry("Nocturnal Drift", -2.4f,
-                    MusicMood.NIGHT, MusicMood.EXPLORE, MusicMood.CAVE),
+                    MusicMood.NIGHT, MusicMood.EXPLORE, MusicMood.CAVE, MusicMood.SEA),
             new Entry("Deep Pressure", 0f,
-                    MusicMood.CAVE, MusicMood.DANGER));
+                    MusicMood.CAVE, MusicMood.DANGER, MusicMood.ASHEN));
 
     /** Настроения трека, которого нет в таблице. */
     public static final Set<MusicMood> UNKNOWN_MOODS = EnumSet.of(MusicMood.MENU, MusicMood.DAY);

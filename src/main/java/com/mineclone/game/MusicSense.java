@@ -31,11 +31,23 @@ public final class MusicSense {
     public static final float TRAVEL_WINDOW = 60f, TRAVEL_SAMPLE = 5f, TRAVEL_DISTANCE = 80f;
     /** Стройка: постоянная затухания счётчика установок и порог. */
     public static final float BUILD_TAU = 45f, BUILD_THRESHOLD = 8f;
+    /**
+     * Сколько нужно пробыть в новом краю, чтобы музыка его признала.
+     *
+     * Без этого музыка дёргалась бы на каждом шаге: биом квантуется по
+     * четыре блока, и идущий вдоль опушки пересекает границу десятки раз в
+     * минуту. Двенадцать секунд — это «я действительно ушёл в другой край», а
+     * не «я качнулся на границе».
+     */
+    public static final float REGION_HOLD = 12f;
 
     private static final int TRAIL = Math.round(TRAVEL_WINDOW / TRAVEL_SAMPLE) + 1;
 
     private float sampleTimer;
     private boolean underground, sheltered;
+    /** Край, который музыка уже признала, и претендент с его выслугой. */
+    private com.mineclone.audio.MusicMood region, pendingRegion;
+    private float pendingHeld;
     private float dangerLeft;
     private float build;
     private final float[] trailX = new float[TRAIL], trailZ = new float[TRAIL];
@@ -54,6 +66,9 @@ public final class MusicSense {
         sheltered = false;
         dangerLeft = 0f;
         build = 0f;
+        region = null;
+        pendingRegion = null;
+        pendingHeld = 0f;
         trailCount = 0;
         trailHead = 0;
         trailTimer = 0f;
@@ -83,9 +98,45 @@ public final class MusicSense {
                 if (threatNear(mobs, player))
                     dangerLeft = DANGER_MEMORY;
             }
+            if (world != null)
+                settleRegion(dt, world.biomes.biomeAt((int) Math.floor(player.position.x),
+                        (int) Math.floor(player.position.z)).musicMood());
         }
         return new MusicSituation(scene, paused, MusicSituation.dayPart(gameTime), underground, sheltered,
-                dangerLeft > 0f, exploring(), building(), player.flying, player.eyeInWater);
+                dangerLeft > 0f, exploring(), building(), player.flying, player.eyeInWater, region);
+    }
+
+    /**
+     * Край под ногами становится краем музыки, только продержавшись
+     * {@link #REGION_HOLD}. Первый край признаётся сразу: при входе в мир
+     * ждать нечего, а молчать двенадцать секунд не за что.
+     */
+    private void settleRegion(float dt, com.mineclone.audio.MusicMood under) {
+        if (region == null) {
+            region = under;
+            pendingRegion = null;
+            pendingHeld = 0f;
+            return;
+        }
+        if (under == region) {
+            pendingRegion = null;
+            pendingHeld = 0f;
+            return;
+        }
+        if (under != pendingRegion) {
+            pendingRegion = under;
+            pendingHeld = 0f;
+        }
+        if ((pendingHeld += dt) >= REGION_HOLD) {
+            region = pendingRegion;
+            pendingRegion = null;
+            pendingHeld = 0f;
+        }
+    }
+
+    /** Край, который музыка считает текущим. */
+    public com.mineclone.audio.MusicMood region() {
+        return region;
     }
 
     public boolean building() {
