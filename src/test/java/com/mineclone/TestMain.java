@@ -51,6 +51,11 @@ public final class TestMain {
     private static int failed = 0;
 
     public static void main(String[] args) {
+        CreativeModeTests.runAll((name, check) -> run(name, check::run));
+        RainAudioTests.runAll((name, check) -> run(name, check::run));
+        RoomAcousticsTests.runAll((name, check) -> run(name, check::run));
+        PlayerAnimationTests.runAll((name, check) -> run(name, check::run));
+        MobAnimationTests.runAll((name, check) -> run(name, check::run));
         run("optimization invariants", OptimizationTests::run);
         run("biome assets, sparse structures, seams and falling-block conservation", WorldGenerationTests::run);
         run("a stale mesh never overwrites a fresher one", TestMain::testMeshVersionRejectsStale);
@@ -1360,14 +1365,18 @@ public final class TestMain {
     }
 
     /**
-     * Замкнутость должна расти от поля к коробке. Ошибка здесь не падает и
-     * не видна — она просто даёт эхо там, где его быть не должно.
+     * Зонд отдаёт две величины, и они меряют разное.
+     *
+     * Замкнутость растёт от поля к стенам и дальше не растёт: коробка и зал
+     * закрыты одинаково — в обоих перекрыты все шесть направлений. Отличает
+     * их размер, и раньше это отличие уезжало в ту же одну цифру, отчего
+     * чулан выходил «гулче» зала. Ошибка здесь не падает и не видна — она
+     * просто даёт эхо там, где его быть не должно.
      */
     private static void testAcousticProbe() {
         World open = flatTestWorld();
-        float field = com.mineclone.audio.AcousticProbe.enclosure(open, 8.5f, 12.5f, 8.5f);
-        assertEq("open air has exactly no cave send", 0f, field);
-        assertTrue("an open field barely echoes (" + field + ")", field < 0.45f);
+        var field = com.mineclone.audio.AcousticProbe.room(open, 8.5f, 12.5f, 8.5f);
+        assertEq("open air has exactly no cave send", 0f, field.closed());
 
         // Каменная коробка 5x5x5 вокруг головы.
         World box = flatTestWorld();
@@ -1377,12 +1386,12 @@ public final class TestMain {
                     boolean shell = x == 6 || x == 10 || y == 11 || y == 15 || z == 6 || z == 10;
                     box.setBlock(x, y, z, shell ? BlockType.STONE : BlockType.AIR);
                 }
-        float room = com.mineclone.audio.AcousticProbe.enclosure(box, 8.5f, 13.5f, 8.5f);
-        assertTrue("a tight room echoes hard (" + room + ")", room > 0.8f);
-        assertTrue("and much more than a field", room > field + 0.35f);
+        var room = com.mineclone.audio.AcousticProbe.room(box, 8.5f, 13.5f, 8.5f);
+        assertTrue("a tight room is fully enclosed (" + room.closed() + ")", room.closed() > 0.8f);
+        assertTrue("and much more than a field", room.closed() > field.closed() + 0.35f);
 
-        // Зал из тех же шести стен, но вчетверо шире, звучит иначе коробки:
-        // перекрыто то же самое, а пробег длиннее.
+        // Зал из тех же шести стен, но вчетверо шире. Перекрыто то же самое,
+        // а пробег длиннее — значит замкнутость та же, а размер больше.
         World hall = flatTestWorld();
         for (int x = -4; x <= 20; x++)
             for (int y = 11; y <= 28; y++)
@@ -1393,9 +1402,13 @@ public final class TestMain {
                     else
                         hall.setBlock(x, y, z, BlockType.AIR);
                 }
-        float big = com.mineclone.audio.AcousticProbe.enclosure(hall, 8.5f, 19.5f, 8.5f);
-        assertTrue("a hall is enclosed (" + big + ")", big > 0.4f);
-        assertTrue("but less tight than a closet (" + big + " < " + room + ")", big < room);
+        var big = com.mineclone.audio.AcousticProbe.room(hall, 8.5f, 19.5f, 8.5f);
+        assertTrue("a hall is enclosed too (" + big.closed() + ")", big.closed() >= room.closed());
+        assertTrue("but far roomier than a closet (" + big.size() + " > " + room.size() + ")",
+                big.size() > room.size());
+        assertTrue("so it rings longer, not shorter",
+                com.mineclone.audio.RoomAcoustics.decayTime(big.size())
+                        > com.mineclone.audio.RoomAcoustics.decayTime(room.size()));
 
         // Отсутствие мира не должно ронять замер.
         assertEq("no world means no echo", 0f,

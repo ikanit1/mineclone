@@ -118,6 +118,7 @@ public class Game {
     private boolean aimingAtMob;
     /** Размытый кадр под стеклянными панелями. */
     private Backdrop backdrop;
+    private com.mineclone.render.MenuDissolve menuDissolve;
     /** 3D-обломки разбитых блоков. */
     private final Debris debris = new Debris(0xDEB815L);
     private DebrisRenderer debrisRenderer;
@@ -204,12 +205,16 @@ public class Game {
 
     /** Расписание фоновой атмосферы: пещера, дождь, гром, вода. */
     private com.mineclone.audio.AmbientSound ambient;
+    private com.mineclone.audio.RainAmbience rainAmbience;
     /** В каком радиусе ищется точка, откуда «донёсся» звук пещеры. */
     private static final int CAVE_SOUND_RADIUS = 14;
     /** Как часто перезамеряется замкнутость для эха. */
     private static final float REVERB_INTERVAL = 0.5f;
     private float reverbTimer;
+    /** Сглаженная замкнутость: сколько звука возвращается. */
     private float enclosure;
+    /** Сглаженный размер помещения в блоках: как долго звук затухает. */
+    private float roomSize;
 
     /** Тайл отпечатка в атласе. */
     private static final int FOOTPRINT_TILE = 75;
@@ -903,6 +908,9 @@ public class Game {
         // фоне ещё до того, как их попросят. Первый запрос нераскодированного
         // звука молчит, и заметно это только на редком звуке — например на
         // подводном фоне, который сюда намеренно не попал.
+        // Weather is listener-relative: preload the same buffers that playback requests.
+        sound.preload(sounds.ambientRain(), false);
+        sound.preload(sounds.ambientThunder(), false);
         sound.preload(sounds.warmupPaths(), true);
         sound.preload(sounds.lavaAmbient(), true);
         sound.preload(sounds.lavaPop(), true);
@@ -927,10 +935,12 @@ public class Game {
         decals = new DecalRenderer();
         precipitation = new PrecipitationRenderer();
         backdrop = new Backdrop();
+        menuDissolve = new com.mineclone.render.MenuDissolve();
         debrisRenderer = new DebrisRenderer();
         itemRenderer = new ItemRenderer();
         fallingRenderer = new FallingBlockRenderer();
         ambient = new com.mineclone.audio.AmbientSound(new java.util.Random());
+        rainAmbience = new com.mineclone.audio.RainAmbience(sound, sounds.ambientRain());
         hud = new Hud(font, smallFont, text, ui, atlas);
         menuTheme = new MenuTheme(ui, text, font, smallFont, atlas);
         menuTheme.setSounds(menuSounds());
@@ -1188,6 +1198,7 @@ public class Game {
         lastHeldBlock = currentBlock();
         player.flying = false;
         player.flySpeed = Player.FLY_SPEED;
+        setGameMode(gameMode);
 
         mobs.clear();
         playerStructures.clear();
@@ -1251,6 +1262,7 @@ public class Game {
         mobSpawner = null;
         debris.clear();
         sound.stopAllLoops();
+        if (rainAmbience != null) rainAmbience.reset();
         waterFlowSoundPosition = null;
         waterFlowProbeTimer = 0f;
         voxelBounceProbeTimer = 0f;
@@ -1297,6 +1309,9 @@ public class Game {
             input.grabCursor(true);
             menus.clear();
             loadingScreen = null;
+            // Фон меню больше не обновляется — пусть и не занимает память:
+            // предзагруженный следующий пролёт в партии не нужен никому.
+            menuBackground.trim();
         }
     }
 
@@ -1342,6 +1357,7 @@ public class Game {
                 input.grabCursor(true);
             }
             updateHeldItem(dt);
+            player.setGameMode(gameMode);
             player.update(dt, world, input, false);
             wasInWater = player.inWater;
             updateFootsteps();
@@ -1385,6 +1401,7 @@ public class Game {
             input.grabCursor(false);
             consoleLine.setLength(0);
             input.pollChars(); // discard 't'
+            player.setGameMode(gameMode);
             player.update(dt, world, input, false);
             updateActiveWorld(dt);
             updateMobs(dt);
@@ -1399,6 +1416,7 @@ public class Game {
         // В фоторежиме игрок заморожен: управление уходит свободной камере,
         // и пропускать его сюда значило бы двигать заодно и его.
         long playerProbe = System.nanoTime();
+        player.setGameMode(gameMode);
         player.update(dt, world, input, !photoMode, mouseSensitivity, invertMouseY);
         playerProbe = System.nanoTime() - playerProbe;
         if (player.justJumped) {
@@ -1892,6 +1910,7 @@ public class Game {
             return;
         gameTime += dt * TIME_SCALE;
         daylight = computeDaylight();
+        player.setGameMode(gameMode);
         player.update(dt, world, input, false);
         wasInWater = player.inWater;
         updateActiveWorld(dt);
@@ -1912,6 +1931,7 @@ public class Game {
         }
         activeWindow.tick(uiClock);
         updateHeldItem(dt);
+        player.setGameMode(gameMode);
         player.update(dt, world, input, false);
         wasInWater = player.inWater;
         updateFootsteps();
@@ -2302,6 +2322,8 @@ public class Game {
     private Raycaster.Hit lastHit = null;
     private static final int NO_BREAK = Integer.MIN_VALUE;
     private int breakX = NO_BREAK, breakY = NO_BREAK, breakZ = NO_BREAK;
+    private final InteractionRepeat creativeBreakRepeat = new InteractionRepeat();
+    private final InteractionRepeat placeRepeat = new InteractionRepeat();
     private float breakProgress = 0f;
     private float breakDigTimer = 0f;
     private BlockBreakOverlay breakOverlay;
@@ -2325,6 +2347,13 @@ public class Game {
         Vector3f origin = new Vector3f(player.camera.position);
         Vector3f dir = player.camera.forward();
         lastHit = Raycaster.cast(world, origin, dir, 6f);
+        boolean creative = gameMode == com.mineclone.world.GameMode.CREATIVE;
+        boolean breakNow = creativeBreakRepeat.update(dt,
+                input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT),
+                input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT), creative);
+        boolean placeNow = placeRepeat.update(dt,
+                input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT),
+                input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_RIGHT), true);
 
         // Моб под прицелом проверяется ДО работы с блоками: пока он на линии
         // взгляда и ближе блока, ломание не идёт вообще — не только в кадре
@@ -2390,10 +2419,10 @@ public class Game {
         // --- Left mouse: break ---
         if (aimedMob != null) {
             resetBreakState();
-        } else if (instantBreak) {
-            if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
+        } else if (creative || instantBreak) {
+            if (breakNow) {
                 BlockType target = world.getBlock(lastHit.x, lastHit.y, lastHit.z);
-                if (target.hardness > 0f && target.hardness < Float.MAX_VALUE) {
+                if (gameMode.canBreak(target)) {
                     startHandSwing();
                     executeBlockBreak(lastHit.x, lastHit.y, lastHit.z, target);
                 }
@@ -2401,7 +2430,7 @@ public class Game {
             resetBreakState();
         } else if (input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
             BlockType target = world.getBlock(lastHit.x, lastHit.y, lastHit.z);
-            if (target.hardness > 0f && target.hardness < Float.MAX_VALUE) {
+            if (gameMode.canBreak(target)) {
                 if (breakX == lastHit.x && breakY == lastHit.y && breakZ == lastHit.z) {
                     // Accumulate progress on the same block
                     breakProgress += dt * miningSpeed(target) / target.hardness;
@@ -2430,27 +2459,32 @@ public class Game {
             resetBreakState();
         }
 
-        // --- Right mouse: place / interact (unchanged) ---
-        if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT)) {
+        // Repeated placement; Shift lets builders place against interactive blocks.
+        if (placeNow) {
+            boolean interact = !input.down(KeyBindings.Action.DESCEND);
             startHandSwing();
             BlockType target = world.getBlock(lastHit.x, lastHit.y, lastHit.z);
-            if (target == BlockType.CHEST) {
+            if (interact && !input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT)
+                    && (target == BlockType.CHEST || target == BlockType.FURNACE
+                    || target == BlockType.CRAFTING_TABLE || target == BlockType.BEDROLL
+                    || target == BlockType.DOOR_CLOSED || target == BlockType.DOOR_OPEN)) return;
+            if (interact && target == BlockType.CHEST) {
                 openChest(lastHit.x, lastHit.y, lastHit.z);
                 return;
             }
-            if (target == BlockType.FURNACE) {
+            if (interact && target == BlockType.FURNACE) {
                 openFurnace(lastHit.x, lastHit.y, lastHit.z);
                 return;
             }
-            if (target == BlockType.CRAFTING_TABLE) {
+            if (interact && target == BlockType.CRAFTING_TABLE) {
                 openCraftingTable(lastHit.x, lastHit.y, lastHit.z);
                 return;
             }
-            if (target == BlockType.BEDROLL) {
+            if (interact && target == BlockType.BEDROLL) {
                 trySleep(lastHit.x, lastHit.y, lastHit.z);
                 return;
             }
-            if (target == BlockType.DOOR_CLOSED || target == BlockType.DOOR_OPEN) {
+            if (interact && (target == BlockType.DOOR_CLOSED || target == BlockType.DOOR_OPEN)) {
                 byte m = world.getBlockMeta(lastHit.x, lastHit.y, lastHit.z);
                 BlockType next = (target == BlockType.DOOR_CLOSED) ? BlockType.DOOR_OPEN : BlockType.DOOR_CLOSED;
                 world.setBlock(lastHit.x, lastHit.y, lastHit.z, next, m);
@@ -2470,6 +2504,11 @@ public class Game {
                 if (py < 0 || py >= Chunk.SIZE_Y
                         || world.getChunkIfExists(Math.floorDiv(px, Chunk.SIZE_X),
                                 Math.floorDiv(pz, Chunk.SIZE_Z)) == null)
+                    return;
+                BlockType existing = world.getBlock(px, py, pz);
+                if (existing != BlockType.AIR && existing != BlockType.WATER
+                        && existing != BlockType.WATER_FLOW && existing != BlockType.LAVA
+                        && existing != BlockType.SNOW_LAYER && existing != BlockType.FIRE)
                     return;
                 if (!playerOccupies(px, py, pz)) {
                     BlockType placing = currentBlock();
@@ -2994,6 +3033,7 @@ public class Game {
         int ey = (int) Math.floor(player.camera.position.y);
         int ez = (int) Math.floor(player.camera.position.z);
         int skyLight = world.getSkyLight(ex, ey, ez);
+        rainAmbience.update(dt, atmosphere.rain(), skyLight, player.eyeInWater);
         boolean dark = skyLight <= 3
                 && world.getBlockLightWorld(ex, ey, ez) <= 7;
         boolean outdoors = com.mineclone.audio.AcousticProbe.freeRun(
@@ -3008,13 +3048,22 @@ public class Game {
         reverbTimer -= dt;
         if (reverbTimer <= 0f) {
             reverbTimer = REVERB_INTERVAL;
-            float target = outdoors ? 0f : com.mineclone.audio.AcousticProbe.enclosure(world,
-                    player.camera.position.x, player.camera.position.y, player.camera.position.z);
+            var probe = outdoors ? com.mineclone.audio.AcousticProbe.Room.OPEN
+                    : com.mineclone.audio.AcousticProbe.room(world, player.camera.position.x,
+                            player.camera.position.y, player.camera.position.z);
             // На улице send выключаем сразу: иначе длинный пещерный хвост
             // продолжает окрашивать шаги ещё несколько секунд после выхода.
             // Внутри переход по-прежнему плавный, чтобы комнаты не щёлкали.
-            enclosure = outdoors ? 0f : enclosure + (target - enclosure) * 0.5f;
-            sound.setEnclosure(enclosure);
+            // Размер ведётся своим сглаживанием: выйдя из чулана в зал, игрок
+            // слышит, как хвост удлиняется, а не как он переключается.
+            if (outdoors) {
+                enclosure = 0f;
+                roomSize = probe.size();
+            } else {
+                enclosure += (probe.closed() - enclosure) * 0.5f;
+                roomSize += (probe.size() - roomSize) * 0.5f;
+            }
+            sound.setRoom(new com.mineclone.audio.AcousticProbe.Room(enclosure, roomSize));
         }
         // Гремит только гроза, а не метель: в снег грома не бывает.
         float thunderStorm = atmosphere.storm * (1f - atmosphere.snow);
@@ -3027,8 +3076,7 @@ public class Game {
                         0.75f, 0.92f + 0.16f * (float) Math.random());
                 cueSound(spot, 0.35f, false);
             }
-            case RAIN -> sound.playOneOf(sounds.ambientRain(), 0.35f * Math.min(1f,
-                    com.mineclone.audio.AmbientSound.heardRain(atmosphere.rain(), skyLight)), 1f);
+            case RAIN -> { /* The continuous rain bed is maintained independently above. */ }
             case WIND -> sound.playOneOf(sounds.ambientWind(),
                     Math.min(0.55f, 0.12f + atmosphere.windSpeed() * 0.07f),
                     0.85f + 0.2f * (float) Math.random());
@@ -3203,7 +3251,8 @@ public class Game {
         net.noteBlockAction(target, true, x, y, z);
         // Разбитый лёд возвращается водой: иначе замёрзшее озеро превращалось
         // бы в яму, а под льдом всегда была вода.
-        world.setBlock(x, y, z, target == BlockType.ICE ? BlockType.WATER : BlockType.AIR);
+        world.setBlock(x, y, z, target == BlockType.ICE && gameMode == com.mineclone.world.GameMode.SURVIVAL
+                ? BlockType.WATER : BlockType.AIR);
         playerStructures.remove(com.mineclone.world.StructureStability.placementKey(x, y, z));
         if (gameMode == com.mineclone.world.GameMode.SURVIVAL) {
             com.mineclone.world.ItemStack drop = harvest ? blockDrop(target) : null;
@@ -3303,8 +3352,10 @@ public class Game {
                 case "/help", "/commands" -> showCommandHelp();
                 case "/speed" -> {
                     if (parts.length >= 2) {
-                        float s = Math.max(0.5f, Float.parseFloat(parts[1]));
-                        player.flying = true;
+                        float s = Float.parseFloat(parts[1]);
+                        if (!Float.isFinite(s)) throw new NumberFormatException();
+                        s = Math.max(0.5f, Math.min(64f, s));
+                        player.flying = gameMode == com.mineclone.world.GameMode.CREATIVE;
                         player.flySpeed = s;
                         showCommandToast(String.format("Fly speed: %.1f", s));
                     } else {
@@ -3329,7 +3380,11 @@ public class Game {
                     }
                 }
                 case "/spawnpoint" -> executeSpawnPointCommand(parts);
-                case "/fly" -> player.flying = !player.flying;
+                case "/fly" -> {
+                    if (gameMode == com.mineclone.world.GameMode.CREATIVE)
+                        player.updateFlightControls(0f, true, false, true);
+                    else showCommandToast("Полёт доступен в творческом режиме: /gamemode creative");
+                }
                 case "/fill" -> {
                     String blockName = parts.length >= 2 ? parts[1].toUpperCase() : "WATER";
                     int radius = parts.length >= 3 ? Integer.parseInt(parts[2]) : 4;
@@ -3355,11 +3410,11 @@ public class Game {
                 case "/gamemode", "/gm" -> {
                     if (parts.length >= 2) {
                         String m = parts[1].toLowerCase();
-                        if (m.startsWith("c")) {
-                            gameMode = com.mineclone.world.GameMode.CREATIVE;
+                        if (m.equals("creative") || m.equals("c") || m.equals("1")) {
+                            setGameMode(com.mineclone.world.GameMode.CREATIVE);
                             showCommandToast("Gamemode: Creative");
-                        } else if (m.startsWith("s")) {
-                            gameMode = com.mineclone.world.GameMode.SURVIVAL;
+                        } else if (m.equals("survival") || m.equals("s") || m.equals("0")) {
+                            setGameMode(com.mineclone.world.GameMode.SURVIVAL);
                             player.flying = false;
                             showCommandToast("Gamemode: Survival");
                         } else {
@@ -3372,6 +3427,19 @@ public class Game {
             }
         } catch (NumberFormatException e) {
             showCommandToast("Invalid number");
+        }
+    }
+
+    private void setGameMode(com.mineclone.world.GameMode mode) {
+        gameMode = mode;
+        player.setGameMode(mode);
+        resetBreakState();
+        creativeBreakRepeat.reset();
+        placeRepeat.reset();
+        if (mode == com.mineclone.world.GameMode.CREATIVE) {
+            advancedFeedback.clearEffects();
+            damageFlash = damageShake = 0f;
+            lastHealth = healthGhost = player.health;
         }
     }
 
@@ -4156,7 +4224,8 @@ public class Game {
                     bodyRotation.headYaw, bodyRotation.headPitch,
                     walkedDistance, walkAmount, handSwing, lighting,
                     world.getSkyLight(px, py, pz) / (float) Chunk.MAX_LIGHT * daylight,
-                    world.getBlockLightWorld(px, py, pz) / (float) Chunk.MAX_LIGHT);
+                    world.getBlockLightWorld(px, py, pz) / (float) Chunk.MAX_LIGHT,
+                    atlas, inventory.get(selectedSlot));
         }
         // Чужие игроки — та же модель, тот же шейдер и тот же свет, что у
         // своей: разъехаться по стилю им нечем.
@@ -4172,7 +4241,7 @@ public class Game {
                 playerRenderer.render(proj, view, rp.position, rp.bodyYaw(), rp.yaw, rp.pitch,
                         rp.walkedDistance, rp.walkAmount, rp.swing, lighting,
                         world.getSkyLight(rx, ry, rz) / (float) Chunk.MAX_LIGHT * daylight,
-                        world.getBlockLightWorld(rx, ry, rz) / (float) Chunk.MAX_LIGHT);
+                        world.getBlockLightWorld(rx, ry, rz) / (float) Chunk.MAX_LIGHT, atlas, rp.heldItem);
             }
             // Матрица кадра нужна интерфейсу: подписи над головами считаются
             // уже после композита, когда ни proj, ни view туда не доходят.
@@ -4258,7 +4327,7 @@ public class Game {
         outlineAnim.update(lastDt, state == State.PLAYING && !photoMode ? outlineTarget() : null);
         if (outlineAnim.visible())
             outline.renderBox(proj, view, outlineAnim.box(), eye, outlineAnim.alpha(),
-                    OutlineAnimator.pulse(totalTime), hdr ? 1f : 0f);
+                    hdr ? 1f : 0f);
         if (ropeRenderer != null)
             ropeRenderer.render(world, player.position, proj, view, lastDt,
                     atmosphere.windX, atmosphere.windZ, hdr ? 1f : 0f);
@@ -4865,6 +4934,7 @@ public class Game {
             shadowMap.begin(c);
             Matrix4f ls = shadowMap.matrix(c);
             shadowFrustum.set(scratchLight.set(ls));
+            atlas.bind(0); // Entity skins from the previous cascade must not replace the block atlas.
             shadowShader.bind();
             shadowShader.setInt("uAtlas", 0);
             shadowShader.setMat4("uLightSpace", ls);
@@ -4889,7 +4959,13 @@ public class Game {
             // тень под ногами — главная подсказка о том, где ты стоишь.
             playerRenderer.renderShadow(shadowMobShader, ls, player.position,
                     bodyRotation.bodyYaw, bodyRotation.headYaw, bodyRotation.headPitch,
-                    walkedDistance, walkAmount, handSwing);
+                    walkedDistance, walkAmount, handSwing, atlas, inventory.get(selectedSlot));
+            for (var rp : net.players()) {
+                if (!rp.placed() || rp.isDead()) continue;
+                playerRenderer.renderShadow(shadowMobShader, ls, rp.position,
+                        rp.bodyYaw(), rp.yaw, rp.pitch, rp.walkedDistance, rp.walkAmount, rp.swing,
+                        atlas, rp.heldItem);
+            }
         }
         shadowMap.end(sw, sh);
         glPolygonOffset(0f, 0f);
@@ -4898,10 +4974,14 @@ public class Game {
     }
 
     /**
-     * Свет фона меню — из той же палитры, что игра, по времени суток фона.
-     * Теней нет: карта теней снята с игрового мира, а не с фона.
+     * Свет фона меню — из той же палитры, что игра, по времени суток кадра.
+     *
+     * <p>Дальность тумана берётся из {@link MenuShot}: именно она и есть
+     * вторая половина гарантии «без дыр» — дальше {@code FOG_END} геометрия
+     * неотличима от тумана, а купол за краем загруженного диска красится тем
+     * же цветом. В бурю дальность только уменьшается, никогда не растёт.
      */
-    private SceneLighting menuLighting(boolean hdr, SkyPalette p, float day) {
+    private SceneLighting menuLighting(boolean hdr, SkyPalette p, float day, MenuShot.Air air) {
         SceneLighting l = new SceneLighting();
         l.camPos.set(menuBackground.cameraPosition());
         l.lightDir.set(p.lightDir);
@@ -4910,10 +4990,11 @@ public class Game {
         l.groundLight.set(p.groundAmb);
         l.torchColor.set(1.55f, 0.88f, 0.42f);
         l.ambientColor.set(0.030f, 0.034f, 0.052f).mul(0.65f + 0.35f * day);
-        l.fogColor.set(p.horizon);
+        l.fogColor.set(menuFogColor(p));
         l.fogSunColor.set(p.lightCol).mul(0.22f);
-        l.fogStart = MenuBackground.RADIUS * Chunk.SIZE_X * 0.55f;
-        l.fogEnd = MenuBackground.RADIUS * Chunk.SIZE_X * 1.05f;
+        float visibility = 1f - 0.34f * air.storm() - 0.26f * Math.max(air.rain(), air.snow());
+        l.fogStart = MenuShot.FOG_START * visibility;
+        l.fogEnd = MenuShot.FOG_END;
         l.brightness = 1f;
         l.time = uiClock;
         l.linearOut = hdr ? 1f : 0f;
@@ -4923,21 +5004,96 @@ public class Game {
     }
 
     /**
-     * Живой фон меню: купол неба и светила по суткам фона, мир, вода, пост.
-     * Тем же порядком, что кадр игры, — иначе меню и игра снова выглядели бы
-     * из разных игр.
+     * Цвет дымки в меню — он же цвет низа купола.
+     *
+     * <p>Чуть глубже неба у горизонта: ровно цвет горизонта делал дальний
+     * план белёсым пятном без единого силуэта. Обе точки берут одно и то же
+     * число не для красоты, а по необходимости — за краем загруженного
+     * коридора виден купол, и он обязан совпасть с полностью затуманенной
+     * геометрией рядом.
+     */
+    private Vector3f menuFogColor(SkyPalette p) {
+        return new Vector3f(p.horizon).mul(0.90f);
+    }
+
+    /**
+     * Карта теней для фона меню. Длинная тень золотого часа и есть половина
+     * «красиво», а платить за неё кадру меню нечем: ни мобов, ни симуляции,
+     * ни стриминга вокруг игрока здесь нет.
+     */
+    private void menuShadows(SkyPalette p, int sw, int sh, SceneLighting l) {
+        float strength = SunLight.shadowStrength(menuBackground.gameTime())
+                * (1f - menuBackground.cloudiness() * 0.7f) * p.moonK;
+        if (!shadowsActive() || strength <= 0.002f || !menuBackground.hasScene())
+            return;
+        int size = shadowMap.getSize();
+        l.shadowTaps = gfxOpts.shadows() >= 3 ? 2 : 1;
+        l.shadowStrength = strength;
+        l.shadowTexel = 1f / size;
+        l.shadowSplit = SunLight.CASCADE_SPLIT;
+        l.shadowFar = Math.min(SunLight.CASCADE1_RADIUS * 0.85f, l.fogEnd);
+        l.shadowBias0 = SunLight.texelWorldSize(SunLight.CASCADE0_RADIUS, size) * 2.2f;
+        l.shadowBias1 = SunLight.texelWorldSize(SunLight.CASCADE1_RADIUS, size) * 2.2f;
+
+        shadowMap.update(menuBackground.cameraPosition(), menuBackground.cameraForward(), p.lightDir);
+        boolean any = false;
+        for (int c = 0; c < ShadowMap.CASCADES; c++)
+            any |= shadowMap.needsRebuild(c);
+        if (any) {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            glEnable(GL_POLYGON_OFFSET_FILL);
+            glPolygonOffset(2.2f, 4.0f);
+            glDisable(GL_CULL_FACE);
+            for (int c = 0; c < ShadowMap.CASCADES; c++) {
+                if (!shadowMap.needsRebuild(c))
+                    continue;
+                shadowMap.begin(c);
+                Matrix4f ls = shadowMap.matrix(c);
+                shadowFrustum.set(scratchLight.set(ls));
+                atlas.bind(0);
+                shadowShader.bind();
+                shadowShader.setInt("uAtlas", 0);
+                shadowShader.setMat4("uLightSpace", ls);
+                shadowShader.setFloat("uTime", uiClock);
+                applyWindSway(shadowShader, false);
+                menuBackground.renderDepth(shadowShader, shadowFrustum);
+                shadowShader.unbind();
+            }
+            shadowMap.end(sw, sh);
+            glPolygonOffset(0f, 0f);
+            glDisable(GL_POLYGON_OFFSET_FILL);
+            glEnable(GL_CULL_FACE);
+        }
+        // Матрицы берём ПОСЛЕ прохода: у непереснятого каскада она осталась
+        // прежней, и сэмплить надо именно ею.
+        l.shadowMat0.set(shadowMap.matrix(0));
+        l.shadowMat1.set(shadowMap.matrix(1));
+        shadowMap.endFrame();
+        l.shadows = true;
+    }
+
+    /**
+     * Кинематограф меню: купол неба и светила по времени кадра, пейзаж, вода,
+     * осадки, пост и кроссфейд. Тем же порядком, что кадр игры, — иначе меню
+     * и игра снова выглядели бы из разных игр.
      */
     private void renderMenu(boolean hdr, int sw, int sh) {
         // Без этой строки весь кадр меню — сборка фона, пост и интерфейс —
         // падал в фазу UPDATE, и разбивка F3 в меню показывала одно число.
         profiler.begin(FrameProfiler.Phase.WORLD, GLFW.glfwGetTime());
         MenuBackground bg = menuBackground;
+        MenuShot.Air air = bg.air();
         float mt = bg.gameTime(), day = bg.daylight(), clouds = bg.cloudiness();
         SkyPalette p = menuPalette;
         p.compute(mt, day, clouds, bg.storm(), bg.moonlight(), bg.aurora());
-        Matrix4f proj = bg.projection(window.getAspect(), fovDegrees);
+        Matrix4f proj = bg.projection(window.getAspect());
         Matrix4f view = bg.view();
         Vector3f eye = bg.cameraPosition();
+
+        SceneLighting lighting = menuLighting(hdr, p, day, air);
+        profiler.begin(FrameProfiler.Phase.SHADOW, GLFW.glfwGetTime());
+        menuShadows(p, sw, sh, lighting);
+        profiler.begin(FrameProfiler.Phase.WORLD, GLFW.glfwGetTime());
 
         if (hdr) {
             post.begin(p.skyLin.x, p.skyLin.y, p.skyLin.z);
@@ -4945,16 +5101,22 @@ public class Game {
             glClearColor(p.skySrgb.x, p.skySrgb.y, p.skySrgb.z, 1f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         }
+        if (shadowMap != null)
+            shadowMap.bind();
         SkyRenderer.Dome dome = skyDome;
         dome.zenith.set(p.zenith);
         dome.horizon.set(p.horizon);
-        dome.ground.set(p.ground);
+        // Низ купола красится цветом тумана, а не землёй: там, где кончается
+        // загруженный коридор, видно именно купол, и он обязан быть
+        // неотличим от полностью затуманенной геометрии рядом. Это и есть
+        // причина, по которой край мира в меню не найти глазами.
+        dome.ground.set(menuFogColor(p));
         dome.sunGlow.set(p.sunGlow);
         dome.lightDir.set(p.lightDir);
         dome.cloudiness = clouds;
         dome.aurora = bg.aurora();
         dome.time = uiClock;
-        dome.haze.set(p.horizon);
+        dome.haze.set(menuFogColor(p));
         dome.hazeMix = 0f;
         dome.linearOut = hdr ? 1f : 0f;
         skyRenderer.renderDome(new Matrix4f(proj).mul(view).invert(), dome);
@@ -4964,7 +5126,20 @@ public class Game {
 
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         glDisable(GL_BLEND);
-        bg.renderWorld(chunkShader, waterShader, atlas, proj, view, menuLighting(hdr, p, day));
+        bg.renderWorld(chunkShader, waterShader, atlas, proj, view, lighting);
+
+        // Осадки — после воды, как в игре: ливень над озером ложится поверх
+        // его глади.
+        float wscale = weatherScale();
+        if (precipitation != null && wscale > 0f && bg.hasScene()
+                && (air.snow() > 0.01f || air.rain() > 0.01f)) {
+            precipitation.updateField(bg.world(), eye);
+            Vector3f flake = PrecipitationRenderer.flakeColor(p.skyAmb, p.lightCol, menuFogColor(p));
+            Vector3f drop = PrecipitationRenderer.dropColor(flake);
+            precipitation.render(proj, view, eye, uiClock, air.windX(), air.windZ(), bg.drift(),
+                    air.snow() * wscale, air.rain() * wscale, air.storm(), flake, drop,
+                    hdr ? 1f : 0f);
+        }
 
         if (hdr) {
             profiler.begin(FrameProfiler.Phase.POST, GLFW.glfwGetTime());
@@ -4976,22 +5151,57 @@ public class Game {
             Vector3f rc = new Vector3f(p.lightCol);
             float m = Math.max(0.001f, Math.max(rc.x, Math.max(rc.y, rc.z)));
             postSettings.rayColor.set(rc.mul(1f / m));
-            postSettings.exposure = 0.97f;
+            postSettings.exposure = air.exposure();
             postSettings.vignette = 0.22f;
             postSettings.underwater = 0f;
             postSettings.night = 1f - Math.min(1f, day * 3.2f);
-            postSettings.saturation = 1.02f;
-            // Настройки общие с игрой: туман, иней и размытие оттуда в меню не
-            // должны доезжать.
-            postSettings.fogDensity = 0f;
-            postSettings.fogHaze = 0f;
-            postSettings.dofStrength = 0f;
+            postSettings.saturation = air.saturation();
+            // Низовая мгла кадра — та же программа, что в игре, только
+            // плотность назначает кадр, а не время и биом под игроком.
+            boolean volumetric = gfxOpts.volumetricFog() && bg.hasScene();
+            postSettings.fogDensity = volumetric ? air.mist() : 0f;
+            postSettings.fogHaze = volumetric ? air.haze() : 0f;
+            postSettings.fogTop = World.SEA_LEVEL + 22f;
+            postSettings.fogDepth = 15f;
+            postSettings.fogMaxDist = MenuShot.FOG_END;
+            postSettings.fogTime = uiClock;
+            postSettings.fogDriftX = bg.drift().x;
+            postSettings.fogDriftZ = bg.drift().z;
+            postSettings.fogLight.set(p.lightCol).mul(0.7f);
+            postSettings.fogAmbient.set(p.skyAmb).mul(0.6f);
+            postSettings.camPos.set(eye);
+            postSettings.lightDir.set(p.lightDir);
+            postSettings.invViewProj.set(proj).mul(view).invert();
+            if (lighting.shadows && shadowMap != null) {
+                postSettings.shadowMat.set(shadowMap.matrix(1));
+                postSettings.fogShadowTex = shadowMap.texture(1);
+            } else {
+                postSettings.fogShadowTex = 0;
+            }
+            postSettings.near = 0.1f;
+            postSettings.far = 600f;
+            // Глубина резкости кадра: дальний план мягче ближнего. Стоит она
+            // только там, где включена, — при нулевой силе композит не делает
+            // ни одной лишней выборки.
+            postSettings.dofStrength = gfxOpts.shadows() > 0 ? air.dofStrength() : 0f;
+            postSettings.dofFocus = air.dofFocus();
+            postSettings.dofRange = air.dofRange();
             postSettings.frost = 0f;
             postSettings.poison = 0f;
             postSettings.stun = 0f;
             postSettings.damage = 0f;
             post.resolve();
             post.render(postSettings, sunScreenUv(proj, view, eye, p.sunDir, day, false));
+        }
+        // Кроссфейд: уходящий кадр держится поверх нового, пока не догорит.
+        // Снимается он заранее — на тех кадрах, когда смена может случиться
+        // в любой момент.
+        if (menuDissolve != null) {
+            float d = bg.dissolve();
+            if (d > 0f)
+                menuDissolve.render(d);
+            else if (bg.armDissolve())
+                menuDissolve.capture(sw, sh);
         }
         // Меню — такое же стекло, как HUD: размытый фон снимается до интерфейса.
         profiler.begin(FrameProfiler.Phase.HUD, GLFW.glfwGetTime());
@@ -5045,8 +5255,10 @@ public class Game {
                 // а верх экрана там занят заголовком панели.
                 hud.drawCompass(vw, vh, player.camera.yaw, gameTime);
                 hud.drawHotbar(vw, vh, inventory, selectedSlot, slotAnim);
-                hud.drawHearts(vw, vh, player.health, healthGhost);
-                hud.drawHunger(vw, vh, player.hunger);
+                if (gameMode == com.mineclone.world.GameMode.SURVIVAL) {
+                    hud.drawHearts(vw, vh, player.health, healthGhost);
+                    hud.drawHunger(vw, vh, player.hunger);
+                }
                 if (!showDebug && gameMode == com.mineclone.world.GameMode.SURVIVAL)
                     hud.drawSurvivalObjective(vw, vh, survivalProgress.objective(inventory));
                 // Отладочный экран уже показывает и то и другое — две копии
@@ -5074,13 +5286,17 @@ public class Game {
             }
             case PAUSED -> {
                 hud.drawHotbar(vw, vh, inventory, selectedSlot, slotAnim);
-                hud.drawHearts(vw, vh, player.health, healthGhost);
-                hud.drawHunger(vw, vh, player.hunger);
+                if (gameMode == com.mineclone.world.GameMode.SURVIVAL) {
+                    hud.drawHearts(vw, vh, player.health, healthGhost);
+                    hud.drawHunger(vw, vh, player.hunger);
+                }
                 handleMenuAction(drawMenus(vw, vh, scale));
             }
             case WINDOW -> {
-                hud.drawHearts(vw, vh, player.health, healthGhost);
-                hud.drawHunger(vw, vh, player.hunger);
+                if (gameMode == com.mineclone.world.GameMode.SURVIVAL) {
+                    hud.drawHearts(vw, vh, player.health, healthGhost);
+                    hud.drawHunger(vw, vh, player.hunger);
+                }
                 // Хотбар не рисуется: он внутри окна, и вторая копия внизу
                 // экрана спорила бы с той, по которой игрок кликает.
                 MenuAction wa = drawWindows(vw, vh, scale);
@@ -5090,8 +5306,10 @@ public class Game {
                 }
             }
             case DEAD -> {
-                hud.drawHearts(vw, vh, player.health, healthGhost);
-                hud.drawHunger(vw, vh, player.hunger);
+                if (gameMode == com.mineclone.world.GameMode.SURVIVAL) {
+                    hud.drawHearts(vw, vh, player.health, healthGhost);
+                    hud.drawHunger(vw, vh, player.hunger);
+                }
                 handleMenuAction(drawMenus(vw, vh, scale));
             }
         }
@@ -5348,6 +5566,32 @@ public class Game {
         }
 
         @Override
+        public void menuShot(int index, float phase) {
+            menuBackground.previewShot(index, phase);
+        }
+
+        @Override
+        public int menuShotIndex() {
+            return menuBackground.shotIndex();
+        }
+
+        @Override
+        public int menuMissingChunks() {
+            return menuBackground.missingChunks();
+        }
+
+        @Override
+        public int menuShotCount() {
+            var list = menuBackground.shots();
+            return list == null ? 0 : list.size();
+        }
+
+        @Override
+        public float menuDissolve() {
+            return menuBackground.dissolve();
+        }
+
+        @Override
         public void teleport(float x, float y, float z) {
             player.position.set(x, y, z);
             bodyRotation.snap(player.camera.yaw, player.camera.pitch);
@@ -5381,6 +5625,47 @@ public class Game {
         @Override
         public boolean netIsHost() {
             return net.isHost();
+        }
+
+        @Override
+        public String netRoomName() {
+            return net.roomName();
+        }
+
+        @Override
+        public void spawnAnimationMobs() {
+            for (var type : com.mineclone.world.entity.MobType.values()) {
+                float x = worldSpawn.x + (type.ordinal() - 3.5f) * 3f;
+                float z = worldSpawn.z + 8;
+                int y = Chunk.SIZE_Y - 2;
+                while (y > 1 && !world.getBlock((int) Math.floor(x), y - 1, (int) Math.floor(z)).solid) y--;
+                mobs.add(new com.mineclone.world.entity.Mob(type, x, y + 0.05f, z,
+                        new java.util.Random(type.ordinal())));
+            }
+        }
+
+        @Override
+        public void equipItem(String id) {
+            inventory.set(selectedSlot, com.mineclone.world.ItemStack.of(id));
+        }
+
+        @Override
+        public boolean seesHeldItem(String id) {
+            var item = com.mineclone.item.Items.get().get(id);
+            for (var rp : net.players())
+                if (rp.placed() && rp.heldItem != null && rp.heldItem.item == item) return true;
+            return false;
+        }
+
+        @Override
+        public int mobTypeMask() {
+            int mask = 0;
+            for (var m : mobs) {
+                boolean finite = true;
+                for (var matrix : com.mineclone.render.MobRenderer.pose(m)) finite &= matrix.isFinite();
+                if (finite) mask |= 1 << m.type.ordinal();
+            }
+            return mask;
         }
 
         @Override
@@ -5562,6 +5847,11 @@ public class Game {
                 if (player.isDead())
                     f |= com.mineclone.net.RemotePlayer.F_DEAD;
                 return f;
+            }
+
+            @Override
+            public com.mineclone.world.ItemStack playerHeldItem() {
+                return inventory.get(selectedSlot);
             }
 
             @Override
@@ -5782,6 +6072,7 @@ public class Game {
         player.lastFallDistance = 0f;
         player.flying = false;
         player.flySpeed = Player.FLY_SPEED;
+        setGameMode(gameMode);
         selectedSlot = 0;
         slotAnim = 0f;
         lastHeldBlock = currentBlock();
@@ -6074,6 +6365,8 @@ public class Game {
         if (loader != null)
             loader.shutdown();
         menuBackground.destroy();
+        if (menuDissolve != null)
+            menuDissolve.destroy();
         // Поток музыки удаляет свои источники сам — до того, как умрёт контекст.
         if (musicPlayer != null)
             musicPlayer.close();

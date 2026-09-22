@@ -32,6 +32,7 @@ public class SoundEngine {
 
     private static final class LoopingSource {
         final int source;
+        float volume;
 
         LoopingSource(int source) {
             this.source = source;
@@ -55,6 +56,8 @@ public class SoundEngine {
     private int reverbEffect = -1;
     /** Текущая влажность 0..1 — сколько сигнала уходит в эффект. */
     private float reverbWet;
+    /** Текущий размер помещения в блоках: от него живёт время затухания. */
+    private float reverbSize;
     /**
      * Фильтр нижних частот для звуков из-за стен. Один объект на все
      * источники: при подключении к источнику OpenAL копирует его параметры,
@@ -95,8 +98,15 @@ public class SoundEngine {
     private float effectsVolume = 1.0f;
     private float underwaterMix;
 
-    public void setMasterVolume(float v) { masterVolume = Math.max(0f, Math.min(1f, v)); }
-    public void setEffectsVolume(float v) { effectsVolume = Math.max(0f, Math.min(1f, v)); }
+    public void setMasterVolume(float v) { masterVolume = Math.max(0f, Math.min(1f, v)); updateLoopGains(); }
+    public void setEffectsVolume(float v) { effectsVolume = Math.max(0f, Math.min(1f, v)); updateLoopGains(); }
+
+    /** Sliders also affect persistent ambience while the game is paused. */
+    private void updateLoopGains() {
+        if (!ok) return;
+        for (LoopingSource loop : loopingSources.values())
+            AL10.alSourcef(loop.source, AL10.AL_GAIN, loop.volume * masterVolume * effectsVolume);
+    }
 
     public void init() {
         try {
@@ -138,7 +148,7 @@ public class SoundEngine {
             EXTEfx.alEffecti(reverbEffect, EXTEfx.AL_EFFECT_TYPE, EXTEfx.AL_EFFECT_REVERB);
             if (AL10.alGetError() != AL10.AL_NO_ERROR)
                 throw new IllegalStateException("reverb effect unsupported");
-            applyReverbShape(0f);
+            applyReverbShape(0f, 0f);
             EXTEfx.alAuxiliaryEffectSloti(effectSlot, EXTEfx.AL_EFFECTSLOT_EFFECT, reverbEffect);
             EXTEfx.alAuxiliaryEffectSlotf(effectSlot, EXTEfx.AL_EFFECTSLOT_GAIN, 0f);
             efx = AL10.alGetError() == AL10.AL_NO_ERROR;
@@ -163,34 +173,41 @@ public class SoundEngine {
     }
 
     /**
-     * Настраивает эхо под замкнутость 0..1.
+     * Настраивает эхо под замеренное пространство.
      *
      * Один непрерывный переход вместо набора пресетов: между полем и пещерой
      * игрок ходит плавно, и переключение «комната → пещера» ступенькой
      * слышно как щелчок.
+     *
+     * Замкнутость и размер приходят порознь и порознь же расходятся по
+     * параметрам — во что именно, решает {@link RoomAcoustics}.
      */
-    public void setEnclosure(float enclosure) {
+    public void setRoom(AcousticProbe.Room room) {
         if (!efx)
             return;
-        float e = Math.max(0f, Math.min(1f, enclosure));
-        if (Math.abs(e - reverbWet) < 0.01f)
+        float closed = Math.max(0f, Math.min(1f, room.closed()));
+        if (Math.abs(closed - reverbWet) < 0.01f && Math.abs(room.size() - reverbSize) < 0.5f)
             return;
-        reverbWet = e;
-        applyReverbShape(e);
+        reverbWet = closed;
+        reverbSize = room.size();
+        applyReverbShape(closed, room.size());
         EXTEfx.alAuxiliaryEffectSloti(effectSlot, EXTEfx.AL_EFFECTSLOT_EFFECT, reverbEffect);
-        EXTEfx.alAuxiliaryEffectSlotf(effectSlot, EXTEfx.AL_EFFECTSLOT_GAIN, e * 0.9f);
+        EXTEfx.alAuxiliaryEffectSlotf(effectSlot, EXTEfx.AL_EFFECTSLOT_GAIN,
+                RoomAcoustics.sendGain(closed));
     }
 
-    private void applyReverbShape(float e) {
-        // Время затухания от 0.4 с (комната) до 4.2 с (каменный зал).
-        EXTEfx.alEffectf(reverbEffect, EXTEfx.AL_REVERB_DECAY_TIME, 0.4f + e * 3.8f);
-        EXTEfx.alEffectf(reverbEffect, EXTEfx.AL_REVERB_DENSITY, 0.55f + e * 0.45f);
-        EXTEfx.alEffectf(reverbEffect, EXTEfx.AL_REVERB_DIFFUSION, 0.7f + e * 0.3f);
-        EXTEfx.alEffectf(reverbEffect, EXTEfx.AL_REVERB_GAIN, 0.22f + e * 0.30f);
-        // Камень глушит верх: чем теснее, тем глуше хвост.
-        EXTEfx.alEffectf(reverbEffect, EXTEfx.AL_REVERB_GAINHF, 0.92f - e * 0.55f);
-        EXTEfx.alEffectf(reverbEffect, EXTEfx.AL_REVERB_REFLECTIONS_DELAY, 0.007f + e * 0.02f);
-        EXTEfx.alEffectf(reverbEffect, EXTEfx.AL_REVERB_LATE_REVERB_DELAY, 0.011f + e * 0.05f);
+    private void applyReverbShape(float closed, float size) {
+        // Хвост живёт на размере помещения: 0.25 с в закутке, 3.75 с в пещере.
+        EXTEfx.alEffectf(reverbEffect, EXTEfx.AL_REVERB_DECAY_TIME, RoomAcoustics.decayTime(size));
+        EXTEfx.alEffectf(reverbEffect, EXTEfx.AL_REVERB_GAIN, RoomAcoustics.wetGain(closed));
+        // Большой каменный объём глушит верх; тесная комната — почти нет.
+        EXTEfx.alEffectf(reverbEffect, EXTEfx.AL_REVERB_GAINHF, RoomAcoustics.dampHF(size));
+        EXTEfx.alEffectf(reverbEffect, EXTEfx.AL_REVERB_DENSITY, 0.55f + closed * 0.45f);
+        EXTEfx.alEffectf(reverbEffect, EXTEfx.AL_REVERB_DIFFUSION, 0.7f + closed * 0.3f);
+        // Первое отражение приходит тем позже, чем дальше стены.
+        float spread = Math.min(1f, size / AcousticProbe.MAX_DISTANCE);
+        EXTEfx.alEffectf(reverbEffect, EXTEfx.AL_REVERB_REFLECTIONS_DELAY, 0.007f + spread * 0.02f);
+        EXTEfx.alEffectf(reverbEffect, EXTEfx.AL_REVERB_LATE_REVERB_DELAY, 0.011f + spread * 0.05f);
     }
 
     /** Подключает источник к эху. Без EFX — пустышка. */
@@ -375,6 +392,7 @@ public class SoundEngine {
             loop = new LoopingSource(src);
             loopingSources.put(key, loop);
         }
+        loop.volume = volume;
         configureSpatialSource(loop.source, position, volume, pitch, muffle);
         if (AL10.alGetSourcei(loop.source, AL10.AL_SOURCE_STATE) != AL10.AL_PLAYING)
             AL10.alSourcePlay(loop.source);
@@ -400,6 +418,7 @@ public class SoundEngine {
             loop = new LoopingSource(src);
             loopingSources.put(key, loop);
         }
+        loop.volume = volume;
         int src = loop.source;
         sourceMuffle.remove(src);
         AL10.alSourcei(src, AL10.AL_SOURCE_RELATIVE, AL10.AL_TRUE);
