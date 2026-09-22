@@ -23,11 +23,10 @@ public final class MusicLibrary {
     }
 
     /**
-     * Края розданы по тону существующих треков, и это **временная
-     * раскладка**: семь треков на шесть краёв — растяжка, а не замысел. У
-     * каждого края свой трек, так что в пустыне и в тундре уже звучит
-     * по-разному, но настоящая биомная музыка начинается с отдельного трека
-     * на край. Новый файл вносится сюда строкой и ничего в коде не двигает.
+     * У каждого края свой трек, а не доля чужого: лес, зной, мороз, топь,
+     * море и пепел звучат по-своему. Новый файл вносится сюда строкой и
+     * ничего в коде не двигает — тест требует трек на каждое настроение,
+     * поэтому край без музыки уронит сборку.
      *
      * Поправки — до уровня самого тихого трека по интегральной громкости:
      * Deep Pressure −15,5 LUFS, Fading into Warmth −15,0, Svetloe Pianino
@@ -39,20 +38,37 @@ public final class MusicLibrary {
             new Entry("Svetloe Pianino", -0.6f,
                     MusicMood.MENU, MusicMood.DAY, MusicMood.BUILD, MusicMood.WOODS),
             new Entry("Warm Moog Entry", -1.7f,
-                    MusicMood.MENU, MusicMood.DAWN, MusicMood.EXPLORE, MusicMood.FLIGHT,
-                    MusicMood.ARID),
+                    MusicMood.MENU, MusicMood.DAWN, MusicMood.EXPLORE, MusicMood.FLIGHT),
             new Entry("Walking over", -0.9f,
                     MusicMood.EXPLORE, MusicMood.DAY, MusicMood.DUSK, MusicMood.WOODS),
             new Entry("Fading into Warmth", -0.5f,
-                    MusicMood.MENU, MusicMood.DUSK, MusicMood.HOME, MusicMood.BUILD,
-                    MusicMood.WETLAND),
+                    MusicMood.MENU, MusicMood.DUSK, MusicMood.HOME, MusicMood.BUILD),
             new Entry("Weightless Lullaby", -1.7f,
-                    MusicMood.MENU, MusicMood.NIGHT, MusicMood.HOME, MusicMood.FLIGHT,
-                    MusicMood.FROZEN),
+                    MusicMood.MENU, MusicMood.NIGHT, MusicMood.HOME, MusicMood.FLIGHT),
             new Entry("Nocturnal Drift", -2.4f,
-                    MusicMood.NIGHT, MusicMood.EXPLORE, MusicMood.CAVE, MusicMood.SEA),
+                    MusicMood.NIGHT, MusicMood.EXPLORE, MusicMood.CAVE),
             new Entry("Deep Pressure", 0f,
-                    MusicMood.CAVE, MusicMood.DANGER, MusicMood.ASHEN));
+                    MusicMood.CAVE, MusicMood.DANGER),
+
+            // Края получили свои треки, и прежняя растяжка снята: раздавать
+            // лесу и пустыне один и тот же трек больше не нужно.
+            new Entry("Forest Room", -0.6f,
+                    MusicMood.WOODS, MusicMood.DAY, MusicMood.BUILD),
+            new Entry("Vast Wilderness", -0.8f,
+                    MusicMood.ARID, MusicMood.EXPLORE, MusicMood.DAY),
+            new Entry("Frozen Atmosphere", -0.5f,
+                    MusicMood.FROZEN, MusicMood.NIGHT),
+            new Entry("Frozen Atmosphere (1)", -0.4f,
+                    MusicMood.FROZEN),
+            new Entry("Swamp Whispers", -1.1f,
+                    MusicMood.WETLAND, MusicMood.DUSK),
+            new Entry("Starry Night", -0.6f,
+                    MusicMood.SEA, MusicMood.NIGHT, MusicMood.HOME),
+            // Без DANGER и DAWN нарочно: эти настроения держат по одному
+            // треку, и второй кандидат делал бы «в бою играет боевое»
+            // случайностью вместо правила.
+            new Entry("Deep Echoes", -1.1f,
+                    MusicMood.ASHEN, MusicMood.CAVE));
 
     /** Настроения трека, которого нет в таблице. */
     public static final Set<MusicMood> UNKNOWN_MOODS = EnumSet.of(MusicMood.MENU, MusicMood.DAY);
