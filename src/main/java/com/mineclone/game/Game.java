@@ -1761,6 +1761,9 @@ public class Game {
         while (it.hasNext()) {
             com.mineclone.world.entity.Mob m = it.next();
             m.setPlayerTorch(torchInHand);
+            // Стрелы мобов сыплются в общий список снарядов — но только у
+            // хозяина: участник мир не симулирует и получает их готовыми.
+            m.shotSink = net.isClient() ? null : projectiles::add;
             if (!m.updateLod(world, player.position, dt, daylight, hostileEnabled)) continue;
 
             if (m.justIdleSound) {

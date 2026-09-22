@@ -54,10 +54,28 @@ public enum MobType {
      */
     public final String sayPrefix, stepPrefix;
 
+    /**
+     * Дальность стрельбы в блоках; 0 — вид дерётся только вблизи.
+     *
+     * Стрелков пока нет: единственный, скелет, придёт вместе с блоком новых
+     * врагов. Поле заведено сразу, чтобы снаряды и сеть не пришлось
+     * переделывать ради одной строки в этой таблице.
+     */
+    public final float rangedRange;
+
     MobType(float width, float height, float maxHealth, float walkSpeed, float chaseSpeed,
             boolean hostile, boolean burnsInSunlight, float maxFallSpeed, String soundDir,
             float pr, float pg, float pb, Temper temper, boolean flying,
             String sayPrefix, String stepPrefix) {
+        this(width, height, maxHealth, walkSpeed, chaseSpeed, hostile, burnsInSunlight,
+                maxFallSpeed, soundDir, pr, pg, pb, temper, flying, sayPrefix, stepPrefix, 0f);
+    }
+
+    MobType(float width, float height, float maxHealth, float walkSpeed, float chaseSpeed,
+            boolean hostile, boolean burnsInSunlight, float maxFallSpeed, String soundDir,
+            float pr, float pg, float pb, Temper temper, boolean flying,
+            String sayPrefix, String stepPrefix, float rangedRange) {
+        this.rangedRange = rangedRange;
         this.width = width;
         this.height = height;
         this.maxHealth = maxHealth;

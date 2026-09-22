@@ -12,6 +12,14 @@ import org.joml.Vector3f;
  */
 public final class MobContext {
     public World world;
+    /**
+     * Куда моб отдаёт выпущенный снаряд.
+     *
+     * Через канал, а не напрямую в список игры: моб не должен знать, кто и
+     * как хранит летящее. Пусто — стрелять некуда, и ветка стрельбы просто
+     * не срабатывает (так живут тесты поведения без мира).
+     */
+    public java.util.function.Consumer<Projectile> shots;
     public Vector3f playerPos;
     public float dt;
     public float daylight;

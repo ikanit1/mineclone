@@ -296,6 +296,13 @@ public class Mob implements Hittable {
 
     /** Контекст тика для дерева поведения — один на моба, не на кадр. */
     private final MobContext ctx = new MobContext();
+    /**
+     * Куда уходят выпущенные мобом снаряды.
+     *
+     * Ставится снаружи — моб не знает, кто и как хранит летящее, а у
+     * участника сети он и вовсе не стреляет: там симуляции нет.
+     */
+    public java.util.function.Consumer<Projectile> shotSink;
 
     /**
      * Мозг враждебного моба. Порядок веток и есть правило игры: гореть
@@ -308,6 +315,11 @@ public class Mob implements Hittable {
                               Behavior.act(Mob::runForShelter)),
             Behavior.sequence(Behavior.check(Mob::fearsLight),
                               Behavior.act(Mob::escapeLight)),
+            // Стрельба стоит ВЫШЕ погони: стрелок, дошедший до дистанции
+            // выстрела, должен стрелять, а не продолжать сближение — иначе
+            // лучник ведёт себя как медленный зомби с луком.
+            Behavior.sequence(Behavior.check(Mob::wantsShoot),
+                              Behavior.act(Mob::shootStep)),
             Behavior.sequence(Behavior.check(Mob::wantsChase),
                               Behavior.act(Mob::chaseStep)),
             Behavior.sequence(Behavior.check(Mob::hasNoiseLead),
@@ -375,6 +387,8 @@ public class Mob implements Hittable {
 
         if (attackCooldown > 0f)
             attackCooldown -= dt;
+        if (shootCooldown > 0f)
+            shootCooldown -= dt;
         if (angryTimer > 0f)
             angryTimer = Math.max(0f, angryTimer - dt);
 
@@ -404,6 +418,7 @@ public class Mob implements Hittable {
         grazeAmount += ((grazing ? 1f : 0f) - grazeAmount) * poseBlend;
 
         ctx.set(world, playerPos, dt, daylight, pdx, pdz, playerDist);
+        ctx.shots = shotSink;
         boolean retreating = type.hostile && hostileEnabled
                 && (morale == MobTactics.Morale.RETREAT || morale == MobTactics.Morale.PANIC);
         boolean sleeping = routine == MobTactics.Routine.SLEEP && !burning
@@ -768,6 +783,86 @@ public class Mob implements Hittable {
             // Уже начатую погоню видимость не обрывает: моб помнит, куда бежал.
             return c.dist <= LOSE_RANGE;
         return spots(c.world, c.dx, c.dz, c.dist, c.playerPos, c.daylight);
+    }
+
+    /** Перезарядка стрелка, секунды. */
+    public static final float SHOOT_INTERVAL = 2.2f;
+    /** Ближе этого стрелок предпочитает отойти, а не стрелять в упор. */
+    public static final float SHOOT_MIN_RANGE = 3.5f;
+    /** Начальная скорость стрелы моба. */
+    public static final float SHOOT_SPEED = 22f;
+    /** Урон стрелы моба. */
+    public static final float SHOOT_DAMAGE = 4f;
+    private float shootCooldown;
+
+
+    /**
+     * Стрелять ли сейчас: вид умеет, цель в вилке дистанций, её видно и
+     * оружие перезарядилось.
+     */
+    boolean wantsShoot(MobContext c) {
+        return type.rangedRange > 0f && c.shots != null && !dead
+                && shootCooldown <= 0f
+                && c.dist <= type.rangedRange && c.dist >= SHOOT_MIN_RANGE
+                && wantsChase(c) && canSee(c.world, c.playerPos);
+    }
+
+    /**
+     * Выстрел с упреждением по высоте.
+     *
+     * Целится не в ноги, а в грудь, и приподнимает ствол тем сильнее, чем
+     * дальше цель: стрела падает, и прямой наводкой моб мазал бы всегда.
+     */
+    Behavior.Status shootStep(MobContext c) {
+        stopMoving();
+        yaw = (float) Math.atan2(-c.dx, -c.dz);
+        shootCooldown = SHOOT_INTERVAL;
+        float ex = position.x, ey = position.y + type.height * 0.75f, ez = position.z;
+        float tx = c.playerPos.x, ty = c.playerPos.y + 1.1f, tz = c.playerPos.z;
+        org.joml.Vector3f aim = aimWithLead(ex, ey, ez, tx, ty, tz, SHOOT_SPEED);
+        if (aim == null)
+            return Behavior.Status.FAILURE;
+        Projectile shot = new Projectile("arrow", this, false, SHOOT_DAMAGE);
+        shot.position.set(ex, ey, ez);
+        shot.velocity.set(aim);
+        shot.heading.set(aim).normalize();
+        c.shots.accept(shot);
+        return Behavior.Status.RUNNING;
+    }
+
+    /**
+     * Скорость выстрела с упреждением по высоте, либо null для вырожденного
+     * случая «цель там же, где стрелок».
+     *
+     * Ствол приподнимается ровно на то, что стрела потеряет за время полёта:
+     * прямой наводкой стрелок мазал бы тем сильнее, чем дальше цель. Чистая
+     * функция без моба и мира — поэтому «стрела долетает» проверяется
+     * симуляцией в тесте, а не наблюдением за боем.
+     */
+    public static org.joml.Vector3f aimWithLead(float ex, float ey, float ez,
+                                                float tx, float ty, float tz, float speed) {
+        float dx = tx - ex, dy = ty - ey, dz = tz - ez;
+        float flat = (float) Math.sqrt(dx * dx + dz * dz);
+        float v = Math.max(0.01f, speed);
+        // Время полёта уточняется итерациями, а не берётся как flat/speed:
+        // поднятый ствол отбирает у стрелы горизонтальную скорость, поэтому
+        // она летит дольше и падает сильнее, чем по первому приближению. На
+        // двадцати шести блоках разница — недолёт в пару блоков.
+        float flight = flat / v;
+        float lift = 0f, len = 0f;
+        for (int i = 0; i < 4; i++) {
+            lift = -Projectile.GRAVITY * flight * flight * 0.5f;
+            len = (float) Math.sqrt(dx * dx + (dy + lift) * (dy + lift) + dz * dz);
+            if (len < 1e-3f)
+                return null;
+            float horizontal = v * flat / len;
+            if (horizontal < 1e-3f)
+                return null;
+            flight = flat / horizontal;
+        }
+        if (len < 1e-3f)
+            return null;
+        return new org.joml.Vector3f(dx / len, (dy + lift) / len, dz / len).mul(v);
     }
 
     Behavior.Status chaseStep(MobContext c) {

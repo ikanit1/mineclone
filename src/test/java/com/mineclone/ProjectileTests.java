@@ -22,6 +22,8 @@ final class ProjectileTests {
         r.run("an arrow never passes through a wall, however fast", ProjectileTests::tunnelWall);
         r.run("an arrow does not hit whoever fired it", ProjectileTests::owner);
         r.run("a stuck arrow waits to be picked up, a lost one expires", ProjectileTests::stuck);
+        r.run("a shooter leads its shot so the arrow actually arrives", ProjectileTests::lead);
+        r.run("a melee species never takes the shooting branch", ProjectileTests::meleeNeverShoots);
     }
 
     private static void check(boolean value, String message) {
@@ -115,6 +117,42 @@ final class ProjectileTests {
             last = p.step(w, 1f / 60f, List.of(shooter, other));
         check(shooter.hits == 0, "the shooter must never be hit by their own shot");
         check(other.hits == 1, "but the target must be, got " + other.hits);
+    }
+
+    /**
+     * Упреждение по высоте: без него стрелок мажет тем сильнее, чем дальше
+     * цель, и на глаз это неотличимо от «промазал». Симулируем выстрел и
+     * смотрим, попал ли.
+     */
+    private static void lead() {
+        World w = flat(40);
+        for (float range : new float[] { 5f, 10f, 18f, 26f }) {
+            Dummy target = new Dummy(range, 41f, 0f);
+            float ex = 0f, ey = 42.3f, ez = 0f;
+            var aim = com.mineclone.world.entity.Mob.aimWithLead(ex, ey, ez,
+                    target.at.x, target.at.y + 1.1f, target.at.z,
+                    com.mineclone.world.entity.Mob.SHOOT_SPEED);
+            check(aim != null, "range " + range + ": the shot must be aimable");
+            check(aim.y > 0f || range < 6f, "range " + range + ": distant shots must be lifted");
+            Projectile p = new Projectile("arrow", null, false, 4f);
+            p.position.set(ex, ey, ez);
+            p.velocity.set(aim);
+            Projectile.Result last = Projectile.Result.FLYING;
+            for (int i = 0; i < 600 && last == Projectile.Result.FLYING; i++)
+                last = p.step(w, 1f / 60f, List.of(target));
+            check(last == Projectile.Result.HIT_TARGET,
+                    "range " + range + ": expected a hit, got " + last);
+        }
+        // Вырожденный случай: цель там же, где стрелок.
+        check(com.mineclone.world.entity.Mob.aimWithLead(0, 40, 0, 0, 40, 0, 20f) == null,
+                "a shot at oneself has no direction");
+    }
+
+    /** Ближний вид не должен стрелять: дальность у него нулевая. */
+    private static void meleeNeverShoots() {
+        for (var type : com.mineclone.world.entity.MobType.values())
+            check(type.rangedRange == 0f,
+                    type + " must not shoot yet: the first shooter comes with the new mobs");
     }
 
     /** Воткнувшийся снаряд ждёт подбора, потерянный — исчезает сам. */
