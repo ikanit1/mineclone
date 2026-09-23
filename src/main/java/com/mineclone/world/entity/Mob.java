@@ -202,6 +202,17 @@ public class Mob implements Hittable {
     public Mob justBitMob;
     /** Птица только что взлетела — Game хлопает крыльями. */
     public boolean justTookOff;
+    /** Крипер довёл фитиль до конца: Game сносит блоки и раздаёт урон. */
+    public boolean justExploded;
+    /**
+     * Насколько взведён фитиль 0..1 — по нему крипер раздувается и белеет.
+     *
+     * Отдельное поле, а не таймер: модель и звук читают одно и то же число,
+     * и раздутие не может разойтись с моментом взрыва.
+     */
+    public float fuse;
+    /** Питали ли фитиль в этом тике: иначе прирост и спад гасят друг друга. */
+    private boolean fuseFed;
 
     /** Нежить ниже порога здоровья: быстрее, злее, не боится света. */
     public boolean enraged;
@@ -318,6 +329,10 @@ public class Mob implements Hittable {
             // Стрельба стоит ВЫШЕ погони: стрелок, дошедший до дистанции
             // выстрела, должен стрелять, а не продолжать сближение — иначе
             // лучник ведёт себя как медленный зомби с луком.
+            // Фитиль раньше стрельбы и погони: начав шипеть, крипер уже
+            // ничем другим не занят.
+            Behavior.sequence(Behavior.check(Mob::wantsFuse),
+                              Behavior.act(Mob::fuseStep)),
             Behavior.sequence(Behavior.check(Mob::wantsShoot),
                               Behavior.act(Mob::shootStep)),
             Behavior.sequence(Behavior.check(Mob::wantsChase),
@@ -363,6 +378,7 @@ public class Mob implements Hittable {
     public void update(World world, Vector3f playerPos, float dt, float daylight,
                        boolean hostileEnabled) {
         justAttacked = false;
+        justExploded = false;
         justIdleSound = false;
         justStepSound = false;
         justSplashed = false;
@@ -389,6 +405,13 @@ public class Mob implements Hittable {
             attackCooldown -= dt;
         if (shootCooldown > 0f)
             shootCooldown -= dt;
+        // Фитиль гаснет сам, если ветка его в прошлом тике не питала:
+        // отбежать от крипера можно, и это единственная защита от него без
+        // брони. Питание и спад разведены флагом — иначе они гасят друг
+        // друга и фитиль стоит на месте.
+        if (type.explodes() && !fuseFed)
+            fuse = Math.max(0f, fuse - dt / FUSE_TIME);
+        fuseFed = false;
         if (angryTimer > 0f)
             angryTimer = Math.max(0f, angryTimer - dt);
 
@@ -863,6 +886,39 @@ public class Mob implements Hittable {
         if (len < 1e-3f)
             return null;
         return new org.joml.Vector3f(dx / len, (dy + lift) / len, dz / len).mul(v);
+    }
+
+    /** За сколько секунд фитиль догорает до взрыва. */
+    public static final float FUSE_TIME = 1.5f;
+    /** Ближе этого крипер поджигает фитиль. */
+    public static final float FUSE_RANGE = 2.6f;
+    /** Дальше этого — гаснет: от крипера можно отбежать, и в этом вся игра. */
+    public static final float FUSE_LOSE = 4.5f;
+
+    /**
+     * Фитиль крипера.
+     *
+     * Ветка стоит выше погони и бьёт раньше удара: крипер не дерётся, он
+     * подходит и взрывается. Отбежать можно — потому и {@link #FUSE_LOSE}
+     * больше {@link #FUSE_RANGE}: шаг назад гасит фитиль, но не мгновенно.
+     */
+    boolean wantsFuse(MobContext c) {
+        return type.explodes() && !dead && wantsChase(c)
+                && (fuse > 0f ? c.dist <= FUSE_LOSE : c.dist <= FUSE_RANGE);
+    }
+
+    Behavior.Status fuseStep(MobContext c) {
+        stopMoving();
+        yaw = (float) Math.atan2(-c.dx, -c.dz);
+        fuseFed = true;
+        fuse += c.dt / FUSE_TIME;
+        if (fuse >= 1f) {
+            justExploded = true;
+            dead = true;             // взрывом крипер кончается сам
+            deathTimer = 0f;
+            fuse = 1f;
+        }
+        return Behavior.Status.RUNNING;
     }
 
     Behavior.Status chaseStep(MobContext c) {

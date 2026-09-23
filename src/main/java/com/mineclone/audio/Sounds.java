@@ -126,7 +126,7 @@ public final class Sounds {
         for (List<String> l : digFiles.values()) out.addAll(l);
         for (String dir : new String[] {
                 ROOT + "/random", ROOT + "/damage", ROOT + "/liquid", ROOT + "/ui/loom",
-                ROOT + "/entity/player/attack", ROOT + "/ambient/weather",
+                ROOT + "/entity/player/attack",
                 ROOT + "/block/azalea_leaves", ROOT + "/block/powder_snow" })
             out.addAll(listMatching(dir, ""));
         for (MobType t : MobType.values())
@@ -384,9 +384,16 @@ public final class Sounds {
         return listMatching(ROOT + "/ambient/underwater", "exit");
     }
 
-    /** Шаги моба (step*.ogg) — тихие, играются по пройденному пути. */
+    /**
+     * Шаги моба (step*.ogg) — тихие, играются по пройденному пути.
+     *
+     * Своих шагов есть не у каждого вида: у крипера их нет и в самом
+     * Minecraft. Тогда берутся общие травяные — беззвучный моб подкрадывается
+     * бесшумно, а это меняет игру сильнее, чем неточный тембр шага.
+     */
     public List<String> mobStep(MobType t) {
-        return listMatching(ROOT + "/mob/" + t.soundDir, t.stepPrefix);
+        List<String> own = listMatching(ROOT + "/mob/" + t.soundDir, t.stepPrefix);
+        return own.isEmpty() ? listMatching(ROOT + "/step", "grass") : own;
     }
 
     /** Звук смерти; при отсутствии файлов — боль, затем голос. */

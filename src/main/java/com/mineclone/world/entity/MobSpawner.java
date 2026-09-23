@@ -140,7 +140,7 @@ public class MobSpawner {
         if (!zombie && !peacefulSurfaceOk(surface))
             return false;
 
-        MobType type = zombie ? MobType.ZOMBIE
+        MobType type = zombie ? hostileFor(y, rnd.nextFloat())
                 : MobType.PEACEFUL[rnd.nextInt(MobType.PEACEFUL.length)];
         mobs.add(create(type, x + 0.5f, y + 1.001f, z + 0.5f));
         return true;
@@ -171,6 +171,27 @@ public class MobSpawner {
             mobs.add(create(type, x + 0.5f + ox, y + 1.001f, z + 0.5f + oz));
         }
         return true;
+    }
+
+    /** Ниже этой высоты «под землёй»: там водится другая нежить. */
+    public static final int UNDERGROUND_Y = com.mineclone.world.World.SEA_LEVEL - 6;
+
+    /**
+     * Кто из нежити появится на этой глубине.
+     *
+     * Пауки и крипер водятся и наверху, но пещеры — их дом: под землёй доля
+     * зомби падает, а пауков растёт. Скелет встречается ровно, потому что
+     * его стрельба одинаково опасна и в коридоре, и в поле.
+     */
+    static MobType hostileFor(int y, float roll) {
+        boolean deep = y < UNDERGROUND_Y;
+        if (roll < (deep ? 0.30f : 0.45f))
+            return MobType.ZOMBIE;
+        if (roll < (deep ? 0.55f : 0.70f))
+            return MobType.SKELETON;
+        if (roll < (deep ? 0.85f : 0.88f))
+            return MobType.SPIDER;
+        return MobType.CREEPER;
     }
 
     private Mob create(MobType type, float x, float y, float z) {

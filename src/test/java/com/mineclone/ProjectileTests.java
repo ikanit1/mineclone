@@ -148,11 +148,23 @@ final class ProjectileTests {
                 "a shot at oneself has no direction");
     }
 
-    /** Ближний вид не должен стрелять: дальность у него нулевая. */
+    /**
+     * Стрелок ровно один — скелет. Ветка стрельбы стоит выше погони, и вид,
+     * получивший дальность по недосмотру, перестал бы подходить вплотную.
+     */
     private static void meleeNeverShoots() {
-        for (var type : com.mineclone.world.entity.MobType.values())
-            check(type.rangedRange == 0f,
-                    type + " must not shoot yet: the first shooter comes with the new mobs");
+        int shooters = 0;
+        for (var type : com.mineclone.world.entity.MobType.values()) {
+            if (type.rangedRange > 0f)
+                shooters++;
+            else
+                check(type.rangedRange == 0f, type + " has a broken ranged range");
+        }
+        check(shooters == 1, "exactly one species shoots, got " + shooters);
+        check(com.mineclone.world.entity.MobType.SKELETON.rangedRange > 0f,
+                "and it is the skeleton");
+        check(com.mineclone.world.entity.MobType.ZOMBIE.rangedRange == 0f,
+                "a zombie still has to walk up to you");
     }
 
     /** Воткнувшийся снаряд ждёт подбора, потерянный — исчезает сам. */

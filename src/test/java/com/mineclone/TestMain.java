@@ -58,8 +58,11 @@ public final class TestMain {
         StormTests.runAll((name, check) -> run(name, check::run));
         CombatTests.runAll((name, check) -> run(name, check::run));
         ProjectileTests.runAll((name, check) -> run(name, check::run));
+        ExplosionTests.runAll((name, check) -> run(name, check::run));
         com.mineclone.game.PlayerPhysicsTests.runAll((name, check) -> run(name, check::run));
         PlayerAnimationTests.runAll((name, check) -> run(name, check::run));
+        PlayerMotionTests.runAll((name, check) -> run(name, check::run));
+        com.mineclone.game.StormWeatherTests.runAll((name, check) -> run(name, check::run));
         MobAnimationTests.runAll((name, check) -> run(name, check::run));
         run("optimization invariants", OptimizationTests::run);
         run("biome assets, sparse structures, seams and falling-block conservation", WorldGenerationTests::run);
@@ -472,8 +475,12 @@ public final class TestMain {
             var body = PlayerRenderer.class.getDeclaredField("BODY");
             body.setAccessible(true);
             Object head = java.lang.reflect.Array.get(body.get(null), 1);
+            // У partMatrix есть перегрузка с готовой позой, и порядок
+            // getDeclaredMethods не определён: берём ту, что принимает углы
+            // по отдельности, а не первую попавшуюся.
             var matrix = Arrays.stream(PlayerRenderer.class.getDeclaredMethods())
                     .filter(method -> method.getName().equals("partMatrix"))
+                    .filter(method -> method.getParameterCount() == 9)
                     .findFirst().orElseThrow();
             matrix.setAccessible(true);
             Matrix4f out = new Matrix4f();
@@ -2341,13 +2348,21 @@ public final class TestMain {
             assertTrue(t + " soundDir set", t.soundDir != null && !t.soundDir.isBlank());
             assertEq(t + " particleColor rgb", 3, t.particleColor.length);
         }
-        // Ровно один враждебный тип в E1, и только он горит на солнце.
+        // Враждебные и нежить — одно и то же множество, и горят на солнце
+        // только они. Разъехавшись, эти два признака дали бы мирного моба,
+        // вспыхивающего на рассвете.
         int hostile = 0;
         for (com.mineclone.world.entity.MobType t : com.mineclone.world.entity.MobType.values()) {
             if (t.hostile) hostile++;
             assertTrue(t + " burns only if hostile", !t.burnsInSunlight || t.hostile);
+            assertEq(t + " hostile matches temper", t.hostile,
+                    t.temper == com.mineclone.world.entity.MobType.Temper.HOSTILE);
         }
-        assertEq("one hostile type", 1, hostile);
+        assertEq("every hostile type is listed for the spawner",
+                com.mineclone.world.entity.MobType.HOSTILE.length, hostile);
+        // Паук не горит на свету: иначе он не доживает до утра ни разу.
+        assertTrue("the spider does not burn",
+                !com.mineclone.world.entity.MobType.SPIDER.burnsInSunlight);
         assertTrue("zombie chases faster than it walks",
                 com.mineclone.world.entity.MobType.ZOMBIE.chaseSpeed
                         > com.mineclone.world.entity.MobType.ZOMBIE.walkSpeed);

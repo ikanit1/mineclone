@@ -85,7 +85,7 @@ public class MobRenderer {
     private final Shader shader;
     private final Map<MobType, Integer> textures = new EnumMap<>(MobType.class);
     private final Map<MobType, Part[]> models = new EnumMap<>(MobType.class);
-    private final Matrix4f model = new Matrix4f();
+    private final Matrix4f[] pose = new Matrix4f[16];
 
     public MobRenderer() {
         shader = new Shader(Shaders.MOB_VERTEX, Shaders.MOB_FRAGMENT);
@@ -137,7 +137,7 @@ public class MobRenderer {
         return switch (type) {
             case COW -> new Part[] {
                 new Part(0f, 1.0625f, 0f, 0f, 0f, 0f, 0.75f, 0.625f, 1.125f, bs, bs, bt, Anim.NONE),
-                new Part(0f, 1.15f, -0.76f, 0f, 0f, 0f, 0.5f, 0.5f, 0.4f, hf, hs, ht, Anim.HEAD),
+                new Part(0f, 1.15f, -0.50f, 0f, 0f, -0.26f, 0.5f, 0.5f, 0.4f, hf, hs, ht, Anim.HEAD),
                 new Part(-0.22f, 0.75f, -0.38f, 0f, -0.375f, 0f, 0.25f, 0.75f, 0.25f, lm, lm, lm, Anim.LEG_A),
                 new Part( 0.22f, 0.75f, -0.38f, 0f, -0.375f, 0f, 0.25f, 0.75f, 0.25f, lm, lm, lm, Anim.LEG_B),
                 new Part(-0.22f, 0.75f,  0.38f, 0f, -0.375f, 0f, 0.25f, 0.75f, 0.25f, lm, lm, lm, Anim.LEG_B),
@@ -145,7 +145,7 @@ public class MobRenderer {
             };
             case PIG -> new Part[] {
                 new Part(0f, 0.625f, 0f, 0f, 0f, 0f, 0.625f, 0.5f, 1.0f, bs, bs, bt, Anim.NONE),
-                new Part(0f, 0.625f, -0.65f, 0f, 0f, 0f, 0.5f, 0.5f, 0.5f, hf, hs, ht, Anim.HEAD),
+                new Part(0f, 0.625f, -0.40f, 0f, 0f, -0.25f, 0.5f, 0.5f, 0.5f, hf, hs, ht, Anim.HEAD),
                 new Part(-0.2f, 0.375f, -0.35f, 0f, -0.1875f, 0f, 0.25f, 0.375f, 0.25f, lm, lm, lm, Anim.LEG_A),
                 new Part( 0.2f, 0.375f, -0.35f, 0f, -0.1875f, 0f, 0.25f, 0.375f, 0.25f, lm, lm, lm, Anim.LEG_B),
                 new Part(-0.2f, 0.375f,  0.35f, 0f, -0.1875f, 0f, 0.25f, 0.375f, 0.25f, lm, lm, lm, Anim.LEG_B),
@@ -153,7 +153,7 @@ public class MobRenderer {
             };
             case SHEEP -> new Part[] {
                 new Part(0f, 0.925f, 0f, 0f, 0f, 0f, 0.7f, 0.65f, 1.05f, bs, bs, bt, Anim.NONE),
-                new Part(0f, 1.0f, -0.72f, 0f, 0f, 0f, 0.45f, 0.45f, 0.4f, hf, hs, ht, Anim.HEAD),
+                new Part(0f, 1.0f, -0.50f, 0f, 0f, -0.22f, 0.45f, 0.45f, 0.4f, hf, hs, ht, Anim.HEAD),
                 new Part(-0.2f, 0.6f, -0.35f, 0f, -0.3f, 0f, 0.25f, 0.6f, 0.25f, lm, lm, lm, Anim.LEG_A),
                 new Part( 0.2f, 0.6f, -0.35f, 0f, -0.3f, 0f, 0.25f, 0.6f, 0.25f, lm, lm, lm, Anim.LEG_B),
                 new Part(-0.2f, 0.6f,  0.35f, 0f, -0.3f, 0f, 0.25f, 0.6f, 0.25f, lm, lm, lm, Anim.LEG_B),
@@ -161,7 +161,7 @@ public class MobRenderer {
             };
             case CHICKEN -> new Part[] {
                 new Part(0f, 0.425f, 0f, 0f, 0f, 0f, 0.3f, 0.35f, 0.4f, bs, bs, bt, Anim.NONE),
-                new Part(0f, 0.6f, -0.15f, 0f, 0f, 0f, 0.25f, 0.25f, 0.2f, hf, hs, ht, Anim.HEAD),
+                new Part(0f, 0.50f, -0.10f, 0f, 0.10f, -0.05f, 0.25f, 0.25f, 0.2f, hf, hs, ht, Anim.HEAD),
                 new Part(-0.08f, 0.25f, 0f, 0f, -0.125f, 0f, 0.08f, 0.25f, 0.08f, lm, lm, lm, Anim.LEG_A),
                 new Part( 0.08f, 0.25f, 0f, 0f, -0.125f, 0f, 0.08f, 0.25f, 0.08f, lm, lm, lm, Anim.LEG_B),
                 new Part(-0.16f, 0.55f, 0f, 0f, -0.125f, 0f, 0.06f, 0.25f, 0.3f, ac, ac, ac, Anim.WING),
@@ -169,18 +169,56 @@ public class MobRenderer {
             };
             case ZOMBIE -> new Part[] {
                 new Part(0f, 1.025f, 0f, 0f, 0f, 0f, 0.5f, 0.65f, 0.25f, bs, bs, bt, Anim.NONE),
-                new Part(0f, 1.575f, 0f, 0f, 0f, 0f, 0.45f, 0.45f, 0.45f, hf, hs, ht, Anim.HEAD),
+                new Part(0f, 1.35f, 0f, 0f, 0.225f, 0f, 0.45f, 0.45f, 0.45f, hf, hs, ht, Anim.HEAD),
                 new Part(-0.13f, 0.7f, 0f, 0f, -0.35f, 0f, 0.25f, 0.7f, 0.25f, lm, lm, lm, Anim.LEG_A),
                 new Part( 0.13f, 0.7f, 0f, 0f, -0.35f, 0f, 0.25f, 0.7f, 0.25f, lm, lm, lm, Anim.LEG_B),
                 new Part(-0.36f, 1.3f, 0f, 0f, -0.3f, 0f, 0.22f, 0.6f, 0.22f, ac, ac, ac, Anim.ARM),
                 new Part( 0.36f, 1.3f, 0f, 0f, -0.3f, 0f, 0.22f, 0.6f, 0.22f, ac, ac, ac, Anim.ARM),
             };
+            // Скелет: те же пропорции, что у зомби, но тоньше — кость, а не
+            // мясо. Руки опущены, а не вытянуты: он стреляет, а не тянется.
+            case SKELETON -> new Part[] {
+                new Part(0f, 1.025f, 0f, 0f, 0f, 0f, 0.42f, 0.65f, 0.20f, bs, bs, bt, Anim.NONE),
+                new Part(0f, 1.35f, 0f, 0f, 0.225f, 0f, 0.44f, 0.44f, 0.44f, hf, hs, ht, Anim.HEAD),
+                new Part(-0.11f, 0.7f, 0f, 0f, -0.35f, 0f, 0.16f, 0.7f, 0.16f, lm, lm, lm, Anim.LEG_A),
+                new Part( 0.11f, 0.7f, 0f, 0f, -0.35f, 0f, 0.16f, 0.7f, 0.16f, lm, lm, lm, Anim.LEG_B),
+                new Part(-0.30f, 1.3f, 0f, 0f, -0.3f, 0f, 0.15f, 0.6f, 0.15f, ac, ac, ac, Anim.ARM),
+                new Part( 0.30f, 1.3f, 0f, 0f, -0.3f, 0f, 0.15f, 0.6f, 0.15f, ac, ac, ac, Anim.ARM),
+            };
+            // Паук: широкое низкое брюшко, голова впереди и восемь ног по
+            // сторонам. Ноги шагают вразнобой парами — иначе он семенит.
+            case SPIDER -> new Part[] {
+                new Part(0f, 0.42f, 0.22f, 0f, 0f, 0f, 0.62f, 0.42f, 0.62f, bs, bs, bt, Anim.NONE),
+                new Part(0f, 0.44f, -0.34f, 0f, 0f, -0.16f, 0.42f, 0.36f, 0.34f, hf, hs, ht, Anim.HEAD),
+                // Ноги вертикальные, как у всех: Anim.LEG вращает их вокруг
+                // сустава наверху, и горизонтальная «лапа вбок» отрывалась бы
+                // от него на первом же шаге. Паучьим силуэт делает не наклон
+                // ног, а их разнос вширь при низком теле.
+                new Part(-0.46f, 0.26f, -0.18f, 0f, -0.13f, 0f, 0.10f, 0.26f, 0.10f, lm, lm, lm, Anim.LEG_A),
+                new Part( 0.46f, 0.26f, -0.18f, 0f, -0.13f, 0f, 0.10f, 0.26f, 0.10f, lm, lm, lm, Anim.LEG_B),
+                new Part(-0.50f, 0.26f,  0.06f, 0f, -0.13f, 0f, 0.10f, 0.26f, 0.10f, lm, lm, lm, Anim.LEG_B),
+                new Part( 0.50f, 0.26f,  0.06f, 0f, -0.13f, 0f, 0.10f, 0.26f, 0.10f, lm, lm, lm, Anim.LEG_A),
+                new Part(-0.50f, 0.26f,  0.30f, 0f, -0.13f, 0f, 0.10f, 0.26f, 0.10f, ac, ac, ac, Anim.LEG_A),
+                new Part( 0.50f, 0.26f,  0.30f, 0f, -0.13f, 0f, 0.10f, 0.26f, 0.10f, ac, ac, ac, Anim.LEG_B),
+                new Part(-0.46f, 0.26f,  0.52f, 0f, -0.13f, 0f, 0.10f, 0.26f, 0.10f, ac, ac, ac, Anim.LEG_B),
+                new Part( 0.46f, 0.26f,  0.52f, 0f, -0.13f, 0f, 0.10f, 0.26f, 0.10f, ac, ac, ac, Anim.LEG_A),
+            };
+            // Крипер: столб на четырёх коротких ногах, без рук. Голова
+            // крупная — на ней всё узнавание вида.
+            case CREEPER -> new Part[] {
+                new Part(0f, 0.95f, 0f, 0f, 0f, 0f, 0.42f, 0.72f, 0.26f, bs, bs, bt, Anim.NONE),
+                new Part(0f, 1.38f, 0f, 0f, 0.21f, 0f, 0.48f, 0.48f, 0.48f, hf, hs, ht, Anim.HEAD),
+                new Part(-0.13f, 0.30f, -0.14f, 0f, -0.15f, 0f, 0.18f, 0.30f, 0.18f, lm, lm, lm, Anim.LEG_A),
+                new Part( 0.13f, 0.30f, -0.14f, 0f, -0.15f, 0f, 0.18f, 0.30f, 0.18f, lm, lm, lm, Anim.LEG_B),
+                new Part(-0.13f, 0.30f,  0.14f, 0f, -0.15f, 0f, 0.18f, 0.30f, 0.18f, lm, lm, lm, Anim.LEG_B),
+                new Part( 0.13f, 0.30f,  0.14f, 0f, -0.15f, 0f, 0.18f, 0.30f, 0.18f, lm, lm, lm, Anim.LEG_A),
+            };
             // Кролик: пригнутое тело, длинные уши, мощные задние лапы.
             case RABBIT -> new Part[] {
                 new Part(0f, 0.24f, 0.04f, 0f, 0f, 0f, 0.30f, 0.26f, 0.42f, bs, bs, bt, Anim.NONE),
-                new Part(0f, 0.36f, -0.20f, 0f, 0f, -0.06f, 0.24f, 0.22f, 0.22f, hf, hs, ht, Anim.HEAD),
-                new Part(-0.06f, 0.36f, -0.20f, 0f, 0.20f, -0.02f, 0.06f, 0.22f, 0.04f, ac, ac, lm, Anim.HEAD),
-                new Part( 0.06f, 0.36f, -0.20f, 0f, 0.20f, -0.02f, 0.06f, 0.22f, 0.04f, ac, ac, lm, Anim.HEAD),
+                new Part(0f, 0.30f, -0.14f, 0f, 0.06f, -0.12f, 0.24f, 0.22f, 0.22f, hf, hs, ht, Anim.HEAD),
+                new Part(0f, 0.30f, -0.14f, -0.06f, 0.26f, -0.08f, 0.06f, 0.22f, 0.04f, ac, ac, lm, Anim.HEAD),
+                new Part(0f, 0.30f, -0.14f, 0.06f, 0.26f, -0.08f, 0.06f, 0.22f, 0.04f, ac, ac, lm, Anim.HEAD),
                 new Part(-0.08f, 0.14f, -0.12f, 0f, -0.07f, 0f, 0.07f, 0.14f, 0.07f, lm, lm, lm, Anim.LEG_A),
                 new Part( 0.08f, 0.14f, -0.12f, 0f, -0.07f, 0f, 0.07f, 0.14f, 0.07f, lm, lm, lm, Anim.LEG_B),
                 new Part(-0.11f, 0.14f, 0.14f, 0f, -0.07f, 0f, 0.09f, 0.14f, 0.16f, lm, lm, lm, Anim.LEG_B),
@@ -190,10 +228,10 @@ public class MobRenderer {
             // Волк: длинное тело, морда вперёд, уши торчком, хвост на отлёте.
             case WOLF -> new Part[] {
                 new Part(0f, 0.55f, 0.05f, 0f, 0f, 0f, 0.36f, 0.34f, 0.80f, bs, bs, bt, Anim.NONE),
-                new Part(0f, 0.66f, -0.40f, 0f, 0f, -0.08f, 0.34f, 0.30f, 0.28f, hf, hs, ht, Anim.HEAD),
-                new Part(0f, 0.66f, -0.40f, 0f, -0.06f, -0.29f, 0.16f, 0.13f, 0.16f, ac, ac, ac, Anim.HEAD),
-                new Part(-0.10f, 0.66f, -0.40f, 0f, 0.19f, -0.02f, 0.08f, 0.10f, 0.05f, ac, ac, ac, Anim.HEAD),
-                new Part( 0.10f, 0.66f, -0.40f, 0f, 0.19f, -0.02f, 0.08f, 0.10f, 0.05f, ac, ac, ac, Anim.HEAD),
+                new Part(0f, 0.62f, -0.28f, 0f, 0.04f, -0.20f, 0.34f, 0.30f, 0.28f, hf, hs, ht, Anim.HEAD),
+                new Part(0f, 0.62f, -0.28f, 0f, -0.02f, -0.41f, 0.16f, 0.13f, 0.16f, ac, ac, ac, Anim.HEAD),
+                new Part(0f, 0.62f, -0.28f, -0.10f, 0.23f, -0.14f, 0.08f, 0.10f, 0.05f, ac, ac, ac, Anim.HEAD),
+                new Part(0f, 0.62f, -0.28f, 0.10f, 0.23f, -0.14f, 0.08f, 0.10f, 0.05f, ac, ac, ac, Anim.HEAD),
                 new Part(-0.12f, 0.40f, -0.26f, 0f, -0.20f, 0f, 0.12f, 0.40f, 0.12f, lm, lm, lm, Anim.LEG_A),
                 new Part( 0.12f, 0.40f, -0.26f, 0f, -0.20f, 0f, 0.12f, 0.40f, 0.12f, lm, lm, lm, Anim.LEG_B),
                 new Part(-0.12f, 0.40f,  0.32f, 0f, -0.20f, 0f, 0.12f, 0.40f, 0.12f, lm, lm, lm, Anim.LEG_B),
@@ -203,8 +241,8 @@ public class MobRenderer {
             // Птица: круглое тело, клюв, крылья по бокам и хвост лопаткой.
             case BIRD -> new Part[] {
                 new Part(0f, 0.17f, 0f, 0f, 0f, 0f, 0.18f, 0.17f, 0.28f, bs, bs, bt, Anim.NONE),
-                new Part(0f, 0.28f, -0.11f, 0f, 0.02f, -0.02f, 0.14f, 0.14f, 0.14f, hf, hs, ht, Anim.HEAD),
-                new Part(0f, 0.28f, -0.11f, 0f, 0.0f, -0.11f, 0.05f, 0.05f, 0.08f, MobSkins.T_SPARE, MobSkins.T_SPARE, MobSkins.T_SPARE, Anim.HEAD),
+                new Part(0f, 0.22f, -0.10f, 0f, 0.08f, -0.03f, 0.14f, 0.14f, 0.14f, hf, hs, ht, Anim.HEAD),
+                new Part(0f, 0.22f, -0.10f, 0f, 0.06f, -0.12f, 0.05f, 0.05f, 0.08f, MobSkins.T_SPARE, MobSkins.T_SPARE, MobSkins.T_SPARE, Anim.HEAD),
                 // Крылья длиннее, чем нужно сложенным: в полёте короткая
                 // пластинка читалась как крыша на спине, а не как взмах.
                 new Part(-0.10f, 0.24f, 0f, 0f, -0.085f, 0.01f, 0.03f, 0.17f, 0.22f, ac, ac, ac, Anim.WING),
@@ -242,8 +280,11 @@ public class MobRenderer {
             shader.setVec3("uTint", tintOf(m));
             shader.setVec3("uGlow", glowOf(m));
 
-            for (Part p : models.get(m.type)) {
-                partMatrix(m, p, model);
+            Part[] parts = models.get(m.type);
+            preparePose(m, parts, pose);
+            for (int i = 0; i < parts.length; i++) {
+                Part p = parts[i];
+                Matrix4f model = pose[i];
                 shader.setMat4("uModel", model);
                 shader.setVec2("uUvFront", uvX(p.front()), uvY(p.front()));
                 shader.setVec2("uUvSide", uvX(p.side()), uvY(p.side()));
@@ -272,8 +313,11 @@ public class MobRenderer {
         for (Mob m : mobs) {
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, textures.get(m.type));
-            for (Part p : models.get(m.type)) {
-                partMatrix(m, p, model);
+            Part[] parts = models.get(m.type);
+            preparePose(m, parts, pose);
+            for (int i = 0; i < parts.length; i++) {
+                Part p = parts[i];
+                Matrix4f model = pose[i];
                 shadowShader.setMat4("uModel", model);
                 shadowShader.setVec2("uUvFront", uvX(p.front()), uvY(p.front()));
                 shadowShader.setVec2("uUvSide", uvX(p.side()), uvY(p.side()));
@@ -336,33 +380,57 @@ public class MobRenderer {
         return 0.5f + 0.5f * (float) Math.sin(m.animationTime * 9f);
     }
 
-    /** Модельная матрица одной части тела со всей анимацией. */
+    /** Actual render matrices, also usable by headless joint/contact checks. */
+    public static Matrix4f[] pose(Mob m) {
+        Part[] parts = buildModel(m.type);
+        Matrix4f[] result = new Matrix4f[parts.length];
+        preparePose(m, parts, result);
+        return result;
+    }
+
+    private static void preparePose(Mob m, Part[] parts, Matrix4f[] result) {
+        float minY = Float.POSITIVE_INFINITY;
+        for (int i = 0; i < parts.length; i++) {
+            if (result[i] == null) result[i] = new Matrix4f();
+            partMatrix(m, parts[i], result[i]);
+            Matrix4f a = result[i];
+            // Exact lower support of the transformed cube, without temporary vectors.
+            minY = Math.min(minY, a.m31() - (Math.abs(a.m01()) + Math.abs(a.m11())
+                    + Math.abs(a.m21())) * 0.5f);
+        }
+        // Keep the entire corpse above the support plane as it rolls. Live grounded
+        // feet also stay in contact; airborne poses retain their physical height.
+        if ((m.dead || m.onGround) && !m.inWater) {
+            float lift = m.position.y - minY;
+            for (int i = 0; i < parts.length; i++)
+                result[i].m31(result[i].m31() + lift);
+        }
+    }
+
+    /** Shared by the colour and shadow passes. Every appendage rotates at its socket. */
     private static void partMatrix(Mob m, Part p, Matrix4f out) {
-        out.identity()
-           .translate(m.position.x, m.position.y, m.position.z);
-        // Смерть: тело валится вокруг оси поперёк смертельного удара — прочь
-        // от того, кто его нанёс, — с отскоком о землю.
-        if (m.dead)
-            out.rotate(m.topple, m.deathAxisX, 0f, m.deathAxisZ);
+        out.identity().translate(m.position);
+        if (m.dead) out.rotate(m.topple, m.deathAxisX, 0f, m.deathAxisZ);
         out.rotateY(m.yaw);
-        if (!m.dead)
-            out.translate(0f, MobAnimation.breathe(m), 0f);
+        float hip = m.type.height * 0.5f;
+        out.translate(0, hip, 0).rotateX(MobAnimation.bodyPitch(m))
+                .rotateZ(MobAnimation.bodyRoll(m)).translate(0, -hip, 0);
         out.translate(p.pivX(), p.pivY(), p.pivZ());
-        // У трупа конечности обмякают и разъезжаются — пока он падает.
-        float limp = m.dead ? Math.min(1f, m.topple / 1.5708f) : 0f;
         switch (p.anim()) {
-            case LEG_A -> out.translate(0f, m.legOffsetA, 0f)
-                    .rotateX(MobAnimation.leg(m) - m.legOffsetA * 0.9f + limp * 0.55f);
-            case LEG_B -> out.translate(0f, m.legOffsetB, 0f)
-                    .rotateX(-MobAnimation.leg(m) - m.legOffsetB * 0.9f - limp * 0.35f);
+            case LEG_A, LEG_B -> {
+                boolean right = p.pivX() > 0;
+                boolean front = p.pivZ() <= 0;
+                out.rotateX(MobAnimation.leg(m, front, right));
+                out.scale(1, MobAnimation.legLength(m, front, right, p.sy()), 1);
+            }
             case TAIL -> out.rotateY(MobAnimation.tail(m));
             case HEAD -> out.rotateY(MobAnimation.headYaw(m)).rotateX(MobAnimation.headPitch(m));
-            // Руки зомби вытянуты вперёд (в −Z) + лёгкое покачивание.
-            // В момент удара замахивается: руки поднимаются и опускаются
-            // за ATTACK_SWING_TIME — иначе атака визуально не читается.
-            case ARM -> out.rotateX(MobAnimation.arm(m));
+            case ARM -> out.rotateX(MobAnimation.arm(m, p.pivX() > 0));
             case WING -> out.rotateZ(Math.signum(p.pivX()) * MobAnimation.wing(m));
-            case NONE -> { }
+            case NONE -> {
+                // Breathing expands the chest; it must not levitate the feet.
+                out.scale(1 + MobAnimation.breathe(m), 1 + MobAnimation.breathe(m), 1);
+            }
         }
         out.translate(p.offX(), p.offY(), p.offZ()).scale(p.sx(), p.sy(), p.sz());
     }

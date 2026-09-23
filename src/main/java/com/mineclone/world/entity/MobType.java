@@ -18,7 +18,14 @@ public enum MobType {
     // сохраняется, но таблицы звуков и скинов удобнее читать без перестановок.
     RABBIT (0.4f, 0.5f,  3f, 1.0f, 4.2f, false, false, -55f, "rabbit",  0.62f, 0.50f, 0.40f, Temper.SKITTISH, false, "idle",    "hop"),
     WOLF   (0.6f, 0.85f, 8f, 1.1f, 3.6f, false, false, -55f, "wolf",    0.55f, 0.54f, 0.52f, Temper.NEUTRAL,  false, "panting", "step"),
-    BIRD   (0.35f, 0.35f, 2f, 1.2f, 4.8f, false, false, -2.5f, "parrot", 0.25f, 0.45f, 0.78f, Temper.SKITTISH, true, "idle",    "step");
+    BIRD   (0.35f, 0.35f, 2f, 1.2f, 4.8f, false, false, -2.5f, "parrot", 0.25f, 0.45f, 0.78f, Temper.SKITTISH, true, "idle",    "step"),
+    // Нежить, которой ждали снаряды. Скелет держит дистанцию и стреляет,
+    // поэтому у него единственного ненулевая rangedRange.
+    SKELETON(0.6f, 1.8f, 16f, 0.8f, 1.1f, true, true, -55f, "skeleton", 0.86f, 0.85f, 0.80f, Temper.HOSTILE, false, "say", "step", 16f),
+    // Паук ниже и шире человека, быстрый и не горит на солнце.
+    SPIDER (1.1f, 0.8f, 14f, 0.9f, 1.6f, true, false, -55f, "spider",  0.24f, 0.18f, 0.22f, Temper.HOSTILE, false, "say", "step"),
+    // Крипер не бьёт — он подходит и взрывается.
+    CREEPER(0.6f, 1.7f, 18f, 0.8f, 1.15f, true, false, -55f, "creeper", 0.35f, 0.62f, 0.31f, Temper.HOSTILE, false, "say", "step");
 
     /** Как вид относится к игроку и другим мобам. */
     public enum Temper {
@@ -106,14 +113,35 @@ public enum MobType {
             case PIG -> "porkchop";
             case CHICKEN, RABBIT -> "chicken";
             case SHEEP -> "mutton";
+            // Скелет роняет то, чем стрелял: стрелы возвращаются в оборот,
+            // и лук перестаёт упираться в один поход за паутиной.
+            case SKELETON -> "arrow";
+            case SPIDER -> "cobweb";
             default -> null;
         };
     }
 
     /** Сколько единиц падает. */
     public int dropCount() {
+        if (this == SKELETON)
+            return 2;
+        if (this == SPIDER)
+            return 1;
         return this == CHICKEN || this == RABBIT ? 1 : 2;
     }
+
+    /**
+     * Взрывается ли вид вместо удара.
+     *
+     * Крипер — единственный, кто наносит урон собой: он не бьёт, а подходит
+     * вплотную, шипит и разлетается.
+     */
+    public boolean explodes() {
+        return this == CREEPER;
+    }
+
+    /** Нежить, которую жжёт дневной свет. */
+    public static final MobType[] HOSTILE = { ZOMBIE, SKELETON, SPIDER, CREEPER };
 
     /** Добыча ли этот вид для волка. */
     public boolean isPrey() {

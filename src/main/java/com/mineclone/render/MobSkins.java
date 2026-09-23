@@ -101,6 +101,9 @@ public final class MobSkins {
             case RABBIT -> rabbit(s, pal);
             case WOLF -> wolf(s, pal);
             case BIRD -> bird(s, pal);
+            case SKELETON -> skeleton(s, pal);
+            case SPIDER -> spider(s, pal);
+            case CREEPER -> creeper(s, pal);
         }
         return s.toImage(pal.toArray(), TILE);
     }
@@ -379,6 +382,113 @@ public final class MobSkins {
             s.rect(T_ACCENT, P, (2 + i * 3) * P, 14 * P, 2 * P, feath + (i % 2 == 0 ? 1 : 3));
         s.shift(T_ACCENT, 0f, 13 * P, 1f, 3 * P, -1);
         s.grad(T_SPARE, feath, 0.80f, 0.50f, 95);
+    }
+
+    /**
+     * Скелет: кость с тенями в провалах, пустые глазницы, рёбра на груди.
+     *
+     * Кость светлая почти до белого, поэтому тени приходится класть
+     * отдельно — на ровном светлом рёбра и швы иначе не читаются.
+     */
+    private static void skeleton(Sheet s, Pal p) {
+        int bone  = p.ramp("6E6A5C", "8C8879", "A9A493", "C4BFAC", "DCD7C4");
+        int hollow = p.ramp("0A0B0C", "141618", "1E2124", "2A2D31", "383C41");
+
+        // Череп: глазницы глубоко, между ними переносица, зубы полосой.
+        s.grad(T_HEAD_FRONT, bone, 0.86f, 0.42f, 301);
+        s.rect(T_HEAD_FRONT, 2 * P, 5 * P, 4 * P, 4 * P, hollow);
+        s.rect(T_HEAD_FRONT, 10 * P, 5 * P, 4 * P, 4 * P, hollow);
+        s.rect(T_HEAD_FRONT, 7 * P, 8 * P, 2 * P, 2 * P, hollow + 1);
+        s.rect(T_HEAD_FRONT, 4 * P, 12 * P, 8 * P, 2 * P, hollow);
+        for (int i = 0; i < 4; i++)
+            s.rect(T_HEAD_FRONT, (4 + i * 2) * P, 12 * P, P, 2 * P, bone + 4);
+
+        s.grad(T_HEAD_SIDE, bone, 0.84f, 0.40f, 302);
+        s.rect(T_HEAD_SIDE, 4 * P, 5 * P, 3 * P, 4 * P, hollow);
+        s.rect(T_HEAD_SIDE, 3 * P, 12 * P, 9 * P, 2 * P, hollow + 1);
+        s.grad(T_HEAD_TOP, bone, 0.80f, 0.46f, 303);
+
+        // Грудь: рёбра парами и тёмный провал между ними.
+        s.grad(T_BODY_SIDE, hollow, 0.55f, 0.28f, 304);
+        for (int i = 0; i < 5; i++) {
+            s.rect(T_BODY_SIDE, 3 * P, (2 + i * 3) * P, 10 * P, P, bone + 3);
+            s.rect(T_BODY_SIDE, 3 * P, (3 + i * 3) * P, 10 * P, P, bone + 1);
+        }
+        s.rect(T_BODY_SIDE, 7 * P, 0f, 2 * P, 1f, bone + 4);          // позвоночник
+        s.grad(T_BODY_TOP, bone, 0.74f, 0.44f, 305);
+
+        // Кости конечностей: светлая середина, тёмные суставы по концам.
+        s.grad(T_LIMB, hollow, 0.50f, 0.26f, 306);
+        s.rect(T_LIMB, 5 * P, 0f, 6 * P, 1f, bone + 2);
+        s.rect(T_LIMB, 4 * P, 0f, 8 * P, 2 * P, bone + 4);
+        s.rect(T_LIMB, 4 * P, 14 * P, 8 * P, 2 * P, bone + 4);
+        s.grad(T_ACCENT, hollow, 0.50f, 0.26f, 307);
+        s.rect(T_ACCENT, 5 * P, 0f, 6 * P, 1f, bone + 2);
+        s.rect(T_ACCENT, 4 * P, 0f, 8 * P, 2 * P, bone + 4);
+        s.rect(T_ACCENT, 4 * P, 14 * P, 8 * P, 2 * P, bone + 4);
+        s.grad(T_SPARE, bone, 0.76f, 0.44f, 308);
+    }
+
+    /**
+     * Паук: хитин почти чёрный, поэтому вся читаемость держится на
+     * восьми красных глазах и волосках — на ровном чёрном не видно ничего.
+     */
+    private static void spider(Sheet s, Pal p) {
+        int chitin = p.ramp("0C0A0D", "16131A", "201C26", "2C2733", "3A3442");
+        int eye    = p.ramp("3A0C0C", "6B1414", "9C1E1E", "C63A2C", "E86A4A");
+
+        // Морда: два больших глаза и шесть малых вокруг них.
+        s.clumps(T_HEAD_FRONT, chitin, 0.34f, 0.80f, 5, 321);
+        s.rect(T_HEAD_FRONT, 3 * P, 6 * P, 3 * P, 3 * P, eye + 3);
+        s.rect(T_HEAD_FRONT, 10 * P, 6 * P, 3 * P, 3 * P, eye + 3);
+        s.rect(T_HEAD_FRONT, 4 * P, 7 * P, P, P, eye + 4);
+        s.rect(T_HEAD_FRONT, 11 * P, 7 * P, P, P, eye + 4);
+        for (int i = 0; i < 3; i++) {
+            s.rect(T_HEAD_FRONT, (3 + i * 2) * P, 3 * P, P, P, eye + 2);
+            s.rect(T_HEAD_FRONT, (10 + i * 2) * P, 3 * P, P, P, eye + 2);
+        }
+        s.rect(T_HEAD_FRONT, 6 * P, 12 * P, 4 * P, 2 * P, chitin);     // жвалы
+
+        s.clumps(T_HEAD_SIDE, chitin, 0.32f, 0.78f, 5, 322);
+        s.rect(T_HEAD_SIDE, 4 * P, 6 * P, 2 * P, 2 * P, eye + 2);
+        s.clumps(T_HEAD_TOP, chitin, 0.30f, 0.76f, 4, 323);
+
+        // Брюшко: комки хитина и редкий волос.
+        s.clumps(T_BODY_SIDE, chitin, 0.36f, 0.86f, 6, 324);
+        s.splotch(T_BODY_SIDE, 0.50f, 0.55f, 0.22f, chitin + 1, 325);
+        s.ragged(T_BODY_SIDE, 2 * P, 2 * P, chitin + 4, 0.30f, 326);
+        s.clumps(T_BODY_TOP, chitin, 0.34f, 0.80f, 5, 327);
+
+        // Ноги: тонкие, с волосками по краю.
+        s.grad(T_LIMB, chitin, 0.72f, 0.34f, 328);
+        s.ragged(T_LIMB, 3 * P, 2 * P, chitin + 4, 0.35f, 329);
+        s.grad(T_ACCENT, chitin, 0.70f, 0.32f, 330);
+        s.ragged(T_ACCENT, 3 * P, 2 * P, chitin + 4, 0.35f, 331);
+        s.grad(T_SPARE, chitin, 0.68f, 0.34f, 332);
+    }
+
+    /**
+     * Крипер: крапчатая зелень и знакомая морда. Лицо — единственное, что
+     * отличает его от куста, поэтому оно рисуется жёстко, без дизеринга.
+     */
+    private static void creeper(Sheet s, Pal p) {
+        int skin = p.ramp("16321A", "1F4A24", "2A6330", "357D3B", "4C9A4F");
+        int dark = p.ramp("050905", "0A1109", "10180D", "161F12", "1D2717");
+
+        s.clumps(T_HEAD_FRONT, skin, 0.30f, 0.84f, 4, 341);
+        s.rect(T_HEAD_FRONT, 3 * P, 4 * P, 3 * P, 3 * P, dark);        // глаза
+        s.rect(T_HEAD_FRONT, 10 * P, 4 * P, 3 * P, 3 * P, dark);
+        s.rect(T_HEAD_FRONT, 6 * P, 7 * P, 4 * P, 4 * P, dark);        // нос-рот
+        s.rect(T_HEAD_FRONT, 4 * P, 11 * P, 3 * P, 3 * P, dark);       // клыки вниз
+        s.rect(T_HEAD_FRONT, 9 * P, 11 * P, 3 * P, 3 * P, dark);
+
+        s.clumps(T_HEAD_SIDE, skin, 0.30f, 0.82f, 4, 342);
+        s.clumps(T_HEAD_TOP, skin, 0.28f, 0.80f, 4, 343);
+        s.clumps(T_BODY_SIDE, skin, 0.32f, 0.84f, 5, 344);
+        s.clumps(T_BODY_TOP, skin, 0.30f, 0.80f, 4, 345);
+        s.clumps(T_LIMB, skin, 0.30f, 0.78f, 4, 346);
+        s.clumps(T_ACCENT, skin, 0.30f, 0.78f, 4, 347);
+        s.clumps(T_SPARE, skin, 0.28f, 0.76f, 4, 348);
     }
 
     private static void zombie(Sheet s, Pal p) {

@@ -219,6 +219,7 @@ public class Game {
     /** Расписание фоновой атмосферы: пещера, дождь, гром, вода. */
     private com.mineclone.audio.AmbientSound ambient;
     private com.mineclone.audio.RainAmbience rainAmbience;
+    private com.mineclone.audio.StormAmbience stormAmbience;
     /** В каком радиусе ищется точка, откуда «донёсся» звук пещеры. */
     private static final int CAVE_SOUND_RADIUS = 14;
     /** Как часто перезамеряется замкнутость для эха. */
@@ -236,7 +237,8 @@ public class Game {
     /** Насколько нога отстоит от оси движения. */
     private static final float FOOTPRINT_SPREAD = 0.16f;
     private float walkedDistance = 0f; // monotonic; drives view bob (never resets)
-    private float walkAmount = 0f;     // 0..1, гаснет на месте — размах шага модели
+    private final com.mineclone.render.PlayerAnimation playerAnimation =
+            new com.mineclone.render.PlayerAnimation();
     /**
      * Корпус и голова своей модели по отдельности.
      *
@@ -956,6 +958,8 @@ public class Game {
         fallingRenderer = new FallingBlockRenderer();
         ambient = new com.mineclone.audio.AmbientSound(new java.util.Random());
         rainAmbience = new com.mineclone.audio.RainAmbience(sound, sounds.ambientRain());
+        stormAmbience = new com.mineclone.audio.StormAmbience(sound, sounds.ambientWind());
+        sound.preload(sounds.ambientWind(), false);
         hud = new Hud(font, smallFont, text, ui, atlas);
         menuTheme = new MenuTheme(ui, text, font, smallFont, atlas);
         menuTheme.setSounds(menuSounds());
@@ -1015,6 +1019,9 @@ public class Game {
             net.update(dt);
             bodyRotation.update(dt, player.camera.yaw, player.camera.pitch,
                     player.velocity.x, player.velocity.z);
+            if (world != null && (state == State.PLAYING || state == State.WINDOW) && !photoMode)
+                playerAnimation.update(dt, player.position, bodyRotation.bodyYaw,
+                        player.onGround, player.inWater, player.flying, player.isSprinting);
             roomBrowser.update(dt);
             playRemotePlayerFeedback();
 
@@ -1206,6 +1213,7 @@ public class Game {
 
         player.respawn(player.position.x, player.position.y, player.position.z);
         bodyRotation.snap(player.camera.yaw, player.camera.pitch);
+        playerAnimation.reset(player.position, player.camera.yaw, player.onGround, player.inWater, player.flying);
         player.health = lvl != null ? lvl.health : Player.MAX_HEALTH;
         player.hunger = lvl != null ? lvl.hunger : Player.MAX_HUNGER;
         player.velocity.set(0, 0, 0);
@@ -1279,6 +1287,7 @@ public class Game {
         debris.clear();
         sound.stopAllLoops();
         if (rainAmbience != null) rainAmbience.reset();
+        if (stormAmbience != null) stormAmbience.reset();
         waterFlowSoundPosition = null;
         waterFlowProbeTimer = 0f;
         voxelBounceProbeTimer = 0f;
@@ -1850,6 +1859,9 @@ public class Game {
                         0.8f, 0.9f + 0.1f * (float) Math.random());
             }
 
+            if (m.justExploded)
+                detonate(m);
+
             if (m.burning) {
                 particles.emitMobFlame(m.position.x, m.position.y + m.type.height * 0.5f,
                         m.position.z);
@@ -2008,6 +2020,7 @@ public class Game {
         Vector3f spawn = findRespawnPosition();
         player.respawn(spawn.x, spawn.y, spawn.z);
         bodyRotation.snap(player.camera.yaw, player.camera.pitch);
+        playerAnimation.reset(player.position, player.camera.yaw, player.onGround, player.inWater, player.flying);
         musicSense.reset();
         lastPos.set(player.position);
         wasInWater = false;
@@ -2106,6 +2119,7 @@ public class Game {
 
     private void startHandSwing() {
         handSwing = 1f;
+        playerAnimation.startSwing();
         net.noteSwing();
     }
 
@@ -3238,13 +3252,55 @@ public class Game {
         if (world == null || state != State.PLAYING && state != State.WINDOW)
             return;
         var tick = storm.update(dt, world.seed, gameTime / TIME_SCALE,
-                atmosphere.storm, atmosphere.snow,
+                atmosphere.thunderstorm(), 0f,
                 (int) Math.floor(player.position.x), (int) Math.floor(player.position.z),
                 stormGround);
         for (var s : tick.struck())
             ignite(s.x(), s.z());
         for (float distance : tick.thunder())
             rollThunder(distance);
+    }
+
+    /**
+     * Взрыв крипера: сносит блоки, раздаёт урон и отбрасывает.
+     *
+     * Сам список блоков считает {@link com.mineclone.world.Explosion} — он
+     * же следит, чтобы взрыв не пробивал стену. Здесь остаётся только
+     * применить его к миру и отыграть.
+     */
+    private void detonate(com.mineclone.world.entity.Mob source) {
+        if (world == null)
+            return;
+        float x = source.position.x, y = source.position.y + source.type.height * 0.5f;
+        float z = source.position.z;
+        // У участника мир не симулируется: блоки снесёт хозяин и пришлёт
+        // результат, а здесь остаётся только зрелище.
+        if (!net.isClient())
+            for (int[] at : com.mineclone.world.Explosion.destroyed(world, x, y, z,
+                    com.mineclone.world.Explosion.RADIUS))
+                world.setBlock(at[0], at[1], at[2], BlockType.AIR);
+
+        float reach = com.mineclone.world.Explosion.RADIUS;
+        float toPlayer = player.position.distance(x, y, z);
+        if (toPlayer < reach && gameMode != com.mineclone.world.GameMode.CREATIVE) {
+            float damage = com.mineclone.world.Explosion.damageAt(toPlayer);
+            if (damage > 0f && player.takeAttackDamage(damage))
+                applyMobKnockback(source);
+        }
+        for (var other : mobs) {
+            if (other == source || other.dead)
+                continue;
+            float d = other.position.distance(x, y, z);
+            float damage = com.mineclone.world.Explosion.damageAt(d);
+            if (damage > 0f)
+                other.hurt(damage, x, z, 1.8f, false);
+        }
+        particles.emitMobDeath(x, y, z, source.type.particleColor);
+        for (int i = 0; i < 12; i++)
+            particles.emitMobFlame(x + (float) (Math.random() - 0.5) * 2f,
+                    y + (float) Math.random() * 1.5f, z + (float) (Math.random() - 0.5) * 2f);
+        sound.playOneOfAt(sounds.ambientThunder(), new Vector3f(x, y, z), 0.9f, 1.5f);
+        invalidateShadows();
     }
 
     /** Поджигает место удара, если там есть чему гореть. */
@@ -3291,6 +3347,8 @@ public class Game {
                 && world.getBlockLightWorld(ex, ey, ez) <= 7;
         boolean outdoors = com.mineclone.audio.AcousticProbe.freeRun(
                 world, ex, ey, ez, 0, 1, 0) >= com.mineclone.audio.AcousticProbe.MAX_DISTANCE;
+        stormAmbience.update(dt, atmosphere.storm, atmosphere.dust, atmosphere.windSpeed(),
+                skyLight, outdoors, player.eyeInWater);
         if (player.eyeInWater)
             sound.updateLoopOneOf("underwater-ambient", sounds.ambientUnderwater(), 0.48f, 1f);
         else
@@ -3319,7 +3377,7 @@ public class Game {
             sound.setRoom(new com.mineclone.audio.AcousticProbe.Room(enclosure, roomSize));
         }
         // Гремит только гроза, а не метель: в снег грома не бывает.
-        float thunderStorm = atmosphere.storm * (1f - atmosphere.snow);
+        float thunderStorm = atmosphere.thunderstorm();
         var cue = ambient.tick(dt, dark, player.eyeInWater, atmosphere.rain(), thunderStorm,
                 atmosphere.windSpeed(), outdoors, skyLight);
         switch (cue) {
@@ -3330,9 +3388,9 @@ public class Game {
                 cueSound(spot, 0.35f, false);
             }
             case RAIN -> { /* The continuous rain bed is maintained independently above. */ }
-            case WIND -> sound.playOneOf(sounds.ambientWind(),
+            case WIND -> { if (atmosphere.storm < 0.05f) sound.playOneOf(sounds.ambientWind(),
                     Math.min(0.55f, 0.12f + atmosphere.windSpeed() * 0.07f),
-                    0.85f + 0.2f * (float) Math.random());
+                    0.85f + 0.2f * (float) Math.random()); }
             case THUNDER -> sound.playOneOf(sounds.ambientThunder(), 0.9f,
                     0.9f + 0.2f * (float) Math.random());
             case UNDERWATER -> { /* continuous loop is maintained above */ }
@@ -3787,11 +3845,11 @@ public class Game {
             case "cloudy", "clouds" -> com.mineclone.world.Weather.Kind.CLOUDY;
             case "light", "drizzle" -> com.mineclone.world.Weather.Kind.LIGHT;
             case "heavy", "rain", "snow" -> com.mineclone.world.Weather.Kind.HEAVY;
-            case "storm", "thunder", "blizzard" -> com.mineclone.world.Weather.Kind.STORM;
+            case "storm", "thunder", "blizzard", "sandstorm", "dust" -> com.mineclone.world.Weather.Kind.STORM;
             default -> null;
         };
         if (kind == null) {
-            showCommandToast("Usage: /weather clear|cloudy|light|heavy|storm");
+            showCommandToast("Usage: /weather clear|cloudy|light|heavy|storm|sandstorm");
             return;
         }
         atmosphere.force(kind, 600f);
@@ -3987,12 +4045,8 @@ public class Game {
             lastPos.set(cur);
             return;
         }
-        // Размах шага. walkedDistance монотонен и на месте не убывает, поэтому
-        // без отдельной амплитуды стоящий игрок застывает с раскинутыми ногами.
-        float moved = (float) Math.hypot(cur.x - lastPos.x, cur.z - lastPos.z);
-        float target = (player.onGround && moved > 0.004f) ? 1f : 0f;
-        walkAmount += (target - walkAmount) * Math.min(1f, lastDt * 12f);
-        if (player.onGround) {
+        // First-person bob and audible footsteps keep their own distance counter.
+        if (player.onGround && !player.inWater && !player.flying) {
             float dx = cur.x - lastPos.x, dz = cur.z - lastPos.z;
             float step = (float) Math.sqrt(dx * dx + dz * dz);
             stepDistance += step;
@@ -4304,15 +4358,17 @@ public class Game {
         boolean underwater = player.eyeInWater;
         float visibility = underwater ? 1f : atmosphere.visibility;
         float fogEnd   = underwater ? 15f
-                : Math.max(18f, renderRadius * Chunk.SIZE_X * 1.05f * visibility);
+                : com.mineclone.world.Weather.fogEnd(renderRadius * Chunk.SIZE_X * 1.05f,
+                        visibility, atmosphere.storm, atmosphere.dust);
         float fogStart = underwater ? 2.5f : fogEnd * (0.10f + 0.42f * visibility);
         // Мгла ливня серо-синяя и тёмная, мгла метели — белёсая: снег сам
         // отражает свет, и белая мгла светлее неба над ней.
         Vector3f rainHaze = SkyPalette.linear(new Vector3f(0.40f, 0.44f, 0.50f));
         Vector3f snowHaze = SkyPalette.linear(new Vector3f(0.78f, 0.82f, 0.88f));
-        Vector3f hazeCol = rainHaze.lerp(snowHaze, atmosphere.snow)
+        Vector3f sandHaze = SkyPalette.linear(new Vector3f(0.66f, 0.46f, 0.24f));
+        Vector3f hazeCol = rainHaze.lerp(snowHaze, atmosphere.snow).lerp(sandHaze, atmosphere.dust)
                 .mul(0.06f + 0.94f * Math.max(daylight, 0.05f) * moonK);
-        float hazeMix = underwater ? 0f : Math.min(0.92f, (1f - visibility) * 1.15f);
+        float hazeMix = underwater ? 0f : Math.min(0.98f, (1f - visibility) * 1.15f);
         Vector3f fogCol = underwater ? new Vector3f(0.010f, 0.045f, 0.130f)
                 : new Vector3f(horizon).lerp(hazeCol, Math.min(1f, hazeMix * 1.1f));
 
@@ -4342,7 +4398,7 @@ public class Game {
             lighting.ambientColor.add(0.09f * lit, 0.10f * lit, 0.14f * lit);
         }
         lighting.fogColor.set(fogCol);
-        lighting.fogSunColor.set(lightCol).mul(underwater ? 0f : 0.22f);
+        lighting.fogSunColor.set(lightCol).mul(underwater ? 0f : 0.22f * (1f - atmosphere.dust * 0.9f));
         lighting.fogStart = fogStart;
         lighting.fogEnd = fogEnd;
         lighting.brightness = brightness;
@@ -4490,7 +4546,7 @@ public class Game {
             int pz = (int) Math.floor(player.position.z);
             playerRenderer.render(proj, view, player.position, bodyRotation.bodyYaw,
                     bodyRotation.headYaw, bodyRotation.headPitch,
-                    walkedDistance, walkAmount, handSwing, lighting,
+                    playerAnimation.pose(), lighting,
                     world.getSkyLight(px, py, pz) / (float) Chunk.MAX_LIGHT * daylight,
                     world.getBlockLightWorld(px, py, pz) / (float) Chunk.MAX_LIGHT,
                     atlas, inventory.get(selectedSlot));
@@ -4507,7 +4563,7 @@ public class Game {
                 int ry = (int) Math.floor(rp.position.y + 1f);
                 int rz = (int) Math.floor(rp.position.z);
                 playerRenderer.render(proj, view, rp.position, rp.bodyYaw(), rp.yaw, rp.pitch,
-                        rp.walkedDistance, rp.walkAmount, rp.swing, lighting,
+                        rp.animation.pose(), lighting,
                         world.getSkyLight(rx, ry, rz) / (float) Chunk.MAX_LIGHT * daylight,
                         world.getBlockLightWorld(rx, ry, rz) / (float) Chunk.MAX_LIGHT, atlas, rp.heldItem);
             }
@@ -4575,7 +4631,7 @@ public class Game {
         // Осадки — после воды: дождь над озером должен лечь поверх её глади.
         float wx = weatherScale();
         if (precipitation != null && !underwater && world != null && wx > 0f
-                && (atmosphere.snowfall() > 0.01f || atmosphere.rain() > 0.01f)) {
+                && (atmosphere.snowfall() > 0.01f || atmosphere.rain() > 0.01f || atmosphere.dust > 0.01f)) {
             precipitation.updateField(world, eye);
             Vector3f flake = PrecipitationRenderer.flakeColor(skyAmb, lightCol, fogCol);
             Vector3f drop = PrecipitationRenderer.dropColor(flake);
@@ -4584,8 +4640,8 @@ public class Game {
             // поэтому «поменьше» ничего не пересоздаёт.
             precipitation.render(proj, view, eye, totalTime, atmosphere.windX, atmosphere.windZ,
                     atmosphere.drift,
-                    atmosphere.snowfall() * wx, atmosphere.rain() * wx, atmosphere.storm,
-                    flake, drop, hdr ? 1f : 0f);
+                    atmosphere.snowfall() * wx, atmosphere.rain() * wx, atmosphere.storm, atmosphere.dust * wx,
+                    flake, drop, new Vector3f(hazeCol).mul(1.5f), hdr ? 1f : 0f);
         }
 
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL); // restore before outline/particles/UI
@@ -5182,6 +5238,10 @@ public class Game {
             postSettings.fogDriftZ = atmosphere.drift.z;
             postSettings.fogLight.set(lightCol).mul(0.7f);
             postSettings.fogAmbient.set(skyAmb).mul(0.6f);
+            if (atmosphere.dust > 0.001f) {
+                postSettings.fogLight.mul(1f, 1f - atmosphere.dust * 0.22f, 1f - atmosphere.dust * 0.55f);
+                postSettings.fogAmbient.mul(1f, 1f - atmosphere.dust * 0.22f, 1f - atmosphere.dust * 0.55f);
+            }
             postSettings.camPos.set(eye);
             postSettings.lightDir.set(lightDir);
             postSettings.invViewProj.set(proj).mul(view).invert();
@@ -5247,11 +5307,11 @@ public class Game {
             // тень под ногами — главная подсказка о том, где ты стоишь.
             playerRenderer.renderShadow(shadowMobShader, ls, player.position,
                     bodyRotation.bodyYaw, bodyRotation.headYaw, bodyRotation.headPitch,
-                    walkedDistance, walkAmount, handSwing, atlas, inventory.get(selectedSlot));
+                    playerAnimation.pose(), atlas, inventory.get(selectedSlot));
             for (var rp : net.players()) {
                 if (!rp.placed() || rp.isDead()) continue;
                 playerRenderer.renderShadow(shadowMobShader, ls, rp.position,
-                        rp.bodyYaw(), rp.yaw, rp.pitch, rp.walkedDistance, rp.walkAmount, rp.swing,
+                        rp.bodyYaw(), rp.yaw, rp.pitch, rp.animation.pose(),
                         atlas, rp.heldItem);
             }
         }
@@ -5883,9 +5943,14 @@ public class Game {
         }
 
         @Override
+        public float playerY() {
+            return player.position.y;
+        }
+
         public void teleport(float x, float y, float z) {
             player.position.set(x, y, z);
             bodyRotation.snap(player.camera.yaw, player.camera.pitch);
+            playerAnimation.reset(player.position, player.camera.yaw, player.onGround, player.inWater, player.flying);
             player.velocity.set(0f, 0f, 0f);
             player.lastFallDistance = 0f;
             player.fallDistance = 0f;
@@ -6382,6 +6447,7 @@ public class Game {
         player.position.set(sx, sy, sz);
         player.respawn(sx, sy, sz);
         bodyRotation.snap(player.camera.yaw, player.camera.pitch);
+        playerAnimation.reset(player.position, player.camera.yaw, player.onGround, player.inWater, player.flying);
         player.health = Player.MAX_HEALTH;
         player.hunger = Player.MAX_HUNGER;
         player.velocity.set(0, 0, 0);
@@ -6628,7 +6694,7 @@ public class Game {
                 "/time [query]",
                 "/time set day|sunrise|noon|sunset|night|midnight|0-24",
                 "/time add <hours>",
-                "/weather clear|cloudy|light|heavy|storm",
+                "/weather clear|cloudy|light|heavy|storm|sandstorm",
                 "/tp <x> <y> <z>",
                 "/spawnpoint [x y z]",
                 "/fly",
