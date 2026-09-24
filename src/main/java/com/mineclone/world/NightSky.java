@@ -23,6 +23,11 @@ public final class NightSky {
 
     /** Номер игровых суток; меняется на восходе. */
     public static long dayIndex(float gameTime) {
+        return dayIndex((double) gameTime);
+    }
+
+    /** Double precision clock path; avoids losing the day at a float rounding boundary. */
+    public static long dayIndex(double gameTime) {
         return (long) Math.floor(gameTime / CYCLE);
     }
 
@@ -35,14 +40,22 @@ public final class NightSky {
      * @param timeOfDay желаемое время суток, радианы 0..2pi
      */
     public static float withTimeOfDay(float gameTime, float timeOfDay) {
+        return (float) withTimeOfDay((double) gameTime, timeOfDay);
+    }
+
+    public static double withTimeOfDay(double gameTime, double timeOfDay) {
         double t = timeOfDay % CYCLE;
         if (t < 0)
             t += CYCLE;
-        return (float) (dayIndex(gameTime) * CYCLE + t);
+        return dayIndex(gameTime) * CYCLE + t;
     }
 
     /** Фаза луны в эту ночь: 0 полнолуние … 4 новолуние … 7 почти полная. */
     public static int moonPhase(float gameTime) {
+        return moonPhase((double) gameTime);
+    }
+
+    public static int moonPhase(double gameTime) {
         return (int) Math.floorMod(dayIndex(gameTime), (long) PHASES);
     }
 

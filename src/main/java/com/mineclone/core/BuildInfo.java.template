@@ -1,0 +1,13 @@
+package com.mineclone.core;
+
+/** Generated from gradle.properties by Gradle and the PowerShell build scripts. */
+public final class BuildInfo {
+    public static final String VERSION = "@VERSION@";
+    public static final String GIT_SHA = "@GIT_SHA@";
+
+    private BuildInfo() {}
+
+    public static String summary() {
+        return "Mineclone " + VERSION + " (" + GIT_SHA + ")";
+    }
+}

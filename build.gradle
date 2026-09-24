@@ -4,7 +4,6 @@ plugins {
 }
 
 group = 'com.mineclone'
-version = '1.0.0-alpha'
 
 java {
     toolchain {
@@ -17,8 +16,6 @@ repositories {
 }
 
 ext {
-    lwjglVersion = '3.3.6'
-    jomlVersion  = '1.10.5'
     lwjglNatives = 'natives-windows'
 }
 
@@ -40,7 +37,7 @@ dependencies {
     implementation "org.joml:joml:$jomlVersion"
 
     // MP3-декодер для музыки из assets/music: stb_vorbis умеет только OGG.
-    implementation 'com.googlecode.soundlibs:jlayer:1.0.1.4'
+    implementation "com.googlecode.soundlibs:jlayer:$jlayerVersion"
 }
 
 application {
@@ -50,6 +47,49 @@ application {
         "-Dmineclone.appDir=${projectDir.absolutePath}"
     ]
 }
+
+def generatedSources = layout.buildDirectory.dir('generated/sources/buildInfo/java')
+def buildInfoTemplate = layout.projectDirectory.file('src/main/java/com/mineclone/core/BuildInfo.java.template')
+def gitSha = providers.provider {
+    try {
+        def result = providers.exec {
+            commandLine 'git', 'rev-parse', '--short=12', 'HEAD'
+            ignoreExitValue = true
+        }
+        return result.result.get().exitValue == 0 ? result.standardOutput.asText.get().trim() : 'unknown'
+    } catch (Exception ignored) { return 'unknown' }
+}
+tasks.register('generateBuildInfo') {
+    inputs.file(buildInfoTemplate)
+    inputs.property('version', project.version.toString())
+    inputs.property('gitSha', gitSha)
+    outputs.dir(generatedSources)
+    doLast {
+        def output = generatedSources.get().file('com/mineclone/core/BuildInfo.java').asFile
+        output.parentFile.mkdirs()
+        output.setText(buildInfoTemplate.asFile.getText('UTF-8')
+                .replace('@VERSION@', project.version.toString())
+                .replace('@GIT_SHA@', gitSha.get()), 'UTF-8')
+    }
+}
+sourceSets.main.java.srcDir(generatedSources)
+tasks.named('compileJava') { dependsOn tasks.named('generateBuildInfo') }
+
+tasks.register('mineTests', JavaExec) {
+    group = 'verification'
+    description = 'Runs the headless zero-dependency regression suite.'
+    dependsOn tasks.named('testClasses')
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.mineclone.TestMain'
+    workingDir = projectDir
+    systemProperty 'mineclone.testReport', layout.projectDirectory.file('out-test/test-report.txt').asFile.absolutePath
+    if (providers.gradleProperty('testOnly').isPresent()) args '--only', providers.gradleProperty('testOnly').get()
+    if (providers.gradleProperty('testSkip').isPresent()) args '--skip', providers.gradleProperty('testSkip').get()
+    if (providers.gradleProperty('testList').isPresent()) args '--list'
+}
+// No JUnit discovery: `test` delegates to the same real runner as `mineTests`.
+tasks.named('test') { dependsOn tasks.named('mineTests'); enabled = false }
+tasks.named('check') { dependsOn tasks.named('mineTests') }
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
@@ -116,5 +156,20 @@ tasks.register('portableZip', Zip) {
     destinationDirectory = layout.buildDirectory.dir('distributions')
     from(layout.buildDirectory.dir("jpackage/${appName}")) {
         into appName
+    }
+}
+
+tasks.register('serverZip', Zip) {
+    group = 'distribution'
+    description = 'Builds the standalone Java 17 dedicated server archive.'
+    dependsOn tasks.named('jar')
+    archiveBaseName = 'Mineclone'
+    archiveClassifier = 'server'
+    destinationDirectory = layout.buildDirectory.dir('distributions')
+    into('Mineclone-server') {
+        from(tasks.named('jar').flatMap { it.archiveFile }) { rename { 'Mineclone.jar' } }
+        into('lib') { from configurations.runtimeClasspath }
+        into('assets/data') { from 'assets/data' }
+        from('tools/server-package')
     }
 }

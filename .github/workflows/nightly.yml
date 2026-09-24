@@ -1,0 +1,61 @@
+name: Nightly LAN and saves
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lan-and-saves:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      GALLIUM_DRIVER: llvmpipe
+      ALSOFT_DRIVERS: 'null'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/cache@v5
+        with:
+          path: libs
+          key: jars-windows-${{ hashFiles('gradle.properties', 'tools/build-common.ps1') }}
+      - name: Install software OpenGL for the hosted Windows runner
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'mesa.7z'
+          $mesa = Join-Path $env:RUNNER_TEMP 'mesa'
+          Invoke-WebRequest 'https://github.com/pal1000/mesa-dist-win/releases/download/26.2.1/mesa3d-26.2.1-release-msvc.7z' -OutFile $archive
+          $expected = '78a0305844074535e73dfb6dcb5eb2a65f1d9dc445102e1f4c3c3e97dace19bf'
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Mesa checksum mismatch' }
+          & 7z x $archive "-o$mesa" -y
+          if ($LASTEXITCODE -ne 0) { throw 'Mesa extraction failed' }
+          if (-not (Test-Path "$mesa/x64/opengl32.dll")) { throw 'Mesa OpenGL DLL missing' }
+          Copy-Item -Path "$mesa/x64/*.dll" -Destination "$env:JAVA_HOME/bin"
+      - name: Compile
+        run: ./run.ps1 -CompileOnly
+      - name: Two real LAN game processes
+        run: ./run-net-test.ps1
+      - name: Audit reference saves
+        if: always()
+        run: |
+          $fixtures = 'src/test/resources/fixtures/saves'
+          if (-not (Test-Path -LiteralPath $fixtures)) { throw 'Reference save corpus is missing' }
+          $levels = @(Get-ChildItem -Path $fixtures -Filter level.dat -Recurse)
+          if ($levels.Count -lt 6) { throw 'Reference save corpus is incomplete' }
+          java -cp 'out;libs/*' tools/CheckSaves.java $fixtures
+          if ($LASTEXITCODE -ne 0) { throw 'Reference save audit failed' }
+      - name: Upload LAN evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lan-evidence
+          path: out-test/net
+          if-no-files-found: warn

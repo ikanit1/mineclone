@@ -1,0 +1,12 @@
+unknown-item|mineclone/recipes/case.json|bad.ingredients[0]|unknown item
+unknown-tag|mineclone/recipes/case.json|bad.ingredients[0]|unknown tag
+ragged-pattern|mineclone/recipes/case.json|bad.pattern[1]|ragged pattern
+empty-result|mineclone/recipes/case.json|bad.result.count|result count
+missing-legend|mineclone/recipes/case.json|bad.pattern[0]|has no legend
+empty-ingredients|mineclone/recipes/case.json|bad.ingredients|1 to 9
+invalid-time|mineclone/recipes/case.json|bad.time|finite and positive
+duplicate-id|mineclone/recipes/second.json|bad|duplicate recipe id
+unknown-type|mineclone/recipes/case.json|bad.type|unknown recipe type
+unused-legend|mineclone/recipes/case.json|bad.key.B|unused pattern key
+empty-result-id|mineclone/recipes/case.json|bad.result|bad path
+empty-pattern|mineclone/recipes/case.json|bad.pattern|must contain an ingredient

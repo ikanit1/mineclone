@@ -86,7 +86,34 @@ public class Chunk {
      * edits go through World.setBlock, which sets this). Distinct from
      * {@link #dirty}, which is the mesh-rebuild flag. Drives whole-chunk save.
      */
-    public boolean modified = false;
+    public volatile boolean modified = false;
+
+    /** A newer or unpreserved save file must never be overwritten by this session. */
+    private volatile boolean readOnly;
+    private volatile Thread publishedOwner;
+    private final boolean checkThreadOwnership = threadChecksEnabled();
+
+    public boolean isReadOnly() { return readOnly; }
+    public void markReadOnly() { readOnly = true; }
+
+    static boolean threadChecksEnabled() {
+        return Chunk.class.desiredAssertionStatus() || Boolean.getBoolean("mineclone.checkThreadOwnership");
+    }
+
+    void publishTo(Thread owner) {
+        if (publishedOwner != null && publishedOwner != owner)
+            throw new IllegalStateException("Chunk already belongs to another world thread");
+        publishedOwner = owner;
+    }
+
+    /** Detached chunks belong to their loading worker; published containers to the world thread. */
+    public void assertMainThread() {
+        Thread owner = publishedOwner;
+        if (checkThreadOwnership && owner != null && owner != Thread.currentThread())
+            throw new IllegalStateException("Published chunk " + cx + "," + cz + " accessed outside its main thread");
+    }
+
+    public boolean isPublished() { return publishedOwner != null; }
 
     public Chunk(int cx, int cz) {
         this.cx = cx;
@@ -122,6 +149,7 @@ public class Chunk {
     }
 
     public void set(int x, int y, int z, BlockType t) {
+        assertMainThread();
         if (!inBounds(x, y, z))
             return;
         int i = idx(x, y, z);
@@ -332,6 +360,7 @@ public class Chunk {
     }
 
     public void setMeta(int x, int y, int z, byte val) {
+        assertMainThread();
         if (!inBounds(x, y, z))
             return;
         int i = idx(x, y, z);
@@ -679,10 +708,13 @@ public class Chunk {
      * заводить вторую систему выгрузки и сохранения, ровно ту же, что уже
      * есть у чанков.
      */
+    // After publication this map and its mutable values are main-thread only.
+    // Background save jobs receive deep copies taken on that thread.
     private final java.util.HashMap<Integer, ItemStack[]> chests = new java.util.HashMap<>();
 
     /** Содержимое сундука или null, если сундука там нет. */
     public ItemStack[] getChest(int x, int y, int z) {
+        assertMainThread();
         if (!inBounds(x, y, z))
             return null;
         return chests.get(idx(x, y, z));
@@ -690,6 +722,7 @@ public class Chunk {
 
     /** Заводит пустой сундук, если его ещё нет, и отдаёт содержимое. */
     public ItemStack[] createChest(int x, int y, int z) {
+        assertMainThread();
         if (!inBounds(x, y, z))
             return null;
         return chests.computeIfAbsent(idx(x, y, z), k -> new ItemStack[CHEST_SLOTS]);
@@ -697,6 +730,7 @@ public class Chunk {
 
     /** Убирает сундук и отдаёт то, что в нём лежало (или null). */
     public ItemStack[] removeChest(int x, int y, int z) {
+        assertMainThread();
         if (!inBounds(x, y, z))
             return null;
         ItemStack[] out = chests.remove(idx(x, y, z));
@@ -707,6 +741,7 @@ public class Chunk {
 
     /** Все сундуки чанка — для сохранения. Ключ это {@link #idx}. */
     public java.util.Map<Integer, ItemStack[]> chests() {
+        assertMainThread();
         return chests;
     }
 
@@ -718,10 +753,12 @@ public class Chunk {
      * тег типа, реестр, ветвление при чтении сейва — и всё это ради того,
      * чтобы две разные структуры лежали в одном ящике.
      */
+    // Same single-writer ownership as chests; meshing never reads these maps.
     private final java.util.HashMap<Integer, Furnace> furnaces = new java.util.HashMap<>();
 
     /** Печь в этой клетке или null. */
     public Furnace getFurnace(int x, int y, int z) {
+        assertMainThread();
         if (!inBounds(x, y, z))
             return null;
         return furnaces.get(idx(x, y, z));
@@ -729,6 +766,7 @@ public class Chunk {
 
     /** Заводит печь, если её ещё нет, и отдаёт её состояние. */
     public Furnace createFurnace(int x, int y, int z) {
+        assertMainThread();
         if (!inBounds(x, y, z))
             return null;
         return furnaces.computeIfAbsent(idx(x, y, z), k -> new Furnace());
@@ -736,6 +774,7 @@ public class Chunk {
 
     /** Убирает печь и отдаёт то, что в ней было. */
     public Furnace removeFurnace(int x, int y, int z) {
+        assertMainThread();
         if (!inBounds(x, y, z))
             return null;
         Furnace out = furnaces.remove(idx(x, y, z));
@@ -746,6 +785,7 @@ public class Chunk {
 
     /** Все печи чанка — для сохранения и тиков. */
     public java.util.Map<Integer, Furnace> furnaces() {
+        assertMainThread();
         return furnaces;
     }
 
@@ -757,16 +797,32 @@ public class Chunk {
      * держать их здесь значило бы перекладывать при каждом шаге.
      */
     private java.util.List<DroppedItem> pendingItems = java.util.List.of();
+    private final java.util.Map<String, byte[]> extraSections = new java.util.LinkedHashMap<>();
+
+    public void restoreExtraSections(java.util.Map<String, byte[]> sections) {
+        assertMainThread();
+        extraSections.clear();
+        sections.forEach((key, value) -> extraSections.put(key, value.clone()));
+    }
+
+    public java.util.Map<String, byte[]> copyExtraSections() {
+        assertMainThread();
+        java.util.Map<String, byte[]> copy = new java.util.LinkedHashMap<>();
+        extraSections.forEach((key, value) -> copy.put(key, value.clone()));
+        return copy;
+    }
     /** Сколько предметов ушло в последнюю запись: был хоть один — запись обязательна. */
     public int savedItems;
 
     public synchronized void setPendingItems(java.util.List<DroppedItem> items) {
+        assertMainThread();
         pendingItems = items == null ? java.util.List.of() : new java.util.ArrayList<>(items);
         savedItems = pendingItems.size();
     }
 
     /** Отдаёт предметы из сейва ровно один раз. */
     public synchronized java.util.List<DroppedItem> takePendingItems() {
+        assertMainThread();
         java.util.List<DroppedItem> out = pendingItems;
         pendingItems = java.util.List.of();
         return out;
@@ -777,6 +833,7 @@ public class Chunk {
      * его меш готов и предметы подняты, — без этого запись молча стёрла бы их.
      */
     public synchronized java.util.List<DroppedItem> copyPendingItems() {
+        assertMainThread();
         java.util.List<DroppedItem> out = new java.util.ArrayList<>(pendingItems.size());
         for (DroppedItem d : pendingItems)
             out.add(new DroppedItem(d.stack.copy(), d.x, d.y, d.z, d.age));
@@ -785,6 +842,7 @@ public class Chunk {
 
     /** Заменяет набор печей целиком — при восстановлении из сейва. */
     public void restoreFurnaces(java.util.Map<Integer, Furnace> src) {
+        assertMainThread();
         furnaces.clear();
         if (src != null)
             furnaces.putAll(src);
@@ -792,6 +850,7 @@ public class Chunk {
 
     /** Копия печей для фоновой записи — см. {@link #copyChests}. */
     public java.util.Map<Integer, Furnace> copyFurnaces() {
+        assertMainThread();
         java.util.HashMap<Integer, Furnace> out = new java.util.HashMap<>();
         for (var e : furnaces.entrySet()) {
             Furnace src = e.getValue();
@@ -815,6 +874,7 @@ public class Chunk {
      * значит однажды сохранить полустопку.
      */
     public java.util.Map<Integer, ItemStack[]> copyChests() {
+        assertMainThread();
         java.util.HashMap<Integer, ItemStack[]> out = new java.util.HashMap<>();
         for (var e : chests.entrySet()) {
             ItemStack[] src = e.getValue();
@@ -828,6 +888,7 @@ public class Chunk {
 
     /** Заменяет набор сундуков целиком — при восстановлении из сейва. */
     public void restoreChests(java.util.Map<Integer, ItemStack[]> src) {
+        assertMainThread();
         chests.clear();
         if (src != null)
             chests.putAll(src);
@@ -856,6 +917,7 @@ public class Chunk {
      * freshly-restored chunk matches disk).
      */
     public void restore(byte[] srcBlocks, byte[] srcMeta) {
+        assertMainThread();
         blocks.restore(srcBlocks);
         waterCount = 0;
         lavaCount = 0;

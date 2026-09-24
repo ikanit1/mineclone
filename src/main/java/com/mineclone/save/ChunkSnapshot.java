@@ -23,6 +23,8 @@ public final class ChunkSnapshot {
     public final Map<Integer, Furnace> furnaces;
     /** Предметы, лежащие на земле в этом чанке. */
     public final java.util.List<com.mineclone.world.DroppedItem> items;
+    /** Unknown/future sections must survive every load-edit-save cycle. */
+    public final Map<String, byte[]> extra;
 
     public ChunkSnapshot(int cx, int cz, byte[] blocks, byte[] meta) {
         this(cx, cz, blocks, meta, new HashMap<>(), new HashMap<>());
@@ -43,10 +45,19 @@ public final class ChunkSnapshot {
                          Map<Integer, ItemStack[]> chests,
                          Map<Integer, Furnace> furnaces,
                          java.util.List<com.mineclone.world.DroppedItem> items) {
+        this(cx, cz, blocks, meta, chests, furnaces, items, Map.of());
+    }
+
+    public ChunkSnapshot(int cx, int cz, byte[] blocks, byte[] meta,
+                         Map<Integer, ItemStack[]> chests, Map<Integer, Furnace> furnaces,
+                         java.util.List<com.mineclone.world.DroppedItem> items, Map<String, byte[]> extra) {
         this.cx = cx; this.cz = cz;
         this.blocks = blocks; this.meta = meta;
         this.chests = chests == null ? new HashMap<>() : chests;
         this.furnaces = furnaces == null ? new HashMap<>() : furnaces;
         this.items = items == null ? java.util.List.of() : items;
+        Map<String, byte[]> copy = new java.util.LinkedHashMap<>();
+        if (extra != null) extra.forEach((key, value) -> copy.put(key, value.clone()));
+        this.extra = java.util.Collections.unmodifiableMap(copy);
     }
 }

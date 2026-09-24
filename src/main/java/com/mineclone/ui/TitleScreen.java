@@ -14,7 +14,7 @@ import java.util.Random;
  */
 public final class TitleScreen implements Screen {
 
-    public static final String VERSION = "v1.0.0 alpha";
+    public static final String VERSION = "v" + com.mineclone.core.BuildInfo.VERSION;
 
     /** Строка под логотипом. Своя на каждый запуск. */
     static final String[] SPLASHES = {
@@ -87,7 +87,7 @@ public final class TitleScreen implements Screen {
     private void refresh() {
         last = null;
         for (SaveManager.WorldInfo w : save.listWorlds(false))
-            if (!w.corrupted) {
+            if (w.playable()) {
                 last = w; // список уже от последнего сыгранного
                 break;
             }

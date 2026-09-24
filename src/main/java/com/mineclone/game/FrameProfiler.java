@@ -50,6 +50,12 @@ public final class FrameProfiler {
 
     private Phase open;
     private double openStart;
+    private static final com.mineclone.render.GpuTimers.Phase[] GPU_PHASES =
+            com.mineclone.render.GpuTimers.Phase.values();
+    private final double[] gpuMillis = new double[GPU_PHASES.length];
+    private long gpuFrame = -1;
+    private long gpuSamples;
+    private long gpuDropped;
 
     /**
      * Коэффициент сглаживания пофазных чисел. Мгновенные значения скачут так,
@@ -120,6 +126,9 @@ public final class FrameProfiler {
         return smoothed[phase.ordinal()] * 1000.0;
     }
 
+    /** Unsmoothed completed CPU phase duration, milliseconds; no allocation or GPU readback. */
+    public double rawMillis(Phase phase) { return current[phase.ordinal()] * 1000.0; }
+
     /** Сумма сглаженных фаз, мс. */
     public double totalMillis() {
         double sum = 0;
@@ -153,5 +162,33 @@ public final class FrameProfiler {
                     .append(String.format(java.util.Locale.ROOT, "%.2f", current[p.ordinal()] * 1000.0));
         }
         return sb.toString();
+    }
+
+    /** Copy an already completed GPU sample; this method never makes an OpenGL call. */
+    public void captureGpu(com.mineclone.render.GpuTimers timers) {
+        if (timers.sampleFrame() != gpuFrame) {
+            for (var phase : GPU_PHASES) gpuMillis[phase.ordinal()] = timers.millis(phase);
+            gpuFrame = timers.sampleFrame();
+        }
+        gpuSamples = timers.sampleCount();
+        gpuDropped = timers.droppedFrames();
+    }
+
+    public double gpuMillis(com.mineclone.render.GpuTimers.Phase phase) { return gpuMillis[phase.ordinal()]; }
+    public double gpuTotalMillis() {
+        double total = 0;
+        for (double value : gpuMillis) total += value;
+        return total;
+    }
+    public long gpuSampleFrame() { return gpuFrame; }
+    public long gpuSamples() { return gpuSamples; }
+    public long gpuDroppedFrames() { return gpuDropped; }
+    public String gpuBreakdown() {
+        if (gpuFrame < 0) return "GPU: pending";
+        StringBuilder out = new StringBuilder(String.format(java.util.Locale.ROOT,
+                "GPU %.2f ms [frame %d] ", gpuTotalMillis(), gpuFrame));
+        for (var phase : GPU_PHASES) out.append(phase.name().toLowerCase(java.util.Locale.ROOT)).append('=')
+                .append(String.format(java.util.Locale.ROOT, "%.2f ", gpuMillis(phase)));
+        return out.toString().trim();
     }
 }

@@ -120,7 +120,8 @@ public class BlockOutline {
         shader.setFloat("uLinearOut", linearOut);
         shader.setFloat("uEmissive", 0f);
         glBindVertexArray(vao);
-        glLineWidth(1.5f);
+        // Width 1 is the only portable line width in a forward-compatible core context.
+        glLineWidth(1f);
         glDrawArrays(GL_LINES, 0, verts.length / 3);
         glBindVertexArray(0);
         shader.unbind();

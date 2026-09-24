@@ -2,6 +2,32 @@
 
 Versions below 0.9.0 predate git tags and are reconstructed from the commit history by feature milestones; their dates are taken from the commits.
 
+## [Unreleased]
+
+### Fixed
+- Guests breaking or replacing a chest or furnace now spill its complete contents on the authority before the container is removed.
+- Unreadable worlds refuse to open; damaged chunks are preserved in quarantine and newer mandatory formats stay read-only.
+- Saved chunks become visible only after terrain, containers, lighting and opaque data have been restored; late loads cannot replace live edits.
+- Reloading an evicted chunk uses its latest queued checkpoint while disk writes are pending; older completions and failed writes cannot discard that checkpoint.
+- Dedicated-server autosaves preserve the single-player owner's inventory, pending stacks, pose and vitals. Reopening the active world captures its latest state first.
+- The crosshair keeps its two-pixel thickness with triangles; outlines use a portable line width so forward-compatible OpenGL contexts no longer report invalid values.
+
+### Added
+- Session and manual world ZIP backups, protected migration backups, restore-as-copy UI, and dedicated-server `/backup`.
+- Level v11 and chunk v7 with minimum reader versions and bounded named sections. Unknown data survives rewriting; level writes queue immutable snapshots.
+- Shared double-precision world clock with saved simulation ticks, plus asynchronous GPU timing for rendering phases.
+- Categorized tests, runner reports, CI/nightly, shared BuildInfo and a tested standalone server archive.
+- Historical save fixtures, block ordinal/property fixtures, architecture documentation and preserved documentation archives.
+- Eleven reproducible benchmark scenes with frame, GPU, queue, allocation, network and save metrics; frozen build snapshots and repeated-run aggregation retain measurement provenance.
+
+### Changed
+- All 35 crafting recipes and nine smelting recipes load from validated JSON with their legacy order, shapes and outputs preserved. Tag ingredients and configured smelting times/counts are executed by the real crafting/furnace paths.
+- Block behavior flags and numeric properties now come from one exhaustive `BlockProps` table without changing existing block IDs.
+- Historical root generators and obsolete manual test sources moved to `tools/legacy`; generated scratch artifacts are kept outside the source tree.
+
+### Art sources
+- Added armor, hoe and crop source sheets with exact generation prompts for RND-09. Runtime imports and their gameplay content remain scheduled separately.
+
 ## [1.0.0-alpha] - 2026-09-21
 
 Official 1.0.0-alpha release milestone.
@@ -347,4 +373,3 @@ a bundled JRE) - no install, no JDK.
 
 ### Added
 - Initial tracked Mineclone codebase before the game-feel feature passes.
-

@@ -1,6 +1,8 @@
 package com.mineclone.world;
 
 import com.mineclone.render.MeshData;
+import com.mineclone.save.ChunkLoad;
+import com.mineclone.save.ChunkSnapshot;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -18,7 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Asynchronous chunk pipeline:
- *   missing  ->  GEN (bg)  ->  generated chunk in world
+ *   missing -> detached GEN + saved snapshot (bg) -> publish complete chunk
  *   generated && neighbours generated  ->  MESH (bg)  ->  MeshData in ready queue
  *   main thread polls ready queue -> uploads to GPU
  *
@@ -87,6 +89,14 @@ public class ChunkLoader {
     private final com.mineclone.save.SaveManager save;
     private final String worldId;
     private final AtomicInteger meshSeq = new AtomicInteger();
+    /** Serializes only competing loads of the same key (including sync/async callers). */
+    private final Object[] loadLocks = new Object[64];
+    private final ChunkSource source = new ChunkSource();
+    private final ChunkPipelineMetrics pipelineMetrics = System.getProperty("mineclone.bench") == null
+            ? null : new ChunkPipelineMetrics();
+
+    public ChunkPipelineMetrics pipelineMetrics() { return pipelineMetrics; }
+    public int readyMeshCount() { return ready.size(); }
 
     /** Чанк игрока — центр, от которого считается приоритет очереди. */
     private volatile int centerX = 0, centerZ = 0;
@@ -106,7 +116,7 @@ public class ChunkLoader {
     /**
      * Chunks that need their block-light re-flooded from any emitters they
      * contain. blockLight is written only on the main thread (per Chunk's
-     * concurrency contract), so applySnapshot — which may run on the gen
+     * concurrency contract), so chunk loading — which may run on the gen
      * pool — defers the flood here. Game drains this on the main thread per
      * frame via {@link #drainLightFlood(int)}.
      * <p>
@@ -126,6 +136,9 @@ public class ChunkLoader {
         this.mesher = mesher;
         this.save = save;
         this.worldId = worldId;
+        for (int i = 0; i < loadLocks.length; i++) loadLocks[i] = new Object();
+        if (save != null && worldId != null && !worldId.equals("__menu__"))
+            world.useSavedChunkSource();
         // Пулы по числу ядер, а не жёсткие 2+2: на восьмиядерной машине
         // прежние константы оставляли шесть ядер простаивать, пока игрок
         // ждал загрузки чанков. Одно ядро всегда оставляем главному потоку.
@@ -247,32 +260,61 @@ public class ChunkLoader {
     }
 
     /**
-     * Apply any saved snapshot over an already-generated chunk: restore
-     * blocks+meta, recompute chunk-local sky light, flag for remesh, and
-     * clear {@code modified} (a freshly-restored chunk matches disk). No-op
-     * if the chunk has no saved snapshot. Safe on the gen pool or the main
-     * thread; the only state it touches is the passed chunk and disk reads.
+     * Load synchronously using exactly the same restore-before-publish path as
+     * generation workers. An already published chunk is never restored again:
+     * its player edits and container contents belong to the world thread.
      */
-    public void applySnapshot(Chunk c) {
-        com.mineclone.save.ChunkSnapshot snap = save.loadChunk(worldId, c.cx, c.cz);
-        if (snap != null) {
-            // restore() сам пересобирает список излучателей и двигает версию.
+    public Chunk loadNow(int cx, int cz) { return source.load(cx, cz); }
+
+    private final class ChunkSource {
+        Chunk load(int cx, int cz) {
+            Chunk existing = world.getChunkIfExists(cx, cz);
+            if (existing != null) return existing;
+            long key = World.key(cx, cz);
+            int stripe = Long.hashCode(key) & (loadLocks.length - 1);
+            synchronized (loadLocks[stripe]) {
+                existing = world.getChunkIfExists(cx, cz);
+                if (existing != null) return existing;
+                Chunk candidate = world.generateDetached(cx, cz);
+                boolean restored = restoreDetached(candidate);
+                // Generation already computed terrain light. Saved blocks need a
+                // fresh local flood while the candidate is still worker-private.
+                if (restored) candidate.computeSkyLight();
+                candidate.modified = false;
+                // Register the light barrier before readers can discover the chunk.
+                pendingLightFlood.add(key);
+                Chunk published = world.publish(candidate);
+                if (published == candidate && restored) world.falling.scanRestored(candidate);
+                return published;
+            }
+        }
+    }
+
+    /** Only called on a detached candidate; no gameplay-visible object is touched. */
+    private boolean restoreDetached(Chunk c) {
+        if (save == null || worldId == null || worldId.equals("__menu__")) return false;
+        ChunkLoad result = save.readChunk(worldId, c.cx, c.cz);
+        if (result instanceof ChunkLoad.Loaded loaded) {
+            ChunkSnapshot snap = loaded.snapshot();
             c.restore(snap.blocks, snap.meta);
             c.restoreChests(snap.chests);
             c.restoreFurnaces(snap.furnaces);
             c.setPendingItems(snap.items);
-            c.computeSkyLight();
-            c.modified = false;
-            world.falling.scanRestored(c);
-            LavaSimulator.activateChunkIfLava(world, c.cx, c.cz);
+            c.restoreExtraSections(snap.extra);
+            return true;
         }
-        // Always queue this chunk: flood its own emitters and inherit border light
-        // from already-lit neighbours via injectNeighbourLight in drainLightFlood.
-        pendingLightFlood.add(World.key(c.cx, c.cz));
-        // Neighbours that were already meshed used stale sky light sampled from
-        // this chunk (either MAX_LIGHT for unloaded, or pre-restore values).
-        // Mark them dirty so they resample our finalised sky light next frame.
-        invalidateNeighbours(c.cx, c.cz);
+        if (result instanceof ChunkLoad.TooNew) {
+            c.markReadOnly();
+        } else if (result instanceof ChunkLoad.Unreadable) {
+            try {
+                save.quarantineChunk(worldId, c.cx, c.cz);
+            } catch (java.io.IOException e) {
+                // Failed preservation must never turn regeneration into data loss.
+                c.markReadOnly();
+                System.err.println("Cannot quarantine chunk " + c.cx + "," + c.cz + ": " + e.getMessage());
+            }
+        }
+        return false;
     }
 
     private void invalidateNeighbours(int cx, int cz) {
@@ -298,15 +340,22 @@ public class ChunkLoader {
      * path picks up the updated light next frame.
      */
     public void drainLightFlood(int maxPerFrame) {
+        world.assertMainThread();
         Iterator<Long> it = pendingLightFlood.iterator();
         int n = 0;
         while (it.hasNext() && n < maxPerFrame) {
             Long key = it.next();
-            it.remove();
             int cx = (int) (key >> 32);
             int cz = key.intValue();
             Chunk c = world.getChunkIfExists(cx, cz);
+            // A worker registers this barrier immediately before publication.
+            // Keep it pending if the main thread observes that narrow interval.
             if (c == null) continue;
+            it.remove();
+            // Both the simulator sets and neighbour invalidation belong to the
+            // world thread, never the detached generation/restore worker.
+            LavaSimulator.activateChunkIfLava(world, cx, cz);
+            invalidateNeighbours(cx, cz);
             int bx = cx * Chunk.SIZE_X;
             int bz = cz * Chunk.SIZE_Z;
             for (int i = 0; i < c.emitterCount(); i++) {
@@ -328,10 +377,12 @@ public class ChunkLoader {
 
     private void submitGen(int cx, int cz, long key) {
         if (!pendingGen.add(key)) return;
+        long submittedAt = pipelineMetrics == null ? 0 : System.nanoTime();
         genPool.submit(() -> {
             try {
-                applySnapshot(world.getChunk(cx, cz));
+                loadNow(cx, cz);
             } finally {
+                if (pipelineMetrics != null) pipelineMetrics.generation(System.nanoTime() - submittedAt);
                 pendingGen.remove(key);
             }
         });
@@ -347,6 +398,7 @@ public class ChunkLoader {
         if (!meshing) return false;
         if (awaitingUpload.contains(key) || !pendingMesh.add(key)) return false;
         int priority = edit ? EDIT_PRIORITY : distancePriority(cx, cz);
+        long submittedAt = pipelineMetrics == null ? 0 : System.nanoTime();
         meshPool.execute(new MeshTask(priority, meshSeq.incrementAndGet(), () -> {
             try {
                 Chunk c = world.getChunkIfExists(cx, cz);
@@ -358,6 +410,7 @@ public class ChunkLoader {
                 MeshData[] data = mesher.buildData(c, c.meshLod());
                 awaitingUpload.add(key);
                 ready.offer(new Ready(key, data, version));
+                if (pipelineMetrics != null) pipelineMetrics.mesh(System.nanoTime() - submittedAt);
                 meshed.add(key);
             } finally {
                 pendingMesh.remove(key);

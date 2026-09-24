@@ -24,6 +24,11 @@ $port = $probe.LocalEndpoint.Port
 $probe.Stop()
 
 $work = Join-Path $root 'out-test\server'
+$work = [IO.Path]::GetFullPath($work)
+$testRoot = [IO.Path]::GetFullPath((Join-Path $root 'out-test')) + [IO.Path]::DirectorySeparatorChar
+if (-not $work.StartsWith($testRoot, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to clean server test directory outside out-test: $work"
+}
 if (Test-Path $work) { Remove-Item -Recurse -Force -LiteralPath $work }
 New-Item -ItemType Directory -Force -Path $work | Out-Null
 $cp = "$out;$libs\*"
@@ -59,6 +64,7 @@ $psi.FileName = 'java'
 $psi.Arguments = "-cp `"$cp`" com.mineclone.server.ServerMain `"$conf`""
 $psi.WorkingDirectory = $root
 $psi.UseShellExecute = $false
+$psi.CreateNoWindow = $true
 $psi.RedirectStandardInput = $true
 $psi.RedirectStandardOutput = $true
 $psi.RedirectStandardError = $true
@@ -80,7 +86,7 @@ function Start-Guest {
         "-Dmineclone.autopilot.netSlot=$slot",
         '-cp', $cp, 'com.mineclone.Main'
     )
-    $proc = Start-Process -FilePath 'java' -ArgumentList $a -PassThru -NoNewWindow `
+    $proc = Start-Process -FilePath 'java' -ArgumentList $a -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput "$dir\out.log" -RedirectStandardError "$dir\err.log"
     # Touching Handle caches it; without that, Windows PowerShell hands back an
     # empty ExitCode once the process is gone.

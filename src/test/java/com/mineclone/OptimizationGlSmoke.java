@@ -21,6 +21,7 @@ public final class OptimizationGlSmoke {
             Shader water = new Shader(Shaders.CHUNK_VERTEX, Shaders.WATER_FRAGMENT);
             preload.close();
             compareParticlePhysics();
+            compareGpuPhaseTiming();
             ParticleSystem particles = new ParticleSystem();
             PrecipitationRenderer precipitation = new PrecipitationRenderer();
             OcclusionCuller culler = new OcclusionCuller();
@@ -56,9 +57,62 @@ public final class OptimizationGlSmoke {
     private static Object field(Object object, String name) throws ReflectiveOperationException {
         var f = object.getClass().getDeclaredField(name); f.setAccessible(true); return f.get(object);
     }
+
+    /** Small real-GL test; glFinish is a test barrier, never part of the timer implementation. */
+    private static void compareGpuPhaseTiming() {
+        int beginStamp = glGenQueries(), endStamp = glGenQueries();
+        try (GpuTimers timers = new GpuTimers()) {
+            double phaseSum = 0, frameSum = 0;
+            long overhead = 0;
+            for (int frame = 0; frame < 100; frame++) {
+                long cpu = System.nanoTime();
+                timers.beginFrame();
+                if (frame >= 20) overhead += System.nanoTime() - cpu;
+                glQueryCounter(beginStamp, GL_TIMESTAMP);
+                for (GpuTimers.Phase phase : GpuTimers.Phase.values()) {
+                    cpu = System.nanoTime();
+                    timers.next(phase);
+                    if (frame >= 20) overhead += System.nanoTime() - cpu;
+                    for (int draw = 0; draw < 256; draw++) {
+                        glClearColor(draw / 256f, phase.ordinal() / 7f, 0.25f, 1);
+                        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                    }
+                }
+                cpu = System.nanoTime();
+                timers.endFrame();
+                if (frame >= 20) overhead += System.nanoTime() - cpu;
+                glQueryCounter(endStamp, GL_TIMESTAMP);
+                glFinish();
+                timers.poll();
+                long elapsed = glGetQueryObjectui64(endStamp, GL_QUERY_RESULT)
+                        - glGetQueryObjectui64(beginStamp, GL_QUERY_RESULT);
+                if (frame >= 20) {
+                    phaseSum += timers.totalMillis();
+                    frameSum += elapsed / 1_000_000.0;
+                }
+                if (timers.sampleFrame() != frame || timers.totalMillis() <= 0)
+                    throw new AssertionError("GPU phase queries did not publish a complete measured frame");
+            }
+            double error = java.lang.Math.abs(phaseSum - frameSum) / frameSum;
+            System.out.printf(java.util.Locale.ROOT,
+                    "GPU_TIMERS_GL: phase_sum=%.3f frame=%.3f ms error=%.2f%% CPU_overhead=%.4f ms/frame%n",
+                    phaseSum / 80, frameSum / 80, error * 100, overhead / 80.0 / 1_000_000.0);
+            if (error > 0.10) throw new AssertionError("GPU phase sum differs from frame timestamps: " + error);
+        } finally {
+            glDeleteQueries(beginStamp);
+            glDeleteQueries(endStamp);
+        }
+    }
     private static void compareParticlePhysics() {
         if (!org.lwjgl.opengl.GL.getCapabilities().OpenGL43 || Boolean.getBoolean("mineclone.cpuParticles")) return;
-        ParticleSystem gpu = new ParticleSystem();
+        String previousGpu = System.getProperty("mineclone.gpuParticles");
+        System.setProperty("mineclone.gpuParticles", "true");
+        ParticleSystem gpu;
+        try { gpu = new ParticleSystem(); }
+        finally {
+            if (previousGpu == null) System.clearProperty("mineclone.gpuParticles");
+            else System.setProperty("mineclone.gpuParticles", previousGpu);
+        }
         System.setProperty("mineclone.cpuParticles", "true");
         ParticleSystem cpu;
         try { cpu = new ParticleSystem(); } finally { System.clearProperty("mineclone.cpuParticles"); }

@@ -460,6 +460,12 @@ public final class MenuBackground {
      */
     public void renderWorld(Shader chunkShader, Shader waterShader, TextureAtlas atlas,
                             Matrix4f proj, Matrix4f view, SceneLighting lighting) {
+        renderWorld(chunkShader, waterShader, atlas, proj, view, lighting, null);
+    }
+
+    public void renderWorld(Shader chunkShader, Shader waterShader, TextureAtlas atlas,
+                            Matrix4f proj, Matrix4f view, SceneLighting lighting,
+                            com.mineclone.render.GpuTimers timers) {
         chunkShader.bind();
         chunkShader.setMat4("uProjection", proj);
         chunkShader.setMat4("uView", view);
@@ -475,6 +481,7 @@ public final class MenuBackground {
         }
         chunkShader.unbind();
 
+        if (timers != null) timers.next(com.mineclone.render.GpuTimers.Phase.WATER);
         if (waterMeshes.isEmpty())
             return;
         // Вода — дальние первыми, как в игре: смешивание зависит от порядка.

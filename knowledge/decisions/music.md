@@ -2,7 +2,7 @@
 
 Дата: 2026-09-15
 Статус: принято
-Спека: `docs/superpowers/specs/2026-09-15-music-design.md`
+Спека: `docs/archive/superpowers/specs/2026-09-15-music-design.md`
 
 ## Решение
 

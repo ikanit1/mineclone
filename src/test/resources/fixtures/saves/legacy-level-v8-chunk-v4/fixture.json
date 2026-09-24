@@ -1,0 +1,90 @@
+{
+  "writerTag": "v1.0.0-alpha",
+  "writerCommit": "448347596c1c3d944df9720de17b7e7b5c99a655",
+  "kind": "synthetic-historical-layout",
+  "levelVersion": 8,
+  "chunkVersion": 4,
+  "name": "legacy-level-v8-chunk-v4",
+  "seed": 82008,
+  "health": 12.5,
+  "hunger": 20.0,
+  "mode": "SURVIVAL",
+  "lastPlayed": 1725000000000,
+  "position": [1.25, 72.5, -3.75],
+  "spawn": [8.5, 80.0, 8.5],
+  "yaw": 0.75,
+  "pitch": -0.25,
+  "gameTime": 8.5,
+  "selectedSlot": 1,
+  "inventory": [{
+    "count": 23,
+    "damage": 0,
+    "id": "mineclone:stone",
+    "slot": 0
+  }, {
+    "count": 1,
+    "damage": 19,
+    "id": "mineclone:iron_pickaxe",
+    "slot": 1
+  }],
+  "pending": [],
+  "extraSections": {
+
+  },
+  "chunks": [{
+    "x": -1,
+    "z": 2,
+    "blocksSha256": "1dd048fd431061c337fb7506f9ec923f206a418fef611fa61444a7f33f8a6b96",
+    "metaSha256": "dea93101d1d68cdc6afb1983589168ebaa48fa0f5b6a1b7539ccbd0035465cc4",
+    "chests": {
+      "20497": [{
+        "count": 17,
+        "damage": 0,
+        "id": "mineclone:stone",
+        "slot": 0
+      }, {
+        "count": 1,
+        "damage": 9,
+        "id": "mineclone:iron_pickaxe",
+        "slot": 8
+      }]
+    },
+    "furnaces": {
+      "20498": {
+        "input": {
+          "damage": 0,
+          "count": 7,
+          "id": "mineclone:sand"
+        },
+        "output": {
+          "damage": 0,
+          "count": 2,
+          "id": "mineclone:glass"
+        },
+        "burnLeft": 4.5,
+        "cook": 2.75,
+        "burnMax": 12.0,
+        "fuel": {
+          "damage": 0,
+          "count": 3,
+          "id": "mineclone:log"
+        }
+      }
+    },
+    "items": [{
+      "z": 37.5,
+      "y": 81.25,
+      "x": -11.5,
+      "stack": {
+        "damage": 11,
+        "count": 1,
+        "id": "mineclone:stone_pickaxe"
+      },
+      "age": 19.75
+    }]
+  }],
+  "files": {
+    "chunks/c.-1.2.dat": "945ba09ad77f2e3abf65386053c2a0dec53a54ae025e205dcc976bc74d7e61cd",
+    "level.dat": "95578377c4a179e7ad13f0522f3799cbb1ec43246d48c30697a3a3332e64fbb0"
+  }
+}

@@ -4,6 +4,7 @@ import com.mineclone.data.DataPack;
 import com.mineclone.data.JsonException;
 import com.mineclone.data.JsonObject;
 import com.mineclone.data.ResourceId;
+import com.mineclone.item.recipe.RecipeRegistry;
 import com.mineclone.render.TextureAtlas;
 import com.mineclone.world.BlockType;
 
@@ -39,6 +40,7 @@ public final class ItemRegistry {
     private final Categories categories;
     private final Map<ResourceId, Item> missing = new HashMap<>();
     private TagRegistry tags = TagRegistry.empty();
+    private RecipeRegistry recipes = RecipeRegistry.empty();
 
     private ItemRegistry(Map<ResourceId, Item> byId, Item[] byBlock, Categories categories) {
         this.byId = byId;
@@ -76,6 +78,8 @@ public final class ItemRegistry {
 
         ItemRegistry reg = new ItemRegistry(byId, byBlock, categories);
         reg.tags = TagRegistry.load(pack, byId.values(), byId);
+        // Recipes resolve item identities and tag memberships from this registry.
+        reg.recipes = RecipeRegistry.load(pack, reg);
         return reg;
     }
 
@@ -233,6 +237,8 @@ public final class ItemRegistry {
     public TagRegistry tags() {
         return tags;
     }
+
+    public RecipeRegistry recipes() { return recipes; }
 
     public Categories categories() {
         return categories;

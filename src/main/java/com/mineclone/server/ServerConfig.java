@@ -60,6 +60,8 @@ public final class ServerConfig {
     public final int viewDistance;
     /** Как часто мир пишется на диск, в секундах. */
     public final float autosaveSeconds;
+    /** Number of ordinary backups kept; recent migration snapshots are protected separately. */
+    public final int backups;
     /** Имя сервера в объявлении локальной сети. */
     public final String motd;
 
@@ -80,6 +82,7 @@ public final class ServerConfig {
                 intOf(p, "max-players", LanTransport.MAX_PLAYERS)));
         viewDistance = Math.max(2, Math.min(16, intOf(p, "view-distance", 6)));
         autosaveSeconds = Math.max(10f, intOf(p, "autosave-seconds", 60));
+        backups = Math.max(1, Math.min(1000, intOf(p, "backups", 5)));
         motd = strOf(p, "motd", "");
     }
 
@@ -175,6 +178,7 @@ public final class ServerConfig {
         rows.put("view-distance", new String[] { String.valueOf(viewDistance),
                 "chunks kept alive around each player" });
         rows.put("autosave-seconds", new String[] { String.valueOf((int) autosaveSeconds), "" });
+        rows.put("backups", new String[] { String.valueOf(backups), "Number of ordinary world backups to keep" });
         rows.put("motd", new String[] { motd, "shown in the local-network list" });
         try (OutputStreamWriter out = new OutputStreamWriter(
                 new FileOutputStream(file), StandardCharsets.UTF_8)) {

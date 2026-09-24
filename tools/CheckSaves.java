@@ -1,6 +1,8 @@
 import com.mineclone.save.ChunkSnapshot;
 import com.mineclone.save.LevelData;
 import com.mineclone.save.SaveManager;
+import com.mineclone.save.LevelLoad;
+import com.mineclone.save.ChunkLoad;
 import com.mineclone.world.Furnace;
 import com.mineclone.world.ItemStack;
 
@@ -34,18 +36,20 @@ public class CheckSaves {
         Arrays.sort(worlds, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
 
         SaveManager save = new SaveManager(root);
-        int totalChunks = 0, totalStacks = 0, totalMissing = 0, totalFailures = 0;
-        System.out.printf("%-34s %8s %8s %8s %9s%n",
-                "world", "chunks", "stacks", "missing", "failures");
+        int totalChunks = 0, totalStacks = 0, totalMissing = 0, totalFailures = 0, totalQuarantine = 0, totalSections = 0;
+        System.out.printf("%-34s %8s %8s %8s %9s %10s %8s%n",
+                "world", "chunks", "stacks", "missing", "failures", "quarantine", "sections");
 
         for (File dir : worlds) {
             String id = dir.getName();
-            int chunks = 0, stacks = 0, missing = 0, failures = 0;
+            int chunks = 0, stacks = 0, missing = 0, failures = 0, sections = 0;
 
-            LevelData level = save.loadLevel(id);
-            if (level == null) {
+            LevelLoad levelRead = save.readLevel(id);
+            if (!(levelRead instanceof LevelLoad.Loaded loaded)) {
                 failures++;
+                System.err.println(id + ": " + levelRead);
             } else {
+                LevelData level = loaded.data();
                 for (ItemStack s : level.inventory) {
                     if (s == null)
                         continue;
@@ -63,6 +67,9 @@ public class CheckSaves {
             }
 
             File chunkDir = new File(dir, "chunks");
+            File[] evidence = chunkDir.listFiles(
+                    (d, name) -> name.matches("c\\.-?\\d+\\.-?\\d+\\.dat\\.corrupt-\\d+"));
+            int quarantined = evidence == null ? 0 : evidence.length;
             File[] files = chunkDir.listFiles(
                     (d, name) -> name.startsWith("c.") && name.endsWith(".dat"));
             if (files != null) {
@@ -73,12 +80,16 @@ public class CheckSaves {
                         failures++;
                         continue;
                     }
-                    ChunkSnapshot c = save.loadChunk(id, xz[0], xz[1]);
-                    if (c == null) {
+                    ChunkLoad chunkRead = save.readChunk(id, xz[0], xz[1]);
+                    if (!(chunkRead instanceof ChunkLoad.Loaded chunkLoaded)) {
                         failures++;
+                        System.err.println(id + "/" + f.getName() + ": " + chunkRead);
                         continue;
                     }
+                    ChunkSnapshot c = chunkLoaded.snapshot();
                     chunks++;
+                    // Three decoded container/item sections plus opaque future data.
+                    sections += 3 + c.extra.size();
                     for (ItemStack[] chest : c.chests.values())
                         for (ItemStack s : chest) {
                             if (s == null)
@@ -104,22 +115,26 @@ public class CheckSaves {
                 }
             }
 
-            System.out.printf("%-34s %8d %8d %8d %9d%n", id, chunks, stacks, missing, failures);
+            System.out.printf("%-34s %8d %8d %8d %9d %10d %8d%n", id, chunks, stacks, missing, failures, quarantined, sections);
             totalChunks += chunks;
             totalStacks += stacks;
             totalMissing += missing;
             totalFailures += failures;
+            totalQuarantine += quarantined;
+            totalSections += sections;
         }
 
-        System.out.printf("%-34s %8d %8d %8d %9d%n",
+        System.out.printf("%-34s %8d %8d %8d %9d %10d %8d%n",
                 "TOTAL (" + worlds.length + " worlds)",
-                totalChunks, totalStacks, totalMissing, totalFailures);
+                totalChunks, totalStacks, totalMissing, totalFailures, totalQuarantine, totalSections);
         System.out.println(totalFailures == 0 ? "RESULT: OK" : "RESULT: FAIL");
         System.exit(totalFailures == 0 ? 0 : 1);
     }
 
     /** "c.-3.11.dat" -> {-3, 11}; null when the name is not a chunk file. */
     static int[] parse(String name) {
+        if (!name.startsWith("c.") || !name.endsWith(".dat") || name.length() < 9)
+            return null;
         String body = name.substring(2, name.length() - 4);
         int dot = body.indexOf('.', body.charAt(0) == '-' ? 1 : 0);
         if (dot < 0)

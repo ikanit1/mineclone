@@ -1,0 +1,95 @@
+{
+  "writerTag": "v1.0.0-alpha",
+  "writerCommit": "448347596c1c3d944df9720de17b7e7b5c99a655",
+  "kind": "tagged-writer",
+  "levelVersion": 10,
+  "chunkVersion": 6,
+  "name": "alpha-chests",
+  "seed": 81002,
+  "health": 14.5,
+  "hunger": 11.25,
+  "mode": "SURVIVAL",
+  "lastPlayed": 1725000000000,
+  "position": [-8.5, 84.25, 17.5],
+  "spawn": [8.5, 81.0, 8.5],
+  "yaw": 0.25,
+  "pitch": -0.5,
+  "gameTime": 18.75,
+  "selectedSlot": 4,
+  "inventory": [{
+    "count": 32,
+    "damage": 0,
+    "id": "mineclone:stone",
+    "slot": 0
+  }, {
+    "count": 1,
+    "damage": 37,
+    "id": "mineclone:diamond_pickaxe",
+    "slot": 4
+  }],
+  "pending": [{
+    "count": 3,
+    "damage": 0,
+    "id": "mineclone:glass",
+    "slot": 0
+  }],
+  "extraSections": {
+    "fixture:opaque": "0700ff2a"
+  },
+  "chunks": [{
+    "x": -2,
+    "z": 0,
+    "blocksSha256": "d50b1d04c33625391d48abd93b1275aee5bd3ef0ffc20f2238b420c758ffbf30",
+    "metaSha256": "608be623ed7437a40578d775fc570aa7cbf6945155803ca61e1517acce90a650",
+    "chests": {
+      "20497": [{
+        "count": 17,
+        "damage": 0,
+        "id": "mineclone:stone",
+        "slot": 0
+      }, {
+        "count": 1,
+        "damage": 9,
+        "id": "mineclone:iron_pickaxe",
+        "slot": 8
+      }]
+    },
+    "furnaces": {
+      "20498": {
+        "input": {
+          "damage": 0,
+          "count": 7,
+          "id": "mineclone:sand"
+        },
+        "output": {
+          "damage": 0,
+          "count": 2,
+          "id": "mineclone:glass"
+        },
+        "burnLeft": 4.5,
+        "cook": 2.75,
+        "burnMax": 12.0,
+        "fuel": {
+          "damage": 0,
+          "count": 3,
+          "id": "mineclone:log"
+        }
+      }
+    },
+    "items": [{
+      "z": 5.5,
+      "y": 81.25,
+      "x": -27.5,
+      "stack": {
+        "damage": 11,
+        "count": 1,
+        "id": "mineclone:stone_pickaxe"
+      },
+      "age": 19.75
+    }]
+  }],
+  "files": {
+    "chunks/c.-2.0.dat": "4d8df71ab67282130f9938914159a598a0bf00dbb6dd5bbb7b07952c5484d941",
+    "level.dat": "c6c25083f3ed88830e2aa2ac8070545f38b6fbf58d2db7fc13f0ce6d5b4af5af"
+  }
+}

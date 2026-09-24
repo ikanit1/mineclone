@@ -1,0 +1,42 @@
+{
+  "smelt_beef": {
+    "type": "smelting",
+    "order": 0,
+    "input": "mineclone:beef",
+    "result": {
+      "item": "mineclone:cooked_beef",
+      "count": 1
+    },
+    "time": 8.0
+  },
+  "smelt_porkchop": {
+    "type": "smelting",
+    "order": 1,
+    "input": "mineclone:porkchop",
+    "result": {
+      "item": "mineclone:cooked_porkchop",
+      "count": 1
+    },
+    "time": 8.0
+  },
+  "smelt_chicken": {
+    "type": "smelting",
+    "order": 2,
+    "input": "mineclone:chicken",
+    "result": {
+      "item": "mineclone:cooked_chicken",
+      "count": 1
+    },
+    "time": 8.0
+  },
+  "smelt_mutton": {
+    "type": "smelting",
+    "order": 3,
+    "input": "mineclone:mutton",
+    "result": {
+      "item": "mineclone:cooked_mutton",
+      "count": 1
+    },
+    "time": 8.0
+  }
+}

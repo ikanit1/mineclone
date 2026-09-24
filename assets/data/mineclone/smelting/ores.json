@@ -1,0 +1,52 @@
+{
+  "smelt_sand": {
+    "type": "smelting",
+    "order": 4,
+    "input": "mineclone:sand",
+    "result": {
+      "item": "mineclone:glass",
+      "count": 1
+    },
+    "time": 8.0
+  },
+  "smelt_red_sand": {
+    "type": "smelting",
+    "order": 5,
+    "input": "mineclone:red_sand",
+    "result": {
+      "item": "mineclone:glass",
+      "count": 1
+    },
+    "time": 8.0
+  },
+  "smelt_cobblestone": {
+    "type": "smelting",
+    "order": 6,
+    "input": "mineclone:cobblestone",
+    "result": {
+      "item": "mineclone:stone",
+      "count": 1
+    },
+    "time": 8.0
+  },
+  "smelt_iron_ore": {
+    "type": "smelting",
+    "order": 7,
+    "input": "mineclone:iron_ore",
+    "result": {
+      "item": "mineclone:iron_ingot",
+      "count": 1
+    },
+    "time": 8.0
+  },
+  "smelt_gold_ore": {
+    "type": "smelting",
+    "order": 8,
+    "input": "mineclone:gold_ore",
+    "result": {
+      "item": "mineclone:gold_ingot",
+      "count": 1
+    },
+    "time": 8.0
+  }
+}

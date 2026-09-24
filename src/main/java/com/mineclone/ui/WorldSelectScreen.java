@@ -68,7 +68,7 @@ public final class WorldSelectScreen implements Screen {
         for (SaveManager.WorldInfo w : worlds)
             if (w.id.equals(select))
                 selectedId = select;
-        if (selectedId == null && !worlds.isEmpty() && !worlds.get(0).corrupted)
+        if (selectedId == null && !worlds.isEmpty() && worlds.get(0).playable())
             selectedId = worlds.get(0).id;
         ensureSelectedVisible = true;
     }
@@ -87,7 +87,7 @@ public final class WorldSelectScreen implements Screen {
     /** Открыть переименование выбранного мира. */
     public void requestRename(MenuTheme t) {
         SaveManager.WorldInfo sel = selected();
-        if (sel == null || sel.corrupted)
+        if (sel == null || !sel.playable())
             return;
         renameField.setText(sel.displayName);
         dialog = Dialog.RENAME;
@@ -192,7 +192,7 @@ public final class WorldSelectScreen implements Screen {
             SaveManager.WorldInfo wi = worlds.get(i);
             boolean sel = wi.id.equals(selectedId);
             if (t.row("worlds.row." + wi.id, x, ry, rowW, ROW_H, sel)) {
-                if (!wi.corrupted) {
+                if (wi.playable()) {
                     if (t.wasDoubleClick() && wi.id.equals(selectedId))
                         result = MenuAction.play(wi.id);
                     selectedId = wi.id;
@@ -211,7 +211,7 @@ public final class WorldSelectScreen implements Screen {
     private void drawRowContent(MenuTheme t, SaveManager.WorldInfo wi, float x, float y, float w,
                                 long now, ZoneId zone) {
         float tx = x + 12f, ty = y + (ROW_H - THUMB_H) / 2f;
-        int tex = wi.corrupted ? 0 : icons.texture(wi);
+        int tex = !wi.playable() ? 0 : icons.texture(wi);
         t.quad(tx - 1f, ty - 1f, THUMB_W + 2f, THUMB_H + 2f, 0f, 0f, 0f, 0.55f);
         if (tex != 0) {
             t.texQuad(tx, ty, THUMB_W, THUMB_H, tex, 0f, 0f, 1f, 1f, 1f, 1f, 1f, 1f);
@@ -219,22 +219,22 @@ public final class WorldSelectScreen implements Screen {
             // Нет снимка — клочок травы: мир ещё ни разу не сохранялся. У
             // повреждённого — тот же клочок, но тёмный и в красном.
             float cw = THUMB_W / 4f, ch = THUMB_H / 2f;
-            float shade = wi.corrupted ? 0.30f : 0.55f;
+            float shade = !wi.playable() ? 0.30f : 0.55f;
             for (int c = 0; c < 4; c++) {
                 t.tile(BlockType.GRASS.topTile, tx + c * cw, ty, cw, ch, shade, 1f);
                 t.tile(BlockType.GRASS.sideTile, tx + c * cw, ty + ch, cw, ch, shade, 1f);
             }
-            if (wi.corrupted)
+            if (!wi.playable())
                 t.quad(tx, ty, THUMB_W, THUMB_H, 0.55f, 0.05f, 0.05f, 0.35f);
         }
         t.quad(tx, ty, THUMB_W, 1f, 1f, 1f, 1f, 0.18f);
 
         float lx = tx + THUMB_W + 18f, lw = x + w - lx - 14f;
-        if (wi.corrupted) {
-            t.text("Повреждённый сейв", lx, y + 36f, MenuTheme.DANGER, 1f);
-            t.smallText(MenuTheme.ellipsize(t.small(), "Папка " + wi.id + ": level.dat не читается", lw),
+        if (!wi.playable()) {
+            t.text(wi.tooNew ? "Мир новее этой версии" : "Повреждённый сейв", lx, y + 36f, MenuTheme.DANGER, 1f);
+            t.smallText(MenuTheme.ellipsize(t.small(), "Папка " + wi.id + (wi.tooNew ? ": требуется новая версия игры" : ": level.dat не читается"), lw),
                     lx, y + 60f, MenuTheme.TEXT_DIM, 1f);
-            t.smallText("Такой мир можно только удалить.", lx, y + 78f, MenuTheme.TEXT_FAINT, 1f);
+            t.smallText(wi.tooNew ? "Откройте мир в совместимой версии игры." : "Восстановите level.dat из резервной копии.", lx, y + 78f, MenuTheme.TEXT_FAINT, 1f);
             return;
         }
         t.text(MenuTheme.ellipsize(t.font(), wi.displayName, lw), lx, y + 34f, MenuTheme.TEXT, 1f);
@@ -249,7 +249,7 @@ public final class WorldSelectScreen implements Screen {
 
     private MenuAction drawFooter(MenuTheme t, float x, float y, float w) {
         SaveManager.WorldInfo sel = selected();
-        boolean playable = sel != null && !sel.corrupted;
+        boolean playable = sel != null && sel.playable();
         MenuAction result = MenuAction.NONE;
         float gap = 10f;
         float half = (w - gap) / 2f;
@@ -259,7 +259,7 @@ public final class WorldSelectScreen implements Screen {
             result = MenuAction.push(new WorldCreateScreen(save, settings));
 
         // «Переименовать» длиннее соседей — ему полторы доли ширины.
-        float unit = (w - gap * 3) / 4.5f, rw = unit * 1.5f, qy = y + 58f;
+        float unit = (w - gap * 4) / 5.5f, rw = unit * 1.5f, qy = y + 58f;
         if (t.button("worlds.rename", x, qy, rw, 42f, "Переименовать", MenuTheme.Style.NORMAL, playable)) {
             renameField.setText(sel.displayName);
             dialog = Dialog.RENAME;
@@ -270,10 +270,13 @@ public final class WorldSelectScreen implements Screen {
             if (copy != null)
                 refresh(copy);
         }
-        if (t.button("worlds.delete", x + rw + unit + gap * 2, qy, unit, 42f, "Удалить", MenuTheme.Style.NORMAL,
+        if (t.button("worlds.backups", x + rw + unit + gap * 2, qy, unit, 42f, "Бэкапы…", MenuTheme.Style.NORMAL,
+                sel != null))
+            result = MenuAction.push(new WorldBackupsScreen(save, sel.id));
+        if (t.button("worlds.delete", x + rw + unit * 2 + gap * 3, qy, unit, 42f, "Удалить", MenuTheme.Style.NORMAL,
                 sel != null))
             dialog = Dialog.DELETE;
-        if (t.button("worlds.back", x + rw + unit * 2 + gap * 3, qy, unit, 42f, "Назад"))
+        if (t.button("worlds.back", x + rw + unit * 3 + gap * 4, qy, unit, 42f, "Назад"))
             result = MenuAction.back();
         return result;
     }
@@ -290,7 +293,7 @@ public final class WorldSelectScreen implements Screen {
             ensureSelectedVisible = true;
         }
         SaveManager.WorldInfo sel = selected();
-        if (in.enter() && sel != null && !sel.corrupted)
+        if (in.enter() && sel != null && sel.playable())
             return MenuAction.play(sel.id);
         if (in.pressed(GLFW_KEY_DELETE) && sel != null)
             dialog = Dialog.DELETE;

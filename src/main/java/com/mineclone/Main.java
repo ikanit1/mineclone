@@ -5,13 +5,19 @@ import com.mineclone.game.Game;
 
 public class Main {
     public static void main(String[] args) {
+        System.out.println(com.mineclone.core.BuildInfo.summary());
         boolean regenAtlas = false;
         for (String a : args) {
             if ("--regen-atlas".equals(a)) regenAtlas = true;
         }
         // Автопилот идёт на экране игрока — окно скрыто и фокус не забирает.
         boolean autopilot = System.getProperty("mineclone.autopilot") != null;
-        Window window = new Window("Mineclone", 1280, 720, !autopilot);
+        boolean benchmark = com.mineclone.game.BenchDirector.enabled();
+        if (benchmark) com.mineclone.game.BenchDirector.configureLaunch();
+        Window window = new Window("Mineclone",
+                benchmark ? Integer.getInteger("mineclone.bench.width", 1920) : 1280,
+                benchmark ? Integer.getInteger("mineclone.bench.height", 1080) : 720,
+                benchmark ? Boolean.getBoolean("mineclone.bench.visible") : !autopilot);
         com.mineclone.render.TextureAtlas.prepareAsync();
         int exitCode = 0;
         try {

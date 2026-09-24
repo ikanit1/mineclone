@@ -29,6 +29,7 @@ public final class ServerMain {
                 java.io.FileDescriptor.out), true, java.nio.charset.StandardCharsets.UTF_8));
         System.setErr(new java.io.PrintStream(new java.io.FileOutputStream(
                 java.io.FileDescriptor.err), true, java.nio.charset.StandardCharsets.UTF_8));
+        System.out.println(com.mineclone.core.BuildInfo.summary());
         File file = new File(args.length > 0 && !args[0].isBlank()
                 ? args[0] : ServerConfig.DEFAULT_FILE);
         ServerConfig config = ServerConfig.load(file);
@@ -41,8 +42,9 @@ public final class ServerMain {
         Runtime.getRuntime().addShutdownHook(stopper);
 
         new ServerConsole(server).start();
+        int exitCode;
         try {
-            server.run();
+            exitCode = server.run();
         } finally {
             try {
                 Runtime.getRuntime().removeShutdownHook(stopper);
@@ -50,5 +52,6 @@ public final class ServerMain {
                 // Пришли сюда по сигналу — крючок снимать поздно и незачем.
             }
         }
+        if (exitCode != 0) System.exit(exitCode);
     }
 }

@@ -6,8 +6,8 @@ date: 2026-09-15
 
 # ADR: Меню отдельным пакетом `com.mineclone.ui`
 
-Спека: `docs/superpowers/specs/2026-09-15-menu-and-performance-design.md`,
-часть B. План с ходом работ: `docs/superpowers/plans/2026-09-15-menu-rework.md`.
+Спека: `docs/archive/superpowers/specs/2026-09-15-menu-and-performance-design.md`,
+часть B. План с ходом работ: `docs/archive/superpowers/plans/2026-09-15-menu-rework.md`.
 
 ## Что было
 

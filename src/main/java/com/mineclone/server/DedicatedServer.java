@@ -68,8 +68,8 @@ public final class DedicatedServer implements NetContext {
 
     /** Сколько раз в секунду тикает мир. */
     public static final float TICK_RATE = 20f;
-    /** Игровых радиан в секунду: тот же темп суток, что в игре. */
-    public static final float TIME_SCALE = 0.005f;
+
+
     /** Реже этого мобы не пересчитывают стадо и добычу. */
     private static final float SENSE_INTERVAL = 0.2f;
 
@@ -79,11 +79,14 @@ public final class DedicatedServer implements NetContext {
     private final ConcurrentLinkedQueue<Runnable> tasks = new ConcurrentLinkedQueue<>();
 
     private World world;
+    /** The local owner's checkpoint survives server sessions that have no local player. */
+    private LevelData ownerTemplate;
     private ChunkLoader loader;
     private WorldSimulation simulation;
     private MobSpawner spawner;
     private final List<Mob> mobs = new ArrayList<>();
     private final List<ItemEntity> groundItems = new ArrayList<>();
+    private final Random itemRandom = new Random();
     /** Летящие снаряды: сервер их симулирует и рассылает. */
     private final List<com.mineclone.world.entity.Projectile> projectiles =
             new java.util.ArrayList<>();
@@ -95,7 +98,8 @@ public final class DedicatedServer implements NetContext {
     private RoomCode roomCode;
     private String externalAddress = "";
 
-    private float gameTime = (float) (Math.PI / 6.0);
+    private com.mineclone.sim.WorldClock worldClock = new com.mineclone.sim.WorldClock();
+    private final java.util.Map<String, byte[]> levelExtraSections = new java.util.LinkedHashMap<>();
     private float daylight = 1f;
     private float senseTimer;
     private float spawnTimer;
@@ -106,21 +110,35 @@ public final class DedicatedServer implements NetContext {
     public DedicatedServer(ServerConfig config) {
         this.config = config;
         this.save = new SaveManager(new File(config.savesDir));
+        this.save.setBackupRetention(config.backups);
         this.net = new Multiplayer(this);
     }
 
     // -------------------------------------------------------------- запуск
 
     /** Поднять мир и открыть двери. Блокирует до {@link #stop}. */
-    public void run() {
-        openWorld();
+    public int run() {
+        if (!openWorld()) return 2;
         openDoors();
         loop();
         shutdown();
+        return 0;
     }
 
-    private void openWorld() {
-        LevelData lvl = save.loadLevel(config.worldId);
+    private boolean openWorld() {
+        var decision = com.mineclone.save.WorldOpenPolicy.decide(save.readLevel(config.worldId));
+        if (!decision.allowed()) {
+            log(com.mineclone.save.WorldOpenPolicy.refusalMessage(config.worldId, decision));
+            return false;
+        }
+        LevelData lvl = decision.data();
+        ownerTemplate = lvl;
+        try {
+            save.beginWorldSession(config.worldId).join();
+        } catch (java.util.concurrent.CompletionException failure) {
+            log("world backup failed; refusing to open: " + failure.getCause());
+            return false;
+        }
         long seed = lvl != null ? lvl.seed
                 : (config.seed != 0L ? config.seed : new Random().nextLong());
         world = new World(seed);
@@ -135,11 +153,13 @@ public final class DedicatedServer implements NetContext {
         // Площадка появления: она же центр мира, когда участников нет.
         for (int dx = -1; dx <= 1; dx++)
             for (int dz = -1; dz <= 1; dz++)
-                loader.applySnapshot(world.getChunk(dx, dz));
+                loader.loadNow(dx, dz);
         loader.drainLightFlood(9);
         if (lvl != null) {
             spawn.set((float) lvl.spawnX, (float) lvl.spawnY, (float) lvl.spawnZ);
-            gameTime = lvl.timeOfDay;
+            levelExtraSections.putAll(lvl.extraSections);
+            worldClock = com.mineclone.sim.WorldClock.fromSaved(lvl.timeOfDay,
+                    lvl.extraSections.get(com.mineclone.sim.WorldClock.SAVE_SECTION));
         } else {
             for (int y = Chunk.SIZE_Y - 1; y > 0; y--)
                 if (world.getBlock(8, y, 8).solid) {
@@ -150,6 +170,7 @@ public final class DedicatedServer implements NetContext {
         }
         log("world '" + config.worldName + "' seed " + seed
                 + (lvl == null ? " (new)" : " (loaded)"));
+        return true;
     }
 
     /**
@@ -330,8 +351,8 @@ public final class DedicatedServer implements NetContext {
         if (!running)
             return;
 
-        gameTime += dt * TIME_SCALE;
-        daylight = Math.max(0f, (float) Math.sin(gameTime));
+        worldClock.advance(dt);
+        daylight = worldClock.daylight();
         net.update(dt);
         streamChunks();
         Vector3f centre = centre();
@@ -379,6 +400,7 @@ public final class DedicatedServer implements NetContext {
             loader.ensureRadius(cx, cz, config.viewDistance);
         }
         loader.drainLightFlood(8);
+        for (var warning : save.drainWorldWarnings(config.worldId)) log(warning.message());
     }
 
     private void tickMobs(float dt, Vector3f centre) {
@@ -388,9 +410,7 @@ public final class DedicatedServer implements NetContext {
             MobHerd.update(mobs);
             Wildlife.sense(mobs);
         }
-        float dayPhase = (gameTime % ((float) Math.PI * 2f)) / ((float) Math.PI * 2f);
-        if (dayPhase < 0f)
-            dayPhase += 1f;
+        float dayPhase = worldClock.dayPhase();
         MobTactics.updateGroup(mobs, dayPhase, dt);
         boolean hostile = !config.creative;
         List<Mob> fed = null;
@@ -481,13 +501,14 @@ public final class DedicatedServer implements NetContext {
         saveLevel();
         int written = 0;
         for (Chunk c : world.getLoadedChunks()) {
+            if (c.isReadOnly()) continue;
             List<DroppedItem> dropped = itemsInChunk(c);
             if (!c.modified && dropped.isEmpty() && c.savedItems == 0)
                 continue;
             byte[] blocks = c.copyBlocks(), meta = c.copyMeta();
             world.falling.snapshot(c, blocks, meta, dropped);
             save.saveChunkAsync(config.worldId, new ChunkSnapshot(c.cx, c.cz,
-                    blocks, meta, c.copyChests(), c.copyFurnaces(), dropped));
+                    blocks, meta, c.copyChests(), c.copyFurnaces(), dropped, c.copyExtraSections()));
             c.savedItems = dropped.size();
             c.modified = false;
             written++;
@@ -496,18 +517,35 @@ public final class DedicatedServer implements NetContext {
             log("saved " + written + " chunks");
     }
 
+    /** Snapshot current authoritative state, then ZIP it on the save writer. */
+    public void backupWorld() {
+        if (world == null) { log("no world to back up"); return; }
+        saveWorld();
+        save.backupWorld(config.worldId, "manual").whenComplete((backup, failure) -> {
+            if (failure != null) log("backup failed: " + failure.getMessage());
+            else log("backup created: " + backup.path());
+        });
+    }
+
     private void saveLevel() {
-        // Инвентарь и положение игрока у сервера пустые: игрока нет. Поля в
-        // level.dat всё равно нужны — файл общий с одиночной игрой, и мир,
-        // снятый с сервера, обязан открываться в ней как свой.
+        var sections = new java.util.LinkedHashMap<>(levelExtraSections);
+        sections.put(com.mineclone.sim.WorldClock.SAVE_SECTION, worldClock.encode());
+        // A server has no local owner to recapture. Preserve the checkpoint from
+        // the loaded single-player world instead of replacing its inventory,
+        // pending cursor stacks and vitals with a fresh empty player.
+        LevelData owner = ownerTemplate;
         save.saveLevel(config.worldId, new LevelData(
                 config.worldName, world.seed,
+                owner != null ? owner.px : spawn.x,
+                owner != null ? owner.py : spawn.y,
+                owner != null ? owner.pz : spawn.z,
                 spawn.x, spawn.y, spawn.z,
-                spawn.x, spawn.y, spawn.z,
-                0f, 0f, gameTime, 0,
-                new ItemStack[Inventory.SIZE],
+                owner != null ? owner.yaw : 0f, owner != null ? owner.pitch : 0f,
+                worldClock.gameTimeFloat(), owner != null ? owner.selectedSlot : 0,
+                owner != null ? owner.inventory : new ItemStack[Inventory.SIZE],
                 config.creative ? GameMode.CREATIVE : GameMode.SURVIVAL,
-                System.currentTimeMillis(), 20f, 20f, null, null));
+                System.currentTimeMillis(), owner != null ? owner.health : 20f,
+                owner != null ? owner.hunger : 20f, owner != null ? owner.pending : null, sections));
     }
 
     private List<DroppedItem> itemsInChunk(Chunk c) {
@@ -549,11 +587,11 @@ public final class DedicatedServer implements NetContext {
     }
 
     public float gameTime() {
-        return gameTime;
+        return worldClock.gameTimeFloat();
     }
 
     public void setGameTime(float t) {
-        gameTime = t;
+        worldClock.setGameTime(t);
     }
 
     public boolean running() {
@@ -588,7 +626,7 @@ public final class DedicatedServer implements NetContext {
 
     @Override
     public float timeOfDay() {
-        return gameTime;
+        return worldClock.gameTimeFloat();
     }
 
     @Override public com.mineclone.net.PlayerData loadGuest(String id) {
@@ -601,7 +639,7 @@ public final class DedicatedServer implements NetContext {
 
     @Override
     public void setTimeOfDay(float t) {
-        gameTime = t;
+        worldClock.setGameTime(t);
     }
 
     @Override
@@ -627,7 +665,30 @@ public final class DedicatedServer implements NetContext {
         BlockType type = BlockType.byId(blockId);
         if (type == null)
             return;
+        BlockType before = world.getBlock(x, y, z);
+        if (before != type) {
+            if (before == BlockType.CHEST) {
+                ItemStack[] slots = world.getChest(x, y, z);
+                if (slots != null) for (int i = 0; i < slots.length; i++) {
+                    spillItem(slots[i], x, y, z);
+                    slots[i] = null;
+                }
+            } else if (before == BlockType.FURNACE) {
+                var furnace = world.getFurnace(x, y, z);
+                if (furnace != null) {
+                    spillItem(furnace.input, x, y, z);
+                    spillItem(furnace.fuel, x, y, z);
+                    spillItem(furnace.output, x, y, z);
+                    furnace.input = furnace.fuel = furnace.output = null;
+                }
+            }
+        }
         world.setBlock(x, y, z, type, meta);
+    }
+
+    private void spillItem(ItemStack stack, int x, int y, int z) {
+        if (stack != null && stack.count > 0)
+            groundItems.add(ItemEntity.popped(stack, x + .5f, y + .5f, z + .5f, itemRandom));
     }
 
     @Override

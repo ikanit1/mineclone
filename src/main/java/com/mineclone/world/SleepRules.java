@@ -50,10 +50,6 @@ public final class SleepRules {
      * Сон, отматывающий время назад, вернул бы вчерашнюю луну.
      */
     public static float nextDawn(float gameTime) {
-        float cycle = (float) (Math.PI * 2.0);
-        float t = gameTime % cycle;
-        if (t < 0f)
-            t += cycle;
-        return gameTime + (cycle - t);
+        return (float) com.mineclone.sim.WorldClock.nextDawn(gameTime);
     }
 }

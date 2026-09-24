@@ -75,6 +75,7 @@ public final class ServerConsole {
         switch (command) {
             case "/stop", "stop", "/quit", "quit" -> server.stop("console");
             case "/save", "save" -> server.saveWorld();
+            case "/backup", "backup" -> server.backupWorld();
             case "/list", "list" -> list();
             case "/say", "say" -> say(rest);
             case "/time", "time" -> time(rest);
@@ -123,6 +124,7 @@ public final class ServerConsole {
             default -> {
                 try {
                     target = Float.parseFloat(arg);
+                    if (!Float.isFinite(target)) throw new NumberFormatException("non-finite time");
                 } catch (NumberFormatException e) {
                     DedicatedServer.log("usage: /time [day|noon|night|<radians>]");
                     return;
@@ -157,6 +159,7 @@ public final class ServerConsole {
         System.out.println("  /list            who is connected");
         System.out.println("  /say <text>      message every player");
         System.out.println("  /save            write the world to disk");
+        System.out.println("  /backup          save and create a manual world backup");
         System.out.println("  /time [day|noon|night|<radians>]");
         System.out.println("  /room            show the room code");
         System.out.println("  /seed            show the world seed");

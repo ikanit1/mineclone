@@ -23,7 +23,7 @@ door_bottom_tile.png
 door_top_tile.png
 
 # Local runtime state
-saves/
+/saves/
 options.dat
 player-id.txt
 

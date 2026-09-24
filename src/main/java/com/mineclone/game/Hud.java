@@ -67,6 +67,7 @@ public class Hud {
                 // посередине и ровные шестьдесят читаются в счётчике одинаково.
                 String.format("Frame: %.1f ms   worst %.1f ms", profiler.totalMillis(), profiler.worstMillis()),
                 profiler.breakdown(),
+                profiler.gpuBreakdown(),
                 "Chunk queue: " + chunkQueue,
                 "Music: " + music,
                 "Net: " + network,
@@ -543,12 +544,7 @@ public class Hud {
      * разъехались, компас и консоль спорили бы о времени.
      */
     public static String clockText(float gameTime) {
-        float cycle = (float) (Math.PI * 2.0);
-        float t = gameTime % cycle;
-        if (t < 0f)
-            t += cycle;
-        float hours = ((t + (float) (Math.PI / 2.0)) / cycle) * 24f;
-        int totalMinutes = Math.floorMod(Math.round(hours * 60f), 24 * 60);
+        int totalMinutes = com.mineclone.sim.WorldClock.clockMinutes(gameTime);
         return String.format("%02d:%02d", totalMinutes / 60, totalMinutes % 60);
     }
 

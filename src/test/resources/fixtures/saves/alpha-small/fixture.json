@@ -1,0 +1,108 @@
+{
+  "writerTag": "v1.0.0-alpha",
+  "writerCommit": "448347596c1c3d944df9720de17b7e7b5c99a655",
+  "kind": "tagged-writer",
+  "levelVersion": 10,
+  "chunkVersion": 6,
+  "name": "alpha-small",
+  "seed": 81001,
+  "health": 14.5,
+  "hunger": 11.25,
+  "mode": "SURVIVAL",
+  "lastPlayed": 1725000000000,
+  "position": [-8.5, 84.25, 17.5],
+  "spawn": [8.5, 81.0, 8.5],
+  "yaw": 0.25,
+  "pitch": -0.5,
+  "gameTime": 18.75,
+  "selectedSlot": 4,
+  "inventory": [{
+    "count": 32,
+    "damage": 0,
+    "id": "mineclone:stone",
+    "slot": 0
+  }, {
+    "count": 1,
+    "damage": 37,
+    "id": "mineclone:diamond_pickaxe",
+    "slot": 4
+  }],
+  "pending": [{
+    "count": 3,
+    "damage": 0,
+    "id": "mineclone:glass",
+    "slot": 0
+  }],
+  "extraSections": {
+    "fixture:opaque": "0700ff2a"
+  },
+  "chunks": [{
+    "x": -2,
+    "z": 0,
+    "blocksSha256": "7e0276badee3c4bf98d0c6adbcf662535db013ae121ca8c9baf52bd612a3cf34",
+    "metaSha256": "96c6fff8351757112131c1ca72165b630f6ce8ad8a97d177c022f27d0ee1336d",
+    "chests": {
+
+    },
+    "furnaces": {
+
+    },
+    "items": []
+  }, {
+    "x": -1,
+    "z": 1,
+    "blocksSha256": "d0f8b9df9c76f42f27b6f43c231cb9bb9b8c4f43c5a2bc902a33d2715103a8ba",
+    "metaSha256": "b73a0042ea5d2644aa85ad27ef08e6cbfeb249dc307e2f21cc9ce9539c1e6acf",
+    "chests": {
+
+    },
+    "furnaces": {
+
+    },
+    "items": []
+  }, {
+    "x": 0,
+    "z": 0,
+    "blocksSha256": "1671df45764bf97e8cef4aa8d8a94d02a9be3cc350b87395494f3c667969d0b2",
+    "metaSha256": "b568a012235873408e3feab15838bb48f06a4bbbf119ea729397138096b1b028",
+    "chests": {
+
+    },
+    "furnaces": {
+
+    },
+    "items": []
+  }, {
+    "x": 1,
+    "z": 1,
+    "blocksSha256": "7f6797475844fe1793d13ad871ad598619e9aceaf5ef57ef8662b5ee6fb5653d",
+    "metaSha256": "560ad4a107237f69338911c1043378169b66117b33556a1f16db1275ac54ade5",
+    "chests": {
+
+    },
+    "furnaces": {
+
+    },
+    "items": []
+  }, {
+    "x": 2,
+    "z": 0,
+    "blocksSha256": "790d257f00b79dc3ece4f24a5dcb4fdc99888cc4dd77e94ff367756e55280b36",
+    "metaSha256": "825c0ecd985cf4d083886d1584ca94f8f59a6b2d4f12e4821d0af45e52767e28",
+    "chests": {
+
+    },
+    "furnaces": {
+
+    },
+    "items": []
+  }],
+  "files": {
+    "chunks/c.-1.1.dat": "8ea9f263bbc631d1070569152d7d7471ccce0fff9c400a11ed40ed53d5f9dbdb",
+    "chunks/c.-2.0.dat": "9c0a9b55061679bb884cfa6a4b958b19452e0039fb51727edd4f33859b647eef",
+    "chunks/c.0.0.dat": "4590771ae5092c7dccfbf229791100f89320d7c2377061fc22e57151e10783e9",
+    "chunks/c.1.1.dat": "03c1f97a7342380f02a27da8cf92d49622c3c3c0bf6e3c86ee375128ba3f7211",
+    "chunks/c.2.0.dat": "6e068e7fba9761dcb3826843a76bdb9a712d04d882a2d7d0584a26313a60b92d",
+    "level.dat": "0de21887f3c828748c499a6396852f63b0424c4570a938cd12444f9e5528ec13"
+  }
+}

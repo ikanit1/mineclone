@@ -392,9 +392,9 @@ public final class MultiplayerScreen implements Screen {
             float ry = top + i * (rowH + gap);
             if (ry + rowH < y || ry > y + h)
                 continue;
-            if (wi.corrupted) {
+            if (!wi.playable()) {
                 t.quad(x, ry, w - 12f, rowH, 0.25f, 0.08f, 0.08f, 0.45f);
-                t.text(wi.displayName + " — повреждён", x + 14f,
+                t.text(wi.displayName + (wi.tooNew ? " — новее этой версии" : " — повреждён"), x + 14f,
                         t.baseline(t.font(), ry, rowH), MenuTheme.DANGER, 1f);
                 continue;
             }

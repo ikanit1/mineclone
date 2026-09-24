@@ -6,7 +6,7 @@ date: 2026-09-22
 
 # ADR: Кинематограф главного меню
 
-Спека: `docs/superpowers/specs/2026-09-22-menu-cinematics-design.md`.
+Спека: `docs/archive/superpowers/specs/2026-09-22-menu-cinematics-design.md`.
 Соседи: [[menu-architecture]], [[shader-pipeline]], [[chunk-loading-strategy]].
 
 ## Что было

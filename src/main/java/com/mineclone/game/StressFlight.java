@@ -49,6 +49,9 @@ final class StressFlight {
     private final java.util.ArrayList<double[]> frames = new java.util.ArrayList<>(16384);
     private final java.util.ArrayList<String> spikes = new java.util.ArrayList<>();
     private long gcCountStart, gcTimeStart;
+    private final java.util.ArrayList<Double> gpuFrames = new java.util.ArrayList<>();
+    private long lastGpuFrame = -1;
+    private final double[] gpuPhaseTotals = new double[com.mineclone.render.GpuTimers.Phase.values().length];
 
     StressFlight(Autopilot.Driver driver, float seconds) {
         this.driver = driver;
@@ -133,9 +136,15 @@ final class StressFlight {
         if (!flying)
             return;
         frames.add(new double[] { workMs, frameMs });
+        if (profiler.gpuSampleFrame() >= 0 && profiler.gpuSampleFrame() != lastGpuFrame) {
+            lastGpuFrame = profiler.gpuSampleFrame();
+            gpuFrames.add(profiler.gpuTotalMillis());
+            for (var phase : com.mineclone.render.GpuTimers.Phase.values())
+                gpuPhaseTotals[phase.ordinal()] += profiler.gpuMillis(phase);
+        }
         if (workMs >= SPIKE_MS)
             spikes.add(String.format(Locale.ROOT, "  %7.1f ms work  %7.1f ms frame  %s  %s",
-                    workMs, frameMs, state, profiler.rawBreakdown()));
+                    workMs, frameMs, state, profiler.rawBreakdown() + " | " + profiler.gpuBreakdown()));
     }
 
     private void report() {
@@ -165,6 +174,18 @@ final class StressFlight {
         System.out.printf(Locale.ROOT, "  frames over %.0f ms: %d of %d (%.2f %%)%n",
                 SPIKE_MS, spikes.size(), work.length, 100.0 * spikes.size() / work.length);
         System.out.printf(Locale.ROOT, "  gc: %d collections, %d ms total%n", gcCount, gcTime);
+        if (!gpuFrames.isEmpty()) {
+            double[] gpu = gpuFrames.stream().mapToDouble(Double::doubleValue).sorted().toArray();
+            double gpuSum = 0;
+            for (double value : gpu) gpuSum += value;
+            System.out.printf(Locale.ROOT, "  GPU: %d completed samples, avg %.2f ms p95 %.2f p99 %.2f%n",
+                    gpu.length, gpuSum / gpu.length, pct(gpu, 0.95), pct(gpu, 0.99));
+            StringBuilder phases = new StringBuilder("  GPU phase averages (ms):");
+            for (var phase : com.mineclone.render.GpuTimers.Phase.values()) phases.append(' ')
+                    .append(phase.name().toLowerCase(Locale.ROOT)).append('=')
+                    .append(String.format(Locale.ROOT, "%.2f", gpuPhaseTotals[phase.ordinal()] / gpu.length));
+            System.out.println(phases);
+        }
         if (!spikes.isEmpty()) {
             System.out.println("  worst frames (phases in ms):");
             java.util.List<String> worst = new java.util.ArrayList<>(spikes);

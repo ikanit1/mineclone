@@ -30,7 +30,7 @@ public final class Furnace {
 
     /** Доля прогресса переплавки 0..1 — на неё рисуется стрелка. */
     public float cookFraction() {
-        return Math.max(0f, Math.min(1f, cook / Smelting.COOK_TIME));
+        return Math.max(0f, Math.min(1f, cook / Smelting.cookTime(input)));
     }
 
     /** Доля оставшегося топлива 0..1 — на неё рисуется пламя. */
@@ -72,12 +72,13 @@ public final class Furnace {
             burnLeft = Math.max(0f, burnLeft - dt);
             if (canOutput) {
                 cook += dt;
-                if (cook >= Smelting.COOK_TIME) {
-                    cook -= Smelting.COOK_TIME;
+                float cookTime = Smelting.cookTime(input);
+                if (cook >= cookTime) {
+                    cook -= cookTime;
                     if (output == null)
                         output = want;
                     else
-                        output.count++;
+                        output.count += want.count;
                     input = shrink(input);
                     slotsChanged = true;
                 }
@@ -96,7 +97,7 @@ public final class Furnace {
     private boolean fits(ItemStack want) {
         if (output == null)
             return true;
-        return output.stacksWith(want) && output.count < output.maxStack();
+        return output.stacksWith(want) && output.count + want.count <= output.maxStack();
     }
 
     private static ItemStack shrink(ItemStack s) {

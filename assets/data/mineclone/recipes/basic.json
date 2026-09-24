@@ -1,0 +1,66 @@
+{
+  "planks": {
+    "type": "shapeless",
+    "order": 0,
+    "group": "basic",
+    "ingredients": [
+      "mineclone:log"
+    ],
+    "result": {
+      "item": "mineclone:planks",
+      "count": 4
+    }
+  },
+  "stick": {
+    "type": "shaped",
+    "order": 1,
+    "group": "basic",
+    "pattern": [
+      "A",
+      "A"
+    ],
+    "key": {
+      "A": "#mineclone:planks"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:stick",
+      "count": 4
+    }
+  },
+  "crafting_table": {
+    "type": "shaped",
+    "order": 2,
+    "group": "basic",
+    "pattern": [
+      "AA",
+      "AA"
+    ],
+    "key": {
+      "A": "#mineclone:planks"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:crafting_table",
+      "count": 1
+    }
+  },
+  "torch": {
+    "type": "shaped",
+    "order": 3,
+    "group": "basic",
+    "pattern": [
+      "A",
+      "B"
+    ],
+    "key": {
+      "A": "mineclone:coal",
+      "B": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:torch",
+      "count": 4
+    }
+  }
+}

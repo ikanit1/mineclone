@@ -1,18 +1,15 @@
-# Mineclone Knowledge Base
+# Project knowledge
 
-База знаний проекта. Открой эту папку в Obsidian как Vault.
+Start with [CLAUDE.md](../CLAUDE.md), the generated [project map](../docs/PROJECT_MAP.md)
+and current [architecture documents](../docs/architecture/).
 
-## Структура
+- [Decisions](decisions/README.md): indexed authored ADRs, with original dates/statuses.
+- [Bugs](bugs/): historical bug investigations and their causes.
+- [Old plans](archive/plans/): retained history, superseded by the current roadmap.
+- [Archived graph export](../docs/archive/knowledge-generated-2026-05/): 501 generated
+  nodes/stubs from the old snapshot, including hidden method nodes and duplicate
+  Java file notes. Preserved for recovery; not current architectural guidance.
 
-- [[architecture/]] — архитектурные решения и схемы
-- [[decisions/]] — ADR (Architecture Decision Records)
-- [[bugs/]] — известные баги и их причины
-- [[features/]] — описания фич и планы
-
-## Как использовать с Claude Code
-
-```powershell
-claude --add-dir "E:\mineclone\knowledge"
-```
-
-Или Claude автоматически видит хранилище через CLAUDE.md.
+Obsidian state and canvas files remain available. The May graph describes an older
+codebase and is not a prerequisite for development. Generate PROJECT_MAP from current
+Java source when a navigable code inventory is needed.

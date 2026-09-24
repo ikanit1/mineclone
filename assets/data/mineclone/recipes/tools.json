@@ -1,0 +1,495 @@
+{
+  "wooden_pickaxe": {
+    "type": "shaped",
+    "order": 4,
+    "group": "tools",
+    "pattern": [
+      "AAA",
+      ".B.",
+      ".B."
+    ],
+    "key": {
+      "A": "#mineclone:planks",
+      "B": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:wooden_pickaxe",
+      "count": 1
+    }
+  },
+  "wooden_axe": {
+    "type": "shaped",
+    "order": 5,
+    "group": "tools",
+    "pattern": [
+      "AA.",
+      "AB.",
+      ".B."
+    ],
+    "key": {
+      "A": "#mineclone:planks",
+      "B": "mineclone:stick"
+    },
+    "mirrored": true,
+    "result": {
+      "item": "mineclone:wooden_axe",
+      "count": 1
+    }
+  },
+  "wooden_shovel": {
+    "type": "shaped",
+    "order": 6,
+    "group": "tools",
+    "pattern": [
+      ".A.",
+      ".B.",
+      ".B."
+    ],
+    "key": {
+      "A": "#mineclone:planks",
+      "B": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:wooden_shovel",
+      "count": 1
+    }
+  },
+  "wooden_sword": {
+    "type": "shaped",
+    "order": 7,
+    "group": "tools",
+    "pattern": [
+      ".A.",
+      ".A.",
+      ".B."
+    ],
+    "key": {
+      "A": "#mineclone:planks",
+      "B": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:wooden_sword",
+      "count": 1
+    }
+  },
+  "stone_pickaxe": {
+    "type": "shaped",
+    "order": 8,
+    "group": "tools",
+    "pattern": [
+      "AAA",
+      ".B.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:cobblestone",
+      "B": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:stone_pickaxe",
+      "count": 1
+    }
+  },
+  "stone_axe": {
+    "type": "shaped",
+    "order": 9,
+    "group": "tools",
+    "pattern": [
+      "AA.",
+      "AB.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:cobblestone",
+      "B": "mineclone:stick"
+    },
+    "mirrored": true,
+    "result": {
+      "item": "mineclone:stone_axe",
+      "count": 1
+    }
+  },
+  "stone_shovel": {
+    "type": "shaped",
+    "order": 10,
+    "group": "tools",
+    "pattern": [
+      ".A.",
+      ".B.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:cobblestone",
+      "B": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:stone_shovel",
+      "count": 1
+    }
+  },
+  "stone_sword": {
+    "type": "shaped",
+    "order": 11,
+    "group": "tools",
+    "pattern": [
+      ".A.",
+      ".A.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:cobblestone",
+      "B": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:stone_sword",
+      "count": 1
+    }
+  },
+  "iron_pickaxe": {
+    "type": "shaped",
+    "order": 12,
+    "group": "tools",
+    "pattern": [
+      "AAA",
+      ".B.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:iron_ingot",
+      "B": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:iron_pickaxe",
+      "count": 1
+    }
+  },
+  "iron_axe": {
+    "type": "shaped",
+    "order": 13,
+    "group": "tools",
+    "pattern": [
+      "AA.",
+      "AB.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:iron_ingot",
+      "B": "mineclone:stick"
+    },
+    "mirrored": true,
+    "result": {
+      "item": "mineclone:iron_axe",
+      "count": 1
+    }
+  },
+  "iron_shovel": {
+    "type": "shaped",
+    "order": 14,
+    "group": "tools",
+    "pattern": [
+      ".A.",
+      ".B.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:iron_ingot",
+      "B": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:iron_shovel",
+      "count": 1
+    }
+  },
+  "iron_sword": {
+    "type": "shaped",
+    "order": 15,
+    "group": "tools",
+    "pattern": [
+      ".A.",
+      ".A.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:iron_ingot",
+      "B": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:iron_sword",
+      "count": 1
+    }
+  },
+  "diamond_pickaxe": {
+    "type": "shaped",
+    "order": 16,
+    "group": "tools",
+    "pattern": [
+      "AAA",
+      ".B.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:diamond",
+      "B": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:diamond_pickaxe",
+      "count": 1
+    }
+  },
+  "diamond_axe": {
+    "type": "shaped",
+    "order": 17,
+    "group": "tools",
+    "pattern": [
+      "AA.",
+      "AB.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:diamond",
+      "B": "mineclone:stick"
+    },
+    "mirrored": true,
+    "result": {
+      "item": "mineclone:diamond_axe",
+      "count": 1
+    }
+  },
+  "diamond_shovel": {
+    "type": "shaped",
+    "order": 18,
+    "group": "tools",
+    "pattern": [
+      ".A.",
+      ".B.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:diamond",
+      "B": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:diamond_shovel",
+      "count": 1
+    }
+  },
+  "diamond_sword": {
+    "type": "shaped",
+    "order": 19,
+    "group": "tools",
+    "pattern": [
+      ".A.",
+      ".A.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:diamond",
+      "B": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:diamond_sword",
+      "count": 1
+    }
+  },
+  "gold_pickaxe": {
+    "type": "shaped",
+    "order": 20,
+    "group": "tools",
+    "pattern": [
+      "AAA",
+      ".B.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:gold_ingot",
+      "B": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:gold_pickaxe",
+      "count": 1
+    }
+  },
+  "gold_axe": {
+    "type": "shaped",
+    "order": 21,
+    "group": "tools",
+    "pattern": [
+      "AA.",
+      "AB.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:gold_ingot",
+      "B": "mineclone:stick"
+    },
+    "mirrored": true,
+    "result": {
+      "item": "mineclone:gold_axe",
+      "count": 1
+    }
+  },
+  "gold_shovel": {
+    "type": "shaped",
+    "order": 22,
+    "group": "tools",
+    "pattern": [
+      ".A.",
+      ".B.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:gold_ingot",
+      "B": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:gold_shovel",
+      "count": 1
+    }
+  },
+  "gold_sword": {
+    "type": "shaped",
+    "order": 23,
+    "group": "tools",
+    "pattern": [
+      ".A.",
+      ".A.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:gold_ingot",
+      "B": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:gold_sword",
+      "count": 1
+    }
+  },
+  "copper_pickaxe": {
+    "type": "shaped",
+    "order": 24,
+    "group": "tools",
+    "pattern": [
+      "AAA",
+      ".B.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:copper_ingot",
+      "B": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:copper_pickaxe",
+      "count": 1
+    }
+  },
+  "copper_axe": {
+    "type": "shaped",
+    "order": 25,
+    "group": "tools",
+    "pattern": [
+      "AA.",
+      "AB.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:copper_ingot",
+      "B": "mineclone:stick"
+    },
+    "mirrored": true,
+    "result": {
+      "item": "mineclone:copper_axe",
+      "count": 1
+    }
+  },
+  "copper_shovel": {
+    "type": "shaped",
+    "order": 26,
+    "group": "tools",
+    "pattern": [
+      ".A.",
+      ".B.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:copper_ingot",
+      "B": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:copper_shovel",
+      "count": 1
+    }
+  },
+  "copper_sword": {
+    "type": "shaped",
+    "order": 27,
+    "group": "tools",
+    "pattern": [
+      ".A.",
+      ".A.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:copper_ingot",
+      "B": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:copper_sword",
+      "count": 1
+    }
+  },
+  "bow": {
+    "type": "shaped",
+    "order": 28,
+    "group": "tools",
+    "pattern": [
+      ".AB",
+      "A.B",
+      ".AB"
+    ],
+    "key": {
+      "A": "mineclone:stick",
+      "B": "mineclone:cobweb"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:bow",
+      "count": 1
+    }
+  },
+  "arrow": {
+    "type": "shaped",
+    "order": 29,
+    "group": "tools",
+    "pattern": [
+      "A",
+      "B"
+    ],
+    "key": {
+      "A": "mineclone:gravel",
+      "B": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:arrow",
+      "count": 2
+    }
+  }
+}

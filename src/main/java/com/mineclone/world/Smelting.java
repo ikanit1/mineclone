@@ -1,10 +1,6 @@
 package com.mineclone.world;
 
-import com.mineclone.item.Item;
 import com.mineclone.item.Items;
-
-import java.util.HashMap;
-import java.util.Map;
 
 /**
  * Что во что переплавляется и что горит.
@@ -18,46 +14,27 @@ import java.util.Map;
  */
 public final class Smelting {
 
-    /** Сколько секунд плавится одна единица. */
+    /** Длительность по умолчанию для совместимых вызывающих; рецепт задаёт свою. */
     public static final float COOK_TIME = 8f;
 
-    /** Id того, что плавится, → id того, что выходит. */
-    private static final String[][] TABLE = {
-            { "beef", "cooked_beef" },
-            { "porkchop", "cooked_porkchop" },
-            { "chicken", "cooked_chicken" },
-            { "mutton", "cooked_mutton" },
-            { "sand", "glass" },
-            { "red_sand", "glass" },
-            { "cobblestone", "stone" },
-            { "iron_ore", "iron_ingot" },
-            { "gold_ore", "gold_ingot" },
-    };
-
-    private static Map<Item, Item> results;
-
     private Smelting() {}
-
-    private static synchronized Map<Item, Item> results() {
-        if (results == null) {
-            results = new HashMap<>();
-            for (String[] row : TABLE)
-                results.put(Items.get().require(row[0]), Items.get().require(row[1]));
-        }
-        return results;
-    }
 
     /**
      * Результат переплавки одной единицы или {@code null}.
      *
-     * Возвращается новая стопка на один предмет: печь кладёт результат по
-     * одному, а не перекладывает исходную стопку целиком.
+     * Возвращается новая стопка с количеством из данных рецепта.
      */
     public static ItemStack result(ItemStack in) {
         if (in == null || in.count <= 0)
             return null;
-        Item out = results().get(in.item);
-        return out == null ? null : new ItemStack(out, 1);
+        var recipe = Items.get().recipes().smelting(in.item);
+        return recipe == null ? null : recipe.output();
+    }
+
+    /** Duration from the matched data recipe; the legacy constant remains an API default. */
+    public static float cookTime(ItemStack in) {
+        var recipe = in == null ? null : Items.get().recipes().smelting(in.item);
+        return recipe == null ? COOK_TIME : recipe.time();
     }
 
     /**

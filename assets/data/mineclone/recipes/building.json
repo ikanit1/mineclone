@@ -1,0 +1,92 @@
+{
+  "chest": {
+    "type": "shaped",
+    "order": 30,
+    "group": "building",
+    "pattern": [
+      "AAA",
+      "A.A",
+      "AAA"
+    ],
+    "key": {
+      "A": "#mineclone:planks"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:chest",
+      "count": 1
+    }
+  },
+  "furnace": {
+    "type": "shaped",
+    "order": 31,
+    "group": "building",
+    "pattern": [
+      "AAA",
+      "A.A",
+      "AAA"
+    ],
+    "key": {
+      "A": "mineclone:cobblestone"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:furnace",
+      "count": 1
+    }
+  },
+  "stairs": {
+    "type": "shaped",
+    "order": 32,
+    "group": "building",
+    "pattern": [
+      "A..",
+      "AA.",
+      "AAA"
+    ],
+    "key": {
+      "A": "#mineclone:planks"
+    },
+    "mirrored": true,
+    "result": {
+      "item": "mineclone:stairs",
+      "count": 4
+    }
+  },
+  "door": {
+    "type": "shaped",
+    "order": 33,
+    "group": "building",
+    "pattern": [
+      "AA",
+      "AA",
+      "AA"
+    ],
+    "key": {
+      "A": "#mineclone:planks"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:door",
+      "count": 3
+    }
+  },
+  "bedroll": {
+    "type": "shaped",
+    "order": 34,
+    "group": "building",
+    "pattern": [
+      "AAA",
+      "BBB"
+    ],
+    "key": {
+      "A": "mineclone:leaves",
+      "B": "#mineclone:planks"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:bedroll",
+      "count": 1
+    }
+  }
+}

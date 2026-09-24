@@ -7,6 +7,8 @@ import java.util.*;
 
 import static org.lwjgl.glfw.GLFW.*;
 import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL15.*;
+import static org.lwjgl.opengl.GL33.*;
 
 /**
  * Сколько миллисекунд стоит кадр на каждом уровне качества.
@@ -22,8 +24,8 @@ public class BenchShaders {
 
     private static final int RADIUS = 6;      // как renderRadius по умолчанию
     private static final long SEED = 1337L;
-    private static final int WARMUP = 40;
-    private static final int FRAMES = 160;
+    private static final int WARMUP = java.lang.Math.max(1, Integer.getInteger("mineclone.benchWarmup", 40));
+    private static final int FRAMES = java.lang.Math.max(1, Integer.getInteger("mineclone.benchFrames", 160));
 
     /**
      * Один замеряемый режим. lazy=false заставляет обе карты теней
@@ -42,6 +44,10 @@ public class BenchShaders {
                 new Config("Ultra 2048 PCF5  eager", 2048, 2, 0.60f, 0.7f, false),
                 new Config("Ultra 2048 PCF5  lazy", 2048, 2, 0.60f, 0.7f, true),
                 new Config("Ultra 3072 PCF5  eager", 3072, 2, 0.60f, 0.7f, false));
+        if (Boolean.getBoolean("mineclone.benchQuick")) {
+            resolutions = new int[][] {{1280, 720}};
+            configs = List.of(configs.get(3));
+        }
 
         if (!glfwInit()) throw new IllegalStateException("GLFW failed");
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
@@ -118,6 +124,11 @@ public class BenchShaders {
         Matrix4f proj = new Matrix4f().perspective((float) java.lang.Math.toRadians(70f),
                 (float) W / H, 0.1f, 600f);
         long start = 0;
+        boolean audit = Boolean.getBoolean("mineclone.gpuAudit");
+        int startStamp = audit ? glGenQueries() : 0, endStamp = audit ? glGenQueries() : 0;
+        double phaseSum = 0, fullFrameSum = 0;
+        long timerOverhead = 0;
+        try (GpuTimers timers = new GpuTimers()) {
         for (int frame = 0; frame < WARMUP + FRAMES; frame++) {
             if (frame == WARMUP) { glFinish(); start = System.nanoTime(); }
             // Камера медленно крутится: статичный кадр не показал бы стоимость
@@ -132,6 +143,13 @@ public class BenchShaders {
 
             SceneLighting l = lighting(gameTime, daylight, camPos, shadows, cfg);
             Vector3f lightDir = SunLight.lightDirection(gameTime);
+            long cpu = System.nanoTime();
+            timers.beginFrame();
+            if (frame >= WARMUP) timerOverhead += System.nanoTime() - cpu;
+            if (audit) glQueryCounter(startStamp, GL_TIMESTAMP);
+            cpu = System.nanoTime();
+            timers.next(GpuTimers.Phase.SHADOW);
+            if (frame >= WARMUP) timerOverhead += System.nanoTime() - cpu;
             if (l.shadows) {
                 if (!cfg.lazy())
                     shadows.invalidate();
@@ -142,6 +160,9 @@ public class BenchShaders {
                 shadows.endFrame();
             }
 
+            cpu = System.nanoTime();
+            timers.next(GpuTimers.Phase.OPAQUE);
+            if (frame >= WARMUP) timerOverhead += System.nanoTime() - cpu;
             Vector3f skyLin = new Vector3f(0.26f, 0.53f, 0.89f);
             post.begin(skyLin.x, skyLin.y, skyLin.z);
             if (shadows != null) shadows.bind();
@@ -154,6 +175,9 @@ public class BenchShaders {
             glDepthMask(true);
 
             draw(chunkShader, l, atlas, proj, view, opaque, false);
+            cpu = System.nanoTime();
+            timers.next(GpuTimers.Phase.WATER);
+            if (frame >= WARMUP) timerOverhead += System.nanoTime() - cpu;
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
             glDepthMask(false);
@@ -163,14 +187,47 @@ public class BenchShaders {
             glDisable(GL_BLEND);
             glEnable(GL_CULL_FACE);
 
+            cpu = System.nanoTime();
+            timers.next(GpuTimers.Phase.POST);
+            if (frame >= WARMUP) timerOverhead += System.nanoTime() - cpu;
             PostProcess.Settings s = new PostProcess.Settings();
             s.bloomStrength = cfg.bloom();
             s.rayStrength = cfg.rays();
             post.resolve();
             post.render(s, cfg.rays() > 0f ? new float[] { 0.5f, 0.85f } : null);
+            cpu = System.nanoTime();
+            timers.endFrame();
+            if (frame >= WARMUP) timerOverhead += System.nanoTime() - cpu;
+            if (audit) {
+                glQueryCounter(endStamp, GL_TIMESTAMP);
+                // Audit only: make the independent timestamp baseline available.
+                // GpuTimers itself has no wait/finish/result-before-available path.
+                glFinish();
+                cpu = System.nanoTime();
+                timers.poll();
+                if (frame >= WARMUP) {
+                    timerOverhead += System.nanoTime() - cpu;
+                    if (timers.sampleFrame() != frame) throw new AssertionError("GPU audit lost its frame sample");
+                    phaseSum += timers.totalMillis();
+                    fullFrameSum += (glGetQueryObjectui64(endStamp, GL_QUERY_RESULT)
+                            - glGetQueryObjectui64(startStamp, GL_QUERY_RESULT)) / 1_000_000.0;
+                }
+            }
         }
         glFinish();
-        return (System.nanoTime() - start) / 1e6 / FRAMES;
+        double measured = (System.nanoTime() - start) / 1e6 / FRAMES;
+        if (audit) {
+            double error = java.lang.Math.abs(phaseSum - fullFrameSum) / java.lang.Math.max(1e-9, fullFrameSum);
+            System.out.printf(Locale.ROOT,
+                    "GPU_PHASE_AUDIT: %s %dx%d sum=%.3f frame=%.3f ms error=%.2f%% CPU_overhead=%.4f ms/frame%n",
+                    cfg.name(), W, H, phaseSum / FRAMES, fullFrameSum / FRAMES, error * 100,
+                    timerOverhead / (double) FRAMES / 1_000_000.0);
+            if (error > 0.10) throw new AssertionError("GPU phase sum differs from frame time by more than 10%");
+        }
+        return measured;
+        } finally {
+            if (audit) { glDeleteQueries(startStamp); glDeleteQueries(endStamp); }
+        }
     }
 
     private static SceneLighting lighting(float gameTime, float daylight, Vector3f camPos,

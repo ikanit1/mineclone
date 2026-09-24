@@ -12,6 +12,9 @@ public class World {
     public static final int SEA_LEVEL = 50;
 
     private final Map<Long, Chunk> chunks = new ConcurrentHashMap<>();
+    /** Gameplay/container mutation belongs to the thread that created this world. */
+    private final Thread mainThread = Thread.currentThread();
+    private volatile boolean savedChunkSource;
     private final LinkedHashSet<Long> pendingSkyRelights = new LinkedHashSet<>();
     private final PerlinNoise heightNoise;
     private final PerlinNoise detailNoise;
@@ -19,10 +22,16 @@ public class World {
     private final Caves caves;
     public final Rivers rivers;
     public final long seed;
+    private final GenFeatures genFeatures;
     public final FallingBlocks falling = new FallingBlocks(this);
 
     public World(long seed) {
+        this(seed, GenFeatures.benchmarkProfile());
+    }
+
+    public World(long seed, GenFeatures genFeatures) {
         this.seed = seed;
+        this.genFeatures = java.util.Objects.requireNonNull(genFeatures);
         this.heightNoise = new PerlinNoise(seed);
         this.detailNoise = new PerlinNoise(seed ^ 0x9E3779B97F4A7C15L);
         this.biomes = new BiomeProvider(seed);
@@ -67,8 +76,34 @@ public class World {
     }
 
 
+    /**
+     * Generate a pristine chunk for menu worlds, delta baselines and tests.
+     * Saved worlds must use {@link ChunkLoader#loadNow(int, int)}: publishing
+     * terrain here would make it visible before its saved edits were restored.
+     */
     public Chunk getChunk(int cx, int cz) {
-        return chunks.computeIfAbsent(key(cx, cz), k -> generate(cx, cz));
+        if (savedChunkSource && Chunk.threadChecksEnabled())
+            throw new IllegalStateException("Saved worlds must load chunks through ChunkLoader.loadNow");
+        Chunk existing = getChunkIfExists(cx, cz);
+        return existing != null ? existing : publish(generateDetached(cx, cz));
+    }
+
+    void useSavedChunkSource() { savedChunkSource = true; }
+
+    /**
+     * The sole visibility boundary. All terrain, saved containers and local
+     * light must be complete before this call; a losing candidate is discarded.
+     * ConcurrentHashMap establishes the happens-before edge for readers.
+     */
+    public Chunk publish(Chunk chunk) {
+        chunk.publishTo(mainThread);
+        Chunk existing = chunks.putIfAbsent(key(chunk.cx, chunk.cz), chunk);
+        return existing != null ? existing : chunk;
+    }
+
+    void assertMainThread() {
+        if (Chunk.threadChecksEnabled() && Thread.currentThread() != mainThread)
+            throw new IllegalStateException("World mutation outside its main thread");
     }
 
     public Chunk getChunkIfExists(int cx, int cz) {
@@ -161,8 +196,18 @@ public class World {
     private static final int TREE_DENSITY_NUM = 144;
     private static final long TREE_ROLL_RANGE = 256L * 128L;
 
-    private Chunk generate(int cx, int cz) {
+    /** Generate terrain privately; this method never inserts the chunk in the world. */
+    public Chunk generateDetached(int cx, int cz) {
         Chunk c = new Chunk(cx, cz);
+        if (genFeatures == GenFeatures.FLAT) {
+            for (int x = 0; x < Chunk.SIZE_X; x++) for (int z = 0; z < Chunk.SIZE_Z; z++)
+                for (int y = 0; y <= 64; y++)
+                    c.set(x, y, z, y == 0 ? BlockType.BEDROCK : y == 64 ? BlockType.GRASS
+                            : y >= 61 ? BlockType.DIRT : BlockType.STONE);
+            c.computeSkyLight();
+            c.modified = false;
+            return c;
+        }
         int[][] heights = new int[Chunk.SIZE_X][Chunk.SIZE_Z];
 
         // Biome grid: 11x11 array covering the chunk (16 cols / 4 = 4 cells) plus

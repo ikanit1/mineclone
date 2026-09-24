@@ -120,8 +120,7 @@ public enum BlockType {
      * ради двух значений пришлось бы править конструктор у всех констант.
      */
     public boolean isCross() {
-        return this == TORCH || this == FIRE || this == ROPE || this == CHAIN
-                || this == WEB || this == JOURNAL;
+        return BlockProps.of(this).cross();
     }
 
     /**
@@ -129,16 +128,7 @@ public enum BlockType {
      * что вообще поддаётся, решает {@link #requiredToolLevel()}.
      */
     public ToolClass preferredTool() {
-        return switch (this) {
-            case STONE, COBBLE, MOSSY_COBBLE, COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE,
-                    BEDROCK, ICE, THIN_ICE, OBSIDIAN, CHAIN, TERRACOTTA, LIMESTONE, BASALT
-                    -> ToolClass.PICKAXE;
-            case WOOD, PLANKS, STAIRS, DOOR_CLOSED, DOOR_OPEN, LEAVES, ROPE, CRAFTING_TABLE
-                    -> ToolClass.AXE;
-            case DIRT, GRASS, SAND, SNOWY_GRASS, SNOW_LAYER, MUD, ASH,
-                    PODZOL, PEAT, DRY_GRASS, RED_SAND, GRAVEL -> ToolClass.SHOVEL;
-            default -> null;
-        };
+        return BlockProps.of(this).preferredTool();
     }
 
     /**
@@ -147,17 +137,12 @@ public enum BlockType {
      * к камню, камень к железу, железо к алмазу.
      */
     public int requiredToolLevel() {
-        return switch (this) {
-            case STONE, COBBLE, MOSSY_COBBLE, COAL_ORE, TERRACOTTA, LIMESTONE, BASALT -> 1;
-            case IRON_ORE -> 2;
-            case GOLD_ORE, DIAMOND_ORE, OBSIDIAN -> 3;
-            default -> 0;
-        };
+        return BlockProps.of(this).requiredToolLevel();
     }
 
     /** Высота блока задаётся meta, а не единичным кубом. */
     public boolean isLayered() {
-        return this == SNOW_LAYER || this == BEDROLL;
+        return BlockProps.of(this).layered();
     }
 
     /**
@@ -166,27 +151,25 @@ public enum BlockType {
      * на нём растягиваются в скольжение.
      */
     public float grip() {
-        return this == ICE || this == THIN_ICE ? 0.22f : this == MUD || this == PEAT ? 0.58f : 1f;
+        return BlockProps.of(this).grip();
     }
 
     /** Loose materials need a block below them, including when placed by the player. */
     public boolean hasGravity() {
-        return this == SAND || this == RED_SAND || this == GRAVEL || this == ASH;
+        return BlockProps.of(this).gravity();
     }
 
     public boolean isSoil() {
-        return this == DIRT || this == GRASS || this == SNOWY_GRASS || this == PODZOL
-                || this == DRY_GRASS || this == PEAT || this == MUD;
+        return BlockProps.of(this).soil();
     }
 
     public float walkSpeedMultiplier() {
-        return this == PEAT ? 0.72f : this == MUD ? 0.80f : this == ASH ? 0.90f : 1f;
+        return BlockProps.of(this).walkSpeedMultiplier();
     }
 
     /** Горит и может быть съеден огнём. */
     public boolean isFlammable() {
-        return this == WOOD || this == PLANKS || this == LEAVES || this == ROPE
-                || this == JOURNAL || this == CRAFTING_TABLE;
+        return BlockProps.of(this).flammable();
     }
 
     public static BlockType byId(byte id) {

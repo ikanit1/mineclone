@@ -10,18 +10,18 @@ public final class SaveFormat {
     public static final int MAGIC = 0x4D434C44;
 
     /**
-     * Версия level.dat. 10 — размеченные секции: тело файла после общих полей
-     * это список «имя, длина, байты», и новая секция больше не поднимает
-     * версию. Незнакомая секция переживает сохранение нетронутой.
+     * Version 11 guards older readers with minReaderVersion and moves every
+     * field into named sections. Future additive versions are readable when
+     * their minimum reader is at most 11; unknown sections survive rewriting.
      */
-    public static final int LEVEL_VERSION = 10;
+    public static final int LEVEL_VERSION = 11;
     /**
      * Версия формата чанка. 2 — содержимое сундуков, 3 — состояние печей,
      * 4 — предметы на земле; 5 — адаптивный RLE блоков и метаданных;
      * 6 — стопка пишется id предмета и компонентами. Младшие версии читаются
      * как раньше: чего в них нет, того просто нет.
      */
-    public static final int CHUNK_VERSION = 6;
+    public static final int CHUNK_VERSION = 7;
     /**
      * Версия настроек. 5 — раскладка клавиш, 6 — привычки инвентаря
      * (расширенные подсказки, книга рецептов, сортировка); 7 — размеченный
