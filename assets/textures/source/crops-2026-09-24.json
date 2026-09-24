@@ -1,0 +1,26 @@
+{
+  "date": "2026-09-24",
+  "task": "RND-09 part 1",
+  "provider": "OpenAI built-in image_gen",
+  "role": "Source cutout sheet, not runtime integrated",
+  "file": "crops-2026-09-24.png",
+  "sha256": "f87d87073e40352cee9dcfdb71b5c76bd338831b7ba3cc641e186909fc49f2ea",
+  "grid": {
+    "columns": 4,
+    "rows": 3,
+    "logicalTileSize": 32
+  },
+  "rows": [
+    "wheat",
+    "carrot",
+    "potato"
+  ],
+  "columns": [
+    "sprout",
+    "young",
+    "growing",
+    "mature"
+  ],
+  "prompt": "Production farming crop cutout texture sheet for an original voxel survival game. EXACTLY FOUR COLUMNS and THREE ROWS of equally sized square cells. Each plant drawn on a 32 by 32 logical pixel grid; crisp hard square pixels, restrained cohesive pixel-art palette, no antialiasing, flat sprite camera facing the plant. Top row wheat in four growth stages from left to right: sparse two green shoots, short green tillers, tall green heads, fully ripe golden wheat ears. Middle row carrot in four growth stages: tiny leaf sprouts, small fernlike cluster, lush green cluster with tiny orange root shoulders, mature large cluster with clear orange root shoulders. Bottom row potato in four growth stages: tiny green sprouts, short broad leaves, fuller broad leaves, mature leafy plant with a few small pale lilac flowers and small tan potato shoulders at its base. Every cell's plant rooted at same baseline exactly three logical pixels above bottom edge; stages grow in height from left to right, thin opaque pixel stems and fully transparent gaps between leaves. Early stage 6 logical pixels tall, second12, third20, final26. Each cell contains ONE isolated plant cluster centered horizontally, with two logical pixel margins. Real transparent alpha background, no dirt, no pots, no checkerboard, no grid, no labels or text, no frame, no glow or cast shadows. This is an engine cutout texture source sheet; consistent lighting and native pixel clusters, original art not exact game copies.",
+  "observed": "Twelve plant clusters with progressive height, aligned ground baseline and real transparent alpha. Must be imported and checked at32x32 before farming gameplay integration."
+}

@@ -1,0 +1,24 @@
+{
+  "date": "2026-09-24",
+  "task": "RND-09 part 1",
+  "provider": "OpenAI built-in image_gen",
+  "role": "Source sheet; not runtime integrated",
+  "file": "hoes-2026-09-24.png",
+  "sha256": "bb38beca40d8e0eaa3f8b33da2b3e1c3ab7577638dda530a80fabf987c12163e",
+  "grid": {
+    "columns": 3,
+    "rows": 2,
+    "logicalTileSize": 32
+  },
+  "cells": [
+    "wood",
+    "stone",
+    "copper",
+    "iron",
+    "gold",
+    "diamond"
+  ],
+  "prompt": "Production pixel-art inventory sprite sheet for an original voxel survival game: exactly three columns and two rows, six equal square cells. Each object is drawn with a 32 by 32 logical grid, crisp chunky square pixels, no antialiasing or smooth shading. Six FARMING HOES, identical hooked right-angle narrow hoe blade silhouette distinct from a broad pickaxe or axe. Long warm brown ashwood handles slope from bottom-left butt to top-right toolhead, consistent wrapped grip, dark one-pixel outlines and tiny upper-left highlights. Row1 left-to-right: wooden hoe, stone hoe, copper hoe. Row2 left-to-right: iron hoe, gold hoe, diamond hoe. Material ramps: wood warm umber; stone slate gray; copper burnt orange; iron cool silver; gold honey amber; diamond cyan teal. Every cell contains just one centered tool with three logical pixels clear margin, all the same orientation and same scale. Transparent background with real alpha, no checkerboard, no ground shadows, no labels, no lettering, no separators, no logos. Source sheet intended for pixel texture import. Original art, do not copy any game's exact assets.",
+  "cleanupPrompt": "Edit this six-tool sprite sheet only to remove ALL colored halos and soft glow outside the solid pixel silhouettes. Preserve the six hoe designs, colors, silhouettes, locations and three-column/two-row grid. Outside each hard dark tool outline, alpha must be exactly ZERO. Do not add a background, checkerboard, shadows or labels. Inside each tool alpha exactly255, use hard square pixels, no semi-transparent fringe. Preserve transparent background and identical placement. This is a technical game-sprite cleanup, not new art.",
+  "observed": "Six consistent hooked hoe silhouettes. Transparent outer background, but source still has soft colored fringe despite requested cleanup. Import must isolate opaque silhouette before native32x32 validation; do not ship source pixels as runtime icons."
+}

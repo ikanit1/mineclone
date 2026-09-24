@@ -1,0 +1,27 @@
+{
+  "date": "2026-09-24",
+  "task": "RND-09 part 1",
+  "provider": "OpenAI built-in image_gen",
+  "role": "Source sprite sheet; not yet runtime-integrated armor",
+  "file": "armor-2026-09-24.png",
+  "sha256": "75c73b7251e704ba0e65fbc9cefe04a4eef9243fac1c0f9743e542fa32be31b5",
+  "grid": {
+    "columns": 4,
+    "rows": 4,
+    "logicalTileSize": 32
+  },
+  "rows": [
+    "leather",
+    "iron",
+    "gold",
+    "diamond"
+  ],
+  "columns": [
+    "helmet",
+    "chestplate",
+    "leggings",
+    "boots"
+  ],
+  "prompt": "Production pixel-art armor inventory sprite sheet for an original voxel survival game. EXACTLY four equally sized columns and four equally sized rows, sixteen isolated armor icons, each cell obeys a 32 by 32 logical pixel grid. Square overall image. Pure flat magenta #FF00FF background everywhere outside icons, no checkerboard, no labels, no text, no cell borders, no shadow on background. Very crisp hard square pixels, no blur or antialiasing. Dark one-pixel outline, restrained four or five color material ramps, highlight upper-left, 3 pixel empty margin inside every cell. Rows are materials: first warm brown stitched leather, second cool silver-gray iron, third warm honey-gold, fourth teal/cyan diamond. Columns are equipment types consistently aligned: first helmet front view open face hole, second chestplate front view broad shoulders short sleeves, third leggings front view with waist and two separate legs, fourth a pair of boots front-three-quarter view with distinct toes. Each column shares exactly the same recognizable silhouette and scale across its four materials; leather adds subtle seam pixels, metal tiny edge highlights, diamond angular facets. Icons legible at native 32x32, cohesive with chunky dark-outlined ashwood/steel tools in a voxel game. Original designs, not exact copies of existing game art. Fill every cell with exactly one centered icon; no hands, heads or people. This sheet is a texture-source asset for automated import.",
+  "observed": "Sixteen distinct armor icons. Native output uses transparency instead of requested magenta; preserve alpha during import."
+}
