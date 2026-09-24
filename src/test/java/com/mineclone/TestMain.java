@@ -75,6 +75,7 @@ public final class TestMain {
         suite("chunk", "ChunkPublicationTests", ChunkPublicationTests::runAll);
         suite("clock", "WorldClockTests", WorldClockTests::runAll);
         suite("sim", "ParticipantTests", ParticipantTests::runAll);
+        suite("sim", "SessionParityTests", SessionParityTests::runAll);
         suite("render", "GpuTimersRingTests", GpuTimersRingTests::runAll);
         suite("perf", "BenchMetricsTests", BenchMetricsTests::runAll);
         suite("feature", "FeatureTests", r -> FeatureTests.runAll((n, c) -> r.run(n, c::run)));
