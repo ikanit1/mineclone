@@ -17,6 +17,40 @@ import java.util.Map;
 final class DedicatedServerSaveTests {
     static void runAll(TestMain.Runner runner) {
         runner.run("dedicated world autosave preserves local owner checkpoint, unknown sections and clock", DedicatedServerSaveTests::ownerCheckpoint);
+        runner.run("a new dedicated world records the generator it was made with", DedicatedServerSaveTests::newWorldGenerator);
+    }
+
+    /** GEN-01: the version is written with the first save, so no later default can reinterpret the land. */
+    private static void newWorldGenerator() throws Exception {
+        Path root = Files.createTempDirectory("mineclone-server-worldgen-");
+        DedicatedServer server = null;
+        try {
+            Path configPath = root.resolve("server.properties");
+            Files.writeString(configPath, "saves-dir=" + root.toString().replace('\\', '/')
+                    + "\nworld=fresh\nseed=31337\ndirect=false\nphoton=false\nupnp=false\n");
+            server = new DedicatedServer(ServerConfig.load(configPath.toFile()));
+            var open = DedicatedServer.class.getDeclaredMethod("openWorld");
+            open.setAccessible(true);
+            check((boolean) open.invoke(server), "server refused to create a world");
+            SaveManager saves = (SaveManager) get(server, "save");
+            saves.flushAndAwait();
+            LevelData level = saves.loadLevel("fresh");
+            byte[] section = level.extraSections.get(com.mineclone.world.gen.WorldGenSettings.SAVE_SECTION);
+            check(section != null && com.mineclone.world.gen.WorldGenSettings.decode(section)
+                    .equals(com.mineclone.world.gen.WorldGenSettings.forNewWorld()), "new world did not record its generator");
+            com.mineclone.world.World world = (com.mineclone.world.World) get(server, "world");
+            check(world.genPolicy().versionAt(0, 0) == com.mineclone.world.gen.WorldGenVersion.LATEST,
+                    "server generates new land with another version");
+        } finally {
+            if (server != null) {
+                ChunkLoader loader = (ChunkLoader) get(server, "loader");
+                if (loader != null) loader.shutdown();
+                ((SaveManager) get(server, "save")).flushAndAwait();
+            }
+            try (var files = Files.walk(root)) {
+                for (Path path : files.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
+            }
+        }
     }
 
     private static void check(boolean value, String why) { if (!value) throw new AssertionError(why); }

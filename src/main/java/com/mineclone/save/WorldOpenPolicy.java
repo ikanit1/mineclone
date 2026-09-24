@@ -14,8 +14,8 @@ public final class WorldOpenPolicy {
         if (result instanceof LevelLoad.Loaded loaded)
             return new Decision(true, false, loaded.data(), "");
         if (result instanceof LevelLoad.TooNew newer)
-            return new Decision(false, false, null, "level version " + newer.version()
-                    + " is newer than supported version " + newer.supportedVersion());
+            return new Decision(false, false, null, newer.what() + " " + newer.version()
+                    + " is newer than supported " + newer.supportedVersion());
         if (result instanceof LevelLoad.Unreadable unreadable)
             return new Decision(false, false, null, unreadable.reason());
         throw new IllegalArgumentException("Missing level read result");

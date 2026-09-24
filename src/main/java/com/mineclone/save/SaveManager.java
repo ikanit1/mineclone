@@ -624,7 +624,9 @@ public final class SaveManager {
         if (rules.length < Integer.BYTES) throw new IOException("invalid rules section");
         java.nio.ByteBuffer.wrap(rules).putInt(d.gameMode.ordinal());
         sections.put("rules", rules);
-        sections.put("worldgen", d.extraSections.getOrDefault("worldgen", sectionBytes(out -> out.writeInt(1))));
+        // A level without the section predates generator versions: its land is V1.
+        sections.put(com.mineclone.world.gen.WorldGenSettings.SAVE_SECTION, d.extraSections.getOrDefault(
+                com.mineclone.world.gen.WorldGenSettings.SAVE_SECTION, com.mineclone.world.gen.WorldGenSettings.LEGACY.encode()));
         // Чужие секции идут последними и ровно теми байтами, что пришли.
         for (var e : d.extraSections.entrySet())
             if(!e.getKey().equals(PlayerRecord.LEGACY_PROGRESS_SECTION)
@@ -697,10 +699,13 @@ public final class SaveManager {
                     return new LevelLoad.TooNew(version, SaveFormat.LEVEL_VERSION);
                 if (minReader < 1) throw new IOException("invalid minimum reader version " + minReader);
                 in.readUTF(); // writtenBy, informational; never execute or interpret it.
-                var sections=com.mineclone.data.SectionCodec.read(in);
+                var sections = com.mineclone.data.SectionCodec.read(in);
                 LevelData data = readLevelSections(sections);
-                if(!sections.containsKey(PlayerRecordCodec.LEVEL_MARKER))legacyPlayerLevels.add(id);
                 requireEnd(in);
+                LevelLoad.TooNew generatorTooNew = generatorTooNew(
+                        sections.get(com.mineclone.world.gen.WorldGenSettings.SAVE_SECTION));
+                if (generatorTooNew != null) return generatorTooNew;
+                if (!sections.containsKey(PlayerRecordCodec.LEVEL_MARKER)) legacyPlayerLevels.add(id);
                 levelVersions.put(id, version);
                 return new LevelLoad.Loaded(data);
             }
@@ -783,6 +788,9 @@ public final class SaveManager {
 
             requireEnd(in);
             com.mineclone.sim.WorldClock.fromSaved(tod, extra.get("clock"));
+            LevelLoad.TooNew generatorTooNew = generatorTooNew(
+                    extra.get(com.mineclone.world.gen.WorldGenSettings.SAVE_SECTION));
+            if (generatorTooNew != null) return generatorTooNew;
             levelVersions.put(id, version);
             return new LevelLoad.Loaded(new LevelData(name, seed, px, py, pz, spawnX, spawnY, spawnZ,
                     yaw, pitch, tod, slot, inventory, gameMode, lastPlayed, health, hunger,
@@ -1027,6 +1035,29 @@ public final class SaveManager {
         } catch (IOException | IllegalArgumentException | SecurityException e) {
             return new ChunkLoad.Unreadable(readReason(e));
         }
+    }
+
+    /**
+     * Unedited land is regenerated on every load: opening a world whose generator
+     * this build does not have would silently rewrite it. Null when the build has
+     * it; a malformed section throws, so the level reads as damaged here rather
+     * than failing later in whatever opens it.
+     */
+    private static LevelLoad.TooNew generatorTooNew(byte[] worldgen) {
+        int stored = com.mineclone.world.gen.WorldGenSettings.storedVersion(worldgen);
+        var version = com.mineclone.world.gen.WorldGenVersion.byId(stored);
+        if (version == null) {
+            var versions = com.mineclone.world.gen.WorldGenVersion.values();
+            return new LevelLoad.TooNew("world generator version", stored, versions[versions.length - 1].id());
+        }
+        // A V2 change this build does not implement yet came from a newer build.
+        // V1 never has any: such a section is contradictory, and decode refuses it.
+        int features = com.mineclone.world.gen.WorldGenSettings.storedFeatures(worldgen);
+        int supported = com.mineclone.world.gen.GenFeatures.of(version).bits();
+        if (version != com.mineclone.world.gen.WorldGenVersion.V1 && (features & ~supported) != 0)
+            return new LevelLoad.TooNew("world generator features", features, supported);
+        com.mineclone.world.gen.WorldGenSettings.decode(worldgen);
+        return null;
     }
 
     private static String readReason(Exception e) {

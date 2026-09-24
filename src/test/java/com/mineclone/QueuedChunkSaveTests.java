@@ -28,7 +28,7 @@ public final class QueuedChunkSaveTests {
     private static void evictReload() throws Exception {
         try (Fixture f = new Fixture(); Gate gate = f.gate()) {
             gate.awaitEntered();
-            World world = new World(17, GenFeatures.FLAT);
+            World world = new World(17, GenProfile.FLAT);
             ChunkLoader loader = new ChunkLoader(world, null, f.save, "world");
             loader.setMeshing(false);
             try {

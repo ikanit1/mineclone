@@ -355,7 +355,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [FluidThermodynamics](../src/main/java/com/mineclone/world/FluidThermodynamics.java) | Rules shared by fluid ticking, particles and tests. |
 | [Furnace](../src/main/java/com/mineclone/world/Furnace.java) | Состояние одной печи: три слота и два таймера. |
 | [GameMode](../src/main/java/com/mineclone/world/GameMode.java) | World play mode. |
-| [GenFeatures](../src/main/java/com/mineclone/world/GenFeatures.java) | Explicit debug generation profile. |
+| [GenProfile](../src/main/java/com/mineclone/world/GenProfile.java) | Debug generation profile, independent of the world's generator version. |
 | [GreedyFaces](../src/main/java/com/mineclone/world/GreedyFaces.java) | Merges only constant-lit cube faces; light gradients keep their original vertices. |
 | [IntList](../src/main/java/com/mineclone/world/MeshBuffers.java) | Javadoc summary not yet supplied. |
 | [Inventory](../src/main/java/com/mineclone/world/Inventory.java) | Player inventory: 36 slots (0..8 hotbar, 9..35 main). |
@@ -409,4 +409,13 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [Projectile](../src/main/java/com/mineclone/world/entity/Projectile.java) | Летящий снаряд: стрела и всё, что полетит после неё. |
 | [Wildlife](../src/main/java/com/mineclone/world/entity/Wildlife.java) | Поведение диких зверей: кролик, волк, птица. |
 
-Top-level declarations: 298.
+## com.mineclone.world.gen
+
+| Type | Purpose |
+|---|---|
+| [GenFeatures](../src/main/java/com/mineclone/world/gen/GenFeatures.java) | The generation changes a chunk is made with. |
+| [GenPolicy](../src/main/java/com/mineclone/world/gen/GenPolicy.java) | Which generator version a chunk is generated with. |
+| [WorldGenSettings](../src/main/java/com/mineclone/world/gen/WorldGenSettings.java) | The level's worldgen section: which generator the world uses, the 1.1 changes it was created with, and when it was last upgraded (0 when never). |
+| [WorldGenVersion](../src/main/java/com/mineclone/world/gen/WorldGenVersion.java) | Which generator made a chunk. |
+
+Top-level declarations: 302.

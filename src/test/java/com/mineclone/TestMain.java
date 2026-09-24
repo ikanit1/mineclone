@@ -57,6 +57,7 @@ public final class TestMain {
         suite("animation", "MobAnimationTests", r -> MobAnimationTests.runAll((n, c) -> r.run(n, c::run)));
         suite("optimization", "OptimizationTests", r -> r.run("optimization invariants", OptimizationTests::run));
         suite("worldgen", "WorldGenerationTests", r -> r.run("biome assets, sparse structures, seams and falling-block conservation", WorldGenerationTests::run));
+        suite("worldgen", "WorldGenGoldenTests", WorldGenGoldenTests::runAll);
         suite("core", "CoreTests", CoreTests::runAll);
         suite("core", "BlockOrdinalTests", BlockOrdinalTests::runAll);
         suite("data", "RecipeDataTests", RecipeDataTests::runAll);

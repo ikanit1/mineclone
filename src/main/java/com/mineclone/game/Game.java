@@ -1215,7 +1215,13 @@ public class Game {
         netChat.clear();
         this.worldId = id;
         long seed = (lvl != null) ? lvl.seed : new java.util.Random().nextLong();
-        this.world = new World(seed);
+        // Unedited land is regenerated from the seed on every load, so it must
+        // come from the generator version the world was made with.
+        var generator = lvl != null
+                ? com.mineclone.world.gen.WorldGenSettings.decode(
+                        lvl.extraSections.get(com.mineclone.world.gen.WorldGenSettings.SAVE_SECTION))
+                : com.mineclone.world.gen.WorldGenSettings.forNewWorld();
+        this.world = new World(seed, generator.policy());
         this.mesher = new ChunkMesher(world);
         this.loader = new ChunkLoader(world, mesher, save, id);
         this.loader.setLodEnabled(gfxOpts.chunkLod());
@@ -1267,6 +1273,9 @@ public class Game {
             gameMode = lvl.gameMode;
             restorePlayer(lvl.player);
         } else {
+            // Without the section the first save would call this land V1.
+            levelExtraSections = java.util.Map.of(
+                    com.mineclone.world.gen.WorldGenSettings.SAVE_SECTION, generator.encode());
             worldDisplayName = "World";
             restorePlayer(com.mineclone.save.PlayerRecord.builder().pose(player.position.x,player.position.y,player.position.z,0,0,0).build());
         }
@@ -1306,7 +1315,8 @@ public class Game {
     /** Мир по настройкам экрана создания: level.dat с точкой появления — и сразу загрузка. */
     private void createWorld(WorldSettings ws) {
         String id = save.uniqueWorldId(com.mineclone.save.SaveFormat.newWorldId());
-        Vector3f spawn = findDefaultSpawn(ws.seed);
+        var generator = com.mineclone.world.gen.WorldGenSettings.forNewWorld();
+        Vector3f spawn = findDefaultSpawn(ws.seed, generator);
         com.mineclone.save.LevelData fresh = new com.mineclone.save.LevelData(
                 ws.name, ws.seed,
                 spawn.x, spawn.y, spawn.z,
@@ -1315,7 +1325,8 @@ public class Game {
                 ws.mode == com.mineclone.world.GameMode.CREATIVE
                         ? com.mineclone.save.LevelData.creativeInventory()
                         : com.mineclone.save.LevelData.emptyInventory(),
-                ws.mode, System.currentTimeMillis());
+                ws.mode, System.currentTimeMillis(), 20f, 20f, null,
+                java.util.Map.of(com.mineclone.world.gen.WorldGenSettings.SAVE_SECTION, generator.encode()));
         save.saveLevel(id, fresh);
         // The first save already established an empty-world backup gate.
         openWorldData(id, fresh);
@@ -2188,8 +2199,8 @@ public class Game {
         return null;
     }
 
-    private static Vector3f findDefaultSpawn(long seed) {
-        World spawnWorld = new World(seed);
+    private static Vector3f findDefaultSpawn(long seed, com.mineclone.world.gen.WorldGenSettings generator) {
+        World spawnWorld = new World(seed, generator.policy());
         int sx = 8;
         int sz = 8;
         spawnWorld.getChunk(Math.floorDiv(sx, Chunk.SIZE_X), Math.floorDiv(sz, Chunk.SIZE_Z));

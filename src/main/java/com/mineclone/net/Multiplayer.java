@@ -744,7 +744,10 @@ public final class Multiplayer implements NetTransport.Listener {
                 t.setDaemon(true);
                 return t;
             });
-            pristine = new World(ctx.seed());
+            // The baseline must generate exactly like the live world, or every
+            // generator difference would travel as an "edit".
+            World live = ctx.world();
+            pristine = live != null ? live.blankTwin() : new World(ctx.seed());
             worldReady = true;
             addChat("Мир открыт: комната «" + roomName + "»");
         } else {

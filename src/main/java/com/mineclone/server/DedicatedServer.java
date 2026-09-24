@@ -141,7 +141,13 @@ public final class DedicatedServer implements NetContext {
         }
         long seed = lvl != null ? lvl.seed
                 : (config.seed != 0L ? config.seed : new Random().nextLong());
-        world = new World(seed);
+        var generator = lvl != null
+                ? com.mineclone.world.gen.WorldGenSettings.decode(
+                        lvl.extraSections.get(com.mineclone.world.gen.WorldGenSettings.SAVE_SECTION))
+                : com.mineclone.world.gen.WorldGenSettings.forNewWorld();
+        if (lvl == null)
+            levelExtraSections.put(com.mineclone.world.gen.WorldGenSettings.SAVE_SECTION, generator.encode());
+        world = new World(seed, generator.policy());
         loader = new ChunkLoader(world, new ChunkMesher(world), save, config.worldId);
         // Меши сервер не строит: рисовать ему нечем, а восемь потоков,
         // складывающих треугольники в никуда, — это восемь занятых ядер.

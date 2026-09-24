@@ -74,6 +74,7 @@ writer and its assets, as described in the [fixture reproduction guide](../src/t
 | [make_trailer.py](../tools/make_trailer.py) | PY | Compose rendered frames with ffmpeg/Pillow | `out-test/trailer-clean.mp4; out-test/trailer-ru.mp4` |
 | [MakeSaveFixtures.java](../tools/MakeSaveFixtures.java) | [old-writer recipe](../src/test/resources/fixtures/saves/README.md) | Authenticated alpha writer and explicitly synthetic historical save corpus; refuses current format writers | `required new/empty output directory; never replace the golden corpus` |
 | [MakeGuestFixture.java](../tools/MakeGuestFixture.java) | [old-writer recipe](../src/test/resources/fixtures/saves/README.md) | `beta-guest`: guest checkpoint v1 written by the v1.0.1-alpha tag; refuses any other writer | `required new/empty output directory; never replace the golden corpus` |
+| [MakeWorldGenGolden.java](../tools/MakeWorldGenGolden.java) | J | `fixtures/worldgen-v1.txt`: V1 generation hashes of 120 chunks; runs against current classes or the v1.0.0-alpha tag with identical output | `writes only the given file; never regenerate to pass a test` |
 | [MakeTrailer.java](../tools/MakeTrailer.java) | J | Compose before/after image sequence from existing captures | `out-test/trailer` |
 | [PhotonSmoke.java](../tools/PhotonSmoke.java) | J | Opt-in external Photon connection test; consumes cloud slots | `console; network traffic` |
 | [PlayerCollisionSmoke.java](../tools/PlayerCollisionSmoke.java) | J | Native held-key player movement/collision | `console` |

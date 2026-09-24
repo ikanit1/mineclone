@@ -13,7 +13,7 @@ original-byte `*-migration.zip` backup before the first mutation or write.
 | `Absent` | Create a new world | A subsequent explicit save creates the file |
 | `Loaded(data)` | Restore the saved seed, player and state | None during reading |
 | `Unreadable(reason)` | Refuse to open | Preserve the original path and bytes |
-| `TooNew(version, supportedVersion)` | Refuse to open | Preserve the original path and bytes |
+| `TooNew(what, version, supportedVersion)` | Refuse to open | Preserve the original path and bytes |
 
 An existing directory or an inaccessible path is never treated as absent.
 `WorldOpenPolicy.decide` is the common pure decision used by the graphical game
@@ -110,8 +110,9 @@ The codec bounds count at 64, each payload at 4 MiB, and combined payloads at
 
 Version 11 stores `world` (name/seed/lastPlayed), `player_format` (a marker),
 `player` (the host's `PlayerRecord`), `world_spawn`, `clock` (the precise
-`WorldClock` state), `rules` (game-mode prefix), `worldgen` (generator version)
-and opaque extra sections. Unknown sections survive rewriting. A version 12
+`WorldClock` state), `rules` (game-mode prefix), `worldgen` (generator version,
+recorded 1.1 features and last upgrade; see [worldgen.md](worldgen.md) — a generator
+this build lacks refuses the world as too new) and opaque extra sections. Unknown sections survive rewriting. A version 12
 file with minimum reader 11 is accepted; minimum reader 12 is refused. A 1.0
 reader rejects version 11 before reading any new fields.
 

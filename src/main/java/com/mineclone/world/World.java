@@ -22,21 +22,43 @@ public class World {
     private final Caves caves;
     public final Rivers rivers;
     public final long seed;
-    private final GenFeatures genFeatures;
+    private final GenProfile profile;
+    private final com.mineclone.world.gen.GenPolicy genPolicy;
     public final FallingBlocks falling = new FallingBlocks(this);
 
+    /** A world generated entirely by the 1.0 generator (V1). */
     public World(long seed) {
-        this(seed, GenFeatures.benchmarkProfile());
+        this(seed, GenProfile.benchmarkProfile());
     }
 
-    public World(long seed, GenFeatures genFeatures) {
+    public World(long seed, GenProfile profile) {
+        this(seed, profile, com.mineclone.world.gen.GenPolicy.fixed(com.mineclone.world.gen.WorldGenVersion.V1));
+    }
+
+    public World(long seed, com.mineclone.world.gen.GenPolicy genPolicy) {
+        this(seed, GenProfile.benchmarkProfile(), genPolicy);
+    }
+
+    public World(long seed, GenProfile profile, com.mineclone.world.gen.GenPolicy genPolicy) {
         this.seed = seed;
-        this.genFeatures = java.util.Objects.requireNonNull(genFeatures);
+        this.profile = java.util.Objects.requireNonNull(profile);
+        this.genPolicy = java.util.Objects.requireNonNull(genPolicy);
         this.heightNoise = new PerlinNoise(seed);
         this.detailNoise = new PerlinNoise(seed ^ 0x9E3779B97F4A7C15L);
         this.biomes = new BiomeProvider(seed);
         this.caves = new Caves(seed);
         this.rivers = new Rivers(seed);
+    }
+
+    public com.mineclone.world.gen.GenPolicy genPolicy() { return genPolicy; }
+
+    /**
+     * An empty world that generates exactly like this one: same seed, profile
+     * and generator versions. A chunk delta compares against it, so it must not
+     * differ in anything but the edits.
+     */
+    public World blankTwin() {
+        return new World(seed, profile, genPolicy);
     }
 
     public static long key(int cx, int cz) {
@@ -196,10 +218,19 @@ public class World {
     private static final int TREE_DENSITY_NUM = 144;
     private static final long TREE_ROLL_RANGE = 256L * 128L;
 
-    /** Generate terrain privately; this method never inserts the chunk in the world. */
+    /** Generate terrain privately with the chunk's own generator version; never inserts it. */
     public Chunk generateDetached(int cx, int cz) {
+        return generateDetached(cx, cz, genPolicy.featuresAt(cx, cz));
+    }
+
+    /**
+     * The generator itself. Every 1.1 change reads its own flag in
+     * {@code features}, so a V1 chunk comes out exactly as 1.0 made it.
+     */
+    public Chunk generateDetached(int cx, int cz, com.mineclone.world.gen.GenFeatures features) {
+        java.util.Objects.requireNonNull(features, "features");
         Chunk c = new Chunk(cx, cz);
-        if (genFeatures == GenFeatures.FLAT) {
+        if (profile == GenProfile.FLAT) {
             for (int x = 0; x < Chunk.SIZE_X; x++) for (int z = 0; z < Chunk.SIZE_Z; z++)
                 for (int y = 0; y <= 64; y++)
                     c.set(x, y, z, y == 0 ? BlockType.BEDROCK : y == 64 ? BlockType.GRASS

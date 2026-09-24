@@ -77,7 +77,7 @@ public final class BenchMetricsTests {
         }
     }
     private static void flat() {
-        World flat = new World(42, GenFeatures.FLAT), ordinary = new World(42, GenFeatures.NORMAL);
+        World flat = new World(42, GenProfile.FLAT), ordinary = new World(42, GenProfile.NORMAL);
         Chunk first = flat.getChunk(-2, 3), second = flat.getChunk(7, -4);
         for (Chunk chunk : List.of(first, second)) for (int x = 0; x < 16; x++) for (int z = 0; z < 16; z++) {
             check(chunk.get(x, 0, z) == BlockType.BEDROCK, "flat bedrock");
