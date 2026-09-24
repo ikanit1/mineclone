@@ -110,4 +110,14 @@ public interface NetTransport {
 
     /** Короткая строка для отладочного экрана. */
     String describe();
+
+    /**
+     * Сколько байт одно сообщение такого размера стоит одному получателю на
+     * проводе (NET-01): что транспорт делает из полезной нагрузки — base64 и
+     * JSON у Photon, заголовок кадра у прямого соединения. TLS, TCP и IP не
+     * считаются.
+     */
+    default int wireBytes(int payloadBytes) {
+        return payloadBytes;
+    }
 }

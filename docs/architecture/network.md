@@ -155,6 +155,26 @@ external service and is excluded from CI.
 **Сообщения в консоль пишутся латиницей**: у консоли Windows кодировка не
 UTF-8, и кириллица в ней превращается в кашу.
 
+## Traffic by packet (NET-01)
+
+`NetStats` counts bytes and packets per packet code and direction, transport
+messages and their deliveries, and payload per peer — since the start and in
+one-second slots of the last minute. `NetChannel` attributes each packet when
+its message is flushed, the only moment the number of recipients is known:
+outgoing counts are what the peer delivered (a broadcast once per recipient,
+since the budget is per guest). `Multiplayer.onPayload` counts arrivals; an
+unknown or broken packet takes the rest of its message with it, so the codes
+always add up to the messages. `NetTransport.wireBytes` says what one delivery
+costs on the wire: Photon's framed event JSON around base64 (exact), 13 bytes of
+frame on a direct socket, the payload itself on the loopback; a composite takes
+its dearest door. Recording allocates nothing.
+
+F3 shows the last second (`out … in … KB/s room … msg/s`, Photon's count seen
+from this peer); `-Dmineclone.netStats=<csv>` writes a row per code and second.
+`tools/NetBaseline.java` measures steady traffic of scripted sessions with the
+real `Multiplayer`; the v7 numbers are in
+[docs/perf/net-baseline.md](../perf/net-baseline.md).
+
 ## Checks and tuning
 
 `run-tests.ps1 -Only net` covers protocol/transport/session rules. `run-net-test.ps1` gates two real game processes over LAN, and `run-server-test.ps1` covers dedicated host + clients. Both sides must pass, not merely connect.

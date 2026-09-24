@@ -418,6 +418,12 @@ public final class LanTransport implements NetTransport {
         return (hosting ? "LAN хозяин :" + port : "LAN " + host + ":" + port) + " #" + actor;
     }
 
+    /** {@code F_DATA}, sender, target and length ahead of every payload. */
+    @Override
+    public int wireBytes(int payloadBytes) {
+        return 1 + 3 * Integer.BYTES + payloadBytes;
+    }
+
     /** Одно TCP-соединение: чтение в своём потоке, запись под замком. */
     private final class Link {
         private final Socket socket;

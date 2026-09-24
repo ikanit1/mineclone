@@ -91,6 +91,13 @@ public final class Multiplayer implements NetTransport.Listener {
     private NetTransport transport;
     private NetChannel channel;
     private Role role = Role.NONE;
+    /** Traffic by packet across sessions and reconnects (NET-01). */
+    private final NetStats stats = new NetStats();
+    /** {@code -Dmineclone.netStats=<csv>}: a row per packet code and second; null when not asked. */
+    private final java.io.Writer statsDump = openStatsDump();
+    private long dumpedSecond = Long.MIN_VALUE;
+    private final double[] rates = new double[5];
+    private static final java.util.concurrent.atomic.AtomicInteger DUMPS = new java.util.concurrent.atomic.AtomicInteger();
 
     private String nickname = "Игрок";
     private String roomName = "";
@@ -165,6 +172,46 @@ public final class Multiplayer implements NetTransport.Listener {
         this.inventorySync = new InventorySync(this,ctx);
     }
 
+    /** Traffic by packet code, direction and peer. */
+    public NetStats stats() {
+        return stats;
+    }
+
+    /**
+     * The CSV named by {@code mineclone.netStats}. Every session in the process
+     * counts on its own: the second one writes {@code <name>.2}, and so on — a
+     * benchmark's host and guests would otherwise overwrite one file.
+     */
+    private static java.io.Writer openStatsDump() {
+        String path = System.getProperty("mineclone.netStats");
+        if (path == null || path.isBlank())
+            return null;
+        int n = DUMPS.incrementAndGet();
+        java.nio.file.Path file = java.nio.file.Path.of(n == 1 ? path : path + "." + n);
+        try {
+            java.io.Writer out = java.nio.file.Files.newBufferedWriter(file, java.nio.charset.StandardCharsets.UTF_8);
+            out.write(NetStats.CSV_HEADER);
+            out.write('\n');
+            out.flush();
+            return out;
+        } catch (IOException e) {
+            System.err.println("netStats: cannot write " + file + ": " + e.getMessage());
+            return null;
+        }
+    }
+
+    private void dumpStats() {
+        try {
+            long last = stats.appendCsv(statsDump, dumpedSecond);
+            if (last != dumpedSecond) {
+                dumpedSecond = last;
+                statsDump.flush();
+            }
+        } catch (IOException e) {
+            System.err.println("netStats: " + e.getMessage());
+        }
+    }
+
     PacketBuf inventoryPacket(int code,int actor) { return channel.packet(code,true,actor); }
     int hostActor() { return hostActor; }
     void flushInventory() { if(channel!=null)channel.flush(); }
@@ -204,7 +251,7 @@ public final class Multiplayer implements NetTransport.Listener {
     public void start(NetTransport t, String room, boolean create, String nick) {
         stop(null);
         this.transport = t;
-        this.channel = new NetChannel(t);
+        this.channel = new NetChannel(t, stats);
         this.roomName = room == null ? "" : room;
         this.nickname = (nick == null || nick.isBlank()) ? "Игрок" : nick.trim();
         if (this.nickname.length() > NetProto.NAME_LIMIT)
@@ -363,6 +410,13 @@ public final class Multiplayer implements NetTransport.Listener {
         return new ArrayList<>(chat);
     }
 
+    /** Last second's traffic: payload KB/s each way and Photon-counted room messages. */
+    private String trafficLine() {
+        stats.rates(1, rates);
+        return String.format(java.util.Locale.ROOT, " out %.1f in %.1f KB/s room %.0f msg/s",
+                rates[0] / 1024.0, rates[1] / 1024.0, rates[4]);
+    }
+
     /** Строка для отладочного экрана. */
     public String debugLine() {
         if (transport == null)
@@ -371,7 +425,8 @@ public final class Multiplayer implements NetTransport.Listener {
                 + " " + transport.describe()
                 + " peers=" + players.size()
                 + " msg=" + (channel == null ? 0 : channel.messagesSent())
-                + " tx=" + (channel == null ? 0 : channel.bytesSent() / 1024) + "k";
+                + " tx=" + (channel == null ? 0 : channel.bytesSent() / 1024) + "k"
+                + trafficLine();
     }
 
     // --------------------------------------------------------------- кадр
@@ -380,6 +435,8 @@ public final class Multiplayer implements NetTransport.Listener {
     public void update(float dt) {
         updateSession(dt);
         syncParticipants();
+        if (statsDump != null)
+            dumpStats();
     }
 
     private void updateSession(float dt) {
@@ -708,7 +765,7 @@ public final class Multiplayer implements NetTransport.Listener {
             return;
         resumeRetry = RESUME_RETRY;
         transport = factory.create();
-        channel = new NetChannel(transport);
+        channel = new NetChannel(transport, stats);
         // Создавать комнату не пытаемся, даже если так начинали: она уже есть,
         // а «создать» на её месте значит войти вторым хозяином в пустой мир.
         transport.connect(roomName, false, nickname);
@@ -804,13 +861,18 @@ public final class Multiplayer implements NetTransport.Listener {
 
     @Override
     public void onPayload(int from, byte[] data) {
+        stats.message(NetStats.IN, data.length, transport == null ? data.length : transport.wireBytes(data.length), 1);
+        stats.peer(from, NetStats.IN, data.length);
         PacketBuf in = PacketBuf.reading(data);
         while (in.hasMore()) {
+            int before = in.remaining();
             int code = in.readU8();
             // Незнакомый код или оборванное тело — дальше в этом сообщении
             // каша: длина пакета нигде не написана, и следующий байт уже не
-            // код. Остаток выбрасывается целиком.
-            if (!handle(from, code, in) || in.truncated())
+            // код. Остаток выбрасывается целиком — и засчитывается ему же.
+            boolean whole = handle(from, code, in) && !in.truncated();
+            stats.packet(NetStats.IN, code, before - (whole ? in.remaining() : 0), 1);
+            if (!whole)
                 break;
         }
         syncParticipants();

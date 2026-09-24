@@ -21,6 +21,9 @@ import java.util.Map;
  * <p>Ручного переполнения нет: копилка сама уходит в сеть, дойдя до
  * {@link #SOFT_LIMIT}. Это важно на входе участника, когда хозяин отдаёт
  * дельты десятков чанков сразу.
+ *
+ * <p>Каждый пакет засчитывается в {@link NetStats} по своему коду (NET-01) в
+ * момент отправки сообщения: только тогда известно, скольким он достанется.
  */
 public final class NetChannel {
 
@@ -31,14 +34,45 @@ public final class NetChannel {
     public static final int ALL = 0;
 
     private final NetTransport transport;
+    private final NetStats stats;
     /** Надёжные копилки по получателю: у каждого свой список чанковых дельт. */
-    private final Map<Integer, PacketBuf> reliable = new HashMap<>();
-    private final Map<Integer, PacketBuf> unreliable = new HashMap<>();
+    private final Map<Integer, Pending> reliable = new HashMap<>();
+    private final Map<Integer, Pending> unreliable = new HashMap<>();
     private long sentMessages;
     private long sentBytes;
 
     public NetChannel(NetTransport transport) {
+        this(transport, null);
+    }
+
+    /** @param stats куда считать трафик; null — не считать */
+    public NetChannel(NetTransport transport, NetStats stats) {
         this.transport = transport;
+        this.stats = stats;
+    }
+
+    /** Копилка одного получателя и где в ней начинается каждый пакет. */
+    private static final class Pending {
+        final PacketBuf buf = new PacketBuf(512);
+        int[] codes = new int[16];
+        int[] starts = new int[16];
+        int count;
+
+        void open(int code) {
+            if (count == codes.length) {
+                codes = java.util.Arrays.copyOf(codes, count * 2);
+                starts = java.util.Arrays.copyOf(starts, count * 2);
+            }
+            codes[count] = code;
+            starts[count] = buf.size();
+            count++;
+            buf.u8(code);
+        }
+
+        /** Пакет {@code i} тянется до начала следующего или до конца копилки. */
+        int size(int i) {
+            return (i + 1 < count ? starts[i + 1] : buf.size()) - starts[i];
+        }
     }
 
     /**
@@ -49,13 +83,14 @@ public final class NetChannel {
      * мусором на ровном месте.
      */
     public PacketBuf packet(int code, boolean isReliable, int target) {
-        Map<Integer, PacketBuf> bucket = isReliable ? reliable : unreliable;
-        PacketBuf buf = bucket.computeIfAbsent(target, t -> new PacketBuf(512));
-        if (buf.size() >= SOFT_LIMIT)
+        Map<Integer, Pending> bucket = isReliable ? reliable : unreliable;
+        Pending pending = bucket.computeIfAbsent(target, t -> new Pending());
+        if (pending.buf.size() >= SOFT_LIMIT) {
             flushOne(bucket, target, isReliable);
-        buf = bucket.computeIfAbsent(target, t -> new PacketBuf(512));
-        buf.u8(code);
-        return buf;
+            pending = bucket.computeIfAbsent(target, t -> new Pending());
+        }
+        pending.open(code);
+        return pending.buf;
     }
 
     /** Пакет без тела. */
@@ -69,7 +104,7 @@ public final class NetChannel {
         flushBucket(unreliable, false);
     }
 
-    private void flushBucket(Map<Integer, PacketBuf> bucket, boolean isReliable) {
+    private void flushBucket(Map<Integer, Pending> bucket, boolean isReliable) {
         if (bucket.isEmpty())
             return;
         List<Integer> targets = new ArrayList<>(bucket.keySet());
@@ -77,14 +112,31 @@ public final class NetChannel {
             flushOne(bucket, t, isReliable);
     }
 
-    private void flushOne(Map<Integer, PacketBuf> bucket, int target, boolean isReliable) {
-        PacketBuf buf = bucket.remove(target);
-        if (buf == null || buf.size() == 0)
+    private void flushOne(Map<Integer, Pending> bucket, int target, boolean isReliable) {
+        Pending pending = bucket.remove(target);
+        if (pending == null || pending.buf.size() == 0)
             return;
-        byte[] payload = buf.toBytes();
+        byte[] payload = pending.buf.toBytes();
         sentMessages++;
         sentBytes += payload.length;
+        if (stats != null)
+            count(pending, payload.length, target);
         transport.send(payload, isReliable, target);
+    }
+
+    private void count(Pending pending, int length, int target) {
+        List<Integer> others = target == ALL ? transport.actors() : null;
+        int recipients = others == null ? 1 : others.size();
+        if (recipients == 0)
+            return;                       // никому: такое сообщение транспорт просто не отправит
+        for (int i = 0; i < pending.count; i++)
+            stats.packet(NetStats.OUT, pending.codes[i], pending.size(i), recipients);
+        stats.message(NetStats.OUT, length, transport.wireBytes(length), recipients);
+        if (others == null)
+            stats.peer(target, NetStats.OUT, length);
+        else
+            for (int actor : others)
+                stats.peer(actor, NetStats.OUT, length);
     }
 
     /** Выбросить накопленное не отправляя: например, комнату уже закрыли. */

@@ -459,6 +459,21 @@ public final class PhotonTransport implements NetTransport {
         return names.getOrDefault(a, "");
     }
 
+    /** The event operation around an empty payload: {@code {"req":253,"vals":[244,1,245,""]}}. */
+    private static final int EMPTY_EVENT = PhotonPeer.operationJson(PhotonCodes.OP_RAISE_EVENT,
+            PhotonCodes.P_CODE, EVENT_CODE, PhotonCodes.P_DATA, "").length();
+
+    /**
+     * One delivery: the payload in base64 inside the event operation, inside
+     * the {@code ~m~<length>~m~~j~} frame (see {@link PhotonPeer#frame}). An
+     * addressed event also names its actor — a few bytes more, not counted.
+     */
+    @Override
+    public int wireBytes(int payloadBytes) {
+        int json = EMPTY_EVENT + 4 * ((payloadBytes + 2) / 3);
+        return 9 + String.valueOf(3 + json).length() + json;
+    }
+
     @Override
     public String describe() {
         String where = region.isEmpty() ? "авто" : region;

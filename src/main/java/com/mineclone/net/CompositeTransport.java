@@ -177,6 +177,15 @@ public final class CompositeTransport implements NetTransport {
             t.requestRoomList();
     }
 
+    /** Doors cost differently; the dearest one, so that a budget is never read short. */
+    @Override
+    public int wireBytes(int payloadBytes) {
+        int most = payloadBytes;
+        for (NetTransport door : doors)
+            most = Math.max(most, door.wireBytes(payloadBytes));
+        return most;
+    }
+
     @Override
     public String describe() {
         StringBuilder sb = new StringBuilder();

@@ -143,7 +143,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [NetContext](../src/main/java/com/mineclone/net/NetContext.java) | Всё, что сессия знает об игре. |
 | [NetProto](../src/main/java/com/mineclone/net/NetProto.java) | Коды пакетов и версия протокола. |
 | [NetSettings](../src/main/java/com/mineclone/net/NetSettings.java) | Что игра помнит об игре по сети между запусками. |
-| [NetStats](../src/main/java/com/mineclone/net/NetStats.java) | Application payload counters; transport framing and kernel traffic are intentionally excluded. |
+| [NetStats](../src/main/java/com/mineclone/net/NetStats.java) | Traffic by packet (NET-01): bytes and packets per code and direction, transport messages and per-peer totals — since the start, and in one-second slots of the last minute. |
 | [NetTransport](../src/main/java/com/mineclone/net/NetTransport.java) | Транспорт: комната, участники и байты между ними. |
 | [PacketBuf](../src/main/java/com/mineclone/net/PacketBuf.java) | Компактный двоичный кадр: чтение и запись одним объектом. |
 | [PhotonTransport](../src/main/java/com/mineclone/net/PhotonTransport.java) | Комната в облаке Photon. |
