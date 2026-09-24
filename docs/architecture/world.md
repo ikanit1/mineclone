@@ -7,7 +7,9 @@ metadata, containers and meshes. Read [chunk publication](chunk-publication.md)
 before changing generation, restoration or worker access.
 
 To add a block: append its enum constant to `world/BlockType.java`, define its
-properties in `world/BlockProps.java`, wire PNG tile names in `render/TextureAtlas.java`,
+properties in `world/BlockProps.java` and its shape in `world/shape/Shapes.java`
+(both switches are exhaustive, so a block without them does not compile; see
+[blocks](blocks.md#shapes-blk-02)), wire PNG tile names in `render/TextureAtlas.java`,
 then add the item JSON and recipes/tags under `assets/data/mineclone/`. Existing
 block IDs are saved ordinals: never insert/reorder/remove the existing prefix.
 `BlockOrdinalTests` freezes both IDs and pre-migration properties. Read

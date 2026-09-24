@@ -8,6 +8,8 @@ import com.mineclone.world.damage.ArmorView;
 import com.mineclone.world.damage.DamageSource;
 import com.mineclone.world.damage.DamageType;
 import com.mineclone.world.damage.Damageable;
+import com.mineclone.world.shape.BlockShape;
+import com.mineclone.world.shape.Shapes;
 import org.joml.Vector3f;
 
 public class Player implements Damageable {
@@ -483,7 +485,17 @@ public class Player implements Damageable {
             isSprinting = false;
     }
 
-    /** Пакетная видимость ради теста физики: он живёт в этом же пакете. */
+    /** Boxes of the shaped block being resolved; collision never needs two sets at once. */
+    private final float[] shapeBoxes = BlockShape.buffer();
+
+    /**
+     * Пакетная видимость ради теста физики: он живёт в этом же пакете.
+     *
+     * <p>Форма блока берётся из {@link Shapes} (BLK-02): куб решается прежней
+     * арифметикой бит в бит, у ступени — две коробки, плита и ступенька, и
+     * каждая упирает как обычный блок. Автоподъёма нет, как и раньше
+     * ({@code PlayerPhysicsTests}): ступень берётся прыжком.
+     */
     void moveAxis(World world, float dx, float dy, float dz) {
         float previousBottom = position.y;
         float previousTop = previousBottom + HEIGHT;
@@ -511,43 +523,23 @@ public class Player implements Damageable {
                     if (maxX <= x || minX >= x + 1 || maxY <= y || minY >= y + 1
                             || maxZ <= z || minZ >= z + 1)
                         continue;
-                    if (b == BlockType.STAIRS) {
-                        resolveStairs(world, x, y, z, dx, dy, dz, hw);
-                        minX = position.x - hw;
-                        maxX = position.x + hw;
-                        minY = position.y;
-                        maxY = position.y + HEIGHT;
-                        minZ = position.z - hw;
-                        maxZ = position.z + hw;
-                        continue;
-                    }
-                    // Resolve only the axis being moved. Vertical contacts must cross a surface;
-                    // an existing side/ceiling overlap must never eject a falling player upward.
-                    if (dx > 0) {
-                        position.x = x - hw - 1e-4f;
-                        velocity.x = 0;
-                        isSprinting = false;
-                    } else if (dx < 0) {
-                        position.x = x + 1 + hw + 1e-4f;
-                        velocity.x = 0;
-                        isSprinting = false;
-                    }
-                    if (dy > 0 && previousTop <= y + 1e-4f) {
-                        position.y = y - HEIGHT - 1e-4f;
-                        velocity.y = 0;
-                    } else if (dy < 0 && previousBottom >= y + 1 - 1e-4f) {
-                        position.y = y + 1 + 1e-4f;
-                        velocity.y = 0;
-                        onGround = true;
-                    }
-                    if (dz > 0) {
-                        position.z = z - hw - 1e-4f;
-                        velocity.z = 0;
-                        isSprinting = false;
-                    } else if (dz < 0) {
-                        position.z = z + 1 + hw + 1e-4f;
-                        velocity.z = 0;
-                        isSprinting = false;
+                    BlockShape shape = Shapes.of(b);
+                    byte meta = Shapes.meta(world, shape, x, y, z);
+                    if (shape.fullCube(meta)) {
+                        pushOut(x, y, z, x + 1, y + 1, z + 1, dx, dy, dz, previousBottom, previousTop, hw);
+                    } else {
+                        int n = shape.collision(meta, shapeBoxes);
+                        for (int i = 0; i < n; i++) {
+                            int o = i * BlockShape.STRIDE;
+                            float bx0 = x + shapeBoxes[o], by0 = y + shapeBoxes[o + 1], bz0 = z + shapeBoxes[o + 2];
+                            float bx1 = x + shapeBoxes[o + 3], by1 = y + shapeBoxes[o + 4], bz1 = z + shapeBoxes[o + 5];
+                            // The first box may already have moved us clear of the second.
+                            if (position.x + hw <= bx0 || position.x - hw >= bx1
+                                    || position.y + HEIGHT <= by0 || position.y >= by1
+                                    || position.z + hw <= bz0 || position.z - hw >= bz1)
+                                continue;
+                            pushOut(bx0, by0, bz0, bx1, by1, bz1, dx, dy, dz, previousBottom, previousTop, hw);
+                        }
                     }
                     // recompute bounds (single resolution is enough for small dt)
                     minX = position.x - hw;
@@ -571,22 +563,11 @@ public class Player implements Damageable {
             outer: for (int xi = xa; xi <= xb; xi++)
                 for (int zi = za; zi <= zb; zi++) {
                     BlockType bl = world.getBlock(xi, yb, zi);
-                    if (bl == BlockType.STAIRS) {
-                        byte m = world.getBlockMeta(xi, yb, zi);
-                        int f2 = m & 0x3;
-                        float rx = position.x - xi, rz = position.z - zi;
-                        boolean step = switch (f2) {
-                            case 0 -> rz < 0.5f;
-                            case 1 -> rx >= 0.5f;
-                            case 2 -> rz >= 0.5f;
-                            default -> rx < 0.5f;
-                        };
-                        float top = step ? yb + 1.0f : yb + 0.5f;
-                        if (Math.abs(py - top) < 0.1f) {
-                            onGround = true;
-                            break outer;
-                        }
-                    } else if (bl.solid) {
+                    if (!bl.solid)
+                        continue;
+                    BlockShape shape = Shapes.of(bl);
+                    byte m = Shapes.meta(world, shape, xi, yb, zi);
+                    if (shape.fullCube(m) || standsOn(shape, m, xi, yb, zi, py, hw)) {
                         onGround = true;
                         break outer;
                     }
@@ -595,63 +576,54 @@ public class Player implements Damageable {
     }
 
     /**
-     * Resolves collision between the player and a stair block.
+     * Pushes the body out of one box along the axis being moved. Vertical
+     * contacts must cross a surface: an existing side or ceiling overlap must
+     * never eject a falling player upward.
      */
-    private void resolveStairs(World world, int bx, int by, int bz,
-            float dx, float dy, float dz, float hw) {
-        byte meta = world.getBlockMeta(bx, by, bz);
-        int facing = meta & 0x3;
-
-        float relX = position.x - bx;
-        float relZ = position.z - bz;
-
-        boolean overStep = switch (facing) {
-            case 0 -> relZ < 0.5f;
-            case 1 -> relX >= 0.5f;
-            case 2 -> relZ >= 0.5f;
-            default -> relX < 0.5f;
-        };
-
-        float topSurface = overStep ? by + 1.0f : by + 0.5f;
-
-        if (dy < 0) {
-            // Use previous position to detect crossing through the surface (handles fast-falling)
-            float prevY = position.y - dy;
-            if (prevY >= topSurface - 1e-3f && position.y < topSurface) {
-                position.y = topSurface + 1e-4f;
-                velocity.y = 0;
-                onGround = true;
-            }
-        } else if (dy > 0) {
-            if (overStep && position.y + HEIGHT >= by + 1.0f - 1e-3f
-                    && position.y + HEIGHT <= by + 1.0f + HEIGHT) {
-                position.y = by + 1.0f - HEIGHT - 1e-4f;
-                velocity.y = 0;
-            }
-        } else {
-            // Автоподъёма на ступень здесь больше нет. Он ставил игрока на
-            // верх ступени одним присваиванием, то есть мгновенно, и это
-            // читалось как телепорт — тем сильнее, чем выше оказывалась
-            // поверхность: у одного из направлений подъём выходил на целый
-            // блок за два кадра подряд. Ступень теперь упирает, как любой
-            // другой блок, и берётся прыжком.
-            if (position.y < topSurface && position.y + HEIGHT > by) {
-                if (dx > 0) {
-                    position.x = bx - hw - 1e-4f;
-                    velocity.x = 0;
-                } else if (dx < 0) {
-                    position.x = bx + 1 + hw + 1e-4f;
-                    velocity.x = 0;
-                }
-                if (dz > 0) {
-                    position.z = bz - hw - 1e-4f;
-                    velocity.z = 0;
-                } else if (dz < 0) {
-                    position.z = bz + 1 + hw + 1e-4f;
-                    velocity.z = 0;
-                }
-            }
+    private void pushOut(float bx0, float by0, float bz0, float bx1, float by1, float bz1,
+            float dx, float dy, float dz, float previousBottom, float previousTop, float hw) {
+        if (dx > 0) {
+            position.x = bx0 - hw - 1e-4f;
+            velocity.x = 0;
+            isSprinting = false;
+        } else if (dx < 0) {
+            position.x = bx1 + hw + 1e-4f;
+            velocity.x = 0;
+            isSprinting = false;
         }
+        if (dy > 0 && previousTop <= by0 + 1e-4f) {
+            position.y = by0 - HEIGHT - 1e-4f;
+            velocity.y = 0;
+        } else if (dy < 0 && previousBottom >= by1 - 1e-4f) {
+            position.y = by1 + 1e-4f;
+            velocity.y = 0;
+            onGround = true;
+        }
+        if (dz > 0) {
+            position.z = bz0 - hw - 1e-4f;
+            velocity.z = 0;
+            isSprinting = false;
+        } else if (dz < 0) {
+            position.z = bz1 + hw + 1e-4f;
+            velocity.z = 0;
+            isSprinting = false;
+        }
+    }
+
+    /** Whether a shaped block holds the feet: the top of one of its boxes, under the footprint. */
+    private boolean standsOn(BlockShape shape, byte meta, int x, int y, int z, float py, float hw) {
+        int n = shape.collision(meta, shapeBoxes);
+        float fx0 = position.x - hw + 1e-3f, fx1 = position.x + hw - 1e-3f;
+        float fz0 = position.z - hw + 1e-3f, fz1 = position.z + hw - 1e-3f;
+        for (int i = 0; i < n; i++) {
+            int o = i * BlockShape.STRIDE;
+            if (fx1 <= x + shapeBoxes[o] || fx0 >= x + shapeBoxes[o + 3]
+                    || fz1 <= z + shapeBoxes[o + 2] || fz0 >= z + shapeBoxes[o + 5])
+                continue;
+            if (Math.abs(py - (y + shapeBoxes[o + 4])) < 0.1f)
+                return true;
+        }
+        return false;
     }
 
     /**

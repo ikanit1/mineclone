@@ -9,6 +9,11 @@ package com.mineclone.render;
  * такое мерцание убирает, но не делает прицел «ватным»: рамка всегда в
  * пределах пары кадров от настоящего блока.
  *
+ * Рамка идёт по рёбрам формы блока ({@code Shapes.edges}, BLK-02): у ступени
+ * это Г-образный контур, у факела — его палочка. Доезжает бокс, описанный
+ * вокруг формы, а рёбра цели переносятся в него: форма меняется сразу, место —
+ * плавно.
+ *
  * Чистое состояние без GL — рисует {@link BlockOutline}.
  */
 public final class OutlineAnimator {
@@ -24,11 +29,74 @@ public final class OutlineAnimator {
     private final float[] box = new float[6];
     private float alpha;
     private boolean visible;
+    /** Рёбра цели в мировых координатах и бокс, в котором они измерены. */
+    private final float[] targetEdges = new float[com.mineclone.world.shape.Shapes.MAX_EDGES * 6];
+    private final float[] targetBox = new float[6];
+    private int edgeCount;
+    private final float[] boxScratch = new float[12 * 6];
 
     /**
+     * @param target бокс вокруг формы под прицелом или null — прицел в пустоте
+     * @param edges  рёбра формы, по шесть чисел, в мировых координатах
+     * @param count  сколько рёбер
+     */
+    public void update(float dt, float[] target, float[] edges, int count) {
+        if (target != null) {
+            System.arraycopy(edges, 0, targetEdges, 0, count * 6);
+            edgeCount = count;
+            System.arraycopy(target, 0, targetBox, 0, 6);
+        }
+        slide(dt, target);
+    }
+
+    /**
+     * Рамка по двенадцати рёбрам одного бокса.
+     *
      * @param target бокс блока под прицелом (6 чисел) или null — прицел в пустоте
      */
     public void update(float dt, float[] target) {
+        if (target == null) {
+            slide(dt, null);
+            return;
+        }
+        update(dt, target, boxScratch, boxEdges(target, boxScratch));
+    }
+
+    /** Двенадцать рёбер бокса, по шесть чисел; возвращает их число. */
+    public static int boxEdges(float[] b, float[] out) {
+        int n = 0;
+        for (int axis = 0; axis < 3; axis++) {
+            int u = (axis + 1) % 3, v = (axis + 2) % 3;
+            for (int corner = 0; corner < 4; corner++) {
+                int o = n++ * 6;
+                float pu = b[(corner & 1) == 0 ? u : u + 3], pv = b[(corner & 2) == 0 ? v : v + 3];
+                out[o + axis] = b[axis];
+                out[o + 3 + axis] = b[axis + 3];
+                out[o + u] = pu;
+                out[o + 3 + u] = pu;
+                out[o + v] = pv;
+                out[o + 3 + v] = pv;
+            }
+        }
+        return n;
+    }
+
+    /**
+     * Рёбра цели, перенесённые в текущий, ещё доезжающий бокс.
+     *
+     * @return сколько рёбер записано в out (шесть чисел на ребро)
+     */
+    public int edges(float[] out) {
+        for (int i = 0; i < edgeCount * 6; i++) {
+            int axis = i % 3;
+            float lo = targetBox[axis], span = targetBox[axis + 3] - lo;
+            float f = span > 1e-6f ? (targetEdges[i] - lo) / span : 0f;
+            out[i] = box[axis] + f * (box[axis + 3] - box[axis]);
+        }
+        return edgeCount;
+    }
+
+    private void slide(float dt, float[] target) {
         if (target == null) {
             alpha = Math.max(0f, alpha - dt / FADE_OUT);
             if (alpha <= 0f)

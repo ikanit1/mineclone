@@ -105,6 +105,5 @@ post-vegetation structures. The texture atlas is PNG-backed, 512 x 512, with
 32-pixel tiles; the shader pipeline has many families and post passes.
 Music currently ships 14 cataloged MP3s. Structures use one candidate per 10 x 10
 chunk region (3/4 chance), with four templates including DUNGEON.
-Dedicated chunks load around everyone, while simulation currently centers on
-the first player. Mob snapshots currently broadcast to all; interest filtering
-is roadmap work. Check source before claiming these limitations are resolved.
+Chunks load and the world simulates around every participant (SIM-05). Mob
+snapshots currently broadcast to all; interest filtering is roadmap work. Check source before claiming these limitations are resolved.

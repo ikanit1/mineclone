@@ -82,7 +82,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [MusicSense](../src/main/java/com/mineclone/game/MusicSense.java) | Что музыке нужно знать о мире: пещера, укрытие, опасность, путь, стройка. |
 | [PickBlock](../src/main/java/com/mineclone/game/PickBlock.java) | Пипетка: средняя кнопка берёт в руку то, во что целишься. |
 | [Player](../src/main/java/com/mineclone/game/Player.java) | Javadoc summary not yet supplied. |
-| [Raycaster](../src/main/java/com/mineclone/game/Raycaster.java) | Voxel DDA raycaster (Amanatides & Woo). |
+| [Raycaster](../src/main/java/com/mineclone/game/Raycaster.java) | Voxel DDA raycaster (Amanatides & Woo) over the block shapes (BLK-02). |
 | [SoundIndicators](../src/main/java/com/mineclone/game/SoundIndicators.java) | Откуда пришёл громкий звук: дуги по краю экрана в сторону источника. |
 | [Storm](../src/main/java/com/mineclone/game/Storm.java) | Живая гроза: вспышки, болты на экране и раскаты, которые ещё летят. |
 | [StressFlight](../src/main/java/com/mineclone/game/StressFlight.java) | Замер рывков в живой игре: -Dmineclone.stress=. |
@@ -193,7 +193,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 |---|---|
 | [Backdrop](../src/main/java/com/mineclone/render/Backdrop.java) | Размытая копия готового кадра — то, что видно сквозь стеклянные панели интерфейса. |
 | [BlockBreakOverlay](../src/main/java/com/mineclone/render/BlockBreakOverlay.java) | Javadoc summary not yet supplied. |
-| [BlockOutline](../src/main/java/com/mineclone/render/BlockOutline.java) | Javadoc summary not yet supplied. |
+| [BlockOutline](../src/main/java/com/mineclone/render/BlockOutline.java) | Неброский тёмный контур вокруг выбранного блока — по рёбрам его формы (Shapes#edges, BLK-02): Г-образный у ступени, тонкий у двери и факела. |
 | [BodyRotation](../src/main/java/com/mineclone/render/BodyRotation.java) | Голова и корпус поворачиваются по отдельности. |
 | [Camera](../src/main/java/com/mineclone/render/Camera.java) | Javadoc summary not yet supplied. |
 | [Crosshair](../src/main/java/com/mineclone/render/Crosshair.java) | Javadoc summary not yet supplied. |
@@ -406,7 +406,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | Type | Purpose |
 |---|---|
 | [Behavior](../src/main/java/com/mineclone/world/entity/Behavior.java) | Дерево поведения моба: один узел, который за тик возвращает свой исход. |
-| [EntityPhysics](../src/main/java/com/mineclone/world/entity/EntityPhysics.java) | Упрощённая физика сущностей: гравитация + осевой AABB-свип по solid-блокам. |
+| [EntityPhysics](../src/main/java/com/mineclone/world/entity/EntityPhysics.java) | Упрощённая физика сущностей: гравитация + осевой AABB-свип по коробкам блоков (Shapes, BLK-02). |
 | [Hittable](../src/main/java/com/mineclone/world/entity/Hittable.java) | Во что может попасть снаряд. |
 | [ItemEntity](../src/main/java/com/mineclone/world/entity/ItemEntity.java) | Предмет на земле: выпал из блока, из моба, из разбитого сундука или брошен. |
 | [LimbDamage](../src/main/java/com/mineclone/world/entity/LimbDamage.java) | Per-limb wounds kept independently from total health. |
@@ -433,4 +433,11 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [WorldGenUpgrade](../src/main/java/com/mineclone/world/gen/WorldGenUpgrade.java) | Moving a world to a newer generator (GEN-02) without changing land anyone has seen. |
 | [WorldGenVersion](../src/main/java/com/mineclone/world/gen/WorldGenVersion.java) | Which generator made a chunk. |
 
-Top-level declarations: 317.
+## com.mineclone.world.shape
+
+| Type | Purpose |
+|---|---|
+| [BlockShape](../src/main/java/com/mineclone/world/shape/BlockShape.java) | What a block is made of, as boxes in its own cell (0..1 on each axis): what a body collides with, and what the aim and the outline see (AC-05). |
+| [Shapes](../src/main/java/com/mineclone/world/shape/Shapes.java) | The shape of every block (BLK-02): one registry that collision, the aim, the outline and the mesher read instead of five places that knew stairs apart. |
+
+Top-level declarations: 319.

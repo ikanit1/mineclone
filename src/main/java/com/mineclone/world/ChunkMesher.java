@@ -2,6 +2,8 @@ package com.mineclone.world;
 
 import com.mineclone.render.MeshData;
 import com.mineclone.render.TextureAtlas;
+import com.mineclone.world.shape.BlockShape;
+import com.mineclone.world.shape.Shapes;
 
 
 /** Face culling mesher with vertex Ambient Occlusion. */
@@ -405,55 +407,40 @@ public class ChunkMesher {
         idx.add(base + 3);
     }
 
+    /**
+     * Boxes of the block being meshed, per thread: one mesher serves the whole
+     * loader pool. Stairs, doors and layers take their geometry from the same
+     * shapes that collision, the aim and the outline read (BLK-02), so what is
+     * drawn is what is hit.
+     */
+    private static final ThreadLocal<float[]> SHAPE = ThreadLocal.withInitial(BlockShape::buffer);
+
     private void emitDoor(Chunk chunk, FloatList pos, FloatList uvs, FloatList light, FloatList bl,
             IntList idx,
             int x, int y, int z, int baseX, int baseZ, BlockType b) {
         byte meta = chunk.getMeta(x, y, z);
-        int facing = meta & 0x3;
-        boolean open = (b == BlockType.DOOR_OPEN);
-
-        // Standard closed door is on the north (-Z) edge.
-        // open=true rotates 90° inward.
-        float th = 3f / 16f; // thickness
-        float x0 = 0, y0 = 0, z0 = 0, x1 = 1, y1 = 1, z1 = 1;
-
-        if (facing == 0) { // South facing (+Z)
-            if (open) { x0 = 1 - th; }   // swing to +X edge, full Z
-            else      { z0 = 1 - th; }   // slab on +Z face
-        } else if (facing == 1) { // West facing (-X)
-            if (open) { z0 = 1 - th; }   // swing to +Z edge, full X
-            else      { x1 = 0 + th; }   // slab on -X face
-        } else if (facing == 2) { // North facing (-Z)
-            if (open) { x1 = 0 + th; }   // swing to -X edge, full Z
-            else      { z1 = 0 + th; }   // slab on -Z face
-        } else if (facing == 3) { // East facing (+X)
-            if (open) { z1 = 0 + th; }   // swing to -Z edge, full X
-            else      { x0 = 1 - th; }   // slab on +X face
-        }
+        // The panel stands on one edge of the cell; an open door swings it
+        // to the neighbouring edge.
+        float[] box = SHAPE.get();
+        Shapes.of(b).outline(meta, box);
 
         boolean isTopHalf = (meta & 0x4) != 0;
         int tile = isTopHalf ? 16 : b.sideTile; // 16 = door_top, 15 = door_bottom
-        emitBox(chunk, pos, uvs, light, bl, idx, x, y, z, baseX, baseZ, tile, x0, y0, z0, x1, y1, z1);
+        emitBox(chunk, pos, uvs, light, bl, idx, x, y, z, baseX, baseZ, tile,
+                box[0], box[1], box[2], box[3], box[4], box[5]);
     }
 
     private void emitStairs(Chunk chunk, FloatList pos, FloatList uvs, FloatList light, FloatList bl,
             IntList idx,
             int x, int y, int z, int baseX, int baseZ, BlockType b) {
-        byte meta = chunk.getMeta(x, y, z);
-        int facing = meta & 0x3;
-
-        // Bottom slab is always present
-        emitBox(chunk, pos, uvs, light, bl, idx, x, y, z, baseX, baseZ, b.sideTile, 0, 0, 0, 1, 0.5f, 1);
-
-        // Top step depends on facing
-        float x0 = 0, z0 = 0, x1 = 1, z1 = 1;
-        if (facing == 0)      z1 = 0.5f; // step at -Z half  (matches Player: relZ < 0.5)
-        else if (facing == 1) x0 = 0.5f; // step at +X half
-        else if (facing == 2) z0 = 0.5f; // step at +Z half  (matches Player: relZ >= 0.5)
-        else if (facing == 3) x1 = 0.5f; // step at -X half
-
-        // Skip bottom face (index 5, -Y at y=0.5) — it is interior and would render dark
-        emitBox(chunk, pos, uvs, light, bl, idx, x, y, z, baseX, baseZ, b.sideTile, x0, 0.5f, z0, x1, 1f, z1, 1 << 5);
+        // Box 0 is the slab across the cell, box 1 the step on half of it.
+        float[] box = SHAPE.get();
+        Shapes.STAIRS.outline(chunk.getMeta(x, y, z), box);
+        emitBox(chunk, pos, uvs, light, bl, idx, x, y, z, baseX, baseZ, b.sideTile,
+                box[0], box[1], box[2], box[3], box[4], box[5]);
+        // Skip the step's bottom face (index 5, -Y at y=0.5) — it is interior and would render dark
+        emitBox(chunk, pos, uvs, light, bl, idx, x, y, z, baseX, baseZ, b.sideTile,
+                box[6], box[7], box[8], box[9], box[10], box[11], 1 << 5);
     }
 
     /**
@@ -464,10 +451,10 @@ public class ChunkMesher {
     private void emitLayer(Chunk chunk, FloatList pos, FloatList uvs, FloatList light,
             FloatList bl, IntList idx, int x, int y, int z, int baseX, int baseZ,
             BlockType b) {
-        int level = chunk.getMeta(x, y, z) & 0x7;
-        float h = (level + 1) / 8f;
+        float[] box = SHAPE.get();
+        Shapes.LAYER.outline(chunk.getMeta(x, y, z), box);
         emitBox(chunk, pos, uvs, light, bl, idx, x, y, z, baseX, baseZ, b.topTile,
-                0f, 0f, 0f, 1f, h, 1f, 1 << 5);
+                box[0], box[1], box[2], box[3], box[4], box[5], 1 << 5);
     }
 
     private void emitBox(Chunk chunk, FloatList pos, FloatList uvs, FloatList light, FloatList bl,

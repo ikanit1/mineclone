@@ -10,6 +10,8 @@ Moved from the pre-foundation CLAUDE.md on 2026-09-24; structure placement corre
 | `Chunk` | `clearMask` | Маска прозрачности для небесного света |
 | `ChunkMesher` | `FACE_LIGHT[]` | Per-face directional brightness |
 | `ChunkMesher` | `AO_TABLE[]` | AO corner darkening curve |
+| `Shapes` | `define()` | Which shape each block has: what stops a body and what the aim hits |
+| `Shapes` | `STAIR_SLAB / DOOR_THICKNESS / CROSS_HEIGHT / TORCH_HALF_WIDTH` | Stair slab height, door panel, cross and torch geometry — shared by collision, aim, outline and mesher |
 | `World` | `SEA_LEVEL = 50` | Water/sand threshold |
 | `BiomeProvider` | `CONT/TEMP/HUM_FREQ` | Biome region size |
 | `BiomeProvider` | `C_OCEAN, T_COLD, T_HOT, H_DRY, H_WET` | Biome rarity thresholds |

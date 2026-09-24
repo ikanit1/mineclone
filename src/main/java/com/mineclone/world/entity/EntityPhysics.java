@@ -2,13 +2,17 @@ package com.mineclone.world.entity;
 
 import com.mineclone.world.BlockType;
 import com.mineclone.world.World;
+import com.mineclone.world.shape.BlockShape;
+import com.mineclone.world.shape.Shapes;
 import org.joml.Vector3f;
 
 /**
- * Упрощённая физика сущностей: гравитация + осевой AABB-свип по solid-блокам.
+ * Упрощённая физика сущностей: гравитация + осевой AABB-свип по коробкам
+ * блоков ({@link Shapes}, BLK-02).
  *
- * Отличия от {@link com.mineclone.game.Player}: нет авто-шага по лестницам, нет
- * MLG-механик, нет плавания — в воде сущность просто всплывает и барахтается.
+ * Отличия от {@link com.mineclone.game.Player}: нет MLG-механик, нет плавания —
+ * в воде сущность просто всплывает и барахтается. Автоподъёма на ступень нет ни
+ * у кого: плита ступени упирает, как низкая стена.
  * Упёрлась в стену → {@code hitWall}, дальше решает ИИ (обычно прыжком).
  *
  * Без состояния: вся память живёт в переданных pos/vel.
@@ -83,9 +87,16 @@ public final class EntityPhysics {
         return new Contact(onGround, hitWall, inWater);
     }
 
+    /** Boxes of the shaped block being resolved, per thread: the server ticks mobs off the game thread. */
+    private static final ThreadLocal<float[]> BOXES = ThreadLocal.withInitial(BlockShape::buffer);
+
     /**
      * Выталкивает AABB из solid-блоков по одной оси (0=X, 1=Y, 2=Z).
      * Одного разрешения на ось достаточно при малом dt — так же устроен Player.
+     *
+     * <p>Куб решается прежним широким проходом бит в бит; у блока с формой
+     * (BLK-02) — только те его коробки, в которые тело действительно вошло:
+     * моб встаёт на плиту ступени, а не на воображаемый куб над ней.
      *
      * @param dir знак движения по оси
      * @return true, если было пересечение
@@ -104,11 +115,32 @@ public final class EntityPhysics {
                 for (int z = z0; z <= z1; z++) {
                     if (!world.isSolid(x, y, z))
                         continue;
-                    hit = true;
-                    switch (axis) {
-                        case 0 -> pos.x = dir > 0 ? x - hw - EPS : x + 1 + hw + EPS;
-                        case 1 -> pos.y = dir > 0 ? y - height - EPS : y + 1 + EPS;
-                        default -> pos.z = dir > 0 ? z - hw - EPS : z + 1 + hw + EPS;
+                    BlockShape shape = Shapes.of(world.getBlock(x, y, z));
+                    byte meta = Shapes.meta(world, shape, x, y, z);
+                    if (shape.fullCube(meta)) {
+                        hit = true;
+                        switch (axis) {
+                            case 0 -> pos.x = dir > 0 ? x - hw - EPS : x + 1 + hw + EPS;
+                            case 1 -> pos.y = dir > 0 ? y - height - EPS : y + 1 + EPS;
+                            default -> pos.z = dir > 0 ? z - hw - EPS : z + 1 + hw + EPS;
+                        }
+                        continue;
+                    }
+                    float[] boxes = BOXES.get();
+                    int n = shape.collision(meta, boxes);
+                    for (int i = 0; i < n; i++) {
+                        int o = i * BlockShape.STRIDE;
+                        float bx0 = x + boxes[o], by0 = y + boxes[o + 1], bz0 = z + boxes[o + 2];
+                        float bx1 = x + boxes[o + 3], by1 = y + boxes[o + 4], bz1 = z + boxes[o + 5];
+                        if (pos.x + hw <= bx0 || pos.x - hw >= bx1 || pos.y + height <= by0 || pos.y >= by1
+                                || pos.z + hw <= bz0 || pos.z - hw >= bz1)
+                            continue;
+                        hit = true;
+                        switch (axis) {
+                            case 0 -> pos.x = dir > 0 ? bx0 - hw - EPS : bx1 + hw + EPS;
+                            case 1 -> pos.y = dir > 0 ? by0 - height - EPS : by1 + EPS;
+                            default -> pos.z = dir > 0 ? bz0 - hw - EPS : bz1 + hw + EPS;
+                        }
                     }
                 }
         return hit;
@@ -120,9 +152,29 @@ public final class EntityPhysics {
         int xa = (int) Math.floor(pos.x - hw + 1e-3f), xb = (int) Math.floor(pos.x + hw - 1e-3f);
         int za = (int) Math.floor(pos.z - hw + 1e-3f), zb = (int) Math.floor(pos.z + hw - 1e-3f);
         for (int x = xa; x <= xb; x++)
-            for (int z = za; z <= zb; z++)
-                if (world.isSolid(x, y, z))
+            for (int z = za; z <= zb; z++) {
+                if (!world.isSolid(x, y, z))
+                    continue;
+                BlockShape shape = Shapes.of(world.getBlock(x, y, z));
+                byte meta = Shapes.meta(world, shape, x, y, z);
+                if (shape.fullCube(meta) || standsOn(shape, meta, x, y, z, pos, hw))
                     return true;
+            }
+        return false;
+    }
+
+    /** The top of one of a shaped block's boxes under the footprint, at the feet. */
+    private static boolean standsOn(BlockShape shape, byte meta, int x, int y, int z, Vector3f pos, float hw) {
+        float[] boxes = BOXES.get();
+        int n = shape.collision(meta, boxes);
+        for (int i = 0; i < n; i++) {
+            int o = i * BlockShape.STRIDE;
+            if (pos.x + hw - 1e-3f <= x + boxes[o] || pos.x - hw + 1e-3f >= x + boxes[o + 3]
+                    || pos.z + hw - 1e-3f <= z + boxes[o + 2] || pos.z - hw + 1e-3f >= z + boxes[o + 5])
+                continue;
+            if (Math.abs(pos.y - (y + boxes[o + 4])) < 0.1f)
+                return true;
+        }
         return false;
     }
 

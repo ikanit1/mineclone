@@ -3474,15 +3474,11 @@ public class Game {
         if (mobs.isEmpty())
             return null;
 
+        // До блока — до его формы, а не до клетки: моб за приоткрытой дверью
+        // или над плитой ступени ближе, чем кажется по кубу.
         float blockDist = Float.MAX_VALUE;
-        if (lastHit != null) {
-            float t = com.mineclone.world.entity.EntityPhysics.rayAabbDistance(
-                    origin.x, origin.y, origin.z, dir.x, dir.y, dir.z,
-                    lastHit.x, lastHit.y, lastHit.z,
-                    lastHit.x + 1f, lastHit.y + 1f, lastHit.z + 1f);
-            if (t >= 0f)
-                blockDist = t;
-        }
+        if (lastHit != null && lastHit.distance >= 0f)
+            blockDist = lastHit.distance;
 
         com.mineclone.world.entity.Mob best = null;
         float bestT = MOB_REACH;
@@ -4651,10 +4647,11 @@ public class Game {
 
         // Рамка выделения доезжает до нового блока и плавно гаснет, а не
         // прыгает: при ведении прицела по стене скачки читались мерцанием.
-        outlineAnim.update(lastDt, state == State.PLAYING && !photoMode ? outlineTarget() : null);
+        outlineAnim.update(lastDt, state == State.PLAYING && !photoMode ? outlineTarget() : null,
+                outlineEdges, outlineEdgeCount);
         if (outlineAnim.visible())
-            outline.renderBox(proj, view, outlineAnim.box(), eye, outlineAnim.alpha(),
-                    hdr ? 1f : 0f);
+            outline.renderEdges(proj, view, outlineDrawn, outlineAnim.edges(outlineDrawn), eye,
+                    outlineAnim.alpha(), hdr ? 1f : 0f);
         if (ropeRenderer != null)
             ropeRenderer.render(world, player.position, proj, view, lastDt,
                     atmosphere.windX, atmosphere.windZ, hdr ? 1f : 0f);
@@ -4934,22 +4931,38 @@ public class Game {
         lighting.heightFogColor.set(horizon).mul(1.15f).add(0.010f, 0.012f, 0.018f);
     }
 
-    /** Бокс рамки для блока под прицелом, или null — рамка не нужна. */
+    private final float[] outlineBoxes = com.mineclone.world.shape.BlockShape.buffer();
+    private final float[] outlineBox = new float[6];
+    private final float[] outlineEdges = new float[com.mineclone.world.shape.Shapes.MAX_EDGES * 6];
+    private final float[] outlineDrawn = new float[com.mineclone.world.shape.Shapes.MAX_EDGES * 6];
+    private int outlineEdgeCount;
+
+    /**
+     * Бокс вокруг формы блока под прицелом, или null — рамка не нужна; рёбра
+     * формы ложатся в {@link #outlineEdges}. Рамка идёт по той же форме, по
+     * которой попал луч (BLK-02): факел, снег и открытая дверь теперь тоже
+     * обведены, ступень — Г-образно.
+     */
     private float[] outlineTarget() {
         if (lastHit == null || world == null)
             return null;
-        BlockType ht = world.getBlock(lastHit.x, lastHit.y, lastHit.z);
-        float[] local;
-        if (ht == BlockType.DOOR_CLOSED || ht == BlockType.DOOR_OPEN)
-            local = BlockOutline.doorBox(world.getBlockMeta(lastHit.x, lastHit.y, lastHit.z),
-                    ht == BlockType.DOOR_OPEN);
-        else if (ht.solid)
-            local = new float[] { 0f, 0f, 0f, 1f, 1f, 1f };
-        else
+        int n = com.mineclone.world.shape.Shapes.outline(world, lastHit.x, lastHit.y, lastHit.z, outlineBoxes);
+        if (n == 0)
             return null;
-        return new float[] {
-                lastHit.x + local[0], lastHit.y + local[1], lastHit.z + local[2],
-                lastHit.x + local[3], lastHit.y + local[4], lastHit.z + local[5] };
+        for (int axis = 0; axis < 3; axis++) {
+            float lo = Float.MAX_VALUE, hi = -Float.MAX_VALUE;
+            for (int i = 0; i < n; i++) {
+                lo = Math.min(lo, outlineBoxes[i * 6 + axis]);
+                hi = Math.max(hi, outlineBoxes[i * 6 + 3 + axis]);
+            }
+            int cell = axis == 0 ? lastHit.x : axis == 1 ? lastHit.y : lastHit.z;
+            outlineBox[axis] = cell + lo;
+            outlineBox[axis + 3] = cell + hi;
+        }
+        outlineEdgeCount = com.mineclone.world.shape.Shapes.edges(outlineBoxes, n, outlineEdges);
+        for (int i = 0; i < outlineEdgeCount * 6; i++)
+            outlineEdges[i] += i % 3 == 0 ? lastHit.x : i % 3 == 1 ? lastHit.y : lastHit.z;
+        return outlineBox;
     }
 
     /**
