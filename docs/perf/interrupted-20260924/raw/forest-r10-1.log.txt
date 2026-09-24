@@ -1,0 +1,9 @@
+Mineclone 1.1.0-SNAPSHOT (0b7a12a3e132)
+OpenAL: reverb on
+BENCH_PREPARED forest-r10 {"origin":[-127.5,55.0,448.5],"biome":"FOREST","generation":"NORMAL","natural_mob_spawning":false,"game_mode":"CREATIVE","movement_blocks_per_second":0}
+UPDATE_SPIKE total=45.5 player=0.0 active=45.4 (fx=0.9 ticks=40.9 save=0.0 mesh=0.2) stream=(light=0.0 upload=3.3 evict=0.0) tick=(block=0.0 water=0.0 lava=0.0 fall=0.0) mobs=0.0 count=0
+BENCH_WARMUP scene=forest-r10 seconds=10.0
+autopilot: E:\mineclone\out-test\bench\m0-baseline-20260924\raw\screenshots\forest-r10-1\forest-r10.png
+BENCH_MEASURE scene=forest-r10 seconds=60.0
+BENCH_JSON E:\mineclone\out-test\bench\m0-baseline-20260924\raw\forest-r10-1.json
+BENCH_RESULT forest-r10 PASS {"samples":23735,"mean_ms":2.5279456372445854,"p50_ms":1.8842,"p95_ms":4.2328,"p99_ms":4.5827,"worst_ms":11.7063,"fps":395.57812686588534,"low_1pct_fps":204.8403605052638}

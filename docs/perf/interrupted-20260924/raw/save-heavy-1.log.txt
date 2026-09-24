@@ -1,0 +1,8 @@
+Mineclone 1.1.0-SNAPSHOT (0b7a12a3e132)
+OpenAL: reverb on
+BENCH_PREPARED save-heavy {"dirty_chunks_per_save":300,"origin":[-63.5,56.0,-127.5],"biome":"PLAINS","generation":"NORMAL","natural_mob_spawning":false,"game_mode":"CREATIVE","movement_blocks_per_second":0}
+BENCH_WARMUP scene=save-heavy seconds=10.0
+autopilot: E:\mineclone\out-test\bench\m0-baseline-20260924\raw\screenshots\save-heavy-1\save-heavy.png
+BENCH_MEASURE scene=save-heavy seconds=60.0
+BENCH_JSON E:\mineclone\out-test\bench\m0-baseline-20260924\raw\save-heavy-1.json
+BENCH_RESULT save-heavy PASS {"samples":22587,"mean_ms":2.6564956125204824,"p50_ms":2.5469,"p95_ms":3.5058,"p99_ms":4.7788,"worst_ms":36.189,"fps":376.4357807657737,"low_1pct_fps":158.06645281534534}

@@ -1,0 +1,8 @@
+Mineclone 1.1.0-SNAPSHOT (0b7a12a3e132)
+OpenAL: reverb on
+BENCH_PREPARED items-400 {"origin":[-63.5,78.0,-127.5],"biome":"PLAINS","generation":"NORMAL","natural_mob_spawning":false,"game_mode":"CREATIVE","movement_blocks_per_second":0}
+BENCH_WARMUP scene=items-400 seconds=10.0
+autopilot: E:\mineclone\out-test\bench\m0-baseline-20260924\raw\screenshots\items-400-1\items-400.png
+BENCH_MEASURE scene=items-400 seconds=60.0
+BENCH_JSON E:\mineclone\out-test\bench\m0-baseline-20260924\raw\items-400-1.json
+BENCH_RESULT items-400 PASS {"samples":22221,"mean_ms":2.700206390351488,"p50_ms":2.5962,"p95_ms":3.2906,"p99_ms":3.6591,"worst_ms":13.1632,"fps":370.34206110068095,"low_1pct_fps":225.7306181415345}

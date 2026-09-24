@@ -1,0 +1,8 @@
+Mineclone 1.1.0-SNAPSHOT (0b7a12a3e132)
+OpenAL: reverb on
+BENCH_PREPARED storm-night {"origin":[-63.5,56.0,-127.5],"biome":"PLAINS","generation":"NORMAL","natural_mob_spawning":false,"game_mode":"CREATIVE","movement_blocks_per_second":0}
+BENCH_WARMUP scene=storm-night seconds=10.0
+autopilot: E:\mineclone\out-test\bench\m0-baseline-20260924\raw\screenshots\storm-night-1\storm-night.png
+BENCH_MEASURE scene=storm-night seconds=60.0
+BENCH_JSON E:\mineclone\out-test\bench\m0-baseline-20260924\raw\storm-night-1.json
+BENCH_RESULT storm-night PASS {"samples":17881,"mean_ms":3.3556308148313825,"p50_ms":3.3108,"p95_ms":4.1079,"p99_ms":4.7207,"worst_ms":15.3296,"fps":298.0065612641745,"low_1pct_fps":180.18970251082774}

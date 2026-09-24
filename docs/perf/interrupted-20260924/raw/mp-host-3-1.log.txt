@@ -1,0 +1,8 @@
+Mineclone 1.1.0-SNAPSHOT (0b7a12a3e132)
+OpenAL: reverb on
+BENCH_PREPARED mp-host-3 {"origin":[-63.5,56.0,-127.5],"biome":"PLAINS","generation":"NORMAL","natural_mob_spawning":false,"game_mode":"CREATIVE","movement_blocks_per_second":0}
+BENCH_WARMUP scene=mp-host-3 seconds=10.0
+autopilot: E:\mineclone\out-test\bench\m0-baseline-20260924\raw\screenshots\mp-host-3-1\mp-host-3.png
+BENCH_MEASURE scene=mp-host-3 seconds=60.0
+BENCH_JSON E:\mineclone\out-test\bench\m0-baseline-20260924\raw\mp-host-3-1.json
+BENCH_RESULT mp-host-3 PASS {"samples":22054,"mean_ms":2.720648530878747,"p50_ms":2.6089,"p95_ms":3.5203,"p99_ms":4.3861,"worst_ms":10.1699,"fps":367.55942145787145,"low_1pct_fps":190.787337038694}

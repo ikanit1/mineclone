@@ -1,0 +1,8 @@
+Mineclone 1.1.0-SNAPSHOT (0b7a12a3e132)
+OpenAL: reverb on
+BENCH_PREPARED radius16-flight {"origin":[-63.5,140.0,-127.5],"biome":"PLAINS","generation":"NORMAL","natural_mob_spawning":false,"game_mode":"CREATIVE","movement_blocks_per_second":15}
+BENCH_WARMUP scene=radius16-flight seconds=10.0
+autopilot: E:\mineclone\out-test\bench\m0-baseline-20260924\raw\screenshots\radius16-flight-1\radius16-flight.png
+BENCH_MEASURE scene=radius16-flight seconds=60.0
+BENCH_JSON E:\mineclone\out-test\bench\m0-baseline-20260924\raw\radius16-flight-1.json
+BENCH_RESULT radius16-flight PASS {"samples":12791,"mean_ms":4.69116483464934,"p50_ms":5.043,"p95_ms":6.1539,"p99_ms":8.2402,"worst_ms":11.3411,"fps":213.1666729367332,"low_1pct_fps":114.2416700418535}
