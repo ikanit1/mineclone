@@ -27,13 +27,15 @@ final class InventoryNetworkTests {
         r.run("closing a remote chest with a full inventory drops overflow on the host",InventoryNetworkTests::fullInventory);
         r.run("container transfers and guest drops work over actual TCP sockets",InventoryNetworkTests::sockets);
         r.run("old whole-container commits cannot replace authoritative contents",InventoryNetworkTests::oldCommit);
-        r.run("v7 guest checkpoints keep on disk what the wire cannot carry",InventoryNetworkTests::recordThroughWire);
+        r.run("v8: the whole record travels; the guest's own fields come back, the host keeps its own",InventoryNetworkTests::recordThroughWire);
     }
 
     /**
-     * SAVE-07: a guest's record holds equipment, effects, a personal spawn and a
-     * newer build's section, none of which protocol v7 can carry. A guest's own
-     * checkpoint must update what it does carry and leave the rest on disk.
+     * SAVE-07 over protocol v8: a guest's record holds equipment, effects, a
+     * personal spawn and a newer build's section — v7 could carry none of it.
+     * Now the whole record reaches the guest and comes back with its checkpoint;
+     * and a checkpoint that leaves out what the host owns (effects, the spawn,
+     * sections) does not erase it.
      */
     private static void recordThroughWire() throws Exception {
         Path root=Files.createTempDirectory("mineclone-record-wire");
@@ -49,6 +51,7 @@ final class InventoryNetworkTests {
             guestNet.start(new LoopbackTransport(guestNet),"record",false,"g");
             for(int i=0;i<10;i++){hostNet.update(.1f);guestNet.update(.1f);}
             check(guest.inv.get(0)!=null && guest.inv.get(0).count==17,"guest did not receive its saved inventory");
+            PlayerRecordTests.same(seeded,guest.template,"the record the guest received");
             guest.inv.set(5,ItemStack.of("coal",9));
             guestNet.savePlayerNow();
             for(int i=0;i<3;i++){hostNet.update(.1f);guestNet.update(.1f);}
@@ -57,9 +60,18 @@ final class InventoryNetworkTests {
             check(stored.inventory()[5]!=null && stored.inventory()[5].count==9,"carried inventory was not stored");
             PlayerRecordTests.same(seeded.toBuilder().inventory(stored.inventory()).pending(stored.pending())
                     .pose(stored.pose().x(),stored.pose().y(),stored.pose().z(),stored.pose().yaw(),stored.pose().pitch(),stored.pose().selected())
-                    .vitals(new PlayerRecord.Vitals(stored.vitals().health(),stored.vitals().hunger(),seeded.vitals().saturation(),
-                            seeded.vitals().exhaustion(),seeded.vitals().air()))
-                    .progress(stored.progress()).build(),stored,"uncarried fields after a v7 checkpoint");
+                    .vitals(stored.vitals()).build(),stored,"the rest of the record after a checkpoint");
+            // A build that knows nothing of effects, spawns or the section: the host keeps them;
+            // advancements are the guest's own.
+            guest.template=PlayerRecord.builder().pose(1,70,1,0,0,0).advancements(List.of("mineclone:first_steps")).build();
+            guestNet.savePlayerNow();
+            for(int i=0;i<3;i++){hostNet.update(.1f);guestNet.update(.1f);}
+            disk.flushAndAwait();
+            PlayerRecord kept=new SaveManager(root.toFile()).loadGuestRecord("test",guest.id);
+            check(kept.effects().equals(seeded.effects()) && seeded.spawn().equals(kept.spawn())
+                    && Arrays.equals(seeded.extraSections().get("future:mood"),kept.extraSections().get("future:mood")),
+                    "a guest's checkpoint erased what the host owns");
+            check(kept.advancements().equals(List.of("mineclone:first_steps")),"the guest's advancements were not taken");
         } finally {
             guestNet.stop(null);hostNet.update(.1f);hostNet.stop(null);LoopbackTransport.reset();
             disk.flushAndAwait();
@@ -281,8 +293,16 @@ final class InventoryNetworkTests {
         C(World w,String name){this(w,name,UUID.randomUUID().toString());}
         C(World w,String name,String id){super(w,name);this.id=id;if(w!=null)w.getChunk(0,0);}
         @Override public String playerId(){return id;}
-        @Override public PlayerData capturePlayerData(){return new PlayerData(slots(inv),menu==null?null:menu.pendingItems().toArray(ItemStack[]::new),position.x,position.y,position.z,yaw,pitch,health,20,0,null);}
-        @Override public void restorePlayerData(PlayerData data){menu=null;for(int i=0;i<inv.size();i++)inv.set(i,data.inventory[i]);for(var s:data.pending)inv.add(s);}
+        /** The record the host restored, carried forward like Game's template (v8). */
+        PlayerRecord template=PlayerRecord.builder().build();
+        @Override public PlayerData capturePlayerData(){
+            var v=template.vitals();
+            return new PlayerData(template.toBuilder().inventory(slots(inv))
+                    .pending(menu==null?null:menu.pendingItems().toArray(ItemStack[]::new))
+                    .pose(position.x,position.y,position.z,yaw,pitch,0)
+                    .vitals(new PlayerRecord.Vitals(health,20,v.saturation(),v.exhaustion(),v.air())).build());
+        }
+        @Override public void restorePlayerData(PlayerData data){template=data.record();menu=null;for(int i=0;i<inv.size();i++)inv.set(i,data.inventory[i]);for(var s:data.pending)inv.add(s);}
         @Override public PlayerData loadGuest(String id){return persistence==null?saved.get(id):persistence.loadGuest("test",id);}
         @Override public void saveGuest(String id,PlayerData data){saved.put(id,data);if(persistence!=null)persistence.saveGuest("test",id,data);}
         @Override public void containerInventory(ItemStack[] slots,ItemStack cursor,boolean closed){for(int i=0;i<inv.size();i++)inv.set(i,slots[i]);if(closed)menu=null;else if(menu!=null)menu.setCursor(cursor);}

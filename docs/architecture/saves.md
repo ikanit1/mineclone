@@ -145,11 +145,12 @@ Guest files: version 1 is `MAGIC, 1, <protocol-v7 checkpoint>`; version 2 is
 `MAGIC, 2, minReader, <record>`. Version 1 is read and rewritten as 2 by the next
 save, which is queued behind the session backup. A guest file that fails to
 read — damaged, or requiring a newer reader — refuses the guest's join and is
-never overwritten by that `SaveManager`. Protocol v7 carries only pose, health,
-hunger, inventory, pending and progress; `PlayerRecord.mergeLegacy` applies a
-guest's checkpoint to the stored record so equipment, effects, spawn and
-unknown sections survive (`InventoryNetworkTests`). The record goes on the wire
-itself with protocol v8 (NET-02).
+never overwritten by that `SaveManager`. Since protocol v8 (NET-02) the record
+itself goes on the wire (`PlayerData.write`); the v7 layout survives only as
+`PlayerData.readV7` for version-1 files. The host applies a guest's checkpoint
+with `PlayerRecord.mergeClient`: the guest's pose, vitals, items, equipment,
+progress, advancements and recipes; the host keeps effects, the personal spawn
+and sections the guest's build may not know (`InventoryNetworkTests`).
 
 `PlayerRecordTests` covers per-section round trips, immutability, damaged and
 missing sections, too-new files, v1 migration with its backup, opaque sections

@@ -29,6 +29,34 @@ final class ProtocolTests {
         r.run("checking a mob snapshot allocates nothing", ProtocolTests::snapshotValidation);
         r.run("S_GEN_MAP round-trips pinned chunks and refuses damage", ProtocolTests::genMap);
         r.run("S_WELCOME v8 carries the generator and the exact clock", ProtocolTests::welcome);
+        r.run("C_PLAYER/S_PLAYER v8 carry the whole player record", ProtocolTests::playerRecord);
+    }
+
+    private static void playerRecord() throws Exception {
+        var record = PlayerRecordTests.sample();
+        byte[] bytes = new com.mineclone.net.PlayerData(record).bytes();
+        PacketBuf in = PacketBuf.reading(bytes);
+        var back = com.mineclone.net.PlayerData.read(in);
+        check(back != null && !in.hasMore(), "the record did not come back");
+        PlayerRecordTests.same(record, back.record(), "the record over the wire");
+        for (int n = 0; n < bytes.length; n += Math.max(1, bytes.length / 40))
+            check(com.mineclone.net.PlayerData.read(PacketBuf.reading(bytes, 0, n)) == null, "cut at " + n + " accepted");
+        // A record whose minimum reader is past this build is refused, not half-read.
+        var out = new java.io.ByteArrayOutputStream();
+        try (var data = new java.io.DataOutputStream(out)) {
+            java.util.Map<String, byte[]> sections = new java.util.LinkedHashMap<>();
+            var format = new java.io.ByteArrayOutputStream();
+            try (var f = new java.io.DataOutputStream(format)) {
+                f.writeInt(com.mineclone.save.PlayerRecordCodec.MAGIC);
+                f.writeInt(com.mineclone.save.PlayerRecord.VERSION + 5);
+                f.writeInt(com.mineclone.save.PlayerRecord.VERSION + 5);
+            }
+            sections.put("format", format.toByteArray());
+            com.mineclone.data.SectionCodec.write(data, sections);
+        }
+        PacketBuf future = new PacketBuf();
+        future.bytes(out.toByteArray());
+        check(com.mineclone.net.PlayerData.read(PacketBuf.reading(future.toBytes())) == null, "a newer record accepted");
     }
 
     private static void genMap() throws Exception {

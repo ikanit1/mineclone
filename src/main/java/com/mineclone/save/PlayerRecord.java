@@ -144,20 +144,23 @@ public final class PlayerRecord {
     }
 
     /**
-     * Apply a protocol-v7 checkpoint. It carries pose, health, hunger, inventory,
-     * pending stacks and progress only; everything else it cannot express —
-     * saturation, air, equipment, effects, personal spawn, unknown sections —
-     * stays as this record has it.
+     * A guest's whole record (protocol v8) applied to the one the host keeps:
+     * the guest owns its movement, vitals, inventory, equipment, cursor stacks,
+     * progress, advancements and recipes (roadmap trust model 1.1); the host
+     * keeps effects, the personal spawn and sections the guest's build may not
+     * know — a guest must not be able to shed a host's effect by leaving it out.
      */
-    public PlayerRecord mergeLegacy(com.mineclone.net.PlayerData incoming) {
+    public PlayerRecord mergeClient(PlayerRecord incoming) {
+        var p = incoming.pose();
         return toBuilder()
-                .pose(keepPrecision(incoming.x, pose.x()), keepPrecision(incoming.y, pose.y()),
-                        keepPrecision(incoming.z, pose.z()), incoming.yaw, incoming.pitch, incoming.selected)
-                .vitals(new Vitals(incoming.health, incoming.hunger, vitals.saturation(),
-                        vitals.exhaustion(), vitals.air()))
+                .pose(p.x(), p.y(), p.z(), p.yaw(), p.pitch(), p.selected())
+                .vitals(incoming.vitals())
                 .inventory(incoming.inventory)
+                .equipment(incoming.equipment)
                 .pending(incoming.pending)
                 .progress(incoming.progress)
+                .advancements(incoming.advancements)
+                .recipes(incoming.recipes)
                 .build();
     }
 

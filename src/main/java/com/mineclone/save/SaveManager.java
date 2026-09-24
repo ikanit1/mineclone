@@ -275,7 +275,7 @@ public final class SaveManager {
                 byte[] bytes = in.readNBytes(SaveFormat.GUEST_V1_MAX_BYTES + 1);
                 if (bytes.length > SaveFormat.GUEST_V1_MAX_BYTES) throw new IOException("player checkpoint too large");
                 var buffer = com.mineclone.net.PacketBuf.reading(bytes);
-                var data = com.mineclone.net.PlayerData.read(buffer);
+                var data = com.mineclone.net.PlayerData.readV7(buffer);
                 if (data == null || buffer.hasMore()) throw new IOException("invalid legacy player checkpoint");
                 result = data.record();
             } else if (version >= SaveFormat.GUEST_VERSION) {

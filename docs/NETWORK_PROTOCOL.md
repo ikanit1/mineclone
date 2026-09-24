@@ -50,9 +50,16 @@ come under the same number. Changed or new in v8 so far:
   pins the host's and rebases the chunk on its generation before applying the
   delta.
 
-Planned for v8 (roadmap section 6/K): the player record in
-`C_PLAYER`/`S_PLAYER` (SAVE-07), `C_USE_BLOCK (70)` (BLK-03) and the rest of the
-table there.
+- `C_PLAYER`, `S_PLAYER` and every packet that carries a checkpoint
+  (`C_OPEN`, `C_DROP`, `C_PICKUP`, `S_PICKUP`) — `bytes PlayerRecordCodec`: the
+  whole `PlayerRecord` with its own format version (SAVE-07), no longer v7's
+  inventory, pose, health, hunger and progress. The host takes the guest's own
+  fields (`PlayerRecord.mergeClient`: pose, vitals, inventory, equipment, cursor
+  stacks, progress, advancements, recipes) and keeps effects, the personal spawn
+  and unknown sections. A record newer than this build is refused.
+
+Planned for v8 (roadmap section 6/K): `C_USE_BLOCK (70)` (BLK-03) and the rest
+of the table there.
 
 ## Codes
 
@@ -87,8 +94,8 @@ reserved and are never reused.
 | 50 | `X_CHAT` | both | reliable | a chat line |
 | 51 | `C_ITEM_PICK` | — | — | retired in v7; read and ignored |
 | 52 | `S_GIVE` | host → guest | — | read, no longer sent |
-| 60 | `C_PLAYER` | guest → host | reliable, 4 Hz | the guest's checkpoint (`PlayerData`) |
-| 61 | `S_PLAYER` | host → guest | reliable | the stored checkpoint on entry |
+| 60 | `C_PLAYER` | guest → host | reliable, 4 Hz | **v8**: the guest's checkpoint, the whole record |
+| 61 | `S_PLAYER` | host → guest | reliable | **v8**: the stored record on entry |
 | 62 | `C_OPEN` | guest → host | reliable | open a container menu |
 | 63 | `C_ACTION` | guest → host | reliable | one gesture in an open menu |
 | 64 | `C_CLOSE` | guest → host | reliable | close the menu |

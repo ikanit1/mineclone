@@ -75,6 +75,14 @@ second). What each guest sends: `X_PLAYER_STATE` 22 bytes at 12 Hz to everyone,
 - `S_ITEMS` reliably resends the whole list; it is the only packet that grows
   without bound with ordinary play (a broken chest, a creeper crater).
 
+## Since then: protocol v8
+
+The same run on v8 (NET-02, whole player record on the wire) changes one
+number: the empty checkpoint grows from 141 to 274 bytes — section names and
+lengths — so an idle guest sends 1.07 KB/s of checkpoints instead of 0.55.
+Download per guest and room messages are unchanged. Sending the checkpoint only
+when it changes (NET-03) matters more than before.
+
 ## Watching it live
 
 - F3, network line: `out … in … KB/s room … msg/s` over the last whole second.

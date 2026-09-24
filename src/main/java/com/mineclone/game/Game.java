@@ -6128,7 +6128,10 @@ public class Game {
                 return new com.mineclone.net.PlayerData(capturePlayer());
             }
             @Override public void restorePlayerData(com.mineclone.net.PlayerData data) {
-                restorePlayer(playerRecordTemplate.mergeLegacy(data));
+                // v8: the host's whole record, so what this build does not model
+                // (equipment, effects, a spawn, newer sections) comes back with the
+                // guest's next checkpoint instead of being lost.
+                restorePlayer(data.record());
             }
             @Override public com.mineclone.net.PlayerData loadGuest(String id) {
                 return worldId==null?null:save.loadGuest(worldId,id);

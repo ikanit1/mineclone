@@ -6,12 +6,14 @@ import com.mineclone.world.ItemStack;
 import org.joml.Vector3f;
 
 /**
- * The protocol-v7 view of a player checkpoint; world blocks belong to the world's own save.
+ * A player checkpoint as the network passes it; world blocks belong to the world's own save.
  *
- * <p>A thin adapter over {@link PlayerRecord}: the wire format still carries
- * only the fields below, while the record behind it keeps everything the wire
- * cannot express (equipment, effects, personal spawn, unknown sections).
- * Retired with protocol v8 (NET-02), when the record itself goes on the wire.
+ * <p>A thin adapter over {@link PlayerRecord}. Since protocol v8 (NET-02) the
+ * record itself travels — {@link #write}: {@code bytes PlayerRecordCodec} with
+ * its own format version — so equipment, effects, the personal spawn and the
+ * sections of a newer build reach the guest. The protocol-v7 layout of the
+ * fields below survives as {@link #writeV7}/{@link #readV7}: version-1 guest
+ * files are stored in it. The adapter itself goes with M4.
  */
 public final class PlayerData {
     private final PlayerRecord record;
@@ -56,15 +58,39 @@ public final class PlayerData {
         return b;
     }
 
+    /** Protocol v8: the whole record. */
     public void write(PacketBuf b) {
+        try {
+            b.bytes(com.mineclone.save.PlayerRecordCodec.encode(record));
+        } catch (java.io.IOException impossible) {
+            throw new IllegalStateException(impossible);
+        }
+    }
+
+    public byte[] bytes() { PacketBuf b=new PacketBuf(); write(b); return b.toBytes(); }
+
+    /** @return the checkpoint, or null for a cut, damaged or newer-than-this-build record */
+    public static PlayerData read(PacketBuf b) {
+        byte[] body = b.readBytes();
+        if (b.truncated())
+            return null;
+        try {
+            return new PlayerData(com.mineclone.save.PlayerRecordCodec.decode(body));
+        } catch (java.io.IOException | RuntimeException damaged) {
+            return null;
+        }
+    }
+
+    /** The protocol-v7 layout: inventory, cursor stacks, pose, health, hunger, slot, progress. */
+    public void writeV7(PacketBuf b) {
         writeItems(b,inventory); writeItems(b,pending);
         b.f32(x).f32(y).f32(z).f32(yaw).f32(pitch).f32(health).f32(hunger)
                 .varInt(selected).bytes(progress);
     }
 
-    public byte[] bytes() { PacketBuf b=new PacketBuf(); write(b); return b.toBytes(); }
+    public byte[] bytesV7() { PacketBuf b=new PacketBuf(); writeV7(b); return b.toBytes(); }
 
-    public static PlayerData read(PacketBuf b) {
+    public static PlayerData readV7(PacketBuf b) {
         ItemStack[] inv=readItems(b,Inventory.SIZE), pending=readItems(b,64);
         float x=b.readF32(),y=b.readF32(),z=b.readF32(),yaw=b.readF32(),pitch=b.readF32();
         float health=b.readF32(),hunger=b.readF32(); int selected=b.readVarInt();

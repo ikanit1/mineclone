@@ -41,7 +41,7 @@ final class PlayerRecordTests {
         r.run("unknown player sections from a newer build survive five guest saves", PlayerRecordTests::opaqueGuestSections);
         r.run("host level carries the same record bytes as a guest file", PlayerRecordTests::hostLevel);
         r.run("level written without a record opens, migrates behind a backup and keeps progress", PlayerRecordTests::recordlessLevel);
-        r.run("protocol v7 checkpoint replaces only the fields it carries", PlayerRecordTests::mergeLegacy);
+        r.run("a guest's record replaces its own fields, not the host's", PlayerRecordTests::mergeClient);
         r.run("live vitals are clamped instead of failing a save", PlayerRecordTests::liveVitals);
     }
 
@@ -234,7 +234,7 @@ final class PlayerRecordTests {
             inventory[4] = ItemStack.of("iron_ingot", 9);
             var legacy = new PlayerData(inventory, new ItemStack[] { ItemStack.of("coal", 2) },
                     4.5f, 70f, -2f, 1f, .5f, 12f, 8f, 3, new byte[] { 2, 4 });
-            byte[] original = f.writeGuest(id, SaveFormat.GUEST_V1, -1, legacy.bytes());
+            byte[] original = f.writeGuest(id, SaveFormat.GUEST_V1, -1, legacy.bytesV7());
 
             SaveManager session = new SaveManager(f.saves.toFile());
             PlayerRecord loaded = session.loadGuestRecord("world", id);
@@ -345,27 +345,28 @@ final class PlayerRecordTests {
         }
     }
 
-    private static void mergeLegacy() {
+    /** Protocol v8: the host takes a guest's own fields from its record and keeps its own. */
+    private static void mergeClient() {
         PlayerRecord base = sample();
         ItemStack[] inventory = new ItemStack[Inventory.SIZE];
         inventory[8] = ItemStack.of("coal", 3);
-        var incoming = new PlayerData(inventory, null, 5f, 70f, 6f, 1f, .5f, 12f, 9f, 2, new byte[] { 2, 7 });
-        PlayerRecord merged = base.mergeLegacy(incoming);
+        ItemStack[] equipment = new ItemStack[PlayerRecord.EQUIPMENT_SLOTS];
+        equipment[1] = ItemStack.of("iron_pickaxe", 1);
+        PlayerRecord incoming = PlayerRecord.builder().inventory(inventory).equipment(equipment)
+                .pose(5.25, 70, -6.125, 1f, .5f, 2).vitals(new PlayerRecord.Vitals(12f, 9f, 3f, 1.5f, 40f))
+                .progress(new byte[] { 2, 7 }).advancements(List.of("mineclone:a")).recipes(List.of("mineclone:b"))
+                .build();
+        PlayerRecord merged = base.mergeClient(incoming);
         check(merged.inventory()[8].count == 3 && merged.inventory()[0] == null && merged.pending().length == 0,
-                "carried items not replaced");
-        check(merged.pose().equals(new PlayerRecord.Pose(5, 70, 6, 1f, .5f, 2)), "carried pose");
-        check(merged.vitals().health() == 12f && merged.vitals().hunger() == 9f, "carried vitals");
-        check(merged.vitals().saturation() == base.vitals().saturation()
-                && merged.vitals().exhaustion() == base.vitals().exhaustion()
-                && merged.vitals().air() == base.vitals().air(), "uncarried vitals were reset");
-        check(Arrays.equals(new byte[] { 2, 7 }, merged.progress()), "carried progress");
-        sameItems(base.equipment(), merged.equipment(), "equipment");
+                "the guest's items");
+        sameItems(equipment, merged.equipment(), "the guest's equipment");
+        check(merged.pose().equals(new PlayerRecord.Pose(5.25, 70, -6.125, 1f, .5f, 2)), "the guest's pose");
+        check(merged.vitals().equals(incoming.vitals()), "the guest's vitals, saturation and air included");
+        check(Arrays.equals(new byte[] { 2, 7 }, merged.progress()) && merged.advancements().equals(List.of("mineclone:a"))
+                && merged.recipes().equals(List.of("mineclone:b")), "the guest's progress, advancements, recipes");
         check(merged.spawn().equals(base.spawn()) && merged.effects().equals(base.effects())
-                && merged.advancements().equals(base.advancements()) && merged.recipes().equals(base.recipes())
                 && Arrays.equals(base.extraSections().get("future:mood"), merged.extraSections().get("future:mood")),
-                "what v7 cannot carry was lost");
-        PlayerRecord unchanged = base.mergeLegacy(new PlayerData(base));
-        check(unchanged.pose().x() == 1.0000001, "a float round trip drifted the saved double");
+                "what the host owns was taken from the guest");
     }
 
     private static void liveVitals() {

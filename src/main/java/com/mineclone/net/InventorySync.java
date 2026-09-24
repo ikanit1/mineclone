@@ -98,9 +98,9 @@ final class InventorySync {
     private void store(int actor,PlayerData data) {
         String id=identities.get(actor);if(id==null||data==null)return;
         PlayerData previous=profiles.get(id);
-        // Protocol v7 omits equipment/effects/personal spawn and opaque sections.
-        // Its checkpoint only replaces the fields it actually carries.
-        if(previous!=null)data=new PlayerData(previous.record().mergeLegacy(data));
+        // The guest owns its movement, vitals and items; effects, the personal
+        // spawn and sections its build may not know stay the host's (v8).
+        if(previous!=null)data=new PlayerData(previous.record().mergeClient(data.record()));
         profiles.put(id,data);ctx.saveGuest(id,data);
     }
 
