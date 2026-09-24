@@ -19,7 +19,6 @@ import com.mineclone.world.BlockType;
 import com.mineclone.world.Chunk;
 import com.mineclone.world.ChunkLoader;
 import com.mineclone.world.ChunkMesher;
-import com.mineclone.world.DroppedItem;
 import com.mineclone.world.GameMode;
 import com.mineclone.world.Inventory;
 import com.mineclone.world.ItemStack;
@@ -83,11 +82,6 @@ public final class DedicatedServer implements NetContext {
     /** Мобы мира — те же правила, что у игры: {@link WorldSession}. */
     private WorldSession session;
     private final EntityStore entities = new EntityStore();
-    private final List<ItemEntity> groundItems = new ArrayList<>();
-    private final Random itemRandom = new Random();
-    /** Летящие снаряды: сервер их симулирует и рассылает. */
-    private final List<com.mineclone.world.entity.Projectile> projectiles =
-            new java.util.ArrayList<>();
     private final Vector3f spawn = new Vector3f(8.5f, 80f, 8.5f);
 
     private CompositeTransport transport;
@@ -150,6 +144,14 @@ public final class DedicatedServer implements NetContext {
         loader.setMeshing(false);
         simulation = new WorldSimulation(seed);
         world.setBlockObserver(net::onWorldBlockChanged);
+        // The session reads the world's own time, and must exist before the
+        // first chunk loads: items saved in a chunk enter the world through it.
+        if (lvl != null)
+            worldClock = com.mineclone.sim.WorldClock.fromSaved(lvl.timeOfDay,
+                    lvl.extraSections.get(com.mineclone.sim.WorldClock.SAVE_SECTION));
+        session = new WorldSession(world, worldClock, new MobSpawner(seed ^ 0x51E7B0BL), entities,
+                net.participants(), sessionHost, WorldEvents.NONE);
+        loader.setChunkLiveListener(session::adoptChunkItems);
 
         // Площадка появления: она же центр мира, когда участников нет.
         for (int dx = -1; dx <= 1; dx++)
@@ -159,8 +161,6 @@ public final class DedicatedServer implements NetContext {
         if (lvl != null) {
             spawn.set((float) lvl.spawnX, (float) lvl.spawnY, (float) lvl.spawnZ);
             levelExtraSections.putAll(lvl.extraSections);
-            worldClock = com.mineclone.sim.WorldClock.fromSaved(lvl.timeOfDay,
-                    lvl.extraSections.get(com.mineclone.sim.WorldClock.SAVE_SECTION));
         } else {
             for (int y = Chunk.SIZE_Y - 1; y > 0; y--)
                 if (world.getBlock(8, y, 8).solid) {
@@ -169,9 +169,6 @@ public final class DedicatedServer implements NetContext {
                 }
             saveLevel();
         }
-        // After the clock is restored: the session reads the world's own time.
-        session = new WorldSession(world, worldClock, new MobSpawner(seed ^ 0x51E7B0BL), entities,
-                sessionHost, WorldEvents.NONE);
         log("world '" + config.worldName + "' seed " + seed
                 + (lvl == null ? " (new)" : " (loaded)"));
         return true;
@@ -361,10 +358,10 @@ public final class DedicatedServer implements NetContext {
         streamChunks();
         Vector3f centre = centre();
         simulation.update(world, dt, centre, 0f, true);
-        for (DroppedItem d : world.falling.drainDrops())
-            groundItems.add(ItemEntity.restored(d, new Random()));
+        session.adoptFallingDrops();
         session.tickMobs(dt);
-        tickItems(dt);
+        session.tickItems(dt);
+        session.tickProjectiles(dt);
         if (beacon != null) {
             beacon.describe(config.worldName, config.motd.isEmpty() ? "сервер" : config.motd,
                     net.players().size(), config.maxPlayers);
@@ -409,32 +406,14 @@ public final class DedicatedServer implements NetContext {
 
     /**
      * Что сессия пока берёт у сервера. Мобы живут вокруг первого участника, а
-     * бить, взрываться и оставлять добычу на сервере им ещё нечем — это
-     * приходит с SIM-04 и SIM-07; стрелы некому вести до SIM-04, поэтому
-     * скелеты не стреляют, а сближаются.
+     * бить им на сервере некого, пока цель не выбирается среди участников
+     * (SIM-07). Стрелы летят в гостей.
      */
     private final WorldSession.Host sessionHost = new WorldSession.Host() {
         @Override public Vector3f mobFocus() { return centre(); }
         @Override public boolean hostileMobs() { return !config.creative; }
+        @Override public void projectileTargets(List<com.mineclone.world.entity.Hittable> out) { out.addAll(net.players()); }
     };
-
-    /**
-     * Предметы на земле.
-     *
-     * <p>Подбирать их сервер не пытается: ему некуда класть. Участники просят
-     * подбор сами пакетом {@code C_ITEM_PICK}, и {@link Multiplayer} отвечает
-     * им от нашего имени — так одна стопка не уходит в два инвентаря.
-     */
-    private void tickItems(float dt) {
-        groundItems.removeIf(e -> {
-            int cx = Math.floorDiv((int) Math.floor(e.position.x), Chunk.SIZE_X);
-            int cz = Math.floorDiv((int) Math.floor(e.position.z), Chunk.SIZE_Z);
-            if (world.getChunkIfExists(cx, cz) == null)
-                return false;
-            e.update(world, null, false, dt);
-            return e.expired() || e.position.y < -16f;
-        });
-    }
 
     // ------------------------------------------------------------ хозяйство
 
@@ -473,16 +452,10 @@ public final class DedicatedServer implements NetContext {
         saveLevel();
         int written = 0;
         for (Chunk c : world.getLoadedChunks()) {
-            if (c.isReadOnly()) continue;
-            List<DroppedItem> dropped = itemsInChunk(c);
-            if (!c.modified && dropped.isEmpty() && c.savedItems == 0)
+            ChunkSnapshot snapshot = session.snapshotChunk(c);
+            if (snapshot == null)
                 continue;
-            byte[] blocks = c.copyBlocks(), meta = c.copyMeta();
-            world.falling.snapshot(c, blocks, meta, dropped);
-            save.saveChunkAsync(config.worldId, new ChunkSnapshot(c.cx, c.cz,
-                    blocks, meta, c.copyChests(), c.copyFurnaces(), dropped, c.copyExtraSections()));
-            c.savedItems = dropped.size();
-            c.modified = false;
+            save.saveChunkAsync(config.worldId, snapshot);
             written++;
         }
         if (written > 0)
@@ -516,19 +489,6 @@ public final class DedicatedServer implements NetContext {
                 worldClock.gameTimeFloat(),
                 config.creative ? GameMode.CREATIVE : GameMode.SURVIVAL,
                 System.currentTimeMillis(), record, sections));
-    }
-
-    private List<DroppedItem> itemsInChunk(Chunk c) {
-        List<DroppedItem> out = new ArrayList<>();
-        for (ItemEntity e : groundItems) {
-            if (e.stack == null || e.stack.count <= 0)
-                continue;
-            int cx = Math.floorDiv((int) Math.floor(e.position.x), Chunk.SIZE_X);
-            int cz = Math.floorDiv((int) Math.floor(e.position.z), Chunk.SIZE_Z);
-            if (cx == c.cx && cz == c.cz)
-                out.add(e.toDropped());
-        }
-        return out;
     }
 
     /** Состав комнаты для консоли. */
@@ -657,8 +617,7 @@ public final class DedicatedServer implements NetContext {
     }
 
     private void spillItem(ItemStack stack, int x, int y, int z) {
-        if (stack != null && stack.count > 0)
-            groundItems.add(ItemEntity.popped(stack, x + .5f, y + .5f, z + .5f, itemRandom));
+        session.dropStack(stack, x + .5f, y + .5f, z + .5f);
     }
 
     @Override
@@ -706,12 +665,12 @@ public final class DedicatedServer implements NetContext {
 
     @Override
     public List<ItemEntity> groundItems() {
-        return groundItems;
+        return entities.items;
     }
 
     @Override
     public List<com.mineclone.world.entity.Projectile> projectiles() {
-        return projectiles;
+        return entities.projectiles;
     }
 
     /** Выстрел участника: сервер выпускает снаряд у себя и рассылает его всем. */
@@ -723,7 +682,7 @@ public final class DedicatedServer implements NetContext {
         shot.position.set(x, y, z);
         shot.velocity.set(vx, vy, vz);
         shot.heading.set(vx, vy, vz).normalize();
-        projectiles.add(shot);
+        entities.projectiles.add(shot);
     }
 
     /** У сервера своего игрока нет — ранить в нём некого. */

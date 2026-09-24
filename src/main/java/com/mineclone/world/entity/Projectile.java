@@ -97,7 +97,8 @@ public final class Projectile {
             Hittable victim = nearest(targets, dir, span);
             if (victim != null) {
                 position.fma(Math.max(0f, hitDistance(victim, dir)), dir);
-                victim.takeProjectile(damage, position.x, position.z, KNOCKBACK, fromPlayer);
+                victim.takeProjectile(damage, position.x, position.z, KNOCKBACK, fromPlayer,
+                        owner == null ? com.mineclone.world.damage.DamageSource.NO_ATTACKER : owner.participantId());
                 struck = victim;
                 dead = true;
                 return Result.HIT_TARGET;

@@ -129,6 +129,8 @@ public class ChunkLoader {
 
     /** Сервер мешей не строит; см. {@link #setMeshing(boolean)}. */
     private volatile boolean meshing = true;
+    /** Told on the main thread once per chunk, when its light is in; see {@link #setChunkLiveListener}. */
+    private java.util.function.Consumer<Chunk> liveListener;
 
     public ChunkLoader(World world, ChunkMesher mesher,
                        com.mineclone.save.SaveManager save, String worldId) {
@@ -163,6 +165,15 @@ public class ChunkLoader {
      * складывающих треугольники в очередь, из которой никто не берёт, — это
      * шесть занятых ядер и растущая куча мусора.
      */
+    /**
+     * Called on the main thread, once per loaded chunk, after its light flood:
+     * the chunk is part of the world from here on. The dedicated server takes
+     * a chunk's saved items at this point; the game waits for the mesh.
+     */
+    public void setChunkLiveListener(java.util.function.Consumer<Chunk> listener) {
+        this.liveListener = listener;
+    }
+
     public void setMeshing(boolean on) {
         meshing = on;
     }
@@ -371,6 +382,8 @@ public class ChunkLoader {
             // emitter in a neighbour doesn't work (BFS stops at cells that
             // already hold the correct value), so we read border values directly.
             world.injectNeighbourLight(cx, cz);
+            if (liveListener != null)
+                liveListener.accept(c);
             n++;
         }
     }

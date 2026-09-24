@@ -37,4 +37,7 @@ public interface WorldEvents {
 
     /** Once, as a mob dies; the corpse stays for {@code Mob.DEATH_TIME}. */
     default void mobDied(Mob mob) {}
+
+    /** A blast at its centre; the crater and the harm are already done. */
+    default void explosion(float x, float y, float z, Mob source) {}
 }

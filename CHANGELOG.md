@@ -5,6 +5,8 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 ## [Unreleased]
 
 ### Fixed
+- A dedicated server keeps the items lying in a world it opens: it used to leave them out of the world and erase them from their chunk on its first save.
+- On a dedicated server, arrows fly and land (a guest's arrow used to hang where it was shot, and every projectile packet kept growing), creepers blow craters and hurt guests, and killed mobs drop their loot.
 - A dedicated server no longer stops with an exception — without saving — at the first item lying on the ground (a guest's throw, a broken chest, sand falling on a torch).
 - The bedroll can be crafted in survival: leaves now drop a leaves block one time in four. Before, leaves dropped nothing while the bedroll's recipe needs three of them, so sleeping and its respawn point were creative-only.
 - A guest's checkpoint over protocol v7 no longer resets what that protocol cannot carry (equipment, effects, personal spawn, sections of newer builds).
@@ -28,7 +30,8 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 - Eleven reproducible benchmark scenes with frame, GPU, queue, allocation, network and save metrics; frozen build snapshots and repeated-run aggregation retain measurement provenance.
 
 ### Changed
-- The game's host and the dedicated server tick mobs with one shared loop (`WorldSession`), pinned to the previous behavior by a recorded parity hash; mobs on a dedicated server are now pushed apart instead of standing inside one another.
+- The game's host and the dedicated server tick mobs, items, arrows and blasts and save chunk entities with one shared session (`WorldSession`), pinned to the previous behavior by a recorded parity hash; mobs on a dedicated server are now pushed apart instead of standing inside one another, and their skeletons shoot.
+- A mob killed by a creative player drops nothing; natural deaths drop their loot whatever mode the host plays in, and a survival guest's kill in a creative host's world drops as usual. Guests also take creeper blast damage.
 - All 35 crafting recipes and nine smelting recipes load from validated JSON with their legacy order, shapes and outputs preserved. Tag ingredients and configured smelting times/counts are executed by the real crafting/furnace paths.
 - Block behavior flags and numeric properties now come from one exhaustive `BlockProps` table without changing existing block IDs.
 - Historical root generators and obsolete manual test sources moved to `tools/legacy`; generated scratch artifacts are kept outside the source tree.

@@ -129,19 +129,16 @@ public class Game {
     /** 3D-обломки разбитых блоков. */
     private final Debris debris = new Debris(0xDEB815L);
     private DebrisRenderer debrisRenderer;
+    /** Сущности открытого мира; у гостя — снимки хозяина. */
+    private final com.mineclone.sim.EntityStore entities = new com.mineclone.sim.EntityStore();
     /** Предметы на земле. */
-    private final java.util.List<com.mineclone.world.entity.ItemEntity> items = new java.util.ArrayList<>();
+    private final java.util.List<com.mineclone.world.entity.ItemEntity> items = entities.items;
     private ItemRenderer itemRenderer;
     private FallingBlockRenderer fallingRenderer;
     private final java.util.Random itemRandom = new java.util.Random();
-    private float itemMergeTimer;
     private final Vector3f itemTarget = new Vector3f();
-    /** Больше этого предметов на земле не держим: старые уходят первыми. */
-    private static final int MAX_ITEMS = 480;
     /** Куда магнит тянет предмет: чуть ниже середины тела, чтобы лежащий у ног подбирался. */
     private static final float ITEM_TARGET_HEIGHT = 0.7f;
-    /** Как часто сливаются соседние стопки на земле. */
-    private static final float ITEM_MERGE_INTERVAL = 0.5f;
     /** Скорость броска по Q и подброс вверх, блоки/с. */
     private static final float THROW_SPEED = 5.5f, THROW_LIFT = 1.6f;
     private static final float THROW_CHARGE_TIME = 1.15f;
@@ -150,15 +147,12 @@ public class Game {
     /** Сколько секунд удерживается натяжение лука; −1 — лук не натянут. */
     private float bowHeld = -1f;
     /** Летящие и воткнувшиеся снаряды. Симулирует их хозяин, гость только видит. */
-    private final java.util.List<com.mineclone.world.entity.Projectile> projectiles =
-            new java.util.ArrayList<>();
+    private final java.util.List<com.mineclone.world.entity.Projectile> projectiles = entities.projectiles;
     /** Игрок как мишень для чужих снарядов. */
     private final PlayerTarget playerTarget = new PlayerTarget();
     private boolean throwWholeStack;
     /** Дальше этого звук не даёт дуги — столько же, сколько слышит OpenAL. */
     private static final float SOUND_CUE_RANGE = 24f;
-    /** Сущности открытого мира; у гостя — снимки хозяина. */
-    private final com.mineclone.sim.EntityStore entities = new com.mineclone.sim.EntityStore();
     private final java.util.List<com.mineclone.world.entity.Mob> mobs = entities.mobs;
     /** Списки под дальность сущностей — переиспользуются, чтобы не сорить каждый кадр. */
     private final java.util.List<com.mineclone.world.entity.Mob> nearMobs = new java.util.ArrayList<>();
@@ -914,35 +908,12 @@ public class Game {
         }
     }
 
+    /** Чанк и лежащие в нём предметы — той же записью, что у выделенного сервера. */
     private void saveChunkIfModified(Chunk c) {
-        if (c.isReadOnly()) return;
-        java.util.List<com.mineclone.world.DroppedItem> dropped = itemsInChunk(c);
-        // Предметы на земле пишутся вместе с чанком: был хоть один в прошлой
-        // записи или есть сейчас — чанк записывается, даже если блоки те же.
-        if (!c.modified && dropped.isEmpty() && c.savedItems == 0)
-            return;
-        byte[] savedBlocks = c.copyBlocks(), savedMeta = c.copyMeta();
-        world.falling.snapshot(c, savedBlocks, savedMeta, dropped);
-        save.saveChunkAsync(worldId,
-                new com.mineclone.save.ChunkSnapshot(c.cx, c.cz,
-                        savedBlocks, savedMeta, c.copyChests(), c.copyFurnaces(), dropped, c.copyExtraSections()));
-        c.savedItems = dropped.size();
-        c.modified = false;
-    }
-
-    /** Предметы, лежащие в чанке, — копии для фоновой записи. */
-    private java.util.List<com.mineclone.world.DroppedItem> itemsInChunk(Chunk c) {
-        java.util.List<com.mineclone.world.DroppedItem> out = c.copyPendingItems();
-        for (com.mineclone.world.entity.ItemEntity e : items) {
-            if (e.stack.count <= 0)
-                continue;
-            if (Math.floorDiv((int) Math.floor(e.position.x), Chunk.SIZE_X) != c.cx
-                    || Math.floorDiv((int) Math.floor(e.position.z), Chunk.SIZE_Z) != c.cz)
-                continue;
-            out.add(new com.mineclone.world.DroppedItem(e.stack.copy(), e.position.x, e.position.y,
-                    e.position.z, e.age));
-        }
-        return out;
+        if (session == null) return;
+        var snapshot = session.snapshotChunk(c);
+        if (snapshot != null)
+            save.saveChunkAsync(worldId, snapshot);
     }
 
     public void run() {
@@ -1301,7 +1272,7 @@ public class Game {
         healthGhostDelay = 0f;
         session = new com.mineclone.sim.WorldSession(world, worldClock,
                 new com.mineclone.world.entity.MobSpawner(world.seed ^ 0x51E7B0BL), entities,
-                sessionHost, entityPresentation);
+                net.participants(), sessionHost, entityPresentation);
         simulation = new WorldSimulation(world.seed);
         atmosphere.snap();
         storm.reset();
@@ -1705,8 +1676,11 @@ public class Game {
             probeLavaTick = simulation.lavaNanos();
             probeFalling = simulation.fallingNanos();
         }
-        for (com.mineclone.world.DroppedItem d : world.falling.drainDrops())
-            items.add(com.mineclone.world.entity.ItemEntity.restored(d, itemRandom));
+        if (session != null)
+            session.adoptFallingDrops();
+        else
+            for (com.mineclone.world.DroppedItem d : world.falling.drainDrops())
+                items.add(com.mineclone.world.entity.ItemEntity.restored(d, itemRandom));
         // После тиков воды и блоков: они и пачкают чанки, ради которых
         // ставятся заявки на перестройку.
         probeTicks = System.nanoTime() - ticksStart;
@@ -1824,12 +1798,9 @@ public class Game {
         session.tickMobs(dt);
     }
 
-    /** Стрелы мобов сыплются в общий список снарядов хозяина. */
-    private final java.util.function.Consumer<com.mineclone.world.entity.Projectile> mobShots = projectiles::add;
-
     /**
-     * Что сессия пока берёт у игры: мобы живут вокруг своего игрока, бьют
-     * только его, а взрыв и добычу делает игра (SIM-04, SIM-07).
+     * Что сессия пока берёт у игры: мобы живут вокруг своего игрока и бьют
+     * только его (SIM-05, SIM-07); свой игрок подбирает предметы и стрелы.
      */
     private final com.mineclone.sim.WorldSession.Host sessionHost = new com.mineclone.sim.WorldSession.Host() {
         @Override public Vector3f mobFocus() { return player.position; }
@@ -1842,7 +1813,6 @@ public class Game {
         }
 
         @Override public boolean focusIsBody() { return true; }
-        @Override public java.util.function.Consumer<com.mineclone.world.entity.Projectile> mobShots() { return mobShots; }
         @Override public boolean spawnMobs() { return bench == null; }
 
         /** Урон игроку — через окно неуязвимости: иначе стая зомби снимает здоровье втрое быстрее одного. */
@@ -1861,8 +1831,48 @@ public class Game {
                     0.8f, 0.9f + 0.1f * (float) Math.random());
         }
 
-        @Override public void mobExploded(com.mineclone.world.entity.Mob m) { detonate(m); }
-        @Override public void mobLoot(com.mineclone.world.entity.Mob m) { giveMobDrop(m); }
+        @Override
+        public void projectileTargets(java.util.List<com.mineclone.world.entity.Hittable> out) {
+            // Гости — такие же мишени: без них стрела хозяина пролетала бы
+            // сквозь них, а стрела моба никого бы не задела.
+            out.add(playerTarget);
+            out.addAll(net.players());
+        }
+
+        @Override public com.mineclone.sim.WorldSession.ItemCollector itemCollector() { return itemCollector; }
+
+        @Override
+        public void blasted(com.mineclone.sim.Participant participant, com.mineclone.world.entity.Mob source) {
+            if (participant.local() && source != null)
+                applyMobKnockback(source);
+        }
+    };
+
+    /** Свой игрок подбирает то, что лежит рядом; гость просит об этом хозяина. */
+    private final com.mineclone.sim.WorldSession.ItemCollector itemCollector = new com.mineclone.sim.WorldSession.ItemCollector() {
+        @Override
+        public Vector3f magnetTarget() {
+            return itemTarget.set(player.position.x, player.position.y + ITEM_TARGET_HEIGHT, player.position.z);
+        }
+
+        @Override public boolean collecting() { return state == State.PLAYING && !player.isDead(); }
+        @Override public boolean canTake(com.mineclone.world.ItemStack stack) { return Game.this.canTake(stack); }
+        @Override public int give(com.mineclone.world.ItemStack stack) { return giveStack(stack); }
+
+        @Override
+        public void collected(int stacks) {
+            sound.playOneOf(sounds.pickup(), 0.32f, 1.55f + 0.45f * itemRandom.nextFloat());
+        }
+
+        /** Подбирает тот, кто рядом, — и только своё: чужая стрела достаётся хозяину её цели. */
+        @Override
+        public boolean collectArrow(com.mineclone.world.entity.Projectile arrow) {
+            if (player.isDead() || !arrow.canPickUp(player.position)
+                    || giveStack(com.mineclone.world.ItemStack.of(arrow.itemId)) != 0)
+                return false;
+            sound.playOneOf(sounds.pickup(), 0.25f, 1.1f + 0.1f * (float) Math.random());
+            return true;
+        }
     };
 
     private final EntityPresentation entityPresentation = new EntityPresentation(sounds, particles,
@@ -1890,6 +1900,13 @@ public class Game {
                 public void kickSnow(float x, float y, float z, float dirX, float dirZ, boolean hard) {
                     Game.this.kickSnow(x, y, z, dirX, dirZ, hard);
                 }
+
+                @Override
+                public void playAt(java.util.List<String> paths, Vector3f at, float volume, float pitch) {
+                    sound.playOneOfAt(paths, at, volume, pitch);
+                }
+
+                @Override public void invalidateShadows() { Game.this.invalidateShadows(); }
             });
 
     /** Горизонтальное отбрасывание игрока от моба + небольшой подброс. */
@@ -2284,8 +2301,8 @@ public class Game {
         // от чистого. Раньше спрашивать нечего: правку некуда класть.
         net.noteChunkLoaded(cx, cz);
         // Предметы из сейва чанка поднимаются в мир, когда чанк готов.
-        for (com.mineclone.world.DroppedItem d : c.takePendingItems())
-            items.add(com.mineclone.world.entity.ItemEntity.restored(d, itemRandom));
+        if (session != null)
+            session.adoptChunkItems(c);
     }
 
     private void evictDistantChunks(int pcx, int pcz) {
@@ -2465,7 +2482,8 @@ public class Game {
             // У участника моб только показывается: настоящий урон и отброс
             // считает хозяин, а местный удар нужен ради отклика.
             net.requestMobHit(aimedMob, damage, knockback, player.position.x, player.position.z);
-            if (aimedMob.hurtLimb(damage, limb, player.position.x, player.position.z, knockback)) {
+            if (aimedMob.hurtLimb(damage, limb, player.position.x, player.position.z, knockback,
+                    net.localActor())) {
                 playOccluded(sounds.mobHurt(aimedMob.type), aimedMob.soundPosition(),
                         0.8f, (crit ? 1.1f : 0.9f) + 0.2f * (float) Math.random());
                 sound.playOneOfAt(sounds.playerAttack(crit ? "crit" : "strong"),
@@ -2784,29 +2802,6 @@ public class Game {
     }
 
     /**
-     * Добыча с убитого моба выпадает на землю там, где он упал.
-     *
-     * Раньше предметов в мире не было, и добыча шла прямо в инвентарь — с
-     * оговоркой про дальность, иначе моб, погибший в сорока блоках, кормил
-     * игрока издалека. Теперь мясо лежит у трупа, и оговорка не нужна: за ним
-     * надо дойти.
-     */
-    private void giveMobDrop(com.mineclone.world.entity.Mob m) {
-        if (gameMode != com.mineclone.world.GameMode.SURVIVAL)
-            return;
-        // Задранного волком съели — мяса с него нет.
-        if (m.eaten)
-            return;
-        // No tool: the host's held item says nothing about a guest's or an
-        // arrow's kill, and no entity table asks for a weapon yet.
-        var context = new com.mineclone.item.loot.LootContext(world.seed,
-                (int) Math.floor(m.position.x), (int) Math.floor(m.position.y), (int) Math.floor(m.position.z),
-                null, m.killedByParticipant, gameMode, itemRandom);
-        for (var drop : com.mineclone.item.Items.get().loot().entityDrops(m.type, context))
-            dropItem(drop, m.position.x, m.position.y + m.type.height * 0.5f, m.position.z);
-    }
-
-    /**
      * Роняет стопку в мир с небольшим подскоком. Потолок числа предметов
      * защищает кадр: сверх него исчезает самый старый — список пополняется с
      * конца, и в его начале лежат давние.
@@ -2836,9 +2831,8 @@ public class Game {
     }
 
     private void addItemEntity(com.mineclone.world.entity.ItemEntity e) {
-        if (items.size() >= MAX_ITEMS)
-            items.remove(0);
-        items.add(e);
+        if (session != null)
+            session.addItem(e);
     }
 
     /**
@@ -2848,43 +2842,29 @@ public class Game {
      * и он провалился бы сквозь землю, которой пока просто нет в памяти.
      */
     private void updateItems(float dt) {
-        if (items.isEmpty() || world == null)
+        if (world == null)
+            return;
+        if (!net.isClient()) {
+            if (session != null)
+                session.tickItems(dt);
+            return;
+        }
+        // Гость: предметы — снимки хозяина. Падение предсказываем сами, а
+        // подобрать может только хозяин: иначе одна стопка ушла бы в два
+        // инвентаря сразу.
+        if (items.isEmpty())
             return;
         boolean collect = state == State.PLAYING && !player.isDead();
-        boolean client = net.isClient();
         itemTarget.set(player.position.x, player.position.y + ITEM_TARGET_HEIGHT, player.position.z);
-        int picked = 0;
-        for (java.util.Iterator<com.mineclone.world.entity.ItemEntity> it = items.iterator(); it.hasNext(); ) {
-            com.mineclone.world.entity.ItemEntity e = it.next();
+        for (com.mineclone.world.entity.ItemEntity e : items) {
             int cx = Math.floorDiv((int) Math.floor(e.position.x), Chunk.SIZE_X);
             int cz = Math.floorDiv((int) Math.floor(e.position.z), Chunk.SIZE_Z);
             if (world.getChunkIfExists(cx, cz) == null)
                 continue;
             boolean take = collect && canTake(e.stack);
             e.update(world, itemTarget, take, dt);
-            if (take && e.readyForPickup(itemTarget)) {
-                if (client) {
-                    // Подобрать может только хозяин: иначе одна стопка ушла
-                    // бы в два инвентаря сразу.
-                    net.requestPickup(e);
-                } else {
-                    int before = e.stack.count;
-                    e.stack.count = giveStack(e.stack);
-                    if (e.stack.count < before)
-                        picked++;
-                }
-            }
-            if (!client && (e.expired() || e.position.y < -16f))
-                it.remove();
-        }
-        if (picked > 0)
-            sound.playOneOf(sounds.pickup(), 0.32f, 1.55f + 0.45f * itemRandom.nextFloat());
-
-        itemMergeTimer -= dt;
-        if (itemMergeTimer <= 0f && !client) {
-            itemMergeTimer = ITEM_MERGE_INTERVAL;
-            com.mineclone.world.entity.ItemEntity.mergeNearby(items);
-            items.removeIf(com.mineclone.world.entity.ItemEntity::expired);
+            if (take && e.readyForPickup(itemTarget))
+                net.requestPickup(e);
         }
     }
 
@@ -3029,29 +3009,13 @@ public class Game {
     private void updateProjectiles(float dt) {
         if (projectiles.isEmpty() || world == null)
             return;
-        boolean client = net.isClient();
-        java.util.List<com.mineclone.world.entity.Hittable> targets = new java.util.ArrayList<>(mobs);
-        targets.add(playerTarget);
-        // Гости — такие же мишени: без них стрела хозяина пролетала бы
-        // сквозь них, а стрела моба никого бы не задела.
-        targets.addAll(net.players());
-        for (var it = projectiles.iterator(); it.hasNext(); ) {
-            var p = it.next();
-            if (!client)
-                p.step(world, dt, targets);
-            if (p.dead) {
-                it.remove();
-                continue;
-            }
-            // Подбирает тот, кто рядом, — и только своё: чужая стрела в
-            // мультиплеере достаётся хозяину её цели, а не первому встречному.
-            if (!client && p.stuck && p.fromPlayer && !player.isDead()
-                    && p.canPickUp(player.position)
-                    && giveStack(com.mineclone.world.ItemStack.of(p.itemId)) == 0) {
-                sound.playOneOf(sounds.pickup(), 0.25f, 1.1f + 0.1f * (float) Math.random());
-                it.remove();
-            }
+        if (!net.isClient()) {
+            if (session != null)
+                session.tickProjectiles(dt);
+            return;
         }
+        // Гость: снимок доживает до следующего снимка.
+        projectiles.removeIf(p -> p.dead);
     }
 
     /** Игрок глазами чужого снаряда. */
@@ -3069,6 +3033,12 @@ public class Game {
         @Override
         public boolean hittable() {
             return !player.isDead() && gameMode != com.mineclone.world.GameMode.CREATIVE;
+        }
+
+        /** Стрела игрока помнит, чья она: добыча зависит от того, кто убил. */
+        @Override
+        public int participantId() {
+            return net.localActor();
         }
 
         @Override
@@ -3318,48 +3288,6 @@ public class Game {
             ignite(s.x(), s.z());
         for (float distance : tick.thunder())
             rollThunder(distance);
-    }
-
-    /**
-     * Взрыв крипера: сносит блоки, раздаёт урон и отбрасывает.
-     *
-     * Сам список блоков считает {@link com.mineclone.world.Explosion} — он
-     * же следит, чтобы взрыв не пробивал стену. Здесь остаётся только
-     * применить его к миру и отыграть.
-     */
-    private void detonate(com.mineclone.world.entity.Mob source) {
-        if (world == null)
-            return;
-        float x = source.position.x, y = source.position.y + source.type.height * 0.5f;
-        float z = source.position.z;
-        // У участника мир не симулируется: блоки снесёт хозяин и пришлёт
-        // результат, а здесь остаётся только зрелище.
-        if (!net.isClient())
-            for (int[] at : com.mineclone.world.Explosion.destroyed(world, x, y, z,
-                    com.mineclone.world.Explosion.RADIUS))
-                world.setBlock(at[0], at[1], at[2], BlockType.AIR);
-
-        float reach = com.mineclone.world.Explosion.RADIUS;
-        float toPlayer = player.position.distance(x, y, z);
-        if (toPlayer < reach && gameMode != com.mineclone.world.GameMode.CREATIVE) {
-            float damage = com.mineclone.world.Explosion.damageAt(toPlayer);
-            if (damage > 0f && player.takeAttackDamage(damage))
-                applyMobKnockback(source);
-        }
-        for (var other : mobs) {
-            if (other == source || other.dead)
-                continue;
-            float d = other.position.distance(x, y, z);
-            float damage = com.mineclone.world.Explosion.damageAt(d);
-            if (damage > 0f)
-                other.hurt(damage, x, z, 1.8f, false);
-        }
-        particles.emitMobDeath(x, y, z, source.type.particleColor);
-        for (int i = 0; i < 12; i++)
-            particles.emitMobFlame(x + (float) (Math.random() - 0.5) * 2f,
-                    y + (float) Math.random() * 1.5f, z + (float) (Math.random() - 0.5) * 2f);
-        sound.playOneOfAt(sounds.ambientThunder(), new Vector3f(x, y, z), 0.9f, 1.5f);
-        invalidateShadows();
     }
 
     /** Поджигает место удара, если там есть чему гореть. */

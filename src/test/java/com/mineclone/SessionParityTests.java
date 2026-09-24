@@ -1,12 +1,15 @@
 package com.mineclone;
 
 import com.mineclone.sim.EntityStore;
+import com.mineclone.sim.Participant;
+import com.mineclone.sim.Participants;
 import com.mineclone.sim.WorldClock;
 import com.mineclone.sim.WorldEvents;
 import com.mineclone.sim.WorldSession;
-import com.mineclone.world.BlockType;
 import com.mineclone.world.Chunk;
-import com.mineclone.world.Explosion;
+import com.mineclone.world.GameMode;
+import com.mineclone.world.damage.ArmorView;
+import com.mineclone.world.damage.DamageSource;
 import com.mineclone.world.GenProfile;
 import com.mineclone.world.World;
 import com.mineclone.world.entity.Mob;
@@ -18,12 +21,11 @@ import com.mineclone.world.gen.WorldGenVersion;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.security.MessageDigest;
-import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Random;
-import java.util.function.Consumer;
 import org.joml.Vector3f;
+import org.joml.Vector3fc;
 
 /**
  * SIM-03/SIM-04: the mob loop keeps behaving exactly as it did in {@code Game}.
@@ -73,6 +75,8 @@ final class SessionParityTests {
     private static final int WALK_TICKS = 200;
     private static final int HIT_EVERY = 40;
     private static final float HIT_REACH = 4f, HIT_DAMAGE = 7f;
+    /** The participant's number, as a guest's actor would be. */
+    private static final int PARTICIPANT = 0;
 
     private static void check(boolean ok, String why) { if (!ok) throw new AssertionError(why); }
 
@@ -84,10 +88,14 @@ final class SessionParityTests {
         final EntityStore entities = new EntityStore();
         final List<Mob> mobs = entities.mobs;
         final Vector3f focus = new Vector3f();
-        final List<Projectile> shots = new ArrayList<>();
+        final List<Projectile> shots = entities.projectiles;
+        /** The participant as the session sees it: a body on the path that records every blast. */
+        final Participants participants = new Participants();
+        /** Every mob the run has seen; a creeper that blows up leaves the list within its tick. */
+        final java.util.Set<Mob> seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
         final MessageDigest digest;
         final DataOutputStream log;
-        int struck, exploded, loot, spawned, maxMobs, hits, arrows, blasts, blocksChanged;
+        int struck, spawned, maxMobs, hits, arrows, blasts, blocksChanged;
 
         Scenario() throws Exception {
             digest = MessageDigest.getInstance("SHA-256");
@@ -101,6 +109,7 @@ final class SessionParityTests {
                 writeInt('W'); writeInt(x); writeInt(y); writeInt(z); writeInt(now.ordinal()); writeInt(meta);
             });
             path(0);
+            participants.put(new Walker());
             for (int i = 0; i < PLACED.length; i++) {
                 float x = focus.x + OFFSETS[i][0], z = focus.z + OFFSETS[i][1];
                 mobs.add(new Mob(PLACED[i], x, surface(x, z) + 0.05f, z, new Random(SEED + i)));
@@ -130,7 +139,7 @@ final class SessionParityTests {
             }
             if (nearest == null) return;
             hits++;
-            nearest.hurt(HIT_DAMAGE, focus.x, focus.z, 1f, true);
+            nearest.hurtBy(HIT_DAMAGE, focus.x, focus.z, 1f, PARTICIPANT);
             write('H', nearest);
         }
 
@@ -147,30 +156,6 @@ final class SessionParityTests {
             writeFloat(m.attackDamage());
         }
 
-        /**
-         * {@code Game.detonate} at 701706f, simulation only: the crater, the blast
-         * on the player (recorded — the participant walks a fixed path) and on
-         * every other mob. Particles, sound and shadows are gone.
-         */
-        void exploded(Mob source) {
-            exploded++;
-            float x = source.position.x, y = source.position.y + source.type.height * 0.5f;
-            float z = source.position.z;
-            for (int[] at : Explosion.destroyed(world, x, y, z, Explosion.RADIUS))
-                world.setBlock(at[0], at[1], at[2], BlockType.AIR);
-            float toPlayer = focus.distance(x, y, z);
-            if (toPlayer < Explosion.RADIUS)
-                blast(Explosion.damageAt(toPlayer));
-            for (var other : mobs) {
-                if (other == source || other.dead)
-                    continue;
-                float d = other.position.distance(x, y, z);
-                float damage = Explosion.damageAt(d);
-                if (damage > 0f)
-                    other.hurt(damage, x, z, 1.8f, false);
-            }
-        }
-
         /** The blast reached the participant; what it does to a player is the player's business. */
         void blast(float damage) {
             if (damage <= 0f) return;
@@ -179,10 +164,6 @@ final class SessionParityTests {
             writeFloat(damage);
         }
 
-        /** Drops leave the mobs alone, so they are counted, not hashed. */
-        void loot(Mob m) {
-            if (!m.eaten) loot++;
-        }
 
         private void write(char kind, Mob m) {
             writeInt(kind);
@@ -190,11 +171,29 @@ final class SessionParityTests {
             writeFloat(m.position.x); writeFloat(m.position.y); writeFloat(m.position.z);
         }
 
+        /** The participant on its fixed path: the blast is recorded, the path does not change. */
+        private final class Walker implements Participant {
+            @Override public int id() { return PARTICIPANT; }
+            @Override public Vector3fc position() { return focus; }
+            @Override public Vector3fc eye() { return focus; }
+            @Override public GameMode mode() { return GameMode.SURVIVAL; }
+            @Override public boolean alive() { return true; }
+            @Override public ArmorView armor() { return ArmorView.NONE; }
+            @Override public boolean local() { return true; }
+
+            @Override
+            public boolean damage(DamageSource source, float amount) {
+                blast(amount);
+                return true;
+            }
+        }
+
         void endTick(int tick) {
             writeInt(tick);
             writeInt(mobs.size());
             maxMobs = Math.max(maxMobs, mobs.size());
             for (Mob m : mobs) {
+                seen.add(m);
                 writeInt(m.type.ordinal());
                 writeFloat(m.position.x); writeFloat(m.position.y); writeFloat(m.position.z);
                 writeFloat(m.yaw); writeFloat(m.health); writeFloat(m.fuse);
@@ -215,6 +214,8 @@ final class SessionParityTests {
         private void writeFloat(float value) { writeInt(Float.floatToIntBits(value)); }
 
         String hash() { return HexFormat.of().formatHex(digest.digest()); }
+
+        int deaths() { return (int) seen.stream().filter(m -> m.dead).count(); }
     }
 
     /** A sink that only feeds the digest. */
@@ -241,19 +242,15 @@ final class SessionParityTests {
         return s;
     }
 
-    /** The session as the game runs it: around its own player, with blows, arrows, explosions and drops. */
+    /** The session as the game runs it: around its own player, who takes the blows and the blasts. */
     static Loop session(Scenario s, WorldEvents events) {
         WorldSession.Host host = new WorldSession.Host() {
-            private final Consumer<Projectile> shots = s.shots::add;
             @Override public Vector3f mobFocus() { return s.focus; }
             @Override public boolean hostileMobs() { return true; }
             @Override public boolean focusIsBody() { return true; }
-            @Override public Consumer<Projectile> mobShots() { return shots; }
             @Override public void mobStruck(Mob m) { s.struck(m); }
-            @Override public void mobExploded(Mob m) { s.exploded(m); }
-            @Override public void mobLoot(Mob m) { s.loot(m); }
         };
-        return new WorldSession(s.world, s.clock, s.spawner, s.entities, host, events)::tickMobs;
+        return new WorldSession(s.world, s.clock, s.spawner, s.entities, s.participants, host, events)::tickMobs;
     }
 
     private static void etalon() throws Exception {
@@ -264,10 +261,10 @@ final class SessionParityTests {
 
     private static void coverage() throws Exception {
         Scenario s = run(x -> session(x, WorldEvents.NONE));
-        check(s.struck > 0 && s.loot > 0 && s.spawned > 0 && s.maxMobs > PLACED.length && s.hits > 0
-                        && s.arrows > 0 && s.exploded > 0 && s.blocksChanged > 0,
-                "scenario too quiet: struck=" + s.struck + " loot=" + s.loot + " spawned=" + s.spawned
-                        + " max=" + s.maxMobs + " exploded=" + s.exploded + " crater=" + s.blocksChanged
+        check(s.struck > 0 && s.deaths() >= 2 && s.spawned > 0 && s.maxMobs > PLACED.length && s.hits > 0
+                        && s.arrows > 0 && s.blasts > 0 && s.blocksChanged > 0,
+                "scenario too quiet: struck=" + s.struck + " deaths=" + s.deaths() + " spawned=" + s.spawned
+                        + " max=" + s.maxMobs + " crater=" + s.blocksChanged
                         + " blasts=" + s.blasts + " hits=" + s.hits + " arrows=" + s.arrows);
     }
 
@@ -290,7 +287,7 @@ final class SessionParityTests {
         check(s.hash().equals(ETALON), "presenting the mobs changed the simulation");
         check(shown.voices > 0 && shown.steps > 0 && shown.rages > 0, "events never reached the presentation: voices="
                 + shown.voices + " steps=" + shown.steps + " rages=" + shown.rages);
-        check(shown.deaths == s.loot, "each death is shown once: " + shown.deaths + " vs " + s.loot + " drops");
+        check(shown.deaths == s.deaths(), "each death is shown once: " + shown.deaths + " vs " + s.deaths());
     }
 
     private static void serverUsesSession() throws Exception {

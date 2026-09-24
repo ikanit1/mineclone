@@ -899,7 +899,7 @@ public final class Multiplayer implements NetTransport.Listener {
                 float damage = in.readF32(), knockback = in.readF32();
                 float fx = in.readF32(), fz = in.readF32();
                 if (!in.truncated() && role == Role.HOST)
-                    hostMobHit(id, damage, knockback, fx, fz);
+                    hostMobHit(from, id, damage, knockback, fx, fz);
             }
             case NetProto.C_ITEM_PICK -> {
                 // Retired in v7: pickup must checkpoint both ownership changes together.
@@ -1300,7 +1300,7 @@ public final class Multiplayer implements NetTransport.Listener {
      * и поправляется следующим снимком: ждать ответа сервера, чтобы меч
      * зазвенел, значит превратить бой в переписку.
      */
-    private void hostMobHit(int id, float damage, float knockback, float fromX, float fromZ) {
+    private void hostMobHit(int from, int id, float damage, float knockback, float fromX, float fromZ) {
         if (damage <= 0f || damage > 100f)
             return;
         for (Map.Entry<Mob, Integer> e : mobIds.entrySet()) {
@@ -1308,7 +1308,7 @@ public final class Multiplayer implements NetTransport.Listener {
                 continue;
             Mob m = e.getKey();
             if (!m.dead)
-                m.hurt(damage, fromX, fromZ, Math.max(0f, Math.min(4f, knockback)), true);
+                m.hurtBy(damage, fromX, fromZ, Math.max(0f, Math.min(4f, knockback)), from);
             return;
         }
     }

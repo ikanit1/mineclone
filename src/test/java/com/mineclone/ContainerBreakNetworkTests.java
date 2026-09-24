@@ -68,23 +68,22 @@ final class ContainerBreakNetworkTests {
         final NetworkTests.TestContext guest = new NetworkTests.TestContext(null, "guest");
         final Multiplayer hostNet, guestNet = new Multiplayer(guest);
         final boolean sockets;
+        final Path folder;
 
         Room(boolean sockets) throws Exception {
             this.sockets = sockets;
-            Path folder = Files.createTempDirectory("mineclone-container-break-");
+            folder = Files.createTempDirectory("mineclone-container-break-");
             Path config = folder.resolve("server.properties");
-            Files.writeString(config, "photon=false\nupnp=false\nsaves-dir="
+            Files.writeString(config, "photon=false\nupnp=false\nseed=42\nsaves-dir="
                     + folder.resolve("saves").toString().replace('\\', '/') + "\n");
             host = new DedicatedServer(ServerConfig.load(config.toFile()));
-            Field worldField = DedicatedServer.class.getDeclaredField("world");
-            worldField.setAccessible(true);
-            World world = new World(42);
-            world.getChunk(0, 0);
-            worldField.set(host, world);
+            // The real opening: its world, its entity session and its block observer.
+            var open = DedicatedServer.class.getDeclaredMethod("openWorld");
+            open.setAccessible(true);
+            check((boolean) open.invoke(host), "the server refused to open its world");
             Field netField = DedicatedServer.class.getDeclaredField("net");
             netField.setAccessible(true);
             hostNet = (Multiplayer) netField.get(host);
-            world.setBlockObserver(hostNet::onWorldBlockChanged);
             guest.onWorldStarted = w -> w.getChunk(0, 0);
             LoopbackTransport.reset();
             if (sockets) {
@@ -119,11 +118,21 @@ final class ContainerBreakNetworkTests {
             throw new AssertionError("timed out waiting for container block/item replication");
         }
 
-        @Override public void close() {
+        @Override public void close() throws Exception {
             guestNet.stop(null);
             hostNet.update(.1f);
             hostNet.stop(null);
             LoopbackTransport.reset();
+            Field loaderField = DedicatedServer.class.getDeclaredField("loader");
+            loaderField.setAccessible(true);
+            ((ChunkLoader) loaderField.get(host)).shutdown();
+            Field saveField = DedicatedServer.class.getDeclaredField("save");
+            saveField.setAccessible(true);
+            ((com.mineclone.save.SaveManager) saveField.get(host)).flushAndAwait();
+            try (var paths = Files.walk(folder)) {
+                for (Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList())
+                    Files.deleteIfExists(path);
+            }
         }
     }
 }

@@ -61,29 +61,68 @@ guest the store holds the host's snapshots and no session exists.
 
 | Seam | Game (host) | Dedicated server |
 | --- | --- | --- |
-| `WorldEvents` — what to show | `game.EntityPresentation`: voices, splashes, rage, footprints, fire, deaths, sound cues | `WorldEvents.NONE` |
+| `WorldEvents` — what to show | `game.EntityPresentation`: voices, splashes, rage, footprints, fire, deaths, blasts, sound cues | `WorldEvents.NONE` |
 | `Host.mobFocus` | its own player | `centre()`: the first guest, else the spawn point |
 | `Host.hostileMobs` | survival mode | `!creative` in `server.properties` |
 | `Host.focusIsBody` | yes: mobs are pushed out of the player | no: the focus is only a point |
-| `Host.mobShots` | the host's projectile list | none — nothing would fly the arrows until SIM-04, so skeletons close in |
-| `Host.mobStruck / mobExploded / mobLoot` | player damage and knockback, `detonate`, `giveMobDrop` | nothing yet |
+| `Host.mobStruck` | player damage and knockback | nothing yet (SIM-07) |
+| `Host.projectileTargets` | its own player and the guests | the guests |
+| `Host.itemCollector` | its own player picks up items and its arrows | none: guests ask with `C_ITEM_PICK` |
+| `Host.blasted` | a local player is thrown back | nothing |
 
 `WorldEvents` only reads; the session calls it in simulation order. `Host` is
-temporary by design: explosions, drops and projectiles move into the session with
-SIM-04, blows go to `Participant.damage` of a chosen target with SIM-07, and the
-single focus gives way to all participants with SIM-05. Collisions handle each
-pair once, by the earlier mob in the list (`MobSpatialGrid.order`), without the
-per-frame identity map the game used to allocate.
+temporary by design: blows go to `Participant.damage` of a chosen target with
+SIM-07, and the single focus gives way to all participants with SIM-05.
+Collisions handle each pair once, by the earlier mob in the list
+(`MobSpatialGrid.order`), without the per-frame identity map the game used to
+allocate.
 
 The server gained one behaviour by sharing the loop: its mobs are now pushed
 apart like the host's instead of standing inside one another.
 
+## World session: items, arrows, blasts, drops, saving (SIM-04)
+
+`EntityStore` also holds the items lying about and the arrows; `NetContext`
+exposes them. The session ticks both for the host and the server:
+
+- **Items** fall, float, merge every `ITEM_MERGE_INTERVAL` and expire; past
+  `MAX_ITEMS` the oldest goes. `addItem` / `dropStack` are the one door for
+  loose stacks on the host. Items restored with a chunk enter through
+  `adoptChunkItems`: the game calls it when the chunk's mesh arrives, the server
+  from `ChunkLoader.setChunkLiveListener` once the chunk's light is in.
+  `adoptFallingDrops` takes what landing sand broke.
+- **Arrows** fly and strike mobs and the targets the host names. Mob arrows now
+  exist on the server too: skeletons shoot there instead of closing in.
+- **Blasts** (`explode`): the blocks the centre can see go (`Explosion`), every
+  participant in range gets `Participant.damage` with an `EXPLOSION` source —
+  guests included, over `S_PLAYER_HURT` — every other mob is hurt, then
+  `WorldEvents.explosion` shows it.
+- **Drops** (`dropLoot`): an eaten mob drops nothing, nor does a mob killed by a
+  creative participant; everything else rolls its loot table, natural deaths
+  included, whatever mode the host plays in. `Mob.killer` is the participant
+  number of the lethal hit: the host's melee (`hurtLimb(..., attacker)`), a
+  guest's `C_MOB_HIT` (`Mob.hurtBy`) and an arrow's owner
+  (`Hittable.participantId`) pass it. A guest reads as creative until it
+  announces its mode, so its kills in the first two seconds drop nothing.
+- **Saving** (`snapshotChunk`): blocks, containers and the items lying in the
+  chunk — live ones and restored ones not yet adopted — in one snapshot, or null
+  when nothing changed. The game and the server call the same method.
+
+`ServerSimulationTests` drives the real server tick: an item on the ground
+(which used to throw out of the tick), items saved in a chunk surviving a server
+session (the server used to erase them on its first save), a guest's arrow that
+flies and lands (it used to hang where it was shot), a creeper that blows a
+crater and hurts the guest (it used to die silently), a guest's kill that drops
+beef on the server and at the guest, and a creative guest's kill that drops
+nothing. The parity hash was re-recorded before this move with a transcription
+of `Game.detonate` (`a8e5fd7`) and the session reproduces it.
+
 `SessionParityTests` pins the loop. Its scenario — seed 20260922 at night, nine
 placed mobs (two cows standing in each other, a pig in the participant's way), a
 participant on a fixed path striking the nearest mob every two seconds, natural
-spawning, 600 ticks of 50 ms — is hashed tick by tick. The expected hash was
-recorded by a transcription of `Game.updateMobs` before the move (commit
-`79318ba`); pushing a pair twice, never pushing mobs out of the participant, or
-changing the sense interval fails it. Wolf kills are not reached by the scenario.
-The same run with a recording `WorldEvents` gives the same hash, and the
-dedicated server's source contains no mob rules of its own.
+spawning, 600 ticks of 50 ms — is hashed tick by tick, with every block the run
+changes. The expected hash was recorded by a transcription of `Game.updateMobs`
+before the move (commit `79318ba`); pushing a pair twice, never pushing mobs out
+of the participant, or changing the sense interval fails it. Wolf kills are not
+reached by the scenario. The same run with a recording `WorldEvents` gives the
+same hash, and the dedicated server's source contains no mob rules of its own.

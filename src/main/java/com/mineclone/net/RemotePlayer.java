@@ -175,6 +175,12 @@ public final class RemotePlayer implements com.mineclone.world.entity.Hittable {
             onHurt.accept(damage);
     }
 
+    /** A guest's arrow remembers the guest's number. */
+    @Override
+    public int participantId() {
+        return actor;
+    }
+
     public String chatText() {
         return chatText;
     }

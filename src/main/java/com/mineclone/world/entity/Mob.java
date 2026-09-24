@@ -309,6 +309,12 @@ public class Mob implements Hittable {
     public boolean eaten;
     /** True only for a lethal participant hit; natural deaths retain their legacy loot behavior. */
     public boolean killedByParticipant;
+    /**
+     * The participant whose hit killed this mob, or {@code NO_ATTACKER}: a mob,
+     * the world, or a player hit that did not say who struck. A creative killer
+     * takes no drop.
+     */
+    public int killer = com.mineclone.world.damage.DamageSource.NO_ATTACKER;
 
     /** Контекст тика для дерева поведения — один на моба, не на кадр. */
     private final MobContext ctx = new MobContext();
@@ -1368,6 +1374,16 @@ public class Mob implements Hittable {
      *                 укус другого моба злит только в сторону укусившего
      */
     public boolean hurt(float amount, float fromX, float fromZ, float knockbackMul, boolean byPlayer) {
+        return hurt(amount, fromX, fromZ, knockbackMul, byPlayer, com.mineclone.world.damage.DamageSource.NO_ATTACKER);
+    }
+
+    /** A participant's hit: {@code attacker} is its number, remembered if the hit kills. */
+    public boolean hurtBy(float amount, float fromX, float fromZ, float knockbackMul, int attacker) {
+        return hurt(amount, fromX, fromZ, knockbackMul, true, attacker);
+    }
+
+    private boolean hurt(float amount, float fromX, float fromZ, float knockbackMul, boolean byPlayer,
+                         int attacker) {
         if (invulnTime > 0f || dead)
             return false;
         invulnTime = INVULN_TIME;
@@ -1393,6 +1409,7 @@ public class Mob implements Hittable {
         if (health <= 0f) {
             eaten = !byPlayer;
             killedByParticipant = byPlayer;
+            killer = attacker;
             die(dx, dz, true);
         }
         return true;
@@ -1471,10 +1488,16 @@ public class Mob implements Hittable {
     /** Targeted hit used by melee/ranged weapons after the AABB intersection. */
     public boolean hurtLimb(float amount, LimbDamage.Limb limb, float fromX, float fromZ,
                             float knockbackMul) {
+        return hurtLimb(amount, limb, fromX, fromZ, knockbackMul, com.mineclone.world.damage.DamageSource.NO_ATTACKER);
+    }
+
+    /** The same hit by the participant numbered {@code attacker}. */
+    public boolean hurtLimb(float amount, LimbDamage.Limb limb, float fromX, float fromZ,
+                            float knockbackMul, int attacker) {
         if (limb != null)
             limbs.hit(limb, Math.min(0.45f, amount / Math.max(1f, type.maxHealth)));
         float scaled = limb == LimbDamage.Limb.HEAD ? amount * limbs.headDamageMultiplier() : amount;
-        return hurt(scaled, fromX, fromZ, knockbackMul, true);
+        return hurt(scaled, fromX, fromZ, knockbackMul, true, attacker);
     }
 
     /** Зол ли хищник на игрока. */
@@ -1493,6 +1516,12 @@ public class Mob implements Hittable {
     public void takeProjectile(float damage, float fromX, float fromZ, float knockback,
                                boolean fromPlayer) {
         hurt(damage, fromX, fromZ, knockback, fromPlayer);
+    }
+
+    @Override
+    public void takeProjectile(float damage, float fromX, float fromZ, float knockback,
+                               boolean fromPlayer, int attacker) {
+        hurt(damage, fromX, fromZ, knockback, fromPlayer, attacker);
     }
 
     /** Дистанция до попадания луча в AABB моба, либо -1. */

@@ -26,6 +26,10 @@ final class EntityPresentation implements WorldEvents {
         void cueSound(Vector3f at, float loudness, boolean danger);
         void dropFootprint(float x, float y, float z, float yaw, float size, boolean left);
         void kickSnow(float x, float y, float z, float dirX, float dirZ, boolean hard);
+        /** A sound at a point, heard through walls: a blast is loud. */
+        void playAt(List<String> paths, Vector3f at, float volume, float pitch);
+        /** A crater changes the shadows at once. */
+        void invalidateShadows();
     }
 
     private static final float[] RAGE_SPARKS = { 0.9f, 0.15f, 0.1f };
@@ -113,6 +117,17 @@ final class EntityPresentation implements WorldEvents {
         particles.emitMobFlame(m.position.x, m.position.y + m.type.height * 0.5f, m.position.z);
         if (Math.random() < 0.35)
             particles.emitMobSmoke(m.position.x, m.position.y + m.type.height * 0.9f, m.position.z);
+    }
+
+    @Override
+    public void explosion(float x, float y, float z, Mob source) {
+        if (source != null)
+            particles.emitMobDeath(x, y, z, source.type.particleColor);
+        for (int i = 0; i < 12; i++)
+            particles.emitMobFlame(x + (float) (Math.random() - 0.5) * 2f,
+                    y + (float) Math.random() * 1.5f, z + (float) (Math.random() - 0.5) * 2f);
+        stage.playAt(sounds.ambientThunder(), new Vector3f(x, y, z), 0.9f, 1.5f);
+        stage.invalidateShadows();
     }
 
     @Override

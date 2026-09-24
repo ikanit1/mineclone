@@ -25,4 +25,19 @@ public interface Hittable {
      */
     void takeProjectile(float damage, float fromX, float fromZ, float knockback,
                         boolean fromPlayer);
+
+    /**
+     * Принять попадание от участника с номером {@code attacker}
+     * ({@link com.mineclone.world.damage.DamageSource#NO_ATTACKER} — не от
+     * участника): моб помнит, чья стрела его убила.
+     */
+    default void takeProjectile(float damage, float fromX, float fromZ, float knockback,
+                                boolean fromPlayer, int attacker) {
+        takeProjectile(damage, fromX, fromZ, knockback, fromPlayer);
+    }
+
+    /** Номер участника, если это он, иначе {@code NO_ATTACKER}: так стрела знает, кто её пустил. */
+    default int participantId() {
+        return com.mineclone.world.damage.DamageSource.NO_ATTACKER;
+    }
 }
