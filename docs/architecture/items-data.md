@@ -40,6 +40,8 @@ in server archives too; a boot without item JSON is not a valid distribution.
 
 ## Checks and tuning
 
-`run-tests.ps1 -Only core,inventory,save` covers recipes, tool wear, missing IDs and item persistence. See [world.md](world.md) for adding a block without renumbering saved IDs.
+Recipes and smelting: [recipes.md](recipes.md). Drops from blocks, mobs and chests: [loot.md](loot.md).
+
+`run-tests.ps1 -Only core,inventory,save,data` covers recipes, loot, tool wear, missing IDs and item persistence. See [world.md](world.md) for adding a block without renumbering saved IDs.
 
 Knobs: [TUNING.md](../TUNING.md). Entry points: [PROJECT_MAP.md](../PROJECT_MAP.md).

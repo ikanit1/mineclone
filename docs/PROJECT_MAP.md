@@ -115,7 +115,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 
 | Type | Purpose |
 |---|---|
-| [LootContext](../src/main/java/com/mineclone/item/loot/LootContext.java) | Inputs to one loot roll; a null session RNG explicitly requests deterministic chest loot. |
+| [LootContext](../src/main/java/com/mineclone/item/loot/LootContext.java) | Inputs to one loot roll. |
 | [LootReachability](../src/main/java/com/mineclone/item/loot/LootReachability.java) | A least fixed point of obtainable items. |
 | [LootRegistry](../src/main/java/com/mineclone/item/loot/LootRegistry.java) | Content registry; block harvestability stays in BlockProps, tables decide only the outputs. |
 | [LootTable](../src/main/java/com/mineclone/item/loot/LootTable.java) | Validated immutable weighted pools. |
@@ -145,7 +145,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [NetTransport](../src/main/java/com/mineclone/net/NetTransport.java) | Транспорт: комната, участники и байты между ними. |
 | [PacketBuf](../src/main/java/com/mineclone/net/PacketBuf.java) | Компактный двоичный кадр: чтение и запись одним объектом. |
 | [PhotonTransport](../src/main/java/com/mineclone/net/PhotonTransport.java) | Комната в облаке Photon. |
-| [PlayerData](../src/main/java/com/mineclone/net/PlayerData.java) | A detached player checkpoint; world blocks belong to the world's own save. |
+| [PlayerData](../src/main/java/com/mineclone/net/PlayerData.java) | The protocol-v7 view of a player checkpoint; world blocks belong to the world's own save. |
 | [RemoteMob](../src/main/java/com/mineclone/net/RemoteMob.java) | Render interpolation only: clients never run the authoritative mob AI or physics. |
 | [RemoteParticipant](../src/main/java/com/mineclone/net/RemoteParticipant.java) | A guest as the host's simulation sees it. |
 | [RemotePlayer](../src/main/java/com/mineclone/net/RemotePlayer.java) | Чужой игрок: что о нём известно и где его рисовать. |
@@ -250,8 +250,8 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [LevelData](../src/main/java/com/mineclone/save/LevelData.java) | Everything stored in level.dat. |
 | [LevelLoad](../src/main/java/com/mineclone/save/LevelLoad.java) | A missing file is the only read result that permits creating a new world. |
 | [Options](../src/main/java/com/mineclone/save/Options.java) | Global settings; sibling of saves/ (not per-world). |
-| [PlayerRecord](../src/main/java/com/mineclone/save/PlayerRecord.java) | Immutable player checkpoint shared by owner and guest storage. |
-| [PlayerRecordCodec](../src/main/java/com/mineclone/save/PlayerRecordCodec.java) | One section payload for owner and guest storage; network v7 remains a separate adapter. |
+| [PlayerRecord](../src/main/java/com/mineclone/save/PlayerRecord.java) | One player's checkpoint, in the same shape for the host's level.dat, a guest's players/.dat and the network adapter. |
+| [PlayerRecordCodec](../src/main/java/com/mineclone/save/PlayerRecordCodec.java) | The byte form of a PlayerRecord: named sections through SectionCodec. |
 | [RunLengthCodec](../src/main/java/com/mineclone/save/RunLengthCodec.java) | Bounded byte runs; the enclosing save stream also applies GZIP. |
 | [SaveFormat](../src/main/java/com/mineclone/save/SaveFormat.java) | Single source of truth for the on-disk save format. |
 | [SaveManager](../src/main/java/com/mineclone/save/SaveManager.java) | All save-file I/O. |

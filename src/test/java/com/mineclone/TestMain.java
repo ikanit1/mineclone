@@ -60,6 +60,8 @@ public final class TestMain {
         suite("core", "CoreTests", CoreTests::runAll);
         suite("core", "BlockOrdinalTests", BlockOrdinalTests::runAll);
         suite("data", "RecipeDataTests", RecipeDataTests::runAll);
+        suite("data", "LootTableTests", LootTableTests::runAll);
+        suite("data", "ReachabilityTests", ReachabilityTests::runAll);
         suite("save", "CoreTests/save", CoreTests::runSaveTests);
         suite("save", "SaveSafetyTests", SaveSafetyTests::runAll);
         suite("save", "DedicatedServerSaveTests", DedicatedServerSaveTests::runAll);

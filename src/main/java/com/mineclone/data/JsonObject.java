@@ -158,7 +158,9 @@ public final class JsonObject {
         return map.get(key);
     }
 
+    /** An empty key names this object itself: a file-level error has no key to blame. */
     private String child(String key) {
+        if (key.isEmpty()) return path;
         return path.isEmpty() ? key : path + "." + key;
     }
 }

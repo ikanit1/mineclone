@@ -2884,9 +2884,11 @@ public class Game {
         // Задранного волком съели — мяса с него нет.
         if (m.eaten)
             return;
+        // No tool: the host's held item says nothing about a guest's or an
+        // arrow's kill, and no entity table asks for a weapon yet.
         var context = new com.mineclone.item.loot.LootContext(world.seed,
                 (int) Math.floor(m.position.x), (int) Math.floor(m.position.y), (int) Math.floor(m.position.z),
-                heldTool(), m.killedByParticipant, gameMode, itemRandom);
+                null, m.killedByParticipant, gameMode, itemRandom);
         for (var drop : com.mineclone.item.Items.get().loot().entityDrops(m.type, context))
             dropItem(drop, m.position.x, m.position.y + m.type.height * 0.5f, m.position.z);
     }

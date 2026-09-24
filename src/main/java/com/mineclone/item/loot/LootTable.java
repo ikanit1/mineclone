@@ -157,7 +157,7 @@ public final class LootTable {
         for (int i = 0; i < raw.size(); i++) {
             JsonObject value = parent.element("conditions", i);
             value.allowOnly("tool_class", "tool_level_min", "killed_by_participant", "random_chance", "not_creative");
-            if (value.keys().isEmpty()) throw value.error("", "empty condition");
+            if (value.keys().isEmpty()) throw parent.error("conditions[" + i + "]", "empty condition");
             ToolClass toolClass = null;
             if (value.has("tool_class")) {
                 toolClass = ToolClass.byName(value.string("tool_class"));

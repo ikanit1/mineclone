@@ -78,7 +78,7 @@ folders; check `.gitignore` before creating a new top-level output directory.
 | `render` | GPU lifetime, meshing, shadows, water/post; [rendering](docs/architecture/rendering.md) |
 | `audio` | OpenAL, acoustic probes, rain; [audio](docs/architecture/audio.md) |
 | `audio` music, `game/MusicSense` | Catalog, scheduling and PCM streaming; [music](docs/architecture/music.md) |
-| `data`, `item` | JSON packs, ResourceId and registry; [items-data](docs/architecture/items-data.md) |
+| `data`, `item` | JSON packs, ResourceId, registry, recipes and loot; [items-data](docs/architecture/items-data.md), [loot](docs/architecture/loot.md) |
 | `ui` | Screen stack and input; [ui-menus](docs/architecture/ui-menus.md) |
 | `ui/container` | Inventory/chest/furnace gestures; [containers](docs/architecture/containers.md) |
 | `save` | Format readers, atomic writes, protected worlds; [saves](docs/architecture/saves.md) |
@@ -86,7 +86,7 @@ folders; check `.gitignore` before creating a new top-level output directory.
 | `net/connect`, `net/direct` | Connection ladder, LAN/NAT; [network](docs/architecture/network.md) |
 | `net/photon` | Photon wire transport; [network](docs/architecture/network.md) |
 | `server` | Headless host, console and configuration; [server](docs/architecture/server.md) |
-| `assets/data` | Item, recipe, tag data shipped with game and server; [items-data](docs/architecture/items-data.md) |
+| `assets/data` | Item, recipe, loot and tag data shipped with game and server; [items-data](docs/architecture/items-data.md) |
 | `src/test/java` | TestMain registry, CoreTests and focused suites; [TESTING](docs/TESTING.md) |
 | `tools` | Offline importers/previews/benchmarks; [TOOLS](docs/TOOLS.md) |
 

@@ -7,7 +7,13 @@ import java.util.Objects;
 import java.util.SplittableRandom;
 import java.util.random.RandomGenerator;
 
-/** Inputs to one loot roll; a null session RNG explicitly requests deterministic chest loot. */
+/**
+ * Inputs to one loot roll.
+ *
+ * <p>{@code tool} is the mining tool for block drops and null for mobs and
+ * chests. A null session RNG explicitly requests deterministic chest loot: the
+ * result is then a pure function of the world seed, the position and the table.
+ */
 public record LootContext(long worldSeed, int x, int y, int z, ItemStack tool,
                           boolean killedByParticipant, GameMode mode, RandomGenerator sessionRandom) {
     public LootContext { Objects.requireNonNull(mode, "mode"); }

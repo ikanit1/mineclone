@@ -1,0 +1,16 @@
+unknown-item|mineclone/loot_tables/blocks/stone.json|pools[0].entries[0].item|unknown item
+unknown-tag|mineclone/loot_tables/blocks/stone.json|pools[0].entries[0].item|unknown tag
+unknown-block|mineclone/loot_tables/blocks/moon_rock.json||unknown block moon_rock
+unknown-mob|mineclone/loot_tables/entities/dragon.json||unknown mob dragon
+wrong-folder|mineclone/loot_tables/misc/stone.json||must be in blocks, entities or chests
+inverted-range|mineclone/loot_tables/chests/ruin.json|pools[0].entries[0].count|minimum exceeds maximum
+zero-weight|mineclone/loot_tables/chests/ruin.json|pools[0].entries[0].weight|expected a finite number
+unknown-property|mineclone/loot_tables/chests/ruin.json|pools[0].bonus|unknown property
+empty-entries|mineclone/loot_tables/chests/ruin.json|pools[0].entries|use pools:[] for empty loot
+damage-on-stackable|mineclone/loot_tables/chests/ruin.json|pools[0].entries[0].functions|set_damage requires durable items
+chance-above-one|mineclone/loot_tables/entities/cow.json|conditions[0].random_chance|expected a finite number
+unknown-tool-class|mineclone/loot_tables/blocks/stone.json|pools[0].conditions[0].tool_class|unknown tool class
+too-many-units|mineclone/loot_tables/chests/ruin.json|pools[0].rolls|more than 4096 item units
+empty-condition|mineclone/loot_tables/entities/cow.json|conditions[0]|empty condition
+fractional-count|mineclone/loot_tables/chests/ruin.json|pools[0].entries[0].count|expected an integer
+missing-pools|mineclone/loot_tables/chests/ruin.json|pools|missing

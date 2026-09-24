@@ -22,7 +22,7 @@ public final class JsonException extends RuntimeException {
     }
 
     public JsonException(String source, String path, String message) {
-        super(source + ": " + path + ": " + message);
+        super(source + (path.isEmpty() ? "" : ": " + path) + ": " + message);
         this.source = source;
         this.line = 0;
         this.column = 0;
