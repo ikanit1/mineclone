@@ -168,11 +168,18 @@ public final class RemotePlayer implements com.mineclone.world.entity.Hittable {
         return health > 0f && gameMode != com.mineclone.world.GameMode.CREATIVE.ordinal();
     }
 
+    /**
+     * The guest owns its health: the hit goes to it as {@code S_PLAYER_HURT},
+     * and the guest's own invulnerability window decides whether it lands.
+     *
+     * @return true when the hit was sent
+     */
     @Override
-    public void takeProjectile(float damage, float fromX, float fromZ, float knockback,
-                               boolean fromPlayer) {
-        if (onHurt != null)
-            onHurt.accept(damage);
+    public boolean damage(com.mineclone.world.damage.DamageSource source, float amount) {
+        if (!(amount > 0f) || !Float.isFinite(amount) || onHurt == null)
+            return false;
+        onHurt.accept(amount);
+        return true;
     }
 
     /** A guest's arrow remembers the guest's number. */

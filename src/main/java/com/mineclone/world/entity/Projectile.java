@@ -97,8 +97,7 @@ public final class Projectile {
             Hittable victim = nearest(targets, dir, span);
             if (victim != null) {
                 position.fma(Math.max(0f, hitDistance(victim, dir)), dir);
-                victim.takeProjectile(damage, position.x, position.z, KNOCKBACK, fromPlayer,
-                        owner == null ? com.mineclone.world.damage.DamageSource.NO_ATTACKER : owner.participantId());
+                victim.damage(source(), damage);
                 struck = victim;
                 dead = true;
                 return Result.HIT_TARGET;
@@ -113,6 +112,20 @@ public final class Projectile {
             remaining -= span;
         }
         return Result.FLYING;
+    }
+
+    /**
+     * Чья это стрела: игрока — по номеру, если стрелок ещё здесь; моба — по
+     * виду. Бьёт она из точки, где сейчас.
+     */
+    public com.mineclone.world.damage.DamageSource source() {
+        var kind = com.mineclone.world.damage.DamageType.PROJECTILE;
+        if (fromPlayer)
+            return com.mineclone.world.damage.DamageSource.byPlayer(kind,
+                    owner == null ? com.mineclone.world.damage.DamageSource.NO_ATTACKER : owner.participantId(),
+                    position.x, position.y, position.z, KNOCKBACK);
+        return com.mineclone.world.damage.DamageSource.byMob(kind, owner instanceof Mob mob ? mob.type : null,
+                position.x, position.y, position.z, KNOCKBACK);
     }
 
     /** Ближайшая цель на отрезке, кроме владельца. */

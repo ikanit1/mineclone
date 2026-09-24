@@ -113,8 +113,10 @@ public final class ParticipantTests {
                 "invalid amounts");
         player.setGameMode(GameMode.CREATIVE);
         check(participant.mode() == GameMode.CREATIVE, "local mode");
-        check(!participant.damage(melee, 3) && !participant.damage(DamageSource.of(DamageType.VOID), 3),
-                "creative damage");
+        check(!participant.damage(melee, 3) && player.health == Player.MAX_HEALTH, "creative damage");
+        // SURV-01: the void is the one thing creative does not survive.
+        check(participant.damage(DamageSource.of(DamageType.VOID), 3) && player.health == Player.MAX_HEALTH - 3,
+                "the void spared a creative player");
         player.setGameMode(GameMode.SURVIVAL);
         player.health = 0;
         check(!participant.alive() && !participant.damage(DamageSource.of(DamageType.FALL), 1), "dead participant");
@@ -131,10 +133,16 @@ public final class ParticipantTests {
         check(source.attackerId() == DamageSource.NO_ATTACKER && source.attackerType() == null
                 && Float.isNaN(source.originX()) && source.knockback() == 0, "anonymous source");
         for (Runnable bad : new Runnable[] {
-                () -> new DamageSource(null, -1, null, Float.NaN, Float.NaN, Float.NaN, 0),
-                () -> new DamageSource(DamageType.MELEE, -2, null, Float.NaN, Float.NaN, Float.NaN, 0),
-                () -> new DamageSource(DamageType.MELEE, 3, null, 1, Float.NaN, 2, 0),
-                () -> new DamageSource(DamageType.MELEE, 3, null, 1, 2, 3, -1),
+                () -> new DamageSource(null, -1, null, Float.NaN, Float.NaN, Float.NaN, 0, null, 0),
+                () -> new DamageSource(DamageType.MELEE, -2, null, Float.NaN, Float.NaN, Float.NaN, 0, null,
+                        DamageSource.PLAYER),
+                () -> new DamageSource(DamageType.MELEE, 3, null, 1, Float.NaN, 2, 0, null, DamageSource.PLAYER),
+                () -> new DamageSource(DamageType.MELEE, 3, null, 1, 2, 3, -1, null, DamageSource.PLAYER),
+                // A number without the player flag, a player that is a mob, an unknown flag.
+                () -> new DamageSource(DamageType.MELEE, 3, null, 1, 2, 3, 1, null, 0),
+                () -> new DamageSource(DamageType.MELEE, -1, com.mineclone.world.entity.MobType.ZOMBIE,
+                        1, 2, 3, 1, null, DamageSource.PLAYER),
+                () -> new DamageSource(DamageType.MELEE, -1, null, 1, 2, 3, 1, null, 4),
                 () -> new ArmorView(-1, 0) }) {
             boolean rejected = false;
             try { bad.run(); }

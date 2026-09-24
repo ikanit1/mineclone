@@ -39,16 +39,9 @@ public final class LocalParticipant implements Participant {
     @Override public ArmorView armor() { return ArmorView.NONE; }
     @Override public boolean local() { return true; }
 
-    /**
-     * Attacks go through the post-hit invulnerability window, exactly as a
-     * zombie's punch did before participants existed; environmental damage
-     * keeps its caller's own rate.
-     */
+    /** The player's own damage path: attacks share its invulnerability window, the world's harm does not. */
     @Override
     public boolean damage(DamageSource source, float amount) {
-        if (!alive() || !Float.isFinite(amount) || amount <= 0f || player.isCreative()) return false;
-        if (!source.type().bypassesInvulnerability()) return player.takeAttackDamage(amount);
-        player.takeDamage(amount);
-        return true;
+        return player.damage(source, amount);
     }
 }

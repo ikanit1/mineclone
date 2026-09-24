@@ -104,6 +104,8 @@ final class NetworkTests {
                 NetworkTests::testPlayerState);
         r.run("mobs stream to the guest and the guest's hit lands on the host",
                 NetworkTests::testMobs);
+        r.run("a guest's hit with broken numbers lands without knockback or an exception",
+                NetworkTests::testMobHitBrokenNumbers);
         r.run("a guest's shot is fired by the host and seen by both",
                 NetworkTests::testProjectiles);
         r.run("the host can finally hurt a guest", NetworkTests::testHostHurtsGuest);
@@ -746,6 +748,31 @@ final class NetworkTests {
         p.host.mobs.clear();
         p.pump(3);
         assertEq("убранный моб исчезает и у участника", 0, p.guest.mobs.size());
+        p.close();
+    }
+
+    /**
+     * SURV-01 regression: the guest's numbers become a damage source, whose
+     * checks throw on a half-finite origin — inside the host's packet handler.
+     * Before, a NaN knockback made the mob's position NaN.
+     */
+    private static void testMobHitBrokenNumbers() {
+        Pair p = Pair.open(4243L, "Мир", 0.5f);
+        Mob cow = new Mob(com.mineclone.world.entity.MobType.COW, 10f, 70f, 10f, new java.util.Random(2));
+        float full = cow.health;
+        p.host.mobs.add(cow);
+        p.pump(3);
+        Mob shown = p.guest.mobs.get(0);
+        p.guestNet.requestMobHit(shown, 3f, Float.NaN, Float.NaN, Float.POSITIVE_INFINITY);
+        p.pump(3);
+        assertTrue("the hit landed", cow.health == full - 3f);
+        try {
+            var knock = Mob.class.getDeclaredField("knockX");
+            knock.setAccessible(true);
+            assertTrue("and knocked nothing", (float) knock.get(cow) == 0f);
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError(e);
+        }
         p.close();
     }
 

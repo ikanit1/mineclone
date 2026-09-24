@@ -49,10 +49,6 @@ public final class RemoteParticipant implements Participant {
     /** @return true when the hit was sent; the guest may still refuse it inside its window */
     @Override
     public boolean damage(DamageSource source, float amount) {
-        if (!alive() || mode() == GameMode.CREATIVE || !Float.isFinite(amount) || amount <= 0f
-                || player.onHurt == null)
-            return false;
-        player.onHurt.accept(amount);
-        return true;
+        return alive() && mode() != GameMode.CREATIVE && player.damage(source, amount);
     }
 }

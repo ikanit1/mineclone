@@ -1668,7 +1668,8 @@ public class Game {
         advancedFeedback.update(dt,
                 Math.max(0.03f, daylight * (1f - atmosphere.cloudiness * 0.55f)));
         if (advancedFeedback.active(AdvancedFeedback.Effect.POISON))
-            player.takeDamage(dt * 0.35f);
+            player.damage(com.mineclone.world.damage.DamageSource.of(
+                    com.mineclone.world.damage.DamageType.POISON), dt * 0.35f);
         soundCues.update(dt);
         probeEffects = System.nanoTime() - effectsStart;
         long ticksStart = System.nanoTime();
@@ -2497,8 +2498,9 @@ public class Game {
             // У участника моб только показывается: настоящий урон и отброс
             // считает хозяин, а местный удар нужен ради отклика.
             net.requestMobHit(aimedMob, damage, knockback, player.position.x, player.position.z);
-            if (aimedMob.hurtLimb(damage, limb, player.position.x, player.position.z, knockback,
-                    net.localActor())) {
+            var hit = com.mineclone.world.damage.DamageSource.byPlayer(com.mineclone.world.damage.DamageType.MELEE,
+                    net.localActor(), player.position.x, player.position.y, player.position.z, knockback).onLimb(limb);
+            if (aimedMob.damage(hit, damage)) {
                 playOccluded(sounds.mobHurt(aimedMob.type), aimedMob.soundPosition(),
                         0.8f, (crit ? 1.1f : 0.9f) + 0.2f * (float) Math.random());
                 sound.playOneOfAt(sounds.playerAttack(crit ? "crit" : "strong"),
@@ -3057,14 +3059,13 @@ public class Game {
         }
 
         @Override
-        public void takeProjectile(float damage, float fromX, float fromZ, float knockback,
-                                   boolean fromPlayer) {
-            if (fromPlayer)
-                return;               // своя стрела игрока не кусает
+        public boolean damage(com.mineclone.world.damage.DamageSource source, float amount) {
+            if (source.byPlayer())
+                return false;         // своя стрела игрока не кусает
             // Вспышку, толчок камеры и тень на сердцах поднимает
             // updateDamageFeedback по самой потере здоровья — источник ему
             // не нужен, и новый вид урона не требует его вспоминать.
-            player.takeAttackDamage(damage);
+            return player.damage(source, amount);
         }
     }
 
@@ -3976,7 +3977,8 @@ public class Game {
         int y = (int) Math.floor(player.position.y);
         if (world.getBlock(x, y, z) == BlockType.FIRE
                 || world.getBlock(x, y + 1, z) == BlockType.FIRE)
-            player.takeDamage(FIRE_DAMAGE_PER_SECOND * dt);
+            player.damage(com.mineclone.world.damage.DamageSource.of(com.mineclone.world.damage.DamageType.FIRE),
+                    FIRE_DAMAGE_PER_SECOND * dt);
     }
 
     /**
@@ -6268,8 +6270,11 @@ public class Game {
             @Override
             public void hurtByHost(float damage) {
                 // Обратную связь поднимет updateDamageFeedback по самой
-                // потере здоровья — ей всё равно, кто и чем ударил.
-                player.takeAttackDamage(damage);
+                // потере здоровья — ей всё равно, кто и чем ударил. Протокол
+                // v7 не говорит, чем: всё, что он несёт (удар, стрела, взрыв),
+                // — атака с общим окном неуязвимости.
+                player.damage(com.mineclone.world.damage.DamageSource.of(
+                        com.mineclone.world.damage.DamageType.MELEE), damage);
             }
 
             @Override

@@ -20,6 +20,7 @@ import com.mineclone.world.entity.MobHerd;
 import com.mineclone.world.entity.MobSpatialGrid;
 import com.mineclone.world.entity.MobSpawner;
 import com.mineclone.world.entity.MobTactics;
+import com.mineclone.world.entity.MobType;
 import com.mineclone.world.entity.Projectile;
 import com.mineclone.world.entity.Wildlife;
 import java.util.ArrayList;
@@ -193,14 +194,15 @@ public final class WorldSession {
             if (m.justTookOff) events.mobTookOff(m);
             if (m.justBitMob != null) {
                 Mob prey = m.justBitMob;
-                if (prey.hurt(Wildlife.BITE_DAMAGE, m.position.x, m.position.z, 0.6f, false)) {
+                if (prey.damage(DamageSource.byMob(DamageType.MELEE, m.type, m.position.x, m.position.y,
+                        m.position.z, 0.6f), Wildlife.BITE_DAMAGE)) {
                     events.mobBit(m, prey);
                     if (prey.dead) fed.add(m);
                 }
             }
             if (m.justStepSound) events.mobStep(m);
-            if (m.justAttacked && target != null && target.damage(new DamageSource(DamageType.MELEE,
-                    DamageSource.NO_ATTACKER, m.type, m.position.x, m.position.y, m.position.z, 1f), m.attackDamage()))
+            if (m.justAttacked && target != null && target.damage(DamageSource.byMob(DamageType.MELEE,
+                    m.type, m.position.x, m.position.y, m.position.z, 1f), m.attackDamage()))
                 host.participantStruck(target, m);
             if (m.justExploded)
                 explode(m.position.x, m.position.y + m.type.height * 0.5f, m.position.z, Explosion.RADIUS, m);
@@ -308,23 +310,26 @@ public final class WorldSession {
     public void explode(float x, float y, float z, float radius, Mob source) {
         for (int[] at : Explosion.destroyed(world, x, y, z, radius))
             world.setBlock(at[0], at[1], at[2], BlockType.AIR);
+        MobType by = source == null ? null : source.type;
+        DamageSource blast = DamageSource.byMob(DamageType.EXPLOSION, by, x, y, z, 1f);
         for (int i = 0; i < participants.size(); i++) {
             Participant p = participants.get(i);
             float d = p.position().distance(x, y, z);
             if (d >= radius)
                 continue;
             float damage = Explosion.damageAt(d, radius, Explosion.MAX_DAMAGE);
-            if (damage > 0f && p.damage(new DamageSource(DamageType.EXPLOSION, DamageSource.NO_ATTACKER,
-                    source == null ? null : source.type, x, y, z, 1f), damage))
+            if (damage > 0f && p.damage(blast, damage))
                 host.blasted(p, source);
         }
+        // Mobs are thrown harder than players by the same blast.
+        DamageSource throwing = DamageSource.byMob(DamageType.EXPLOSION, by, x, y, z, 1.8f);
         for (Mob other : entities.mobs) {
             if (other == source || other.dead)
                 continue;
             float d = other.position.distance(x, y, z);
             float damage = Explosion.damageAt(d, radius, Explosion.MAX_DAMAGE);
             if (damage > 0f)
-                other.hurt(damage, x, z, 1.8f, false);
+                other.damage(throwing, damage);
         }
         events.explosion(x, y, z, source);
     }

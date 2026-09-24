@@ -82,6 +82,43 @@ The host decides damage and authoritative mob state.
 по самому продвинутому предмету в инвентаре. Едет в сейве своей секцией
 (`SAVE_SECTION`), поэтому формат уровня из-за неё не поднимался.
 
+## Damage (SURV-01)
+
+Every hit is a `world.damage.DamageSource` handed to `Damageable.damage(source,
+amount)`: `Player`, `Mob`, `RemotePlayer` and the participants all implement it,
+and `Hittable` (what an arrow can hit) extends it.
+
+- **Who dealt it.** A player's hit carries the `PLAYER` flag and the
+  participant number, which may be `NO_ATTACKER` when the shooter has left; a
+  mob's names its `MobType`; the world's has neither. The flag, not the number,
+  decides that a hit was a player's.
+- **Player.** Attacks (kinds that do not bypass invulnerability: melee, arrows,
+  blasts) share the 0.5 s window and delay regeneration; the world's harm —
+  fall, fire, poison, starvation — neither waits for the window nor opens it,
+  its source sets its own rate. Creative survives everything but `VOID`. The
+  last hit that landed is `Player.lastDamageSource` until respawn (the death
+  screen's cause, SURV-07). `ArmorMath.afterArmor` is the one place armor will
+  act (CMB-02); today it leaves every hit whole.
+- **Mob.** The same window for attacks, and a refused hit is refused whole —
+  it no longer wounds a limb (`DamageSource.onLimb`): clicking inside the
+  window used to break a leg without doing damage. A hit with an origin knocks
+  away from it by `knockback` × the usual push and sends grazers running; a
+  player's hit angers a neutral mob; a participant's is avenged (`revengeId`)
+  and credited (`killer`). Killed by another mob's attack (a bite, a blast, a
+  skeleton's arrow) the mob is eaten and drops nothing, as in 1.0; by a player
+  — the player's loot; by the world — as a natural death. A mob's own burning
+  and falling stay in its `update`: they are its tick, not hits.
+- **Arrows.** `Projectile.source()` — the shooter's number for a player's
+  arrow, the shooter's type for a mob's. The host's own player ignores players'
+  arrows (no PvP against the host, as before); guests take everyone's.
+- **Guests.** `C_MOB_HIT` numbers are sanitized before they become a source: a
+  non-finite origin hits without knockback, a broken knockback is none. v7
+  carries no kind to the guest (`S_PLAYER_HURT` is an amount); the guest takes
+  it as an attack. v8 carries the kind (NET-02).
+- **Adapters.** `Player.takeDamage` (`GENERIC`), `takeAttackDamage` (`MELEE`),
+  `Mob.hurt/hurtBy/hurtLimb` and `Hittable.takeProjectile` remain for tests
+  until the end of M2; `DamageTests` fails if anything in `src/main` calls them.
+
 ## Мобы: виды, нрав и тактика
 
 `MobType.Temper` делит мобов на четыре нрава, и от него зависит вся реакция:

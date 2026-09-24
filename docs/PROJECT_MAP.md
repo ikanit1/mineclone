@@ -391,8 +391,9 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 
 | Type | Purpose |
 |---|---|
+| [ArmorMath](../src/main/java/com/mineclone/world/damage/ArmorMath.java) | What armor leaves of a hit. |
 | [ArmorView](../src/main/java/com/mineclone/world/damage/ArmorView.java) | The armor a damage calculation sees on a target. |
-| [DamageSource](../src/main/java/com/mineclone/world/damage/DamageSource.java) | One hit: its kind, who dealt it and where it came from. |
+| [DamageSource](../src/main/java/com/mineclone/world/damage/DamageSource.java) | One hit: its kind, who dealt it, where it came from and where it landed. |
 | [DamageType](../src/main/java/com/mineclone/world/damage/DamageType.java) | What kind of harm a hit is, independent of who dealt it. |
 | [Damageable](../src/main/java/com/mineclone/world/damage/Damageable.java) | Anything that can be hurt through the shared damage vocabulary. |
 
@@ -427,4 +428,4 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [WorldGenUpgrade](../src/main/java/com/mineclone/world/gen/WorldGenUpgrade.java) | Moving a world to a newer generator (GEN-02) without changing land anyone has seen. |
 | [WorldGenVersion](../src/main/java/com/mineclone/world/gen/WorldGenVersion.java) | Which generator made a chunk. |
 
-Top-level declarations: 311.
+Top-level declarations: 312.

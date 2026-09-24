@@ -1359,73 +1359,91 @@ public class Mob implements Hittable {
         health -= 2f * dt;
     }
 
-    /** Удар с обычным отбросом. */
-    public boolean hurt(float amount, float fromX, float fromZ) {
-        return hurt(amount, fromX, fromZ, 1f);
-    }
-
     /**
-     * Получить урон от точки (fromX, fromZ): отбрасывание, вспышка, а мирный
-     * моб убегает.
+     * Единственный путь урона мобу (SURV-01): отброс от точки удара, вспышка,
+     * мирный моб убегает, хищник злится на ударившего игрока.
      *
-     * Попадание в окне неуязвимости игнорируется целиком — иначе урон
-     * определяется тем, как быстро игрок щёлкает мышью.
+     * <p>Атака в окне неуязвимости игнорируется целиком — и не ранит конечность:
+     * иначе урон определялся бы тем, как быстро игрок щёлкает мышью. Урон среды
+     * окна не открывает и не ждёт. Моб, добитый чужой атакой — укусом, взрывом,
+     * стрелой скелета, — съеден и ничего не роняет; добитый игроком — его
+     * добыча; добитый средой роняет как умерший своей смертью. Собственные
+     * горение и падение моб считает в {@code update}: это его тик, а не удар.
      *
-     * @param knockbackMul множитель отброса (спринт-удар бьёт сильнее)
      * @return true, если урон прошёл
      */
-    public boolean hurt(float amount, float fromX, float fromZ, float knockbackMul) {
-        return hurt(amount, fromX, fromZ, knockbackMul, true);
-    }
-
-    /**
-     * @param byPlayer удар нанёс игрок: хищник злится на него и зовёт стаю;
-     *                 укус другого моба злит только в сторону укусившего
-     */
-    public boolean hurt(float amount, float fromX, float fromZ, float knockbackMul, boolean byPlayer) {
-        return hurt(amount, fromX, fromZ, knockbackMul, byPlayer, com.mineclone.world.damage.DamageSource.NO_ATTACKER);
-    }
-
-    /** A participant's hit: {@code attacker} is its number, remembered if the hit kills. */
-    public boolean hurtBy(float amount, float fromX, float fromZ, float knockbackMul, int attacker) {
-        return hurt(amount, fromX, fromZ, knockbackMul, true, attacker);
-    }
-
-    private boolean hurt(float amount, float fromX, float fromZ, float knockbackMul, boolean byPlayer,
-                         int attacker) {
-        if (invulnTime > 0f || dead)
+    @Override
+    public boolean damage(com.mineclone.world.damage.DamageSource source, float amount) {
+        if (dead || !(amount > 0f) || !Float.isFinite(amount))
             return false;
-        invulnTime = INVULN_TIME;
+        boolean attack = !source.type().bypassesInvulnerability();
+        if (attack) {
+            if (invulnTime > 0f)
+                return false;
+            invulnTime = INVULN_TIME;
+        }
+        LimbDamage.Limb limb = source.limb();
+        if (limb != null) {
+            limbs.hit(limb, Math.min(0.45f, amount / Math.max(1f, type.maxHealth)));
+            if (limb == LimbDamage.Limb.HEAD)
+                amount *= limbs.headDamageMultiplier();
+        }
         health -= amount;
         hurtFlash = HURT_FLASH_TIME;
-        float dx = position.x - fromX;
-        float dz = position.z - fromZ;
-        float len = (float) Math.sqrt(dx * dx + dz * dz);
-        if (len > 1e-4f) {
-            knockX = dx / len * KNOCKBACK * knockbackMul;
-            knockZ = dz / len * KNOCKBACK * knockbackMul;
-            if (onGround)
-                velocity.y = KNOCKBACK_UP;
-            if (type.temper == MobType.Temper.PASSIVE || type.temper == MobType.Temper.SKITTISH) {
-                setMoveDirection(dx, dz);
-                state = State.FLEE;
-                stateTimer = FLEE_TIME;
-                path = null;
+        boolean byPlayer = source.byPlayer();
+        float dx = 0f, dz = 0f;
+        if (source.hasOrigin()) {
+            dx = position.x - source.originX();
+            dz = position.z - source.originZ();
+            float len = (float) Math.sqrt(dx * dx + dz * dz);
+            if (len > 1e-4f) {
+                knockX = dx / len * KNOCKBACK * source.knockback();
+                knockZ = dz / len * KNOCKBACK * source.knockback();
+                if (onGround)
+                    velocity.y = KNOCKBACK_UP;
+                if (type.temper == MobType.Temper.PASSIVE || type.temper == MobType.Temper.SKITTISH) {
+                    setMoveDirection(dx, dz);
+                    state = State.FLEE;
+                    stateTimer = FLEE_TIME;
+                    path = null;
+                }
             }
         }
         if (type.temper == MobType.Temper.NEUTRAL && byPlayer)
             angryTimer = Wildlife.ANGER_TIME;
+        int attacker = source.participant();
         if (attacker != com.mineclone.world.damage.DamageSource.NO_ATTACKER) {
             revengeId = attacker;
             revengeTimer = REVENGE_TIME;
         }
         if (health <= 0f) {
-            eaten = !byPlayer;
+            eaten = attack && !byPlayer;
             killedByParticipant = byPlayer;
             killer = attacker;
-            die(dx, dz, true);
+            die(dx, dz, attack);
         }
         return true;
+    }
+
+    /** Адаптер (SURV-01): удар игрока с обычным отбросом. */
+    public boolean hurt(float amount, float fromX, float fromZ) {
+        return hurt(amount, fromX, fromZ, 1f);
+    }
+
+    /** Адаптер (SURV-01): удар игрока; {@code knockbackMul} — множитель отброса. */
+    public boolean hurt(float amount, float fromX, float fromZ, float knockbackMul) {
+        return hurtBy(amount, fromX, fromZ, knockbackMul, com.mineclone.world.damage.DamageSource.NO_ATTACKER);
+    }
+
+    /** Адаптер (SURV-01): удар участника с номером {@code attacker}. */
+    public boolean hurtBy(float amount, float fromX, float fromZ, float knockbackMul, int attacker) {
+        return damage(playerHit(attacker, fromX, fromZ, knockbackMul), amount);
+    }
+
+    private com.mineclone.world.damage.DamageSource playerHit(int attacker, float fromX, float fromZ,
+                                                               float knockbackMul) {
+        return com.mineclone.world.damage.DamageSource.byPlayer(com.mineclone.world.damage.DamageType.MELEE,
+                attacker, fromX, position.y, fromZ, knockbackMul);
     }
 
     /** Видит ли моб игрока: луч от своих глаз к глазам игрока. */
@@ -1498,19 +1516,16 @@ public class Mob implements Hittable {
         return base * limbs.attackMultiplier();
     }
 
-    /** Targeted hit used by melee/ranged weapons after the AABB intersection. */
+    /** Адаптер (SURV-01): удар игрока в конечность. */
     public boolean hurtLimb(float amount, LimbDamage.Limb limb, float fromX, float fromZ,
                             float knockbackMul) {
         return hurtLimb(amount, limb, fromX, fromZ, knockbackMul, com.mineclone.world.damage.DamageSource.NO_ATTACKER);
     }
 
-    /** The same hit by the participant numbered {@code attacker}. */
+    /** Адаптер (SURV-01): удар участника с номером {@code attacker} в конечность. */
     public boolean hurtLimb(float amount, LimbDamage.Limb limb, float fromX, float fromZ,
                             float knockbackMul, int attacker) {
-        if (limb != null)
-            limbs.hit(limb, Math.min(0.45f, amount / Math.max(1f, type.maxHealth)));
-        float scaled = limb == LimbDamage.Limb.HEAD ? amount * limbs.headDamageMultiplier() : amount;
-        return hurt(scaled, fromX, fromZ, knockbackMul, true, attacker);
+        return damage(playerHit(attacker, fromX, fromZ, knockbackMul).onLimb(limb), amount);
     }
 
     /** Зол ли хищник на игрока. */
@@ -1522,19 +1537,6 @@ public class Mob implements Hittable {
     @Override
     public boolean hittable() {
         return !dead;
-    }
-
-    /** Попадание снарядом — тот же урон и отброс, что от удара. */
-    @Override
-    public void takeProjectile(float damage, float fromX, float fromZ, float knockback,
-                               boolean fromPlayer) {
-        hurt(damage, fromX, fromZ, knockback, fromPlayer);
-    }
-
-    @Override
-    public void takeProjectile(float damage, float fromX, float fromZ, float knockback,
-                               boolean fromPlayer, int attacker) {
-        hurt(damage, fromX, fromZ, knockback, fromPlayer, attacker);
     }
 
     /** Дистанция до попадания луча в AABB моба, либо -1. */

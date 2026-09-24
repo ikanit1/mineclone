@@ -1301,14 +1301,20 @@ public final class Multiplayer implements NetTransport.Listener {
      * зазвенел, значит превратить бой в переписку.
      */
     private void hostMobHit(int from, int id, float damage, float knockback, float fromX, float fromZ) {
-        if (damage <= 0f || damage > 100f)
+        if (!(damage > 0f) || damage > 100f)
             return;
+        // A guest's numbers are not trusted to be numbers: a hit from nowhere
+        // knocks nothing back, and a broken knockback is none.
+        float push = Float.isFinite(knockback) ? Math.max(0f, Math.min(4f, knockback)) : 0f;
+        boolean placed = Float.isFinite(fromX) && Float.isFinite(fromZ);
         for (Map.Entry<Mob, Integer> e : mobIds.entrySet()) {
             if (e.getValue() != id)
                 continue;
             Mob m = e.getKey();
             if (!m.dead)
-                m.hurtBy(damage, fromX, fromZ, Math.max(0f, Math.min(4f, knockback)), from);
+                m.damage(com.mineclone.world.damage.DamageSource.byPlayer(com.mineclone.world.damage.DamageType.MELEE,
+                        from, placed ? fromX : Float.NaN, placed ? m.position.y : Float.NaN,
+                        placed ? fromZ : Float.NaN, push), damage);
             return;
         }
     }

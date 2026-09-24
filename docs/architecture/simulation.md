@@ -41,9 +41,9 @@ therefore never a target by accident.
 `world.damage` holds the vocabulary the participants speak: `DamageType`
 (attack kinds respect the invulnerability window, environmental kinds bypass it;
 drowning, starvation and poison bypass armor), `DamageSource` (kind, attacker
-number and type, origin, knockback) and `ArmorView`, which stays `NONE` until
-equipment slots exist (CMB-01). Converting the existing damage paths to these
-types is SURV-01.
+number and type, origin, knockback, limb, the `PLAYER` flag) and `ArmorView`,
+which stays `NONE` until equipment slots exist (CMB-01). Every damage path in
+the game speaks it since SURV-01 — see [combat-mobs.md](combat-mobs.md#damage-surv-01).
 
 Their consumers: mobs choose targets among participants (SIM-07), and block
 ticks, furnaces, spawning and despawning run around every participant (SIM-05).

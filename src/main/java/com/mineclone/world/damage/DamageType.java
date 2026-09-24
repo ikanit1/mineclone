@@ -24,7 +24,9 @@ public enum DamageType {
     SUFFOCATE(true, true, false),
     VOID(true, true, false),
     LIGHTNING(false, false, false),
-    MAGIC(true, false, false);
+    MAGIC(true, false, false),
+    /** Harm whose cause the caller did not name: what the old {@code Player.takeDamage} meant. */
+    GENERIC(false, true, false);
 
     private final boolean bypassesArmor;
     private final boolean bypassesInvulnerability;

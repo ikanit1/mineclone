@@ -3,9 +3,14 @@ package com.mineclone.game;
 import com.mineclone.render.Camera;
 import com.mineclone.world.BlockType;
 import com.mineclone.world.World;
+import com.mineclone.world.damage.ArmorMath;
+import com.mineclone.world.damage.ArmorView;
+import com.mineclone.world.damage.DamageSource;
+import com.mineclone.world.damage.DamageType;
+import com.mineclone.world.damage.Damageable;
 import org.joml.Vector3f;
 
-public class Player {
+public class Player implements Damageable {
     public final Camera camera = new Camera();
     public final Vector3f velocity = new Vector3f();
     /** Множитель от временных состояний; Game обновляет его до шага физики. */
@@ -69,6 +74,8 @@ public class Player {
     public static final float HURT_INVULN_TIME = 0.5f;
     /** >0 — урон от атак не проходит. */
     public float hurtCooldown = 0f;
+    /** Последний прошедший удар — от него экран смерти узнает причину; null после возрождения. */
+    public DamageSource lastDamageSource;
     /** Пауза регена после полученного удара, секунды. */
     public static final float REGEN_DELAY_AFTER_HIT = 5f;
     /** Сколько ждать между 0.5 HP регена. */
@@ -280,7 +287,7 @@ public class Player {
                 float dmg = Math.max(0f, fallDistance - 3f);
                 lastFallDamage = dmg;
                 if (dmg > 0f) {
-                    takeDamage(dmg);
+                    damage(DamageSource.of(DamageType.FALL), dmg);
                 }
                 lastFallDistance = fallDistance;
             }
@@ -322,8 +329,12 @@ public class Player {
         if (isSprinting)
             drain *= HUNGER_SPRINT_MUL;
         hunger = Math.max(0f, hunger - drain);
-        if (hunger <= 0f && health > STARVE_FLOOR)
-            health = Math.max(STARVE_FLOOR, health - STARVE_DAMAGE * dt);
+        if (hunger <= 0f && health > STARVE_FLOOR) {
+            float left = Math.max(STARVE_FLOOR, health - STARVE_DAMAGE * dt);
+            // Ровно до пола: вычитание разницы могло бы промахнуться на ulp.
+            if (damage(DamageSource.of(DamageType.STARVE), health - left))
+                health = left;
+        }
     }
 
     /**
@@ -643,34 +654,50 @@ public class Player {
         }
     }
 
-    public void takeDamage(float amount) {
-        if (isCreative()) return;
-        health = Math.max(0f, health - amount);
-    }
-
     /**
-     * Урон от атаки моба. В отличие от {@link #takeDamage} уважает окно
-     * неуязвимости: без него стая зомби снимает здоровье втрое быстрее одного,
-     * потому что у каждого свой кулдаун удара.
+     * Единственный путь урона игроку (SURV-01).
      *
-     * Урон от падения продолжает идти через takeDamage — там окно не нужно,
-     * иначе падения станут дешевле, чем задумано.
+     * <p>Атаки ({@link DamageType#bypassesInvulnerability() не обходящие окно}:
+     * удар, стрела, взрыв) уважают окно неуязвимости: без него стая зомби
+     * снимает здоровье втрое быстрее одного, потому что у каждого свой кулдаун
+     * удара. Они же откладывают реген. Урон среды — падение, огонь, голод —
+     * окна не открывает и не ждёт: его темп задаёт сам источник, а падения
+     * иначе стали бы дешевле, чем задумано. Креатив неуязвим, кроме пустоты.
      *
      * @return true, если урон прошёл
      */
-    public boolean takeAttackDamage(float amount) {
-        if (isCreative() || hurtCooldown > 0f)
+    @Override
+    public boolean damage(DamageSource source, float amount) {
+        if (!(amount > 0f) || !Float.isFinite(amount) || health <= 0f)
             return false;
-        hurtCooldown = HURT_INVULN_TIME;
-        regenDelay = REGEN_DELAY_AFTER_HIT;
-        takeDamage(amount);
+        if (isCreative() && source.type() != DamageType.VOID)
+            return false;
+        if (!source.type().bypassesInvulnerability()) {
+            if (hurtCooldown > 0f)
+                return false;
+            hurtCooldown = HURT_INVULN_TIME;
+            regenDelay = REGEN_DELAY_AFTER_HIT;
+        }
+        health = Math.max(0f, health - ArmorMath.afterArmor(amount, source.type(), ArmorView.NONE));
+        lastDamageSource = source;
         return true;
+    }
+
+    /** Адаптер (SURV-01): урон среды без названной причины. */
+    public void takeDamage(float amount) {
+        damage(DamageSource.of(DamageType.GENERIC), amount);
+    }
+
+    /** Адаптер (SURV-01): безымянная атака — с окном неуязвимости. */
+    public boolean takeAttackDamage(float amount) {
+        return damage(DamageSource.of(DamageType.MELEE), amount);
     }
 
     public void respawn(float x, float y, float z) {
         health = MAX_HEALTH;
         hunger = MAX_HUNGER;
         hurtCooldown = 0f;
+        lastDamageSource = null;
         fallDistance = 0f;
         regenTimer = 0f;
         regenDelay = 0f;

@@ -5,6 +5,8 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 ## [Unreleased]
 
 ### Fixed
+- A hit that a mob's invulnerability window refuses no longer wounds its limb: clicking faster than the window used to cripple legs and arms without doing damage.
+- A guest's melee hit with broken numbers (a non-finite position or knockback) lands without knockback instead of leaving the host's mob at an invalid position.
 - A dedicated server keeps the items lying in a world it opens: it used to leave them out of the world and erase them from their chunk on its first save.
 - The world lives around every player, not the first: block ticks, furnaces, spawning and despawning run near each guest on a host or a dedicated server, and a server's snow and rain now follow the weather fronts.
 - On a dedicated server, zombies and other melee mobs strike the guests (their blows used to land on no one), and a guest's broken or placed block draws mobs like the host's own.
@@ -33,6 +35,7 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 - Eleven reproducible benchmark scenes with frame, GPU, queue, allocation, network and save metrics; frozen build snapshots and repeated-run aggregation retain measurement provenance.
 
 ### Changed
+- All damage goes through one path: every hit — a blow, an arrow, a blast, a bite, a fall, fire, poison, starvation — is a damage source with its kind and its dealer, and the player and mobs apply their rules in one place. The player remembers what last hurt them.
 - The game's host and the dedicated server tick mobs, items, arrows and blasts and save chunk entities with one shared session (`WorldSession`), pinned to the previous behavior by a recorded parity hash; mobs on a dedicated server are now pushed apart instead of standing inside one another, and their skeletons shoot.
 - Hostile mobs choose a target among all players — the nearest one in view, kept until someone in view is markedly nearer or it has been out of sight for three seconds — and go after whoever hit them first; a lone player's world behaves as before.
 - A mob killed by a creative player drops nothing; natural deaths drop their loot whatever mode the host plays in, and a survival guest's kill in a creative host's world drops as usual. Guests also take creeper blast damage.

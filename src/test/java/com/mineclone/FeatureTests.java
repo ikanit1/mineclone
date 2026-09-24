@@ -535,8 +535,9 @@ final class FeatureTests {
             fled |= chicken.state == com.mineclone.world.entity.Mob.State.FLEE;
             if (wolf.justBitMob != null) {
                 bitten = true;
-                wolf.justBitMob.hurt(com.mineclone.world.entity.Wildlife.BITE_DAMAGE,
-                        wolf.position.x, wolf.position.z, 0.6f, false);
+                wolf.justBitMob.damage(com.mineclone.world.damage.DamageSource.byMob(
+                        com.mineclone.world.damage.DamageType.MELEE, wolf.type, wolf.position.x,
+                        wolf.position.y, wolf.position.z, 0.6f), com.mineclone.world.entity.Wildlife.BITE_DAMAGE);
             }
         }
         assertTrue("the wolf goes hunting", hunted);

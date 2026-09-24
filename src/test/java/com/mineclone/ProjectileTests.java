@@ -45,11 +45,13 @@ final class ProjectileTests {
                     at.x - w / 2, at.y, at.z - w / 2, at.x + w / 2, at.y + h, at.z + w / 2);
         }
         @Override public boolean hittable() { return alive; }
-        @Override public void takeProjectile(float damage, float fx, float fz, float kb,
-                                             boolean fromPlayer) {
+        @Override public boolean damage(com.mineclone.world.damage.DamageSource source, float damage) {
             hits++;
             took += damage;
+            last = source;
+            return true;
         }
+        com.mineclone.world.damage.DamageSource last;
     }
 
     private static World flat(int floorY) {
