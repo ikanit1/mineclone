@@ -1,0 +1,88 @@
+# Network protocol v8
+
+The wire format between a host (the game that opened the world, or the
+dedicated server) and its guests. `com.mineclone.net.NetProto` is the source;
+`ProtocolTests` fails when the code table below and the constants there
+disagree. Architecture: [architecture/network.md](architecture/network.md).
+
+## Messages and packets
+
+A transport message carries one or more packets back to back; a packet is a
+one-byte code and its body. Bodies have no length prefix, so a reader that
+meets an unknown code or runs out of bytes drops the rest of the message.
+`NetChannel` gathers a network frame's packets (12 Hz) into one message per
+addressee, reliable and unreliable apart, and sends early past 24 000 bytes.
+
+Types: `u8`, `i16`, `i32`, `i64` big-endian; `f32` IEEE big-endian; `varInt`
+seven bits a byte, low first; `str` = `varInt` length + UTF-8; `blockPos` packs
+x, y, z into eight bytes.
+
+## Versions
+
+`NetProto.VERSION` travels in `C_HELLO`, in the LAN frame handshake, in the
+LAN beacon and in Photon's application version, so builds of different
+protocols neither list nor join each other's rooms. A mismatch that still
+reaches a host by address is refused with both versions and the host's build
+(`ConnectDiagnosis.versionMismatch`) — written by the host, so an older guest
+can read it.
+
+v8 is the 1.1 cycle's one change of version: it was raised at the first
+incompatible body and stays until the release; later 1.1 changes to v8 bodies
+come under the same number. Changed or new in v8 so far:
+
+- `S_PLAYER_HURT` — `f32 amount, u8 kind (DamageType.id), u8 flags (1 a
+  player's hit, 2 has an origin), [f32 x, y, z], f32 knockback, u8 mob type + 1
+  (0 none), varInt participant + 1 (0 none)` (`PlayerHurt`). The guest applies
+  it through its own damage path and is knocked away from a blow or a blast.
+  v7 sent `f32 amount` alone.
+
+Planned for v8 (roadmap section 6/K): the host's generator in `S_WELCOME`,
+`S_GEN_MAP (74)` and a generator byte in `S_CHUNK_DELTA` (GEN-02), the player
+record in `C_PLAYER`/`S_PLAYER` (SAVE-07), `C_USE_BLOCK (70)` (BLK-03) and the
+rest of the table there.
+
+## Codes
+
+`S_` host to guests, `C_` guest to host, `X_` both ways. Retired codes stay
+reserved and are never reused.
+
+| Code | Constant | Direction | Delivery | Body and notes |
+|---|---|---|---|---|
+| 1 | `C_HELLO` | guest → host | reliable | `varInt version, str name, str identity` |
+| 2 | `S_WELCOME` | host → guest | reliable | `i64 seed, str world, f32 time, u8 mode, f32 spawn x, y, z` |
+| 3 | `S_REJECT` | host → guest | reliable | `str reason`; ends the session |
+| 10 | `X_PLAYER_STATE` | both | unreliable, 12 Hz | `f32 x, y, z, yaw, pitch, u8 flags` — 22 bytes with the code |
+| 11 | `X_PLAYER_INFO` | both | reliable, 0.5 Hz | `str name, u8 mode, f32 health` |
+| 12 | `X_PLAYER_LIFE` | both | — | read (`u8`) but not sent; kept for the death message (SURV-07) |
+| 13 | `X_PLAYER_SWING` | both | reliable | no body |
+| 14 | `X_BLOCK_ACTION` | both | reliable | a player's own edit, for its sound |
+| 15 | `X_PLAYER_EQUIPMENT` | both | reliable | `i64 sequence, str item id` |
+| 20 | `S_BLOCK_SET` | host → guests | reliable | a block became this |
+| 21 | `C_BLOCK_EDIT` | guest → host | reliable | a request to place or break |
+| 22 | `C_CHUNK_REQUEST` | guest → host | reliable | a chunk's delta, please |
+| 23 | `S_CHUNK_DELTA` | host → guest | reliable | cells that differ from fresh generation |
+| 24 | `S_TIME` | host → guests | reliable, every 5 s | time of day |
+| 30 | `S_MOBS` | host → guests | unreliable, 12 Hz | every mob, `MobSnapshot`: 85 bytes a mob |
+| 32 | `S_ITEMS` | host → guests | reliable, 4 Hz | every item on the ground |
+| 34 | `C_MOB_HIT` | guest → host | reliable | `varInt mob, f32 damage, knockback, from x, z` |
+| 35 | `S_PROJECTILES` | host → guests | unreliable, 12 Hz | arrows in flight and stuck |
+| 36 | `C_SHOOT` | guest → host | reliable | a shot for the host to fire |
+| 37 | `S_PLAYER_HURT` | host → guest | reliable | **v8**: `PlayerHurt`, see above |
+| 40 | `C_CONTAINER_OPEN` | — | — | retired in v7 |
+| 41 | `S_CONTAINER` | — | — | retired in v7 |
+| 42 | `C_CONTAINER_COMMIT` | — | — | retired in v7 |
+| 50 | `X_CHAT` | both | reliable | a chat line |
+| 51 | `C_ITEM_PICK` | — | — | retired in v7; read and ignored |
+| 52 | `S_GIVE` | host → guest | — | read, no longer sent |
+| 60 | `C_PLAYER` | guest → host | reliable, 4 Hz | the guest's checkpoint (`PlayerData`) |
+| 61 | `S_PLAYER` | host → guest | reliable | the stored checkpoint on entry |
+| 62 | `C_OPEN` | guest → host | reliable | open a container menu |
+| 63 | `C_ACTION` | guest → host | reliable | one gesture in an open menu |
+| 64 | `C_CLOSE` | guest → host | reliable | close the menu |
+| 65 | `S_MENU` | host → guest | reliable | the menu as the host sees it |
+| 66 | `C_DROP` | guest → host | reliable | drop, with a checkpoint |
+| 67 | `S_DROP_ACK` | host → guest | reliable | the drop landed |
+| 68 | `C_PICKUP` | guest → host | reliable | pick up, with a checkpoint |
+| 69 | `S_PICKUP` | host → guest | reliable | what was picked up |
+
+Traffic by code, measured: [perf/net-baseline.md](perf/net-baseline.md).

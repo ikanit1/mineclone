@@ -689,7 +689,7 @@ public final class DedicatedServer implements NetContext {
 
     /** У сервера своего игрока нет — ранить в нём некого. */
     @Override
-    public void hurtByHost(float damage) {
+    public void hurtByHost(com.mineclone.world.damage.DamageSource source, float damage) {
     }
 
     @Override

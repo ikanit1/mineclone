@@ -180,8 +180,8 @@ public final class LanTransport implements NetTransport {
             String nick = link.in.readUTF();
             link.in.readUTF();  // имя комнаты: у хозяина оно своё, читаем и забываем
             if (version != NetProto.VERSION) {
-                link.sendReject("другая версия игры: у вас " + version
-                        + ", у хозяина " + NetProto.VERSION);
+                link.sendReject(com.mineclone.net.connect.ConnectDiagnosis.versionMismatch(
+                        version, NetProto.VERSION, com.mineclone.core.BuildInfo.summary()));
                 link.close();
                 return;
             }

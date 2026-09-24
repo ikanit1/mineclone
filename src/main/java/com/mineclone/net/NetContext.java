@@ -121,8 +121,11 @@ public interface NetContext {
     void shootFor(int actor, float x, float y, float z, float vx, float vy, float vz,
             float damage);
 
-    /** Хозяин сообщил, что игрок получил урон. */
-    void hurtByHost(float damage);
+    /**
+     * Хозяин сообщил, что игрок получил урон: сколько, чем, от кого и
+     * откуда (протокол v8) — урон идёт через путь урона самого игрока.
+     */
+    void hurtByHost(com.mineclone.world.damage.DamageSource source, float damage);
 
     // ------------------------------------------------------- обратная связь
 

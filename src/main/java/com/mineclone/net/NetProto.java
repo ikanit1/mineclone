@@ -33,7 +33,14 @@ public final class NetProto {
      * мир чужой версии не должен попадать в список, где по нему можно щёлкнуть.
      */
     // v7: persistent player identities/checkpoints and host-executed inventory gestures.
-    public static final int VERSION = 7;
+    /**
+     * v8 (the 1.1 cycle, NET-02): raised once, at the first incompatible change,
+     * and not again before the release — later 1.1 changes to v8 bodies land
+     * under the same number. So far: {@code S_PLAYER_HURT} carries the kind of
+     * harm, its dealer, origin and knockback ({@link PlayerHurt}). The table of
+     * every code is {@code docs/NETWORK_PROTOCOL.md}; a test holds it to this file.
+     */
+    public static final int VERSION = 8;
 
     /** Сколько раз в секунду уходит кадр сети. */
     public static final float TICK_RATE = 12f;

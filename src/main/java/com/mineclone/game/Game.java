@@ -1927,8 +1927,13 @@ public class Game {
 
     /** Горизонтальное отбрасывание игрока от моба + небольшой подброс. */
     private void applyMobKnockback(com.mineclone.world.entity.Mob m) {
-        float dx = player.position.x - m.position.x;
-        float dz = player.position.z - m.position.z;
+        applyKnockbackFrom(m.position.x, m.position.z);
+    }
+
+    /** Свой игрок отлетает от точки удара: у хозяина — от моба, у гостя — от присланной точки. */
+    private void applyKnockbackFrom(float fromX, float fromZ) {
+        float dx = player.position.x - fromX;
+        float dz = player.position.z - fromZ;
         float len = (float) Math.sqrt(dx * dx + dz * dz);
         if (len < 1e-4f)
             return;
@@ -6268,13 +6273,20 @@ public class Game {
             }
 
             @Override
-            public void hurtByHost(float damage) {
+            public void hurtByHost(com.mineclone.world.damage.DamageSource source, float damage) {
                 // Обратную связь поднимет updateDamageFeedback по самой
-                // потере здоровья — ей всё равно, кто и чем ударил. Протокол
-                // v7 не говорит, чем: всё, что он несёт (удар, стрела, взрыв),
-                // — атака с общим окном неуязвимости.
-                player.damage(com.mineclone.world.damage.DamageSource.of(
-                        com.mineclone.world.damage.DamageType.MELEE), damage);
+                // потере здоровья — ей всё равно, кто и чем ударил. Отброс и
+                // звук — как у своего игрока хозяина: от удара и от взрыва
+                // (participantStruck, blasted), стрела не отбрасывает.
+                if (!player.damage(source, damage) || !source.hasOrigin())
+                    return;
+                var kind = source.type();
+                if (kind == com.mineclone.world.damage.DamageType.MELEE
+                        || kind == com.mineclone.world.damage.DamageType.EXPLOSION)
+                    applyKnockbackFrom(source.originX(), source.originZ());
+                if (kind == com.mineclone.world.damage.DamageType.MELEE)
+                    sound.playOneOfAt(sounds.hurt(), playerSoundPosition(),
+                            0.8f, 0.9f + 0.1f * (float) Math.random());
             }
 
             @Override

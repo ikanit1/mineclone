@@ -820,6 +820,27 @@ final class NetworkTests {
         p.pump(3);
         assertTrue("гость получил урон, посланный хозяином: " + p.guest.hurtTaken,
                 Math.abs(p.guest.hurtTaken - 4f) < 1e-4);
+        assertTrue("v8: и узнал, чем", p.guest.lastHurt != null
+                && p.guest.lastHurt.type() == com.mineclone.world.damage.DamageType.PROJECTILE
+                && !p.guest.lastHurt.byPlayer());
+
+        // v8: a zombie's blow arrives with its kind, dealer and origin.
+        var blow = com.mineclone.world.damage.DamageSource.byMob(com.mineclone.world.damage.DamageType.MELEE,
+                com.mineclone.world.entity.MobType.ZOMBIE, 3f, 71f, -2f, 1f);
+        guestOnHost.damage(blow, 3f);
+        p.pump(3);
+        assertTrue("удар зомби дошёл целиком: " + p.guest.lastHurt, blow.equals(p.guest.lastHurt)
+                && Math.abs(p.guest.hurtTaken - 7f) < 1e-4);
+
+        // A cut or broken hurt changes nothing on the guest.
+        PacketBuf cut = new PacketBuf();
+        com.mineclone.net.PlayerHurt.of(blow, 5f).write(cut.u8(NetProto.S_PLAYER_HURT));
+        byte[] whole = cut.toBytes();
+        p.guestNet.onPayload(p.hostT.myActor(), java.util.Arrays.copyOf(whole, whole.length - 2));
+        PacketBuf broken = new PacketBuf();
+        new com.mineclone.net.PlayerHurt(Float.NaN, 0, 0, 0, 0, 0, 1, 0, 0).write(broken.u8(NetProto.S_PLAYER_HURT));
+        p.guestNet.onPayload(p.hostT.myActor(), broken.toBytes());
+        assertTrue("битый пакет урона сработал: " + p.guest.hurtTaken, Math.abs(p.guest.hurtTaken - 7f) < 1e-4);
         p.close();
     }
 
@@ -862,6 +883,18 @@ final class NetworkTests {
     }
 
     private static void testVersionMismatch() {
+        String newer = refusalFor(NetProto.VERSION + 7);
+        assertTrue("отказ с внятной причиной: " + newer, newer != null && newer.contains("версия")
+                && newer.contains("обновиться нужно ему"));
+        // NET-02: a v7 build asking a v8 host is told both versions, the host's build and to update.
+        String older = refusalFor(NetProto.VERSION - 1);
+        assertTrue("v7 → v8: " + older, older != null && older.contains("v" + (NetProto.VERSION - 1))
+                && older.contains("v" + NetProto.VERSION) && older.contains(com.mineclone.core.BuildInfo.summary())
+                && older.contains("Обновите игру"));
+    }
+
+    /** What the host answers a hello of {@code version}: the refusal's text, or null. */
+    private static String refusalFor(int version) {
         LoopbackTransport.reset();
         TestContext host = new TestContext(new World(1L), "Мир");
         Multiplayer hostNet = new Multiplayer(host);
@@ -878,21 +911,21 @@ final class NetworkTests {
         odd.poll();
         hostT.poll();
         PacketBuf hello = new PacketBuf();
-        hello.u8(NetProto.C_HELLO).varInt(NetProto.VERSION + 7).str("Старая сборка");
+        hello.u8(NetProto.C_HELLO).varInt(version).str("Старая сборка");
         odd.send(hello.toBytes(), true, 1);
         for (int i = 0; i < 4; i++) {
             hostNet.update(0.1f);
             odd.poll();
         }
-        boolean refused = false;
+        String refusal = null;
         for (byte[] payload : rec.payloads) {
             PacketBuf in = PacketBuf.reading(payload);
             // В одном сообщении едет несколько пакетов: отказ идёт следом за
             // сведениями об игроке, и разобрать надо оба.
-            while (in.hasMore() && !refused) {
+            while (in.hasMore() && refusal == null) {
                 int code = in.readU8();
                 if (code == NetProto.S_REJECT) {
-                    refused = in.readStr().contains("версия");
+                    refusal = in.readStr();
                 } else if (code == NetProto.X_PLAYER_INFO) {
                     in.readStr();
                     in.readU8();
@@ -902,9 +935,10 @@ final class NetworkTests {
                 }
             }
         }
-        assertTrue("отказ с внятной причиной", refused);
         hostNet.stop(null);
         odd.disconnect();
+        LoopbackTransport.reset();
+        return refusal;
     }
 
     private static void testNetSettingsRoundTrip() throws Exception {
@@ -1292,9 +1326,12 @@ final class NetworkTests {
         }
 
         @Override
-        public void hurtByHost(float damage) {
+        public void hurtByHost(com.mineclone.world.damage.DamageSource source, float damage) {
             hurtTaken += damage;
+            lastHurt = source;
         }
+
+        com.mineclone.world.damage.DamageSource lastHurt;
 
         @Override
         public void chatLine(String line) {

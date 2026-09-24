@@ -31,11 +31,18 @@ public record MobSnapshot(int id, int type, int flags, int elite, int state,
                 b.readF32(), b.readF32(), b.readF32(), b.readF32(), b.readF32(), b.readF32(),
                 b.readF32(), b.readF32(), b.readF32(), b.readF32(), b.readF32(), b.readF32(), b.readF32());
     }
+    private static final int TYPES = MobType.values().length, ELITES = MobTactics.Elite.values().length,
+            STATES = Mob.State.values().length;
+
+    /** Checked field by field: a snapshot per mob per network frame must not allocate (TD-35). */
     public boolean valid() {
-        if (id <= 0 || type < 0 || type >= MobType.values().length || elite >= MobTactics.Elite.values().length
-                || state >= Mob.State.values().length || (flags & ~63) != 0) return false;
-        for (float v : new float[] {x,y,z,yaw,health,distance,time,walk,look,graze,attack,footA,footB,
-                topple,axisX,axisZ,deathTime,hurt,vy,air}) if (!Float.isFinite(v)) return false;
+        if (id <= 0 || type < 0 || type >= TYPES || elite >= ELITES || state >= STATES || (flags & ~63) != 0) return false;
+        if (!Float.isFinite(x) || !Float.isFinite(y) || !Float.isFinite(z) || !Float.isFinite(yaw)
+                || !Float.isFinite(health) || !Float.isFinite(distance) || !Float.isFinite(time)
+                || !Float.isFinite(walk) || !Float.isFinite(look) || !Float.isFinite(graze) || !Float.isFinite(attack)
+                || !Float.isFinite(footA) || !Float.isFinite(footB) || !Float.isFinite(topple)
+                || !Float.isFinite(axisX) || !Float.isFinite(axisZ) || !Float.isFinite(deathTime)
+                || !Float.isFinite(hurt) || !Float.isFinite(vy) || !Float.isFinite(air)) return false;
         float axis = axisX * axisX + axisZ * axisZ;
         return Math.abs(x) <= 1e7f && Math.abs(y) <= 1e7f && Math.abs(z) <= 1e7f
                 && Math.abs(yaw) <= 3.15f && Math.abs(distance) <= 1e20f && Math.abs(time) <= 1e20f

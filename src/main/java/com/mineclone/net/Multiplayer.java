@@ -827,7 +827,7 @@ public final class Multiplayer implements NetTransport.Listener {
     public void onActorJoin(int actor, String name) {
         RemotePlayer joinedPlayer = players.computeIfAbsent(actor, a -> new RemotePlayer(a, name));
         joinedPlayer.name = name;
-        joinedPlayer.onHurt = damage -> hurtPlayer(actor, (float) damage);
+        joinedPlayer.onHurt = (source, damage) -> hurtPlayer(actor, source, damage);
         if (role == Role.HOST)
             addChat(displayName(actor) + " подключается…");
         // Новому соседу надо знать, кто мы: он только что пришёл и наш
@@ -991,7 +991,7 @@ public final class Multiplayer implements NetTransport.Listener {
                 a -> {
                     RemotePlayer made = new RemotePlayer(a,
                             transport == null ? "" : transport.actorName(a));
-                    made.onHurt = damage -> hurtPlayer(a, (float) damage);
+                    made.onHurt = (source, damage) -> hurtPlayer(a, source, damage);
                     return made;
                 });
     }
@@ -1013,8 +1013,8 @@ public final class Multiplayer implements NetTransport.Listener {
             return;
         player(from).name = name;
         if (version != NetProto.VERSION) {
-            channel.packet(NetProto.S_REJECT, true, from)
-                    .str("другая версия игры: у вас " + version + ", у хозяина " + NetProto.VERSION);
+            channel.packet(NetProto.S_REJECT, true, from).str(com.mineclone.net.connect.ConnectDiagnosis
+                    .versionMismatch(version, NetProto.VERSION, com.mineclone.core.BuildInfo.summary()));
             channel.flush();
             return;
         }
@@ -1300,16 +1300,16 @@ public final class Multiplayer implements NetTransport.Listener {
      * Ровно этого пакета не хватало, чтобы мобы могли ранить гостя: урон
      * всегда считался у хозяина, а сказать о нём было нечем.
      */
-    public void hurtPlayer(int actor, float damage) {
-        if (role != Role.HOST || damage <= 0f)
+    public void hurtPlayer(int actor, com.mineclone.world.damage.DamageSource source, float damage) {
+        if (role != Role.HOST || !(damage > 0f))
             return;
-        channel.packet(NetProto.S_PLAYER_HURT, true, actor).f32(damage);
+        PlayerHurt.of(source, damage).write(channel.packet(NetProto.S_PLAYER_HURT, true, actor));
     }
 
     private void onPlayerHurt(int from, PacketBuf in) {
-        float damage = in.readF32();
-        if (role == Role.CLIENT && from == hostActor && !in.truncated())
-            ctx.hurtByHost(damage);
+        PlayerHurt hurt = PlayerHurt.read(in);
+        if (role == Role.CLIENT && from == hostActor && !in.truncated() && hurt.valid())
+            ctx.hurtByHost(hurt.source(), hurt.amount());
     }
 
     private void sendItems() {

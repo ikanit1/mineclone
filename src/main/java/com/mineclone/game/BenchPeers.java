@@ -106,7 +106,7 @@ final class BenchPeers implements AutoCloseable {
         public List<ItemEntity> groundItems() { return items; }
         public List<Projectile> projectiles() { return projectiles; }
         public void shootFor(int actor, float x, float y, float z, float vx, float vy, float vz, float damage) {}
-        public void hurtByHost(float damage) {}
+        public void hurtByHost(com.mineclone.world.damage.DamageSource source, float damage) {}
         public void chatLine(String line) {}
         public void status(String line) {}
         public void give(ItemStack stack) {}

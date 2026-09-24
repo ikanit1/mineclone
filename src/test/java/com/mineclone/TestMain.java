@@ -90,6 +90,7 @@ public final class TestMain {
         suite("net", "NetworkTests", r -> NetworkTests.runAll((n, c) -> r.run(n, c::run)));
         suite("net", "ServerConfigTests", ServerConfigTests::runAll);
         suite("net", "NetStatsTests", NetStatsTests::runAll);
+        suite("net", "ProtocolTests", ProtocolTests::runAll);
         suite("net", "InventoryNetworkTests", r -> InventoryNetworkTests.runAll((n, c) -> r.run(n, c::run)));
         suite("net", "ContainerBreakNetworkTests", r -> ContainerBreakNetworkTests.runAll((n, c) -> r.run(n, c::run)));
     }

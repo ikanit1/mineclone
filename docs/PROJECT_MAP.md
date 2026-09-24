@@ -148,6 +148,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [PacketBuf](../src/main/java/com/mineclone/net/PacketBuf.java) | Компактный двоичный кадр: чтение и запись одним объектом. |
 | [PhotonTransport](../src/main/java/com/mineclone/net/PhotonTransport.java) | Комната в облаке Photon. |
 | [PlayerData](../src/main/java/com/mineclone/net/PlayerData.java) | The protocol-v7 view of a player checkpoint; world blocks belong to the world's own save. |
+| [PlayerHurt](../src/main/java/com/mineclone/net/PlayerHurt.java) | S_PLAYER_HURT, protocol v8: a hit the host dealt a guest. |
 | [RemoteMob](../src/main/java/com/mineclone/net/RemoteMob.java) | Render interpolation only: clients never run the authoritative mob AI or physics. |
 | [RemoteParticipant](../src/main/java/com/mineclone/net/RemoteParticipant.java) | A guest as the host's simulation sees it. |
 | [RemotePlayer](../src/main/java/com/mineclone/net/RemotePlayer.java) | Чужой игрок: что о нём известно и где его рисовать. |
@@ -428,4 +429,4 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [WorldGenUpgrade](../src/main/java/com/mineclone/world/gen/WorldGenUpgrade.java) | Moving a world to a newer generator (GEN-02) without changing land anyone has seen. |
 | [WorldGenVersion](../src/main/java/com/mineclone/world/gen/WorldGenVersion.java) | Which generator made a chunk. |
 
-Top-level declarations: 312.
+Top-level declarations: 313.

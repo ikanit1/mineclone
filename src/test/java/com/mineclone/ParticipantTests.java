@@ -81,7 +81,7 @@ public final class ParticipantTests {
         check(eye.y() == 20 + Player.EYE_HEIGHT && eye == participant.eye(), "eye allocation/height");
         check(participant.id() == 4 && !participant.local() && participant.armor() == ArmorView.NONE, "remote adapter");
         float[] sent = {0};
-        player.onHurt = damage -> sent[0] += (float) damage;
+        player.onHurt = (source, damage) -> sent[0] += damage;
         check(participant.damage(DamageSource.of(DamageType.MELEE), 3) && sent[0] == 3, "hit was not forwarded");
         check(!participant.damage(DamageSource.of(DamageType.MELEE), Float.NaN) && sent[0] == 3, "NaN hit forwarded");
         player.gameMode = GameMode.CREATIVE.ordinal();

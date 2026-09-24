@@ -150,7 +150,13 @@ public final class RemotePlayer implements com.mineclone.world.entity.Hittable {
      * он не знает ни о каком протоколе, а урон обязан уехать пакетом тому, в
      * кого попали.
      */
-    public java.util.function.DoubleConsumer onHurt;
+    public Hurt onHurt;
+
+    /** Where a hit on this guest goes: the host sends it to the guest's machine. */
+    @FunctionalInterface
+    public interface Hurt {
+        void send(com.mineclone.world.damage.DamageSource source, float amount);
+    }
 
     @Override
     public float rayHitDistance(Vector3f origin, Vector3f dir) {
@@ -178,7 +184,7 @@ public final class RemotePlayer implements com.mineclone.world.entity.Hittable {
     public boolean damage(com.mineclone.world.damage.DamageSource source, float amount) {
         if (!(amount > 0f) || !Float.isFinite(amount) || onHurt == null)
             return false;
-        onHurt.accept(amount);
+        onHurt.send(source, amount);
         return true;
     }
 

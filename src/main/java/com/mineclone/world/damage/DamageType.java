@@ -11,31 +11,42 @@ package com.mineclone.world.damage;
  * blocks; drowning, starvation, poison and the void go straight through.
  */
 public enum DamageType {
-    MELEE(false, false, false),
-    PROJECTILE(false, false, false),
-    EXPLOSION(false, false, false),
-    FALL(true, true, false),
-    FIRE(false, true, true),
-    LAVA(false, true, true),
-    DROWN(true, true, false),
-    STARVE(true, true, false),
-    POISON(true, true, false),
-    CACTUS(false, true, false),
-    SUFFOCATE(true, true, false),
-    VOID(true, true, false),
-    LIGHTNING(false, false, false),
-    MAGIC(true, false, false),
+    MELEE(0, false, false, false),
+    PROJECTILE(1, false, false, false),
+    EXPLOSION(2, false, false, false),
+    FALL(3, true, true, false),
+    FIRE(4, false, true, true),
+    LAVA(5, false, true, true),
+    DROWN(6, true, true, false),
+    STARVE(7, true, true, false),
+    POISON(8, true, true, false),
+    CACTUS(9, false, true, false),
+    SUFFOCATE(10, true, true, false),
+    VOID(11, true, true, false),
+    LIGHTNING(12, false, false, false),
+    MAGIC(13, true, false, false),
     /** Harm whose cause the caller did not name: what the old {@code Player.takeDamage} meant. */
-    GENERIC(false, true, false);
+    GENERIC(14, false, true, false);
 
+    private final int id;
     private final boolean bypassesArmor;
     private final boolean bypassesInvulnerability;
     private final boolean fire;
 
-    DamageType(boolean bypassesArmor, boolean bypassesInvulnerability, boolean fire) {
+    DamageType(int id, boolean bypassesArmor, boolean bypassesInvulnerability, boolean fire) {
+        this.id = id;
         this.bypassesArmor = bypassesArmor;
         this.bypassesInvulnerability = bypassesInvulnerability;
         this.fire = fire;
+    }
+
+    /** Stable number for packets (protocol v8) and saves; never the ordinal. */
+    public int id() { return id; }
+
+    /** The kind with this number, or null when this build does not know it. */
+    public static DamageType byId(int id) {
+        for (DamageType type : values()) if (type.id == id) return type;
+        return null;
     }
 
     /** Armor points and toughness do not reduce this damage. */

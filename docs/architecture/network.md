@@ -14,7 +14,8 @@ external service and is excluded from CI.
 Мир живёт **у хозяина комнаты**, участники — зеркала. Транспорт за интерфейсом
 `NetTransport`: облако Photon, прямое соединение в своей сети и петля внутри
 процесса, на которой стоят тесты. ADR:
-`knowledge/decisions/multiplayer-photon.md`.
+`knowledge/decisions/multiplayer-photon.md`. Протокол — v8, все коды и тела
+пакетов: [NETWORK_PROTOCOL.md](../NETWORK_PROTOCOL.md).
 
 - **Java-SDK у Photon нет** — официальные клиенты Unity/.NET/C++/JS. `PhotonPeer`
   говорит с серверами Photon Realtime по их же WebSocket-входу с подпротоколом
