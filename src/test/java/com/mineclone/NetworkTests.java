@@ -1017,10 +1017,13 @@ final class NetworkTests {
         for (int i = 0; i < 8; i++)
             p.update(1f / 60f);
         assertTrue("на земле ноги разошлись", p.walkAmount > 0.2f);
+        float before = p.walkAmount;
         p.accept(p.position.x, p.position.y + 0.4f, p.position.z, 0f, 0f,
                 RemotePlayer.F_FLYING);
         p.update(1f / 60f);
-        assertTrue("в воздухе поза сразу нейтральна", p.walkAmount < 0.01f);
+        assertTrue("переход в полёт плавно гасит шаг", p.walkAmount > 0.01f && p.walkAmount < before);
+        for (int i = 0; i < 40; i++) p.update(1f / 60f);
+        assertTrue("в полёте шаг затухает", p.walkAmount < 0.01f);
     }
 
     // --------------------------------------------------------------- опоры
@@ -1103,7 +1106,7 @@ final class NetworkTests {
     }
 
     /** Игра, какой её видит сессия: без окна, GL и звука. */
-    private static final class TestContext implements NetContext {
+    static class TestContext implements NetContext {
         World world;
         String name;
         float time = 0.5f;

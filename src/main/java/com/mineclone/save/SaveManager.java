@@ -89,6 +89,57 @@ public final class SaveManager {
         this.savesRoot = savesRoot;
     }
 
+    private String playerIdentity;
+
+    public synchronized String playerId() {
+        if (playerIdentity != null) return playerIdentity;
+        File file = new File(optionsFile().getParentFile(), "player-id.txt");
+        try {
+            if (!file.isFile()) {
+                Files.createDirectories(file.toPath().toAbsolutePath().getParent());
+                try {
+                    Files.writeString(file.toPath(), java.util.UUID.randomUUID().toString(),
+                            java.nio.file.StandardOpenOption.CREATE_NEW);
+                } catch (java.nio.file.FileAlreadyExistsException ignored) { }
+            }
+            playerIdentity = java.util.UUID.fromString(Files.readString(file.toPath()).trim()).toString();
+            return playerIdentity;
+        } catch (IOException | IllegalArgumentException e) {
+            throw new IllegalStateException("Cannot read persistent player identity: " + file, e);
+        }
+    }
+
+    private File guestFile(String world, String id) {
+        String safeId = java.util.UUID.fromString(id).toString();
+        return new File(new File(worldDir(world), "players"), safeId + ".dat");
+    }
+
+    public com.mineclone.net.PlayerData loadGuest(String world, String id) {
+        File file = guestFile(world,id);
+        if (!file.isFile()) return null;
+        try (var in = new DataInputStream(new GZIPInputStream(new FileInputStream(file)))) {
+            if (in.readInt()!=SaveFormat.MAGIC || in.readInt()!=1) throw new IOException("player format");
+            byte[] bytes=in.readNBytes(262145);
+            if(bytes.length>262144) throw new IOException("player checkpoint too large");
+            var data=com.mineclone.net.PlayerData.read(com.mineclone.net.PacketBuf.reading(bytes));
+            if(data==null) throw new IOException("invalid player checkpoint");
+            return data;
+        } catch (IOException e) {
+            // A damaged checkpoint must never silently replace a real inventory with an empty one.
+            throw new IllegalStateException("Cannot load player " + id, e);
+        }
+    }
+
+    public void saveGuest(String world, String id, com.mineclone.net.PlayerData data) {
+        File file=guestFile(world,id);
+        byte[] bytes=data.bytes();
+        chunkWriter.submit(() -> {
+            try {
+                writeGzipAtomic(file,out -> { out.writeInt(SaveFormat.MAGIC);out.writeInt(1);out.write(bytes); });
+            } catch (IOException e) { System.err.println("saveGuest failed: " + e.getMessage()); }
+        });
+    }
+
     private File worldDir(String id) { return new File(savesRoot, id); }
     private File levelFile(String id) { return new File(worldDir(id), SaveFormat.LEVEL_FILE); }
     private File chunksDir(String id) { return new File(worldDir(id), SaveFormat.CHUNKS_DIR); }

@@ -1,0 +1,40 @@
+{
+  "date": "2026-09-24",
+  "provider": "Higgsfield",
+  "model": "gpt_image_2_5",
+  "style": "Original cohesive voxel pixel art; native 32x32 RGBA",
+  "generation": [
+    {
+      "file": "higgsfield-equipment-2026-09-24.png",
+      "sha256": "6eefe809ec9da6baea8efd08bcddd5b4a5f79d0c897ac118d91aba6070e0c402",
+      "id": "7e450055-c155-4eac-b111-aacbf86845f2",
+      "type": "image",
+      "status": "completed",
+      "model": "gpt_image_2_5",
+      "params": {
+        "prompt": "Create a production game pixel-art sprite sheet for an ORIGINAL voxel survival game. Exactly 4 equal columns and 2 equal rows, 8 cells total, no spacing or borders between cells; each cell uses an EXACT 32 by 32 logical pixel grid and 3 pixel empty margin. Flat solid pure magenta #FF00FF background in every cell, NO checkerboard, NO shadows cast on background, NO labels, NO text, NO grid. All edges hard, strictly square pixels, nearest-neighbor look, no antialiasing, no 3D perspective. Cohesive crafted pixel-art style: chunky dark one-pixel outlines, restrained colors, clear material separation, small warm brown wrapped ashwood handles. Each object cleanly fills its cell, NEVER crosses cell borders. TOP ROW LEFT TO RIGHT: (1) iron pickaxe, distinct curved steel head with tapered two ends, held diagonal with handle butt at bottom-left and head at top-right; (2) iron axe, broad asymmetrical bearded steel blade pointing toward top-left, long diagonal wooden handle with butt at bottom-left and socket at top-right, visibly different silhouette from shovel; (3) iron shovel, spade with squared shoulders and pointed cutting tip at top-right, long diagonal wooden handle butt at bottom-left; (4) iron sword with broad straight silver double edged blade, pointed tip toward top-right, crossguard and short wrapped brown grip at bottom-left. Steel on all four tools uses exactly same 5 neutral cool gray colors (dark near-black outline, dark gray, medium gray, silver, tiny near-white highlights); wood uses same 4 warm brown colors. Keep silhouettes practical, crisp and readable in 32 pixels, identical handle width and consistent scale. BOTTOM ROW LEFT TO RIGHT: (1) single copper ingot with dark terracotta outline and warm burnished copper-orange facets, isolated diagonal ingot; (2) single iron ingot, silver-gray facets, same ingot shape and scale; (3) single gold ingot, ochre outline and honey-gold facets, same ingot shape and scale; (4) single wooden stick, straight diagonal bottom-left to top-right, same ashwood brown colors as tool handles. Original design, do not copy any existing game's exact assets. This is an engine-ready pixel sprite atlas, not an illustration of objects.",
+        "aspect_ratio": "16:9"
+      }
+    },
+    {
+      "file": "higgsfield-stone-2026-09-24.png",
+      "sha256": "36113dfe46de81a244f66c630f750b19db788cd099f8e7bfb3d93beeada68108",
+      "id": "2b1527f7-4ee2-499d-9c33-6670369d9e0e",
+      "type": "image",
+      "status": "completed",
+      "model": "gpt_image_2_5",
+      "params": {
+        "prompt": "Production texture atlas for an ORIGINAL voxel survival game, cohesive hand-crafted 32x32 pixel-art texture pack. EXACTLY four columns and two rows of equally sized square logical texture cells filling the full image, without any border, separators, text, labels, lighting gradient, vignette, perspective, shadows, or empty space. Every individual texture fills its cell edge-to-edge, seamless tiling on both axes. Hard square pixels, limited rich but restrained palette, no blur or photographic noise; each tile should look drawn on a native 32 by 32 grid. All stone has a cool medium slate-gray palette and small angular pixel clusters, NO rounded pebbles in plain stone. TOP ROW left to right: 1 plain natural solid STONE, subtle low contrast fractured slate-gray bedrock surface with small irregular angular flecks, no brick pattern; 2 COBBLESTONE, clearly separate angular hand-sized irregular gray stones with thin dark cracks and subtle upper-left highlights; 3 MOSSY COBBLESTONE, precisely the SAME underlying cobblestone pattern and palette as preceding cell, but with subdued olive moss in cracks and several stones; 4 BEDROCK, very dark charcoal fractured dense rock, unmistakably darker and more densely mottled than plain stone. BOTTOM ROW left to right: 1 COAL ORE, same plain gray STONE base as top-left with 4 or 5 black charcoal angular mineral clusters; 2 IRON ORE, same plain gray STONE base with 4 or 5 muted tawny rusty iron mineral clusters; 3 GOLD ORE, same plain gray STONE base with 4 or 5 honey-gold mineral clusters with small bright amber faces; 4 DIAMOND ORE, same plain gray STONE base with 4 or 5 small teal and ice-cyan mineral clusters. All ore tiles must cover about 20 percent with ore and 80 percent with IDENTICAL matching gray stone. An artist-authored engine-ready consistent pixel-art pack, not a painting of blocks. Original style, not a copy of any existing game's exact textures.",
+        "aspect_ratio": "16:9"
+      }
+    }
+  ],
+  "importer": "tools/import_equipment_pack.py",
+  "processing": [
+    "Magenta chroma key preserves dark outlines",
+    "Aspect-preserving nearest-neighbour import with transparent margins",
+    "Four authored tool silhouettes, six fixed material palettes, common wooden handles",
+    "Ore minerals composited on the same imported stone base",
+    "No generation or network access at runtime"
+  ]
+}

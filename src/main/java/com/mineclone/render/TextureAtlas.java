@@ -122,6 +122,7 @@ public class TextureAtlas {
             "wood_sword", "stone_sword", "copper_sword",                          // 128..130
             "iron_sword", "gold_sword", "diamond_sword",                          // 131..133
             "bow", "bow_pull_1", "bow_pull_2", "arrow",                            // 134..137
+            "copper_shovel",                                                       // 138 (append only)
     };
 
     /** First tile index of the water_flow animation strip (16 frames). */

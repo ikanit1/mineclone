@@ -1,10 +1,8 @@
 package com.mineclone.ui.container;
 
 import com.mineclone.ui.MenuTheme;
-import com.mineclone.world.Inventory;
 import com.mineclone.world.ItemStack;
 
-import java.util.List;
 import java.util.function.BooleanSupplier;
 import java.util.function.IntConsumer;
 
@@ -22,24 +20,8 @@ public final class ChestScreen extends ContainerScreen {
 
     public ChestScreen(WindowContext ctx, ItemStack[] chest, IntConsumer onChanged,
             BooleanSupplier alive) {
-        super(ctx, build(ctx, chest, onChanged));
+        super(ctx, ContainerMenus.chest(ctx.inventory(), chest, onChanged));
         this.alive = alive;
-    }
-
-    private static ContainerMenu build(WindowContext ctx, ItemStack[] chest, IntConsumer changed) {
-        Inventory inv = ctx.inventory();
-        ContainerMenu m = new ContainerMenu(List.of(
-                new SlotGroup("chest", SlotRole.CONTAINER,
-                        new ArrayStorage(chest, null, changed), 9),
-                new SlotGroup("main", SlotRole.MAIN,
-                        new InventoryStorage(inv, Inventory.HOTBAR,
-                                Inventory.SIZE - Inventory.HOTBAR), 9),
-                new SlotGroup("hotbar", SlotRole.HOTBAR,
-                        new InventoryStorage(inv, 0, Inventory.HOTBAR), 9)));
-        m.route(SlotRole.MAIN, SlotRole.CONTAINER);
-        m.route(SlotRole.HOTBAR, SlotRole.CONTAINER);
-        m.route(SlotRole.CONTAINER, SlotRole.MAIN, SlotRole.HOTBAR);
-        return m;
     }
 
     @Override

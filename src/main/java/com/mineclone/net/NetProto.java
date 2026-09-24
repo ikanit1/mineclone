@@ -32,7 +32,8 @@ public final class NetProto {
      * молча оборвала связь. Она же отделяет объявления маяка локальной сети:
      * мир чужой версии не должен попадать в список, где по нему можно щёлкнуть.
      */
-    public static final int VERSION = 6;
+    // v7: persistent player identities/checkpoints and host-executed inventory gestures.
+    public static final int VERSION = 7;
 
     /** Сколько раз в секунду уходит кадр сети. */
     public static final float TICK_RATE = 12f;
@@ -45,7 +46,7 @@ public final class NetProto {
 
     // -------------------------------------------------------- рукопожатие
 
-    /** Участник представляется: версия протокола и имя. */
+    /** Участник представляется: версия протокола, имя и постоянный UUID. */
     public static final int C_HELLO = 1;
     /** Хозяин отвечает: сид, имя мира, время, режим — всё, из чего мир рождается. */
     public static final int S_WELCOME = 2;
@@ -109,18 +110,25 @@ public final class NetProto {
 
     // ---------------------------------------------------------- контейнеры
 
-    /** Участник открыл сундук или печь — просит содержимое. */
+    /** Retired in v7; reserved so old full-container packets cannot be reinterpreted. */
     public static final int C_CONTAINER_OPEN = 40;
-    /** Хозяин отдаёт содержимое контейнера. */
+    /** Retired in v7. */
     public static final int S_CONTAINER = 41;
-    /** Участник закрыл контейнер: новое содержимое целиком. */
+    /** Retired in v7: clients may never replace a whole shared container. */
     public static final int C_CONTAINER_COMMIT = 42;
+
+    /** Client checkpoint and the host's restored checkpoint on entry. */
+    public static final int C_PLAYER = 60, S_PLAYER = 61;
+    /** Open, execute one gesture, close, and authoritative menu response. */
+    public static final int C_OPEN = 62, C_ACTION = 63, C_CLOSE = 64, S_MENU = 65;
+    /** Dropping and picking up carry a checkpoint with the ownership change. */
+    public static final int C_DROP = 66, S_DROP_ACK = 67, C_PICKUP = 68, S_PICKUP = 69;
 
     // -------------------------------------------------------------- прочее
 
     /** Строка чата или служебное сообщение. */
     public static final int X_CHAT = 50;
-    /** Участник просит подобрать предмет: решает всё равно хозяин. */
+    /** Retired in v7; replaced by C_PICKUP with a player checkpoint. */
     public static final int C_ITEM_PICK = 51;
     /** Хозяин выдаёт участнику стопку — подобранное или выбитое. */
     public static final int S_GIVE = 52;
@@ -151,6 +159,16 @@ public final class NetProto {
             case C_CONTAINER_OPEN -> "CONTAINER_OPEN";
             case S_CONTAINER -> "CONTAINER";
             case C_CONTAINER_COMMIT -> "CONTAINER_COMMIT";
+            case C_PLAYER -> "PLAYER_CHECKPOINT";
+            case S_PLAYER -> "PLAYER_RESTORE";
+            case C_OPEN -> "MENU_OPEN";
+            case C_ACTION -> "MENU_ACTION";
+            case C_CLOSE -> "MENU_CLOSE";
+            case S_MENU -> "MENU_STATE";
+            case C_DROP -> "ITEM_DROP";
+            case S_DROP_ACK -> "ITEM_DROP_ACK";
+            case C_PICKUP -> "ITEM_PICKUP";
+            case S_PICKUP -> "ITEM_PICKUP_ACK";
             case X_CHAT -> "CHAT";
             case C_ITEM_PICK -> "ITEM_PICK";
             case S_GIVE -> "GIVE";

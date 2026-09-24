@@ -173,21 +173,41 @@ public class ChunkLoader {
     public void ensureRadius(int pcx, int pcz, int radius) {
         for (int dx = -radius; dx <= radius; dx++) {
             for (int dz = -radius; dz <= radius; dz++) {
-                int cx = pcx + dx, cz = pcz + dz;
-                long k = World.key(cx, cz);
-                Chunk existing = world.getChunkIfExists(cx, cz);
-                if (existing != null) {
-                    int distance = Math.max(Math.abs(dx), Math.abs(dz));
-                    existing.setMeshLod(!lod || Boolean.getBoolean("mineclone.fullDetail")
-                            ? 0 : distance <= 3 ? 0 : distance <= 5 ? 1 : 2);
-                }
-                if (world.getChunkIfExists(cx, cz) == null) {
-                    submitGen(cx, cz, k);
-                } else if (meshing && !pendingGen.contains(k) && !pendingLightFlood.contains(k)
-                        && !meshed.contains(k) && !pendingMesh.contains(k)) {
-                    if (neighboursReady(cx, cz)) submitMesh(cx, cz, k, false);
-                }
+                int distance = Math.max(Math.abs(dx), Math.abs(dz));
+                ensureChunk(pcx + dx, pcz + dz, lodForDistance(distance), true);
             }
+        }
+    }
+
+    /** Упрощение меша по удалению в чанках от центра приоритета. */
+    public int lodForDistance(int distance) {
+        return !lod || Boolean.getBoolean("mineclone.fullDetail")
+                ? 0 : distance <= 3 ? 0 : distance <= 5 ? 1 : 2;
+    }
+
+    /**
+     * Запланировать один чанк — когда нужная область не квадрат.
+     *
+     * <p>Фон меню грузит коридор видимости пролёта: он вытянут вдоль
+     * траектории и обрезан сзади, а квадратный радиус вокруг камеры дал бы
+     * вдвое больше чанков.
+     *
+     * @param lod  упрощение меша; −1 — не трогать уже назначенное
+     * @param mesh строить ли меш. {@code false} — только сгенерировать: чанк
+     *             нужен соседу как окружение, а сам в кадр не попадает
+     */
+    public void ensureChunk(int cx, int cz, int lod, boolean mesh) {
+        long k = World.key(cx, cz);
+        Chunk existing = world.getChunkIfExists(cx, cz);
+        if (existing == null) {
+            submitGen(cx, cz, k);
+            return;
+        }
+        if (lod >= 0)
+            existing.setMeshLod(lod);
+        if (mesh && meshing && !pendingGen.contains(k) && !pendingLightFlood.contains(k)
+                && !meshed.contains(k) && !pendingMesh.contains(k)) {
+            if (neighboursReady(cx, cz)) submitMesh(cx, cz, k, false);
         }
     }
 

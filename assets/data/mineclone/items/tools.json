@@ -22,7 +22,7 @@
   "gold_shovel": { "name": "Золотая лопата", "category": "tools", "mass": 0.9, "icon": "gold_shovel", "durability": 48, "tool": { "class": "shovel", "level": 3, "speed": 10.0 }, "attack": { "damage": 2, "speed": 1.0 } },
   "copper_pickaxe": { "name": "Медная кирка", "category": "tools", "mass": 1.4, "icon": "copper_pickaxe", "durability": 180, "tool": { "class": "pickaxe", "level": 2, "speed": 5.0 }, "attack": { "damage": 3, "speed": 1.2 } },
   "copper_axe": { "name": "Медный топор", "category": "tools", "mass": 1.4, "icon": "copper_axe", "durability": 180, "tool": { "class": "axe", "level": 2, "speed": 5.0 }, "attack": { "damage": 9, "speed": 0.9 } },
-  "copper_shovel": { "name": "Медная лопата", "category": "tools", "mass": 1.0, "icon": "tool_copper", "durability": 180, "tool": { "class": "shovel", "level": 2, "speed": 5.0 }, "attack": { "damage": 3, "speed": 1.0 } },
+  "copper_shovel": { "name": "Медная лопата", "category": "tools", "mass": 1.0, "icon": "copper_shovel", "durability": 180, "tool": { "class": "shovel", "level": 2, "speed": 5.0 }, "attack": { "damage": 3, "speed": 1.0 } },
 
   "wooden_sword":  { "name": "Деревянный меч", "category": "tools", "mass": 1.2, "icon": "wood_sword",    "durability": 60,  "tool": { "class": "sword", "level": 1, "speed": 1.0 }, "attack": { "damage": 4, "speed": 1.6 } },
   "stone_sword":   { "name": "Каменный меч",   "category": "tools", "mass": 1.4, "icon": "stone_sword",   "durability": 132, "tool": { "class": "sword", "level": 2, "speed": 1.0 }, "attack": { "damage": 5, "speed": 1.6 } },

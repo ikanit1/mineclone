@@ -36,6 +36,31 @@ public final class ContainerMenu {
     private boolean dragRight;
     private final List<SlotRef> dragSlots = new ArrayList<>();
     private ItemStack dragStart;
+    private java.util.function.Consumer<MenuCommand> remote;
+
+    public void setRemote(java.util.function.Consumer<MenuCommand> remote) { this.remote=remote; }
+    private boolean dispatch(MenuCommand.Kind kind,SlotRef slot,int argument) {
+        if(remote==null)return false;
+        remote.accept(MenuCommand.of(kind,slot,argument));
+        return true;
+    }
+
+    public void cancelDrag() { dragging=false;dragSlots.clear();dragStart=null; }
+
+    /** Items temporarily owned by this menu, excluding the shared container and craft output. */
+    public List<ItemStack> pendingItems() {
+        List<ItemStack> result=new ArrayList<>();
+        if(cursor!=null)result.add(cursor.copy());
+        for(SlotGroup g:groups)if(g.role==SlotRole.CRAFT_GRID)
+            for(int i=0;i<g.size();i++)if(g.storage.get(i)!=null)result.add(g.storage.get(i).copy());
+        for(ItemStack s:dropped)result.add(s.copy());
+        return result;
+    }
+
+    public void pickAll(SlotRef s) {
+        if(dispatch(MenuCommand.Kind.PICK_ALL,s,0))return;
+        leftClick(s);doubleClick(s);
+    }
 
     public ContainerMenu(List<SlotGroup> groups) {
         this.groups = List.copyOf(groups);
@@ -82,6 +107,7 @@ public final class ContainerMenu {
     // ------------------------------------------------------------ клики
 
     public void leftClick(SlotRef s) {
+        if(dispatch(MenuCommand.Kind.LEFT,s,0))return;
         if (s == null)
             return;
         if (s.role().isCreativeSource()) {
@@ -140,6 +166,7 @@ public final class ContainerMenu {
     }
 
     public void rightClick(SlotRef s) {
+        if(dispatch(MenuCommand.Kind.RIGHT,s,0))return;
         if (s == null)
             return;
         if (s.role().isCreativeSource()) {
@@ -210,6 +237,7 @@ public final class ContainerMenu {
      * потом пустые слоты. Куда переносить, решает таблица маршрутов окна.
      */
     public void shiftClick(SlotRef s) {
+        if(dispatch(MenuCommand.Kind.SHIFT,s,0))return;
         if (s == null)
             return;
         if (s.role().isCreativeSource()) {
@@ -287,6 +315,7 @@ public final class ContainerMenu {
      * по одному предмету, а собирал игрок как раз ради порядка.
      */
     public void doubleClick(SlotRef s) {
+        if(dispatch(MenuCommand.Kind.DOUBLE,s,0))return;
         if (cursor == null || cursor.maxStack() <= 1)
             return;
         for (int pass = 0; pass < 2; pass++)
@@ -312,7 +341,8 @@ public final class ContainerMenu {
 
     /** Обмен слота с ячейкой хотбара — с проверкой, что обе стороны примут. */
     public void numberKey(SlotRef s, int hotbarIndex) {
-        if (s == null || s.role().isCreativeSource())
+        if(dispatch(MenuCommand.Kind.NUMBER,s,hotbarIndex))return;
+        if (s == null)
             return;
         SlotGroup hotbar = null;
         for (SlotGroup g : groups)
@@ -321,6 +351,15 @@ public final class ContainerMenu {
         if (hotbar == null || hotbarIndex < 0 || hotbarIndex >= hotbar.size())
             return;
         SlotRef h = new SlotRef(hotbar, hotbarIndex);
+        if (s.role().isCreativeSource()) {
+            ItemStack sample = s.get();
+            if (sample != null && h.canPlace(sample)) {
+                ItemStack copy = sample.copyWithCount(Math.min(sample.maxStack(), h.maxCount(sample)));
+                h.set(copy);
+                moves.add(new Move(s, h, copy.copy()));
+            }
+            return;
+        }
         if (h.equals(s))
             return;
         ItemStack here = s.get(), there = h.get();
@@ -341,6 +380,7 @@ public final class ContainerMenu {
     // ------------------------------------------------------------- бросок
 
     public void drop(SlotRef s, boolean wholeStack) {
+        if(dispatch(MenuCommand.Kind.DROP,s,wholeStack?1:0))return;
         if (s == null || s.role().isCreativeSource())
             return;
         ItemStack in = s.get();
@@ -352,6 +392,7 @@ public final class ContainerMenu {
     }
 
     public void dropCursor(boolean wholeStack) {
+        if(dispatch(MenuCommand.Kind.DROP_CURSOR,null,wholeStack?1:0))return;
         if (cursor == null)
             return;
         if (wholeStack || cursor.count <= 1) {
@@ -436,6 +477,11 @@ public final class ContainerMenu {
      * на слоте, не имел в виду «раздать поровну на один слот».
      */
     public void endDrag() {
+        if(remote!=null && dragging) {
+            var targets=dragSlots.stream().map(s -> new MenuCommand.Target(s.group().id,s.index())).toList();
+            var command=new MenuCommand(MenuCommand.Kind.DRAG,"",-1,dragRight?1:0,targets);
+            cancelDrag();remote.accept(command);return;
+        }
         if (!dragging)
             return;
         dragging = false;
@@ -496,6 +542,7 @@ public final class ContainerMenu {
 
     /** Средняя кнопка в креативе: полная стопка на курсор. */
     public void cloneFull(SlotRef s) {
+        if(dispatch(MenuCommand.Kind.CLONE,s,0))return;
         if (s == null)
             return;
         ItemStack sample = s.get();
@@ -506,6 +553,7 @@ public final class ContainerMenu {
 
     /** Delete с кликом в креативе: слот очищается. */
     public void delete(SlotRef s) {
+        if(dispatch(MenuCommand.Kind.DELETE,s,0))return;
         if (s == null || s.role().isCreativeSource())
             return;
         if (!s.canTake())

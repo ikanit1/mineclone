@@ -84,6 +84,9 @@ public abstract class ContainerScreen implements Screen {
         return false;
     }
 
+    /** Text widgets own typing, including the inventory and hotbar keys. */
+    protected boolean capturesKeyboard() { return false; }
+
     // ------------------------------------------------------------ раскладка
 
     /** Ширина сетки группы в пикселях. */
@@ -165,7 +168,7 @@ public abstract class ContainerScreen implements Screen {
         takeDropped();
         if (closing || !valid())
             return MenuAction.back();
-        if (in.escape() || in.pressed(ctx.keys().key(KeyBindings.Action.INVENTORY)))
+        if (in.escape() || (!capturesKeyboard() && in.pressed(ctx.keys().key(KeyBindings.Action.INVENTORY))))
             return MenuAction.back();
         return MenuAction.NONE;
     }
@@ -178,9 +181,10 @@ public abstract class ContainerScreen implements Screen {
     private void takeDropped() {
         if (menu.dropped().isEmpty())
             return;
-        for (ItemStack s : menu.dropped())
-            ctx.throwStack(s);
+        var dropped = new ArrayList<>(menu.dropped());
         menu.dropped().clear();
+        for (ItemStack s : dropped)
+            ctx.throwStack(s);
     }
 
     // ---------------------------------------------------------------- ввод
@@ -208,7 +212,7 @@ public abstract class ContainerScreen implements Screen {
             return;
         }
 
-        if (hovered != null) {
+        if (hovered != null && !capturesKeyboard()) {
             int drop = ctx.keys().key(KeyBindings.Action.DROP);
             if (in.pressed(drop)) {
                 menu.drop(hovered, in.ctrl());
@@ -245,8 +249,7 @@ public abstract class ContainerScreen implements Screen {
                 return;
             }
             if (in.mousePressed && wasDouble()) {
-                menu.leftClick(hovered);
-                menu.doubleClick(hovered);
+                menu.pickAll(hovered);
             } else if (in.mousePressed) {
                 menu.leftClick(hovered);
             } else {

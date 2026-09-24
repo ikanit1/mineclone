@@ -25,6 +25,7 @@ door_top_tile.png
 # Local runtime state
 saves/
 options.dat
+player-id.txt
 
 # Preview/bench output trees written by the tools in tools/
 out-net/

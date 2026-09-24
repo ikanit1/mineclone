@@ -518,6 +518,7 @@ public final class Shaders {
         uniform vec3  uCamUp;
         uniform float uTime;
         uniform float uSnow;      // 1 — снег, 0 — дождь
+        uniform float uDust;      // 0 precipitation, 1 sand grains, 2 drifting dust/spray clouds
         uniform float uStorm;
         uniform vec2  uWind;       // мгновенный ветер: им повёрнута частица
         uniform vec2  uDrift;      // пройденный ветром путь по XZ
@@ -535,13 +536,20 @@ public final class Shaders {
             float big = aSeed.w;
             float phase = dot(aSeed, vec4(67.1, 31.7, 19.3, 47.9));
             bool snow = uSnow > 0.5;
+            bool dust = uDust > 0.5;
+            bool veil = uDust > 1.5;
             // Скорость нужна только для поворота и растяжения частицы;
             // положение считается по пройденному пути. Умножать нынешнюю
             // скорость на всё прошедшее время нельзя: ветер пульсирует, и
             // порыв сдвигал бы разом весь снегопад.
             vec3 vel;
             vec3 travel;
-            if (snow) {
+            if (dust) {
+                float carry = mix(0.8, 1.6, big);
+                vel = vec3(uWind.x * carry * (1.0 + uStorm * 0.8), -0.15,
+                           uWind.y * carry * (1.0 + uStorm * 0.8));
+                travel = vec3(uDriftSnow.x * carry, -uTime * mix(0.12, 0.3, big), uDriftSnow.y * carry);
+            } else if (snow) {
                 // Крупные хлопья падают быстрее и сносятся сильнее мелких:
                 // разная скорость и есть глубина снегопада.
                 float own = mix(0.8, 2.1, big);
@@ -556,12 +564,17 @@ public final class Shaders {
                 // медленнее, крупные близкие капли быстро режут кадр.
                 float own = mix(11.5, 20.0, big);
                 float carry = mix(0.24, 0.46, big);
-                vel = vec3(uWind.x * carry, -(own + uStorm * 3.0), uWind.y * carry);
-                travel = vec3(uDrift.x * carry, -(own * uTime + uFallRain),
-                              uDrift.y * carry);
+                vel = vec3(uWind.x * (carry + uStorm * 1.2), -(own + uStorm * 3.0),
+                           uWind.y * (carry + uStorm * 1.2));
+                vec2 blown = uDrift * carry + (uDriftSnow - uDrift) * 1.5;
+                travel = vec3(blown.x, -(own * uTime + uFallRain), blown.y);
             }
             vec3 p = aSeed.xyz * uBox + travel;
-            if (snow) {
+            if (dust) {
+                p.x += sin(uTime * 1.1 + phase) * 1.4;
+                p.z += cos(uTime * 0.8 + phase * 1.3) * 1.4;
+                p.y += sin(uTime * 1.5 + phase) * (veil ? 0.9 : 0.4);
+            } else if (snow) {
                 float ph = aSeed.x * 61.0 + aSeed.z * 23.0 + aSeed.y * 11.0;
                 float turb = 0.35 + uStorm * 1.1;
                 p.x += (sin(uTime * (0.9 + big * 0.7) + ph) * 0.8 + sin(uTime * 2.1 + ph * 1.7) * 0.3) * turb;
@@ -592,7 +605,17 @@ public final class Shaders {
             vDetail = mix(0.58, 1.0, nearLayer) * mix(0.82, 1.08, big);
 
             vec3 world;
-            if (snow) {
+            if (dust) {
+                if (veil) {
+                    float size = mix(0.8, 2.1, big);
+                    world = p + uCamRight * aCorner.x * size * 2.5 + uCamUp * aCorner.y * size * 0.7;
+                } else {
+                    vec3 axis = normalize(vel + vec3(0.001));
+                    vec3 side = normalize(cross(axis, normalize(uCamPos - p) + vec3(1e-4)));
+                    float size = mix(0.012, 0.035, big);
+                    world = p + side * aCorner.x * size + axis * aCorner.y * size * (2.0 + uStorm * 4.0);
+                }
+            } else if (snow) {
                 float size = mix(0.05, 0.15, big * big);
                 vec3 axis = normalize(vel);
                 // В метель хлопья вытягиваются вдоль полёта: так читается скорость.
@@ -623,6 +646,7 @@ public final class Shaders {
         in float vFade;
         in float vDetail;
         uniform float uSnow;
+        uniform float uDust;
         uniform vec3  uColor;
         uniform float uAlpha;
         uniform float uLinearOut;
@@ -630,7 +654,14 @@ public final class Shaders {
         void main() {
             vec2 q = vUv - 0.5;
             float a;
-            if (uSnow > 0.5) {
+            if (uDust > 1.5) {
+                float edge = 1.0 - smoothstep(0.20, 0.5, length(q));
+                float wisps = 0.55 + 0.45 * sin(vUv.x * 17.0 + vDetail * 13.0 + sin(vUv.y * 11.0));
+                a = edge * edge * wisps;
+            } else if (uDust > 0.5) {
+                a = (1.0 - smoothstep(0.1, 0.5, abs(q.x)))
+                    * (1.0 - smoothstep(0.3, 0.5, abs(q.y)));
+            } else if (uSnow > 0.5) {
                 vec2 pixel = abs(floor(vUv * 8.0) - vec2(3.5));
                 a = (max(pixel.x,pixel.y) <= 2.5 && min(pixel.x,pixel.y) <= 0.5) ? 1.0 : 0.0;
             } else {
@@ -828,6 +859,21 @@ public final class Shaders {
             vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
             vUv = p;
             gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+        }
+        """;
+
+    /**
+     * Полноэкранная картинка с альфой — кроссфейд между кадрами фона меню.
+     * Рисуется после композита, поэтому снимок уже в sRGB и тонемапить его
+     * второй раз нельзя.
+     */
+    public static final String POST_FADE = VER + """
+        in vec2 vUv;
+        uniform sampler2D uScene;
+        uniform float uAlpha;
+        out vec4 FragColor;
+        void main() {
+            FragColor = vec4(texture(uScene, vUv).rgb, uAlpha);
         }
         """;
 
@@ -1422,7 +1468,7 @@ public final class Shaders {
         in float vBlockLight;
         in vec3  vWorld;
         uniform sampler2D uAtlas;
-        uniform vec2  uToolUv0;
+        uniform float uAtlasTiles;
         uniform vec2  uCrackUv0;
         uniform vec2  uSpan;
         uniform float uAlpha;
@@ -1436,7 +1482,8 @@ public final class Shaders {
         }
         void main() {
             if (texture(uAtlas, vUv).a < 0.5) discard;
-            vec2 local = clamp((vUv - uToolUv0) / uSpan, 0.0, 1.0);
+            // Template handles and heads may sample different atlas tiles.
+            vec2 local = fract(vUv * uAtlasTiles);
             // Спрайт инструмента узкий и диагональный, тайл трещины блока
             // пересекается с ним парой пикселей. Поэтому к трещине добавлены
             // сколы по пиксельной сетке мастера 16x16: чем больше износ, тем

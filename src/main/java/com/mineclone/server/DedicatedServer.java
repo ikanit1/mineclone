@@ -591,6 +591,14 @@ public final class DedicatedServer implements NetContext {
         return gameTime;
     }
 
+    @Override public com.mineclone.net.PlayerData loadGuest(String id) {
+        return save.loadGuest(config.worldId,id);
+    }
+
+    @Override public void saveGuest(String id,com.mineclone.net.PlayerData data) {
+        save.saveGuest(config.worldId,id,data);
+    }
+
     @Override
     public void setTimeOfDay(float t) {
         gameTime = t;

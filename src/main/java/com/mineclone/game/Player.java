@@ -474,6 +474,8 @@ public class Player {
 
     /** Пакетная видимость ради теста физики: он живёт в этом же пакете. */
     void moveAxis(World world, float dx, float dy, float dz) {
+        float previousBottom = position.y;
+        float previousTop = previousBottom + HEIGHT;
         position.x += dx;
         position.y += dy;
         position.z += dz;
@@ -493,6 +495,11 @@ public class Player {
                     BlockType b = world.getBlock(x, y, z);
                     if (!b.solid)
                         continue;
+                    // Cell enumeration is only a broad phase. A face touch is not overlap,
+                    // and a previous resolution may have moved us out of later candidate cells.
+                    if (maxX <= x || minX >= x + 1 || maxY <= y || minY >= y + 1
+                            || maxZ <= z || minZ >= z + 1)
+                        continue;
                     if (b == BlockType.STAIRS) {
                         resolveStairs(world, x, y, z, dx, dy, dz, hw);
                         minX = position.x - hw;
@@ -503,7 +510,8 @@ public class Player {
                         maxZ = position.z + hw;
                         continue;
                     }
-                    // overlap
+                    // Resolve only the axis being moved. Vertical contacts must cross a surface;
+                    // an existing side/ceiling overlap must never eject a falling player upward.
                     if (dx > 0) {
                         position.x = x - hw - 1e-4f;
                         velocity.x = 0;
@@ -513,10 +521,10 @@ public class Player {
                         velocity.x = 0;
                         isSprinting = false;
                     }
-                    if (dy > 0) {
+                    if (dy > 0 && previousTop <= y + 1e-4f) {
                         position.y = y - HEIGHT - 1e-4f;
                         velocity.y = 0;
-                    } else if (dy < 0) {
+                    } else if (dy < 0 && previousBottom >= y + 1 - 1e-4f) {
                         position.y = y + 1 + 1e-4f;
                         velocity.y = 0;
                         onGround = true;
