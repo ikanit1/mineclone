@@ -36,6 +36,8 @@ public final class WorldClock {
     public float gameTimeFloat() { return (float) gameTime; }
     public long worldTicks() { return worldTicks; }
     public float daylight() { return daylightAt(gameTime); }
+    /** Seconds of game time as weather fronts count them ({@code Weather.sample}). */
+    public float frontSeconds() { return (float) (gameTime / TIME_SCALE); }
     public float dayPhase() { return dayPhaseAt(gameTime); }
     public int moonPhase() { return NightSky.moonPhase(gameTime); }
 

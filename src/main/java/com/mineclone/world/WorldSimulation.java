@@ -1,6 +1,5 @@
 package com.mineclone.world;
 
-import org.joml.Vector3f;
 
 /**
  * Мировой тик: печи, случайные тики блоков, вода, лава и обвалы.
@@ -24,7 +23,7 @@ public final class WorldSimulation {
     public static final float WATER_TICK = 0.25f;
     /** Как часто тикают печи. */
     public static final float FURNACE_TICK = 0.25f;
-    /** В каком радиусе чанков вокруг игрока работают печи. */
+    /** В каком радиусе чанков вокруг каждого игрока работают печи. */
     public static final int FURNACE_RADIUS = 4;
 
     private final BlockTicker blockTicker;
@@ -53,7 +52,8 @@ public final class WorldSimulation {
      * следствие.
      *
      * @param around        вокруг кого крутится мир: тики блоков и печи идут в
-     *                      радиусе от этой точки
+     *                      радиусе от каждой из этих точек — у каждого игрока,
+     *                      а чанк рядом с двумя тикает один раз
      * @param precipitation осадки фронта, а не местные: игрок может стоять в
      *                      пустыне, а снег обязан ложиться на соседнюю тундру
      * @param simulate      считаем ли мы мир сами. У участника сети — нет:
@@ -62,8 +62,8 @@ public final class WorldSimulation {
      *                      первой же луже, а выросшая у участника трава уедет
      *                      хозяину как просьба поставить блок
      */
-    public void update(World world, float dt, Vector3f around, float precipitation,
-            boolean simulate) {
+    public void update(World world, float dt, java.util.List<? extends org.joml.Vector3fc> around,
+            float precipitation, boolean simulate) {
         if (world == null)
             return;
         blockNanos = waterNanos = lavaNanos = fallingNanos = 0;
@@ -127,20 +127,22 @@ public final class WorldSimulation {
      * горящая печь переписывала бы свой файл четыре раза в секунду всё время
      * работы.
      */
-    private void tickFurnaces(World world, Vector3f around) {
-        if (around == null)
-            return;
-        int pcx = (int) Math.floor(around.x / Chunk.SIZE_X);
-        int pcz = (int) Math.floor(around.z / Chunk.SIZE_Z);
-        for (int cx = pcx - FURNACE_RADIUS; cx <= pcx + FURNACE_RADIUS; cx++)
-            for (int cz = pcz - FURNACE_RADIUS; cz <= pcz + FURNACE_RADIUS; cz++) {
-                Chunk c = world.getChunkIfExists(cx, cz);
-                if (c == null || c.furnaces().isEmpty())
-                    continue;
-                for (Furnace f : c.furnaces().values())
-                    if (f.tick(FURNACE_TICK))
-                        c.modified = true;
-            }
+    private void tickFurnaces(World world, java.util.List<? extends org.joml.Vector3fc> around) {
+        for (int n = 0; n < around.size(); n++) {
+            int pcx = BlockTicker.chunkOf(around.get(n).x(), Chunk.SIZE_X);
+            int pcz = BlockTicker.chunkOf(around.get(n).z(), Chunk.SIZE_Z);
+            for (int cx = pcx - FURNACE_RADIUS; cx <= pcx + FURNACE_RADIUS; cx++)
+                for (int cz = pcz - FURNACE_RADIUS; cz <= pcz + FURNACE_RADIUS; cz++) {
+                    if (BlockTicker.coveredBefore(around, n, cx, cz, FURNACE_RADIUS))
+                        continue;
+                    Chunk c = world.getChunkIfExists(cx, cz);
+                    if (c == null || c.furnaces().isEmpty())
+                        continue;
+                    for (Furnace f : c.furnaces().values())
+                        if (f.tick(FURNACE_TICK))
+                            c.modified = true;
+                }
+        }
     }
 
     public BlockTicker blockTicker() {

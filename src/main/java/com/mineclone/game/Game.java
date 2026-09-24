@@ -161,6 +161,8 @@ public class Game {
     private final java.util.Set<Long> playerStructures = new java.util.HashSet<>();
     /** Мобы открытого мира; null у гостя — их симулирует хозяин. */
     private com.mineclone.sim.WorldSession session;
+    /** Гость мир не симулирует; таймерам его тика нужна хоть одна точка. */
+    private final java.util.List<org.joml.Vector3fc> aroundSelf = java.util.List.of(player.position);
     /** Музыка: ситуация из мира → режиссёр → потоковый плеер. */
     private final MusicSense musicSense = new MusicSense();
     private com.mineclone.audio.MusicDirector music;
@@ -1620,7 +1622,7 @@ public class Game {
         long effectsStart = System.nanoTime();
         // Погода идёт по игровому времени, а не по сессии: она сохраняется
         // вместе с часами мира и не сбрасывается в ясно при каждом заходе.
-        atmosphere.update(dt, world, worldClock.gameTimeFloat(), (float) (worldClock.gameTime() / com.mineclone.sim.WorldClock.TIME_SCALE), player.position);
+        atmosphere.update(dt, world, worldClock.gameTimeFloat(), worldClock.frontSeconds(), player.position);
         updateStorm(dt);
         splashTimer -= dt;
         if (splashTimer <= 0f && state == State.PLAYING) {
@@ -1669,7 +1671,8 @@ public class Game {
         if (simulation != null) {
             // Тикеру — осадки фронта, а не местные: игрок может стоять в
             // пустыне, а снег обязан ложиться на соседнюю тундру.
-            simulation.update(world, dt, player.position,
+            // Мир живёт вокруг каждого участника: у хозяина — и вокруг гостей.
+            simulation.update(world, dt, session != null ? session.centres() : aroundSelf,
                     atmosphere.global.precipitation(), simulate);
             probeBlockTick = simulation.blockNanos();
             probeWaterTick = simulation.waterNanos();

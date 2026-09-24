@@ -78,6 +78,7 @@ public final class TestMain {
         suite("sim", "SessionParityTests", SessionParityTests::runAll);
         suite("sim", "ServerSimulationTests", ServerSimulationTests::runAll);
         suite("sim", "TargetSelectionTests", TargetSelectionTests::runAll);
+        suite("sim", "WorldAroundEveryoneTests", WorldAroundEveryoneTests::runAll);
         suite("render", "GpuTimersRingTests", GpuTimersRingTests::runAll);
         suite("perf", "BenchMetricsTests", BenchMetricsTests::runAll);
         suite("feature", "FeatureTests", r -> FeatureTests.runAll((n, c) -> r.run(n, c::run)));

@@ -6,6 +6,7 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 
 ### Fixed
 - A dedicated server keeps the items lying in a world it opens: it used to leave them out of the world and erase them from their chunk on its first save.
+- The world lives around every player, not the first: block ticks, furnaces, spawning and despawning run near each guest on a host or a dedicated server, and a server's snow and rain now follow the weather fronts.
 - On a dedicated server, zombies and other melee mobs strike the guests (their blows used to land on no one), and a guest's broken or placed block draws mobs like the host's own.
 - On a dedicated server, arrows fly and land (a guest's arrow used to hang where it was shot, and every projectile packet kept growing), creepers blow craters and hurt guests, and killed mobs drop their loot.
 - A dedicated server no longer stops with an exception — without saving — at the first item lying on the ground (a guest's throw, a broken chest, sand falling on a torch).

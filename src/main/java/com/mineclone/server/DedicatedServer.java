@@ -356,8 +356,9 @@ public final class DedicatedServer implements NetContext {
         daylight = worldClock.daylight();
         net.update(dt);
         streamChunks();
-        Vector3f centre = centre();
-        simulation.update(world, dt, centre, 0f, true);
+        // Around every guest, with the weather the game's players get: snow
+        // settles on the server, rain puts its fires out.
+        simulation.update(world, dt, session.centres(), precipitation(), true);
         session.adoptFallingDrops();
         session.tickMobs(dt);
         session.tickItems(dt);
@@ -374,17 +375,9 @@ public final class DedicatedServer implements NetContext {
         }
     }
 
-    /**
-     * Вокруг чего крутится мир.
-     *
-     * <p>Вокруг первого участника, а не вокруг точки появления: печи, тики
-     * блоков и мобы должны жить там, где кто-то есть. Нет никого — вокруг
-     * точки появления, чтобы вода у спавна всё же дотекла.
-     */
-    private Vector3f centre() {
-        for (RemotePlayer p : net.players())
-            return p.position;
-        return spawn;
+    /** Осадки фронта — те же, что у игроков в игре: {@link com.mineclone.world.Weather} от сида и времени. */
+    float precipitation() {
+        return com.mineclone.world.Weather.sample(world.seed, worldClock.frontSeconds()).precipitation();
     }
 
     /** Держать мир загруженным вокруг каждого участника. */
@@ -405,12 +398,12 @@ public final class DedicatedServer implements NetContext {
     }
 
     /**
-     * Что сессия пока берёт у сервера. Мобы появляются и исчезают вокруг
-     * первого участника (SIM-05); цель и удар — среди всех гостей. Стрелы
-     * летят в гостей.
+     * Что сессия берёт у сервера. Мир живёт вокруг каждого гостя; нет никого —
+     * вокруг точки появления, чтобы вода у спавна всё же дотекла. Стрелы летят
+     * в гостей.
      */
     private final WorldSession.Host sessionHost = new WorldSession.Host() {
-        @Override public Vector3f mobFocus() { return centre(); }
+        @Override public Vector3f mobFocus() { return spawn; }
         @Override public void projectileTargets(List<com.mineclone.world.entity.Hittable> out) { out.addAll(net.players()); }
     };
 

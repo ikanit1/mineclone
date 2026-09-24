@@ -56,22 +56,20 @@ public final class WorldSession {
     public static final float NOISE_BREAK = 16f, NOISE_PLACE = 10f;
     private static final java.util.function.Predicate<Participant> ANYONE = p -> true;
 
-    /**
-     * What the session still borrows from whoever runs it. The single focus
-     * gives way to all participants with SIM-05.
-     */
+    /** What the session borrows from whoever runs it: the game's host or the dedicated server. */
     public interface Host {
         /**
-         * The point mobs spawn and despawn around, and look at when no one is
-         * here: the host's own player, or the dedicated server's first guest.
-         * Mobs read it; only a body's share of zero is ever applied to it.
+         * The host's own player, whose body mobs are pushed out of — or, for
+         * the dedicated server, the spawn point: where the world stays alive
+         * and what mobs look at while no one is here. Only a body's share of
+         * zero is ever applied to it.
          */
         Vector3f mobFocus();
 
         /** The host's own player holds a light source, and zombies hesitate before it. */
         default boolean focusHoldsLight() { return false; }
 
-        /** Mobs are pushed out of the focus as out of a player's body; a server's focus is only a point. */
+        /** Mobs are pushed out of the focus as out of a player's body; the server's spawn point is only a point. */
         default boolean focusIsBody() { return false; }
 
         /** False stops natural spawning (benchmarks); despawning goes on. */
@@ -131,6 +129,8 @@ public final class WorldSession {
     private final Consumer<Projectile> shots;
     /** Where the mob being ticked looks; copied from its target, never kept past its tick. */
     private final Vector3f aim = new Vector3f();
+    /** This tick's centres of life; rebuilt by {@link #centres()}. */
+    private final List<org.joml.Vector3fc> centres = new ArrayList<>();
     private float senseTimer;
     private float spawnTimer;
     private float mergeTimer;
@@ -222,12 +222,29 @@ public final class WorldSession {
 
         separate(mobs, focus);
 
-        spawner.despawnFar(mobs, focus);
+        // Mobs live around everyone: despawned only far from all, spawned
+        // around each.
+        List<org.joml.Vector3fc> around = centres();
+        spawner.despawnFar(mobs, around);
         spawnTimer -= dt;
         if (host.spawnMobs() && spawnTimer <= 0f) {
             spawnTimer = MobSpawner.TICK_INTERVAL;
-            spawner.trySpawn(world, mobs, focus, daylight);
+            spawner.trySpawn(world, mobs, around, daylight);
         }
+    }
+
+    /**
+     * Where the world is alive this tick: every participant, in id order, or
+     * the focus while no one is here. Block ticks and furnaces
+     * ({@code WorldSimulation}) run around the same points. The list is reused.
+     */
+    public List<org.joml.Vector3fc> centres() {
+        centres.clear();
+        for (int i = 0; i < participants.size(); i++)
+            centres.add(participants.get(i).position());
+        if (centres.isEmpty())
+            centres.add(host.mobFocus());
+        return centres;
     }
 
     /**

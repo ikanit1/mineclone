@@ -45,9 +45,8 @@ number and type, origin, knockback) and `ArmorView`, which stays `NONE` until
 equipment slots exist (CMB-01). Converting the existing damage paths to these
 types is SURV-01.
 
-Consumers arrive with the next tasks: mobs choose targets among participants
-(SIM-07), block ticks, furnaces and spawning run around every participant
-(SIM-05). `DedicatedServer.centre()` still selects the first player until then.
+Their consumers: mobs choose targets among participants (SIM-07), and block
+ticks, furnaces, spawning and despawning run around every participant (SIM-05).
 
 ## World session: mobs (SIM-03)
 
@@ -62,21 +61,42 @@ guest the store holds the host's snapshots and no session exists.
 | Seam | Game (host) | Dedicated server |
 | --- | --- | --- |
 | `WorldEvents` — what to show | `game.EntityPresentation`: voices, splashes, rage, footprints, fire, deaths, blasts, sound cues | `WorldEvents.NONE` |
-| `Host.mobFocus` — spawning, despawning, an empty world | its own player | `centre()`: the first guest, else the spawn point |
+| `Host.mobFocus` — the body, an empty world | its own player | the spawn point |
 | `Host.focusIsBody` | yes: mobs are pushed out of the player | no: the focus is only a point |
 | `Host.participantStruck` | knockback, an elite's poison or frost, the hurt sound | nothing |
 | `Host.projectileTargets` | its own player and the guests | the guests |
 | `Host.itemCollector` | its own player picks up items and its arrows | none: guests ask with `C_ITEM_PICK` |
 | `Host.blasted` | a local player is thrown back | nothing |
 
-`WorldEvents` only reads; the session calls it in simulation order. `Host` is
-temporary by design: the single focus gives way to all participants with SIM-05.
+`WorldEvents` only reads; the session calls it in simulation order.
 Collisions handle each pair once, by the earlier mob in the list
 (`MobSpatialGrid.order`), without the per-frame identity map the game used to
 allocate.
 
 The server gained one behaviour by sharing the loop: its mobs are now pushed
 apart like the host's instead of standing inside one another.
+
+## Around everyone (SIM-05)
+
+`WorldSession.centres()` is where the world is alive this tick: every
+participant in id order, or the focus while no one is here (a dedicated server
+keeps the water at its spawn flowing). `WorldSimulation.update` ticks random
+blocks (`BlockTicker`) and furnaces over the union of the squares around the
+centres — each chunk once, in the order a single centre used, so a lone
+player's world ticks exactly as before and two players in one place do not
+double anything. The spawner rings every centre: its own cap counts the mobs
+within `MobSpawner.LOCAL_RANGE` (128) of it, the shared cap grows with the
+players up to `MAX_CAP_SCALE` (4) times; a mob despawns only beyond
+`DESPAWN_RADIUS` from the nearest centre. The server's block ticks get the
+weather front's precipitation (`Weather.sample` at `WorldClock.frontSeconds()`,
+what the game's `Atmosphere` samples), so snow settles and rain puts fires out
+there too; `DedicatedServer.centre()` is gone.
+
+`WorldAroundEveryoneTests`: a furnace by a second player 300 blocks away
+smelts (and one by no one does not); two players in one chunk tick it exactly
+as one does; mobs spawn around both of two distant players and one beside the
+second is not despawned for being far from the first; the server's
+precipitation is the front's.
 
 ## Targets (SIM-07)
 

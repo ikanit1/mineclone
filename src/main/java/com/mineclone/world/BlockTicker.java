@@ -49,23 +49,52 @@ public final class BlockTicker {
     }
 
     public void tick(World world, Vector3f playerPos, float weatherStrength) {
+        tick(world, java.util.List.of(playerPos), weatherStrength);
+    }
+
+    /**
+     * One pass over the chunks within {@link #RADIUS_CHUNKS} of any centre —
+     * each chunk once, however many players stand near it, and in the order a
+     * single centre always used, so a lone player's world ticks as before.
+     */
+    public void tick(World world, java.util.List<? extends org.joml.Vector3fc> centres, float weatherStrength) {
         boolean raining = weatherStrength >= RAIN_EXTINGUISH;
         boolean snowfall = weatherStrength >= SNOWFALL_MIN;
-        int pcx = (int) Math.floor(playerPos.x / Chunk.SIZE_X);
-        int pcz = (int) Math.floor(playerPos.z / Chunk.SIZE_Z);
-        for (int cx = pcx - RADIUS_CHUNKS; cx <= pcx + RADIUS_CHUNKS; cx++)
-            for (int cz = pcz - RADIUS_CHUNKS; cz <= pcz + RADIUS_CHUNKS; cz++) {
-                Chunk c = world.getChunkIfExists(cx, cz);
-                if (c == null)
-                    continue;
-                for (int i = 0; i < SAMPLES_PER_CHUNK; i++) {
-                    int x = rnd.nextInt(Chunk.SIZE_X);
-                    int y = rnd.nextInt(Chunk.SIZE_Y);
-                    int z = rnd.nextInt(Chunk.SIZE_Z);
-                    apply(world, cx * Chunk.SIZE_X + x, y, cz * Chunk.SIZE_Z + z,
-                            raining, snowfall, weatherStrength);
+        for (int n = 0; n < centres.size(); n++) {
+            int pcx = chunkOf(centres.get(n).x(), Chunk.SIZE_X);
+            int pcz = chunkOf(centres.get(n).z(), Chunk.SIZE_Z);
+            for (int cx = pcx - RADIUS_CHUNKS; cx <= pcx + RADIUS_CHUNKS; cx++)
+                for (int cz = pcz - RADIUS_CHUNKS; cz <= pcz + RADIUS_CHUNKS; cz++) {
+                    if (coveredBefore(centres, n, cx, cz, RADIUS_CHUNKS))
+                        continue;
+                    Chunk c = world.getChunkIfExists(cx, cz);
+                    if (c == null)
+                        continue;
+                    for (int i = 0; i < SAMPLES_PER_CHUNK; i++) {
+                        int x = rnd.nextInt(Chunk.SIZE_X);
+                        int y = rnd.nextInt(Chunk.SIZE_Y);
+                        int z = rnd.nextInt(Chunk.SIZE_Z);
+                        apply(world, cx * Chunk.SIZE_X + x, y, cz * Chunk.SIZE_Z + z,
+                                raining, snowfall, weatherStrength);
+                    }
                 }
-            }
+        }
+    }
+
+    /** The chunk a coordinate falls in, as the single-centre pass always computed it. */
+    static int chunkOf(float coordinate, int size) {
+        return (int) Math.floor(coordinate / size);
+    }
+
+    /** Whether an earlier centre's square already holds this chunk: the union visits it once. */
+    static boolean coveredBefore(java.util.List<? extends org.joml.Vector3fc> centres, int n, int cx, int cz,
+                                 int radius) {
+        for (int j = 0; j < n; j++) {
+            int jx = chunkOf(centres.get(j).x(), Chunk.SIZE_X), jz = chunkOf(centres.get(j).z(), Chunk.SIZE_Z);
+            if (Math.abs(cx - jx) <= radius && Math.abs(cz - jz) <= radius)
+                return true;
+        }
+        return false;
     }
 
     /** Одно правило для одной позиции. Публичный, чтобы тесты били точечно. */

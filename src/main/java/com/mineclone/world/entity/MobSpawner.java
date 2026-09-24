@@ -4,6 +4,7 @@ import com.mineclone.world.BlockType;
 import com.mineclone.world.Chunk;
 import com.mineclone.world.World;
 import org.joml.Vector3f;
+import org.joml.Vector3fc;
 
 import java.util.Iterator;
 import java.util.List;
@@ -28,6 +29,10 @@ public class MobSpawner {
     public static final int MIN_RADIUS = 20;
     public static final int MAX_RADIUS = 48;
     public static final float DESPAWN_RADIUS = 72f;
+    /** A player's own mobs for its cap: those within this range of it. */
+    public static final float LOCAL_RANGE = 128f;
+    /** The shared caps grow with the players, up to this many times. */
+    public static final int MAX_CAP_SCALE = 4;
     /** Зомби спавнится только когда солнце ниже этого порога. */
     public static final float NIGHT_DAYLIGHT = 0.3f;
     /**
@@ -80,58 +85,93 @@ public class MobSpawner {
 
     /** Убирает мобов дальше DESPAWN_RADIUS от игрока. */
     public void despawnFar(List<Mob> mobs, Vector3f playerPos) {
+        despawnFar(mobs, List.of(playerPos));
+    }
+
+    /** Убирает мобов дальше DESPAWN_RADIUS от ближайшего из игроков. */
+    public void despawnFar(List<Mob> mobs, List<? extends Vector3fc> centres) {
         float maxSq = DESPAWN_RADIUS * DESPAWN_RADIUS;
         Iterator<Mob> it = mobs.iterator();
         while (it.hasNext()) {
             Mob m = it.next();
-            if (m.position.distanceSquared(playerPos) > maxSq)
+            if (nearestSq(m, centres) > maxSq)
                 it.remove();
         }
     }
 
-    /** Один тик спавна: докидывает мирных до капа и зомби ночью до капа. */
-    public void trySpawn(World world, List<Mob> mobs, Vector3f playerPos, float daylight) {
-        int peaceful = 0, hostile = 0, wild = 0;
-        for (Mob m : mobs) {
-            if (m.type.hostile)
-                hostile++;
-            else if (m.type.temper == MobType.Temper.PASSIVE)
-                peaceful++;
-            else
-                wild++;
+    private static float nearestSq(Mob m, List<? extends Vector3fc> centres) {
+        float best = Float.POSITIVE_INFINITY;
+        for (int i = 0; i < centres.size(); i++) {
+            Vector3fc c = centres.get(i);
+            best = Math.min(best, m.position.distanceSquared(c.x(), c.y(), c.z()));
         }
-
-        if (wild < WILDLIFE_CAP)
-            for (int i = 0; i < ATTEMPTS; i++)
-                if (tryWild(world, mobs, playerPos, daylight))
-                    break;
-
-        if (peaceful < PEACEFUL_CAP)
-            for (int i = 0; i < ATTEMPTS; i++)
-                if (tryOne(world, mobs, playerPos, false, daylight))
-                    break;
-
-        // Ночного гейта здесь больше нет: темнота проверяется в самой точке,
-        // и днём на поверхности она не выполняется, а в пещере — выполняется.
-        if (hostile < HOSTILE_CAP)
-            for (int i = 0; i < ATTEMPTS; i++)
-                if (tryOne(world, mobs, playerPos, true, daylight))
-                    break;
+        return best;
     }
 
-    private boolean tryOne(World world, List<Mob> mobs, Vector3f playerPos, boolean zombie,
+    /** Один тик спавна: докидывает мирных до капа и зомби ночью до капа. */
+    public void trySpawn(World world, List<Mob> mobs, Vector3f playerPos, float daylight) {
+        trySpawn(world, mobs, List.of(playerPos), daylight);
+    }
+
+    /**
+     * Один тик спавна вокруг каждого игрока. Кап у каждого свой — мобы в
+     * {@link #LOCAL_RANGE} от него, — а общий растёт с числом игроков, но не
+     * больше чем вчетверо: восемь друзей в одном месте не должны заселять мир
+     * восемью стаями. С одним игроком это ровно прежний тик.
+     */
+    public void trySpawn(World world, List<Mob> mobs, List<? extends Vector3fc> centres, float daylight) {
+        int scale = Math.max(1, Math.min(MAX_CAP_SCALE, centres.size()));
+        for (int n = 0; n < centres.size(); n++) {
+            Vector3fc centre = centres.get(n);
+            int peaceful = 0, hostile = 0, wild = 0;
+            int localPeaceful = 0, localHostile = 0, localWild = 0;
+            for (Mob m : mobs) {
+                boolean near = m.position.distanceSquared(centre.x(), centre.y(), centre.z())
+                        <= LOCAL_RANGE * LOCAL_RANGE;
+                if (m.type.hostile) {
+                    hostile++;
+                    if (near) localHostile++;
+                } else if (m.type.temper == MobType.Temper.PASSIVE) {
+                    peaceful++;
+                    if (near) localPeaceful++;
+                } else {
+                    wild++;
+                    if (near) localWild++;
+                }
+            }
+
+            if (localWild < WILDLIFE_CAP && wild < WILDLIFE_CAP * scale)
+                for (int i = 0; i < ATTEMPTS; i++)
+                    if (tryWild(world, mobs, centre, daylight))
+                        break;
+
+            if (localPeaceful < PEACEFUL_CAP && peaceful < PEACEFUL_CAP * scale)
+                for (int i = 0; i < ATTEMPTS; i++)
+                    if (tryOne(world, mobs, centre, false, daylight))
+                        break;
+
+            // Ночного гейта здесь больше нет: темнота проверяется в самой точке,
+            // и днём на поверхности она не выполняется, а в пещере — выполняется.
+            if (localHostile < HOSTILE_CAP && hostile < HOSTILE_CAP * scale)
+                for (int i = 0; i < ATTEMPTS; i++)
+                    if (tryOne(world, mobs, centre, true, daylight))
+                        break;
+        }
+    }
+
+    private boolean tryOne(World world, List<Mob> mobs, Vector3fc playerPos, boolean zombie,
                            float daylight) {
         double angle = rnd.nextDouble() * Math.PI * 2;
         double dist = MIN_RADIUS + rnd.nextDouble() * (MAX_RADIUS - MIN_RADIUS);
-        int x = (int) Math.floor(playerPos.x + Math.cos(angle) * dist);
-        int z = (int) Math.floor(playerPos.z + Math.sin(angle) * dist);
+        int x = (int) Math.floor(playerPos.x() + Math.cos(angle) * dist);
+        int z = (int) Math.floor(playerPos.z() + Math.sin(angle) * dist);
 
         if (zombie && dist < ZOMBIE_MIN_PLAYER_DIST)
             return false;
 
         // Мирные животные живут на поверхности, враждебные — везде, где темно.
         int y = zombie
-                ? findDarkSpawnY(world, x, z, (int) Math.floor(playerPos.y), daylight)
+                ? findDarkSpawnY(world, x, z, (int) Math.floor(playerPos.y()), daylight)
                 : findSurfaceY(world, x, z);
         if (y < 0)
             return false;
@@ -152,11 +192,11 @@ public class MobSpawner {
      * Вид выбирается по месту, а не наугад: волк на пляже пустыни и птица в
      * голой тундре выглядели бы ошибкой спавнера, а не природой.
      */
-    private boolean tryWild(World world, List<Mob> mobs, Vector3f playerPos, float daylight) {
+    private boolean tryWild(World world, List<Mob> mobs, Vector3fc playerPos, float daylight) {
         double angle = rnd.nextDouble() * Math.PI * 2;
         double dist = MIN_RADIUS + rnd.nextDouble() * (MAX_RADIUS - MIN_RADIUS);
-        int x = (int) Math.floor(playerPos.x + Math.cos(angle) * dist);
-        int z = (int) Math.floor(playerPos.z + Math.sin(angle) * dist);
+        int x = (int) Math.floor(playerPos.x() + Math.cos(angle) * dist);
+        int z = (int) Math.floor(playerPos.z() + Math.sin(angle) * dist);
         int y = findSurfaceY(world, x, z);
         if (y < 0)
             return false;
