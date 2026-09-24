@@ -6162,6 +6162,9 @@ public class Game {
                 return worldClock.gameTimeFloat();
             }
 
+            @Override public double preciseTime() { return worldClock.gameTime(); }
+            @Override public long worldTicks() { return worldClock.worldTicks(); }
+
             @Override
             public void setTimeOfDay(float t) {
                 worldClock.setGameTime(t);
@@ -6180,9 +6183,8 @@ public class Game {
             }
 
             @Override
-            public void startRemoteWorld(long seed, String name, float time, int mode,
-                    float sx, float sy, float sz) {
-                Game.this.startRemoteWorld(seed, name, time, mode, sx, sy, sz);
+            public void startRemoteWorld(com.mineclone.net.RemoteWorld remote) {
+                Game.this.startRemoteWorld(remote);
             }
 
             @Override
@@ -6457,13 +6459,16 @@ public class Game {
      * {@code worldId} остаётся пустым, и {@link #saveAll()} по нему ничего не
      * пишет.
      */
-    private void startRemoteWorld(long seed, String name, float time, int mode,
-            float sx, float sy, float sz) {
+    private void startRemoteWorld(com.mineclone.net.RemoteWorld remote) {
         if (world != null)
             unloadWorld();
+        String name = remote.name();
+        int mode = remote.gameMode();
+        float sx = remote.spawnX(), sy = remote.spawnY(), sz = remote.spawnZ();
         this.worldId = null;
         this.worldDisplayName = (name == null || name.isEmpty()) ? "Чужой мир" : name;
-        this.world = new World(seed);
+        // The host's generator: its unedited land is regenerated here, not sent.
+        this.world = new World(remote.seed(), remote.generator());
         this.mesher = new ChunkMesher(world);
         this.loader = new ChunkLoader(world, mesher, save, null);
         this.loader.setLodEnabled(gfxOpts.chunkLod());
@@ -6475,7 +6480,7 @@ public class Game {
                 loader.loadNow(dx, dz);
         loader.drainLightFlood(9);
 
-        worldClock = new com.mineclone.sim.WorldClock(time);
+        worldClock = com.mineclone.sim.WorldClock.synced(remote.gameTime(), remote.worldTicks());
         daylight = computeDaylight();
         gameMode = com.mineclone.world.GameMode.values()[
                 Math.floorMod(mode, com.mineclone.world.GameMode.values().length)];

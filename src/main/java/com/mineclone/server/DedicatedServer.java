@@ -558,6 +558,9 @@ public final class DedicatedServer implements NetContext {
         return worldClock.gameTimeFloat();
     }
 
+    @Override public double preciseTime() { return worldClock.gameTime(); }
+    @Override public long worldTicks() { return worldClock.worldTicks(); }
+
     @Override public com.mineclone.net.PlayerData loadGuest(String id) {
         return save.loadGuest(config.worldId,id);
     }
@@ -582,8 +585,7 @@ public final class DedicatedServer implements NetContext {
     }
 
     @Override
-    public void startRemoteWorld(long seed, String name, float time, int mode,
-            float sx, float sy, float sz) {
+    public void startRemoteWorld(com.mineclone.net.RemoteWorld remote) {
         // Сервер — всегда хозяин: чужой мир ему принимать неоткуда.
     }
 

@@ -883,6 +883,7 @@ public final class Multiplayer implements NetTransport.Listener {
         switch (code) {
             case NetProto.C_HELLO -> onHello(from, in);
             case NetProto.S_WELCOME -> onWelcome(from, in);
+            case NetProto.S_GEN_MAP -> onGenMap(from, in);
             case NetProto.S_REJECT -> {
                 String why = in.readStr();
                 if (!in.truncated() && role == Role.CLIENT && from == hostActor) {
@@ -1021,29 +1022,60 @@ public final class Multiplayer implements NetTransport.Listener {
         String identity=in.readStr();
         if(in.truncated())return;
         Vector3f spawn = ctx.spawn();
-        PacketBuf b = channel.packet(NetProto.S_WELCOME, true, from);
-        b.i64(ctx.seed()).str(ctx.worldName()).f32(ctx.timeOfDay()).u8(ctx.gameMode())
-                .f32(spawn.x).f32(spawn.y).f32(spawn.z);
+        // v8: the generator first, so the guest's world is born with it (GEN-02).
+        World world = ctx.world();
+        com.mineclone.world.gen.GenPolicy policy = world == null ? null : world.genPolicy();
+        com.mineclone.world.gen.WorldGenSettings generator = policy == null || policy.settings() == null
+                ? com.mineclone.world.gen.WorldGenSettings.LEGACY : policy.settings();
+        new GenMap(policy == null ? Map.of() : policy.pinned()).write(channel.packet(NetProto.S_GEN_MAP, true, from));
+        Welcome.of(ctx.seed(), ctx.worldName(), ctx.preciseTime(), ctx.worldTicks(), ctx.gameMode(),
+                spawn.x, spawn.y, spawn.z, generator).write(channel.packet(NetProto.S_WELCOME, true, from));
         sendInfo(from);
         inventorySync.hello(from,identity);
         channel.flush();
         addChat(name + " вошёл в мир");
     }
 
-    private void onWelcome(int from, PacketBuf in) {
-        long seed = in.readI64();
-        String name = in.readStr();
-        float time = in.readF32();
-        int mode = in.readU8();
-        float sx = in.readF32(), sy = in.readF32(), sz = in.readF32();
-        if (in.truncated() || role != Role.CLIENT || from != hostActor)
+    /** The host's pinned chunks, held from {@code S_GEN_MAP} until {@code S_WELCOME} builds the world. */
+    private GenMap pendingGenMap;
+
+    private void onGenMap(int from, PacketBuf in) {
+        GenMap map = GenMap.read(in);
+        if (role != Role.CLIENT || from != hostActor)
             return;
+        if (map == null) {
+            // Without it the guest would regenerate upgraded land with the new
+            // generator and take every delta against the wrong ground.
+            String why = "описание генератора мира от хозяина повреждено";
+            ctx.netStopped(why);
+            stop(why);
+            return;
+        }
+        pendingGenMap = map;
+    }
+
+    private void onWelcome(int from, PacketBuf in) {
+        Welcome welcome = Welcome.read(in);
+        if (in.truncated() || role != Role.CLIENT || from != hostActor || !welcome.valid())
+            return;
+        com.mineclone.world.gen.WorldGenSettings generator = welcome.settings();
+        if (generator == null) {
+            String why = "мир хозяина создан более новым генератором: обновите игру до сборки хозяина";
+            ctx.netStopped(why);
+            stop(why);
+            return;
+        }
+        long seed = welcome.seed();
+        String name = welcome.name();
+        float time = (float) welcome.gameTime();
         hostActor = from;
         boolean returning = worldReady && ctx.world() != null && ctx.seed() == seed;
         worldReady = true;
         status = "мир «" + name + "»";
         requestedChunks.clear();
         chunkQueue.clear();
+        GenMap pinned = pendingGenMap;
+        pendingGenMap = null;
         if (returning) {
             // Тот же мир, в который мы и так стоим: строить его заново значит
             // выкинуть игрока на экран загрузки из-за секундного обрыва.
@@ -1052,7 +1084,9 @@ public final class Multiplayer implements NetTransport.Listener {
             requestLoadedChunks();
             return;
         }
-        ctx.startRemoteWorld(seed, name, time, mode, sx, sy, sz);
+        var policy = generator.policy(com.mineclone.world.gen.ChunkLedger.of(pinned == null ? Map.of() : pinned.pinned()));
+        ctx.startRemoteWorld(new RemoteWorld(seed, name, welcome.gameTime(), welcome.worldTicks(), welcome.mode(),
+                welcome.spawnX(), welcome.spawnY(), welcome.spawnZ(), policy));
         addChat("Вошли в мир «" + name + "»");
     }
 
@@ -1080,6 +1114,9 @@ public final class Multiplayer implements NetTransport.Listener {
         World world = ctx.world();
         if (world == null || deltaWorker == null)
             return;
+        // v8: the version the delta is taken against. Asking also records the
+        // chunk in the ledger — the guest is about to see it.
+        int version = world.genPolicy().versionAt(cx, cz).id();
         Chunk live = world.getChunkIfExists(cx, cz);
         byte[] blocks;
         byte[] meta;
@@ -1091,7 +1128,7 @@ public final class Multiplayer implements NetTransport.Listener {
             // лежать в сейве. Пустой ответ был бы тихой потерей построек.
             ChunkSnapshot saved = ctx.loadSavedChunk(cx, cz);
             if (saved == null) {
-                sendEmptyDelta(actor, cx, cz);
+                sendEmptyDelta(actor, cx, cz, version);
                 return;
             }
             blocks = saved.blocks;
@@ -1111,7 +1148,7 @@ public final class Multiplayer implements NetTransport.Listener {
                     if (channel == null)
                         return;
                     PacketBuf out = channel.packet(NetProto.S_CHUNK_DELTA, true, actor);
-                    out.i32(cx).i32(cz).bytes(body.toBytes());
+                    out.i32(cx).i32(cz).u8(version).bytes(body.toBytes());
                 });
             } catch (RuntimeException e) {
                 System.err.println("chunk delta failed for " + cx + "," + cz + ": " + e);
@@ -1119,9 +1156,9 @@ public final class Multiplayer implements NetTransport.Listener {
         });
     }
 
-    private void sendEmptyDelta(int actor, int cx, int cz) {
+    private void sendEmptyDelta(int actor, int cx, int cz, int version) {
         channel.packet(NetProto.S_CHUNK_DELTA, true, actor)
-                .i32(cx).i32(cz).bytes(new PacketBuf(1).varInt(0).toBytes());
+                .i32(cx).i32(cz).u8(version).bytes(new PacketBuf(1).varInt(0).toBytes());
     }
 
     /** Сравнение с чистой генерацией. Работает в фоновом потоке. */
@@ -1153,6 +1190,7 @@ public final class Multiplayer implements NetTransport.Listener {
 
     private void onChunkDelta(int from, PacketBuf in) {
         int cx = in.readI32(), cz = in.readI32();
+        int versionId = in.readU8();
         byte[] body = in.readBytes();
         if (in.truncated() || role != Role.CLIENT || from != hostActor)
             return;
@@ -1163,10 +1201,20 @@ public final class Multiplayer implements NetTransport.Listener {
             requestedChunks.remove(World.key(cx, cz));
             return;
         }
+        com.mineclone.world.gen.WorldGenVersion hostVersion = com.mineclone.world.gen.WorldGenVersion.byId(versionId);
+        if (hostVersion == null) {
+            System.err.println("chunk " + cx + "," + cz + ": the host's generator " + versionId + " is unknown here");
+            return;
+        }
         PacketBuf cells = PacketBuf.reading(body);
         int count = cells.readVarInt();
         applyingRemote = true;
         try {
+            // v8: the delta is against the host's generation of this chunk. Ours
+            // came from another version (a map that missed it): pin the chunk to
+            // the host's, and bring every cell to that generation first.
+            if (world.genPolicy().versionAt(cx, cz) != hostVersion)
+                rebase(world, cx, cz, hostVersion);
             for (int i = 0; i < count && !cells.truncated(); i++) {
                 int index = cells.readVarInt();
                 int id = cells.readU8();
@@ -1182,6 +1230,33 @@ public final class Multiplayer implements NetTransport.Listener {
             }
         } finally {
             applyingRemote = false;
+        }
+    }
+
+    /**
+     * A guest's chunk generated with another version than the host's: every
+     * cell becomes what the host's version generates, so the delta that follows
+     * lands on the same ground it was taken from. Rare — only a gen map that
+     * missed a chunk leads here — and so a whole detached generation is fine.
+     */
+    private void rebase(World world, int cx, int cz, com.mineclone.world.gen.WorldGenVersion hostVersion) {
+        com.mineclone.world.gen.GenFeatures features = com.mineclone.world.gen.GenFeatures.of(hostVersion);
+        if (world.genPolicy() instanceof com.mineclone.world.gen.LedgerPolicy ledger) {
+            ledger.ledger().pin(World.key(cx, cz), hostVersion);
+            features = ledger.featuresOf(hostVersion);
+        }
+        Chunk mine = world.getChunkIfExists(cx, cz);
+        if (mine == null)
+            return;
+        Chunk theirs = world.generateDetached(cx, cz, features);
+        byte[] have = mine.copyBlocks(), haveMeta = mine.copyMeta();
+        byte[] want = theirs.copyBlocks(), wantMeta = theirs.copyMeta();
+        for (int i = 0; i < want.length; i++) {
+            if (have[i] == want[i] && haveMeta[i] == wantMeta[i])
+                continue;
+            int x = i % Chunk.SIZE_X, rest = i / Chunk.SIZE_X;
+            ctx.applyRemoteBlock(cx * Chunk.SIZE_X + x, rest / Chunk.SIZE_Z, cz * Chunk.SIZE_Z + rest % Chunk.SIZE_Z,
+                    want[i], wantMeta[i], false);
         }
     }
 

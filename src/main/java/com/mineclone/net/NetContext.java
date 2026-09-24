@@ -45,6 +45,12 @@ public interface NetContext {
 
     void setTimeOfDay(float t);
 
+    /** The host's game time without a float's loss (protocol v8's {@code S_WELCOME}). */
+    default double preciseTime() { return timeOfDay(); }
+
+    /** The host's simulation ticks since the world began. */
+    default long worldTicks() { return 0L; }
+
     /** Порядковый номер {@link com.mineclone.world.GameMode}. */
     int gameMode();
 
@@ -56,10 +62,10 @@ public interface NetContext {
      *
      * <p>Мир не передаётся по сети: генерация детерминирована по сиду, и
      * участник строит ровно тот же рельеф сам. По сети едут только отличия —
-     * то, что кто-то когда-то выкопал или поставил.
+     * то, что кто-то когда-то выкопал или поставил. Поэтому генерировать его
+     * обязательно генератором хозяина: {@link RemoteWorld#generator()}.
      */
-    void startRemoteWorld(long seed, String name, float timeOfDay, int gameMode,
-            float sx, float sy, float sz);
+    void startRemoteWorld(RemoteWorld world);
 
     /**
      * Поставить блок, пришедший по сети.

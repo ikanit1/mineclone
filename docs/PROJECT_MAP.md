@@ -134,6 +134,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | Type | Purpose |
 |---|---|
 | [CompositeTransport](../src/main/java/com/mineclone/net/CompositeTransport.java) | Две двери в одну комнату. |
+| [GenMap](../src/main/java/com/mineclone/net/GenMap.java) | S_GEN_MAP, protocol v8 (GEN-02): the chunks of the host's world that were generated with another version than the world's own — land an upgrade kept on the old generator. |
 | [InventorySync](../src/main/java/com/mineclone/net/InventorySync.java) | Player checkpoints and host-executed container gestures. |
 | [LanTransport](../src/main/java/com/mineclone/net/LanTransport.java) | Комната в своей сети: хозяин слушает порт, остальные к нему подключаются. |
 | [LoopbackTransport](../src/main/java/com/mineclone/net/LoopbackTransport.java) | Комната внутри одного процесса. |
@@ -152,7 +153,9 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [RemoteMob](../src/main/java/com/mineclone/net/RemoteMob.java) | Render interpolation only: clients never run the authoritative mob AI or physics. |
 | [RemoteParticipant](../src/main/java/com/mineclone/net/RemoteParticipant.java) | A guest as the host's simulation sees it. |
 | [RemotePlayer](../src/main/java/com/mineclone/net/RemotePlayer.java) | Чужой игрок: что о нём известно и где его рисовать. |
+| [RemoteWorld](../src/main/java/com/mineclone/net/RemoteWorld.java) | The host's world as a guest builds it: the seed, the name, the precise clock, the mode, the spawn and the generator policy — the host's settings and the chunks it pinned to another version (S_WELCOME + S_GEN_MAP). |
 | [RoomBrowser](../src/main/java/com/mineclone/net/RoomBrowser.java) | Список открытых комнат: подключение к лобби Photon и ничего больше. |
+| [Welcome](../src/main/java/com/mineclone/net/Welcome.java) | S_WELCOME, protocol v8: everything a guest's world is born from. |
 
 ## com.mineclone.net.connect
 
@@ -425,8 +428,9 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [ChunkLedger](../src/main/java/com/mineclone/world/gen/ChunkLedger.java) | Which generator version each chunk of a world was first generated with (GEN-02). |
 | [GenFeatures](../src/main/java/com/mineclone/world/gen/GenFeatures.java) | The generation changes a chunk is made with. |
 | [GenPolicy](../src/main/java/com/mineclone/world/gen/GenPolicy.java) | Which generator version a chunk is generated with. |
+| [LedgerPolicy](../src/main/java/com/mineclone/world/gen/LedgerPolicy.java) | Every chunk on the version its ledger recorded (GEN-02); a chunk not there yet is generated with the world's own version and features, and recorded — so a later upgrade knows exactly which land was already seen. |
 | [WorldGenSettings](../src/main/java/com/mineclone/world/gen/WorldGenSettings.java) | The level's worldgen section: which generator the world uses, the 1.1 changes it was created with, and when it was last upgraded (0 when never). |
 | [WorldGenUpgrade](../src/main/java/com/mineclone/world/gen/WorldGenUpgrade.java) | Moving a world to a newer generator (GEN-02) without changing land anyone has seen. |
 | [WorldGenVersion](../src/main/java/com/mineclone/world/gen/WorldGenVersion.java) | Which generator made a chunk. |
 
-Top-level declarations: 313.
+Top-level declarations: 317.

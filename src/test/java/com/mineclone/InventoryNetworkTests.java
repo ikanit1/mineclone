@@ -286,7 +286,7 @@ final class InventoryNetworkTests {
         @Override public PlayerData loadGuest(String id){return persistence==null?saved.get(id):persistence.loadGuest("test",id);}
         @Override public void saveGuest(String id,PlayerData data){saved.put(id,data);if(persistence!=null)persistence.saveGuest("test",id,data);}
         @Override public void containerInventory(ItemStack[] slots,ItemStack cursor,boolean closed){for(int i=0;i<inv.size();i++)inv.set(i,slots[i]);if(closed)menu=null;else if(menu!=null)menu.setCursor(cursor);}
-        @Override public void startRemoteWorld(long seed,String name,float time,int mode,float x,float y,float z){super.startRemoteWorld(seed,name,time,mode,x,y,z);world.getChunk(0,0);for(int i=0;i<inv.size();i++)inv.set(i,null);menu=null;}
+        @Override public void startRemoteWorld(com.mineclone.net.RemoteWorld remote){super.startRemoteWorld(remote);world.getChunk(0,0);for(int i=0;i<inv.size();i++)inv.set(i,null);menu=null;}
         @Override public void containerFromHost(int x,int y,int z,int kind,ItemStack[] slots,float left,float max,float cook){
             if(kind==Multiplayer.CONTAINER_CHEST){ItemStack[] a=world.createChest(x,y,z);if(a!=null)for(int i=0;i<a.length;i++)a[i]=i<slots.length?slots[i]:null;}
             else{Furnace f=world.createFurnace(x,y,z);if(f!=null){f.input=slots[0];f.fuel=slots[1];f.output=slots[2];f.burnLeft=left;f.burnMax=max;f.cook=cook;}}

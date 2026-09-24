@@ -37,6 +37,7 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 
 ### Changed
 - Network protocol v8 (builds before it cannot join, and are told why with both versions and the host's build): a guest now learns what hurt it, who and from where, so it is knocked back by blows and blasts like the host's own player and its death has a cause. `docs/NETWORK_PROTOCOL.md` lists every packet.
+- A guest generates the host's world with the host's generator — including land an upgrade kept on the old one — and gets the host's exact clock; before, it assumed the 1.0 generator and a float time. A chunk delta names the generator it was taken against, and a guest that generated the chunk differently rebuilds it first.
 - All damage goes through one path: every hit — a blow, an arrow, a blast, a bite, a fall, fire, poison, starvation — is a damage source with its kind and its dealer, and the player and mobs apply their rules in one place. The player remembers what last hurt them.
 - The game's host and the dedicated server tick mobs, items, arrows and blasts and save chunk entities with one shared session (`WorldSession`), pinned to the previous behavior by a recorded parity hash; mobs on a dedicated server are now pushed apart instead of standing inside one another, and their skeletons shoot.
 - Hostile mobs choose a target among all players — the nearest one in view, kept until someone in view is markedly nearer or it has been out of sight for three seconds — and go after whoever hit them first; a lone player's world behaves as before.

@@ -22,6 +22,11 @@ public final class WorldClock {
     /** Construct a new simulation at a given absolute time, with no elapsed ticks. */
     public WorldClock(double gameTime) { this(gameTime, 0, 0); }
 
+    /** Another clock's time and ticks — a guest joining the host's world (protocol v8). */
+    public static WorldClock synced(double gameTime, long worldTicks) {
+        return new WorldClock(gameTime, worldTicks, 0);
+    }
+
     private WorldClock(double gameTime, long worldTicks, double fractionalTick) {
         requireFinite(gameTime, "gameTime");
         if (worldTicks < 0 || !Double.isFinite(fractionalTick) || fractionalTick < 0 || fractionalTick >= 1)

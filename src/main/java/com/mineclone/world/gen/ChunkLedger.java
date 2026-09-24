@@ -59,6 +59,30 @@ public final class ChunkLedger {
 
     public synchronized Map<Long, WorldGenVersion> snapshot() { return new HashMap<>(versions); }
 
+    /** The chunks on another version than {@code own}, in key order: what a guest must be told. */
+    public synchronized java.util.SortedMap<Long, WorldGenVersion> except(WorldGenVersion own) {
+        java.util.TreeMap<Long, WorldGenVersion> out = new java.util.TreeMap<>();
+        versions.forEach((key, version) -> { if (version != own) out.put(key, version); });
+        return out;
+    }
+
+    /** A ledger holding exactly these entries. */
+    public static ChunkLedger of(Map<Long, WorldGenVersion> entries) {
+        ChunkLedger ledger = new ChunkLedger();
+        entries.forEach((key, version) -> ledger.versions.put(key, java.util.Objects.requireNonNull(version)));
+        return ledger;
+    }
+
+    /**
+     * A guest learning that the host made a chunk with another version than it
+     * thought: unlike {@link #record}, this replaces. Never on a saved ledger —
+     * there a chunk keeps the version that first generated it.
+     */
+    public synchronized void pin(long key, WorldGenVersion version) {
+        if (versions.put(key, java.util.Objects.requireNonNull(version)) != version)
+            dirty = true;
+    }
+
     /** The file's bytes (before gzip), or null when nothing changed since the last call. */
     public byte[] encodeIfDirty() {
         synchronized (this) {

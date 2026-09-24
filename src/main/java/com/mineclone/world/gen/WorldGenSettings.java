@@ -74,38 +74,13 @@ public record WorldGenSettings(WorldGenVersion version, GenFeatures features, lo
         return new WorldGenSettings(version, features, upgradedAt);
     }
 
-    /**
-     * Every chunk on the version its ledger recorded; a chunk not there yet is
-     * generated with the world's own version and its features, and recorded —
-     * so a later upgrade knows exactly which land was already seen.
-     */
-    public GenPolicy policy(ChunkLedger ledger) {
-        java.util.Objects.requireNonNull(ledger, "ledger");
-        WorldGenVersion own = version;
-        GenFeatures ownFeatures = features;
-        return new GenPolicy() {
-            @Override
-            public WorldGenVersion versionAt(int cx, int cz) {
-                long key = com.mineclone.world.World.key(cx, cz);
-                WorldGenVersion at = ledger.versionAt(key, own);
-                ledger.record(key, at);
-                return at;
-            }
-
-            @Override
-            public GenFeatures featuresAt(int cx, int cz) {
-                WorldGenVersion at = versionAt(cx, cz);
-                return at == own ? ownFeatures : GenFeatures.of(at);
-            }
-        };
+    /** Every chunk on the version its ledger recorded, new ones on this version ({@link LedgerPolicy}). */
+    public LedgerPolicy policy(ChunkLedger ledger) {
+        return new LedgerPolicy(this, ledger);
     }
 
     /** The whole world on its own version, with the features it recorded. */
     public GenPolicy policy() {
-        WorldGenVersion fixed = version;
-        return new GenPolicy() {
-            @Override public WorldGenVersion versionAt(int cx, int cz) { return fixed; }
-            @Override public GenFeatures featuresAt(int cx, int cz) { return features; }
-        };
+        return new GenPolicy.Fixed(this);
     }
 }

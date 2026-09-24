@@ -104,6 +104,14 @@ final class NetworkTests {
                 NetworkTests::testPlayerState);
         r.run("mobs stream to the guest and the guest's hit lands on the host",
                 NetworkTests::testMobs);
+        r.run("v8: a guest generates with the host's generator, pinned chunks included",
+                NetworkTests::testHostGenerator);
+        r.run("v8: a delta taken against another version pins and rebases the guest's chunk",
+                NetworkTests::testDeltaVersionMismatch);
+        r.run("v8: a guest gets the host's exact clock",
+                NetworkTests::testExactClock);
+        r.run("v8: a generator the guest lacks or a damaged map ends the session with a reason",
+                NetworkTests::testUnknownGenerator);
         r.run("a guest's hit with broken numbers lands without knockback or an exception",
                 NetworkTests::testMobHitBrokenNumbers);
         r.run("a guest's shot is fired by the host and seen by both",
@@ -751,6 +759,99 @@ final class NetworkTests {
         p.close();
     }
 
+    /** An upgraded host world: V2, with the land around the origin pinned to V1. */
+    private static World upgradedWorld(long seed) {
+        var v2 = new com.mineclone.world.gen.WorldGenSettings(com.mineclone.world.gen.WorldGenVersion.V2,
+                com.mineclone.world.gen.GenFeatures.V2, 99L);
+        var ledger = new com.mineclone.world.gen.ChunkLedger();
+        com.mineclone.world.gen.WorldGenUpgrade.pinSeen(ledger, com.mineclone.world.gen.WorldGenVersion.V1,
+                java.util.List.of(World.key(0, 0)), new float[0][]);
+        return new World(seed, v2.policy(ledger));
+    }
+
+    private static void testHostGenerator() {
+        World hostWorld = upgradedWorld(777L);
+        Pair p = Pair.open(hostWorld, "Обновлённый", 0.5f);
+        var remote = p.guest.started;
+        assertTrue("мир построен", remote != null && p.guest.world != null);
+        var hostPolicy = hostWorld.genPolicy();
+        var guestPolicy = p.guest.world.genPolicy();
+        assertEq("настройки генератора хозяина", hostPolicy.settings(), guestPolicy.settings());
+        for (int[] c : new int[][] { { 0, 0 }, { 12, -12 }, { -12, 5 }, { 13, 0 }, { 40, 40 }, { -300, 7 } })
+            assertEq("версия чанка " + c[0] + "," + c[1], hostPolicy.versionAt(c[0], c[1]),
+                    guestPolicy.versionAt(c[0], c[1]));
+        assertEq("закреплённая земля — V1", com.mineclone.world.gen.WorldGenVersion.V1, guestPolicy.versionAt(12, -12));
+        assertEq("новая земля — V2", com.mineclone.world.gen.WorldGenVersion.V2, guestPolicy.versionAt(13, 0));
+        // The same blocks, chunk for chunk, on both sides.
+        for (int[] c : new int[][] { { 0, 0 }, { 13, 0 } })
+            assertTrue("чанк " + c[0] + "," + c[1] + " совпал", java.util.Arrays.equals(
+                    hostWorld.generateDetached(c[0], c[1]).copyBlocks(),
+                    p.guest.world.generateDetached(c[0], c[1]).copyBlocks()));
+        p.close();
+    }
+
+    private static void testDeltaVersionMismatch() {
+        // A host whose map forgets the one chunk it pins: the guest learns it from the delta.
+        var v2 = new com.mineclone.world.gen.WorldGenSettings(com.mineclone.world.gen.WorldGenVersion.V2,
+                com.mineclone.world.gen.GenFeatures.V2, 99L);
+        com.mineclone.world.gen.GenPolicy forgetful = new com.mineclone.world.gen.GenPolicy() {
+            @Override public com.mineclone.world.gen.WorldGenVersion versionAt(int cx, int cz) {
+                return cx == 0 && cz == 0 ? com.mineclone.world.gen.WorldGenVersion.V1 : com.mineclone.world.gen.WorldGenVersion.V2;
+            }
+            @Override public com.mineclone.world.gen.WorldGenSettings settings() { return v2; }
+        };
+        World hostWorld = new World(778L, forgetful);
+        hostWorld.getChunk(0, 0);
+        hostWorld.setBlock(3, 90, 3, BlockType.OBSIDIAN);
+        Pair p = Pair.open(hostWorld, "Забывчивый", 0.5f);
+        assertEq("гость ждёт V2", com.mineclone.world.gen.WorldGenVersion.V2, p.guest.world.genPolicy().versionAt(0, 0));
+        p.guest.world.getChunk(0, 0);
+        p.guestNet.noteChunkLoaded(0, 0);
+        p.await(() -> p.guest.world.getBlock(3, 90, 3) == BlockType.OBSIDIAN);
+        assertEq("правка хозяина дошла", BlockType.OBSIDIAN, p.guest.world.getBlock(3, 90, 3));
+        assertEq("чанк закреплён за версией хозяина", com.mineclone.world.gen.WorldGenVersion.V1,
+                p.guest.world.genPolicy().versionAt(0, 0));
+        p.close();
+    }
+
+    private static void testExactClock() {
+        LoopbackTransport.reset();
+        TestContext host = new TestContext(new World(779L), "Часы");
+        host.preciseTime = 5_000.123456789;
+        host.ticks = 424_242_424L;
+        Multiplayer hostNet = new Multiplayer(host);
+        hostNet.start(new LoopbackTransport(hostNet), "room", true, "Хозяин");
+        TestContext guest = new TestContext(null, "");
+        Multiplayer guestNet = new Multiplayer(guest);
+        guestNet.start(new LoopbackTransport(guestNet), "room", false, "Гость");
+        for (int i = 0; i < 4; i++) { hostNet.update(0.1f); guestNet.update(0.1f); }
+        assertTrue("мир построен", guest.started != null);
+        assertTrue("время без потерь float: " + guest.started.gameTime(), guest.started.gameTime() == 5_000.123456789);
+        assertEq("тики симуляции", 424_242_424L, guest.started.worldTicks());
+        hostNet.stop(null);
+        guestNet.stop(null);
+        LoopbackTransport.reset();
+    }
+
+    private static void testUnknownGenerator() {
+        Pair p = Pair.open(4244L, "Мир", 0.5f);
+        var future = com.mineclone.world.gen.WorldGenSettings.LEGACY.encode();
+        java.nio.ByteBuffer.wrap(future).putInt(0, 99);
+        PacketBuf b = new PacketBuf();
+        new com.mineclone.net.Welcome(1L, "Будущее", 0, 0, 0, 0, 70, 0, future).write(b.u8(NetProto.S_WELCOME));
+        p.guestNet.onPayload(p.hostT.myActor(), b.toBytes());
+        assertTrue("гость узнал причину: " + p.guest.stopped, p.guest.stopped != null
+                && p.guest.stopped.contains("генератор"));
+        p.close();
+
+        Pair q = Pair.open(4245L, "Мир", 0.5f);
+        PacketBuf damaged = new PacketBuf();
+        damaged.u8(NetProto.S_GEN_MAP).bytes(new byte[] { 1, 2, 3 });
+        q.guestNet.onPayload(q.hostT.myActor(), damaged.toBytes());
+        assertTrue("битая карта: " + q.guest.stopped, q.guest.stopped != null && q.guest.stopped.contains("генератор"));
+        q.close();
+    }
+
     /**
      * SURV-01 regression: the guest's numbers become a damage source, whose
      * checks throw on a half-finite origin — inside the host's packet handler.
@@ -1109,8 +1210,13 @@ final class NetworkTests {
         }
 
         static Pair open(long seed, String name, float time) {
+            return open(new World(seed), name, time);
+        }
+
+        /** A room around a host world of the test's own making — its generator, for one. */
+        static Pair open(World hostWorld, String name, float time) {
             LoopbackTransport.reset();
-            TestContext host = new TestContext(new World(seed), name);
+            TestContext host = new TestContext(hostWorld, name);
             host.time = time;
             Multiplayer hostNet = new Multiplayer(host);
             host.world.setBlockObserver(hostNet::onWorldBlockChanged);
@@ -1171,9 +1277,15 @@ final class NetworkTests {
         World world;
         String name;
         float time = 0.5f;
+        /** The host's exact clock when a test sets it; NaN means the float time. */
+        double preciseTime = Double.NaN;
+        long ticks;
         int mode;
         final Vector3f spawn = new Vector3f(8f, 80f, 8f);
         final Vector3f position = new Vector3f(8f, 80f, 8f);
+
+        @Override public double preciseTime() { return Double.isNaN(preciseTime) ? time : preciseTime; }
+        @Override public long worldTicks() { return ticks; }
         float yaw, pitch, health = 20f;
         ItemStack held;
         @Override public ItemStack playerHeldItem() { return held; }
@@ -1232,17 +1344,17 @@ final class NetworkTests {
         }
 
         @Override
-        public void startRemoteWorld(long seed, String worldName, float t, int gameMode,
-                float sx, float sy, float sz) {
-            startedSeed = seed;
-            startedName = worldName;
-            startedTime = t;
-            name = worldName;
-            time = t;
-            mode = gameMode;
-            spawn.set(sx, sy, sz);
-            position.set(sx, sy, sz);
-            world = new World(seed);
+        public void startRemoteWorld(com.mineclone.net.RemoteWorld remote) {
+            startedSeed = remote.seed();
+            startedName = remote.name();
+            startedTime = (float) remote.gameTime();
+            started = remote;
+            name = remote.name();
+            time = (float) remote.gameTime();
+            mode = remote.gameMode();
+            spawn.set(remote.spawnX(), remote.spawnY(), remote.spawnZ());
+            position.set(remote.spawnX(), remote.spawnY(), remote.spawnZ());
+            world = new World(remote.seed(), remote.generator());
             if (onWorldStarted != null)
                 onWorldStarted.accept(world);
         }
@@ -1324,6 +1436,9 @@ final class NetworkTests {
             p.heading.set(vx, vy, vz).normalize();
             shots.add(p);
         }
+
+        /** The last world the host described, with its generator. */
+        com.mineclone.net.RemoteWorld started;
 
         @Override
         public void hurtByHost(com.mineclone.world.damage.DamageSource source, float damage) {

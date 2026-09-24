@@ -87,8 +87,8 @@ final class BenchPeers implements AutoCloseable {
         public void setTimeOfDay(float value) { time = value; }
         public int gameMode() { return GameMode.CREATIVE.ordinal(); }
         public Vector3f spawn() { return position; }
-        public void startRemoteWorld(long seed, String name, float time, int mode, float x, float y, float z) {
-            world = new World(seed); this.time = time;
+        public void startRemoteWorld(RemoteWorld remote) {
+            world = new World(remote.seed(), remote.generator()); this.time = (float) remote.gameTime();
             int cx = Math.floorDiv((int) position.x, 16), cz = Math.floorDiv((int) position.z, 16);
             for (int dx = -2; dx <= 2; dx++) for (int dz = -2; dz <= 2; dz++) {
                 world.getChunk(cx + dx, cz + dz); peer.noteChunkLoaded(cx + dx, cz + dz);

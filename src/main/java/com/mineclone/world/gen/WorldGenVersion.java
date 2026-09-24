@@ -17,9 +17,9 @@ public enum WorldGenVersion {
 
     /**
      * The version new worlds are created with. It stays V1 until V2 has
-     * something to generate, old worlds can be offered the upgrade (GEN-02: the
-     * ledger keeps their land, the dialog does not exist yet) and the welcome
-     * packet tells a guest the host's generator — a guest still generates V1.
+     * something to generate (GEN-08's copper is the first): a V2 world with
+     * nothing new would only make 1.0 builds refuse it. Guests learn the host's
+     * generator from the welcome (protocol v8), so moving it breaks no room.
      */
     public static final WorldGenVersion LATEST = V1;
 

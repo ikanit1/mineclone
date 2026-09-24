@@ -35,11 +35,24 @@ come under the same number. Changed or new in v8 so far:
   (0 none), varInt participant + 1 (0 none)` (`PlayerHurt`). The guest applies
   it through its own damage path and is knocked away from a blow or a blast.
   v7 sent `f32 amount` alone.
+- `S_GEN_MAP` (74, new) — `bytes gzip(chunk ledger)`: the chunks the host's
+  world generates with another version than its own (GEN-02), in the ledger's
+  own encoding (`GenMap`). Sent right before `S_WELCOME`, empty for a world that
+  was never upgraded.
+- `S_WELCOME` — `i64 seed, str name, i64 gameTime bits (double), i64
+  worldTicks, u8 mode, f32 spawn x, y, z, bytes generator (WorldGenSettings, 16)`
+  (`Welcome`). A guest used to generate the host's world with the 1.0 generator
+  and a float time; it now builds `LedgerPolicy(host's settings, pinned chunks)`
+  and the host's exact clock. A generator this build lacks ends the session
+  with a message.
+- `S_CHUNK_DELTA` — `i32 cx, cz, u8 generator version, bytes cells`: the version
+  the delta was taken against. A guest whose chunk came from another version
+  pins the host's and rebases the chunk on its generation before applying the
+  delta.
 
-Planned for v8 (roadmap section 6/K): the host's generator in `S_WELCOME`,
-`S_GEN_MAP (74)` and a generator byte in `S_CHUNK_DELTA` (GEN-02), the player
-record in `C_PLAYER`/`S_PLAYER` (SAVE-07), `C_USE_BLOCK (70)` (BLK-03) and the
-rest of the table there.
+Planned for v8 (roadmap section 6/K): the player record in
+`C_PLAYER`/`S_PLAYER` (SAVE-07), `C_USE_BLOCK (70)` (BLK-03) and the rest of the
+table there.
 
 ## Codes
 
@@ -49,7 +62,7 @@ reserved and are never reused.
 | Code | Constant | Direction | Delivery | Body and notes |
 |---|---|---|---|---|
 | 1 | `C_HELLO` | guest → host | reliable | `varInt version, str name, str identity` |
-| 2 | `S_WELCOME` | host → guest | reliable | `i64 seed, str world, f32 time, u8 mode, f32 spawn x, y, z` |
+| 2 | `S_WELCOME` | host → guest | reliable | **v8**: `Welcome` — seed, name, precise clock, mode, spawn, generator |
 | 3 | `S_REJECT` | host → guest | reliable | `str reason`; ends the session |
 | 10 | `X_PLAYER_STATE` | both | unreliable, 12 Hz | `f32 x, y, z, yaw, pitch, u8 flags` — 22 bytes with the code |
 | 11 | `X_PLAYER_INFO` | both | reliable, 0.5 Hz | `str name, u8 mode, f32 health` |
@@ -60,7 +73,7 @@ reserved and are never reused.
 | 20 | `S_BLOCK_SET` | host → guests | reliable | a block became this |
 | 21 | `C_BLOCK_EDIT` | guest → host | reliable | a request to place or break |
 | 22 | `C_CHUNK_REQUEST` | guest → host | reliable | a chunk's delta, please |
-| 23 | `S_CHUNK_DELTA` | host → guest | reliable | cells that differ from fresh generation |
+| 23 | `S_CHUNK_DELTA` | host → guest | reliable | **v8**: `i32 cx, cz, u8 generator version, bytes cells` differing from fresh generation |
 | 24 | `S_TIME` | host → guests | reliable, every 5 s | time of day |
 | 30 | `S_MOBS` | host → guests | unreliable, 12 Hz | every mob, `MobSnapshot`: 85 bytes a mob |
 | 32 | `S_ITEMS` | host → guests | reliable, 4 Hz | every item on the ground |
@@ -84,5 +97,6 @@ reserved and are never reused.
 | 67 | `S_DROP_ACK` | host → guest | reliable | the drop landed |
 | 68 | `C_PICKUP` | guest → host | reliable | pick up, with a checkpoint |
 | 69 | `S_PICKUP` | host → guest | reliable | what was picked up |
+| 74 | `S_GEN_MAP` | host → guest | reliable | **v8, new**: `GenMap`, right before `S_WELCOME` |
 
 Traffic by code, measured: [perf/net-baseline.md](perf/net-baseline.md).

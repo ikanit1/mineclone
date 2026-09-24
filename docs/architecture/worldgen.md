@@ -27,9 +27,8 @@ deltas. Generation is therefore versioned (`world/gen`):
 
 - `WorldGenVersion` — V1 is the 1.0 generator; V2 collects what 1.1 adds. The
   number, not the ordinal, is persisted. `LATEST` stays V1 until V2 has something
-  to generate, old worlds can be upgraded and the welcome packet names the host's
-  generator: a guest still builds the host's world as V1
-  (`Game.startRemoteWorld`), and a test fails if `LATEST` moves first.
+  to generate — a test fails if it moves first. Guests build the host's world
+  with the host's generator (protocol v8, below).
 - `GenFeatures` — one flag per 1.1 generation change (`copperOre`, `vegetation2`,
   `structures2`, `caves2`, `livestockAtGen`), each with a bit that never moves.
   A change reads its own flag inside `World.generateDetached(cx, cz, features)`;
@@ -106,16 +105,22 @@ entries for the land it made before the ledger existed: all of it is V1.
   when its neighbour moves to V2. The price is crowns that do not match along a
   seam.
 - Backups and world copies carry the ledger with `chunks/`; `CheckSaves` reads
-  only `c.*.dat`. A guest has no ledger: the world is the host's.
+  only `c.*.dat`. A guest saves no ledger: the world is the host's.
+- **Guests (protocol v8).** The host sends `S_GEN_MAP` — the ledger's chunks on
+  another version than the world's, `GenPolicy.pinned()` — and then `S_WELCOME`
+  with its `WorldGenSettings`; the guest generates with `LedgerPolicy(host's
+  settings, pinned chunks)`, never saved. Every `S_CHUNK_DELTA` names the version
+  it was taken against (asking records the chunk in the host's ledger: the guest
+  is about to see it); a guest whose chunk came from another version pins the
+  host's (`ChunkLedger.pin`, guests only) and rebases the chunk on that
+  generation before the delta. `NetworkTests` runs an upgraded host with pinned
+  land and a host whose map forgets a chunk.
 
-**Not yet** — each waits for V2 to change land; until then it would only record a
-version, and `WorldGenGoldenTests` fails if `LATEST` moves past V1 first:
+**Not yet** — each waits for V2 to change land, when it would do more than
+record a version:
 
 - the world-list dialog "update generation for new land?" and `upgrade-worldgen`
   in `server.properties`;
-- the network part: `S_WELCOME` naming the host's generator, `S_GEN_MAP (74)` with
-  the pinned keys, a version byte in `S_CHUNK_DELTA` (the guest regenerates on a
-  mismatch);
 - guests' checkpoints (`players/`) as anchors of a server's upgrade.
 
 **The V1 golden.** `src/test/resources/fixtures/worldgen-v1.txt` holds SHA-1 of

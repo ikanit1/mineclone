@@ -27,6 +27,74 @@ final class ProtocolTests {
         r.run("S_PLAYER_HURT refuses numbers no host sends", ProtocolTests::hurtInvalid);
         r.run("a version refusal names both versions, the host's build and who must update", ProtocolTests::refusal);
         r.run("checking a mob snapshot allocates nothing", ProtocolTests::snapshotValidation);
+        r.run("S_GEN_MAP round-trips pinned chunks and refuses damage", ProtocolTests::genMap);
+        r.run("S_WELCOME v8 carries the generator and the exact clock", ProtocolTests::welcome);
+    }
+
+    private static void genMap() throws Exception {
+        java.util.Map<Long, com.mineclone.world.gen.WorldGenVersion> pinned = new java.util.HashMap<>();
+        for (int x = -22; x < 23; x++)
+            for (int z = -22; z < 23; z++)
+                pinned.put(com.mineclone.world.World.key(x, z), com.mineclone.world.gen.WorldGenVersion.V1);
+        pinned.put(com.mineclone.world.World.key(900, -900), com.mineclone.world.gen.WorldGenVersion.V2);
+        for (var map : java.util.List.of(java.util.Map.<Long, com.mineclone.world.gen.WorldGenVersion>of(), pinned)) {
+            PacketBuf b = new PacketBuf();
+            new com.mineclone.net.GenMap(map).write(b);
+            byte[] bytes = b.toBytes();
+            com.mineclone.net.GenMap back = com.mineclone.net.GenMap.read(PacketBuf.reading(bytes));
+            check(back != null && back.pinned().equals(map), "gen map of " + map.size());
+            if (map.size() > 2000)
+                check(bytes.length < 1024, "2 026 pinned chunks took " + bytes.length + " bytes");
+            PacketBuf cut = PacketBuf.reading(bytes, 0, bytes.length - 1);
+            check(com.mineclone.net.GenMap.read(cut) == null && cut.truncated(), "a cut map read");
+        }
+        // A body that is not gzip, a ledger naming an unknown version, a bomb.
+        byte[] unknown = com.mineclone.world.gen.ChunkLedger.of(pinned).encode();
+        unknown[unknown.length - 1] = 99;
+        byte[] bomb = new byte[com.mineclone.net.GenMap.MAX_INFLATED + 10];
+        for (byte[] raw : new byte[][] { { 1, 2, 3 }, gzip(unknown), gzip(bomb) }) {
+            PacketBuf b = new PacketBuf();
+            b.bytes(raw);
+            check(com.mineclone.net.GenMap.read(PacketBuf.reading(b.toBytes())) == null, "damaged map accepted");
+        }
+    }
+
+    private static byte[] gzip(byte[] raw) throws Exception {
+        var bytes = new java.io.ByteArrayOutputStream();
+        try (var out = new java.util.zip.GZIPOutputStream(bytes)) { out.write(raw); }
+        return bytes.toByteArray();
+    }
+
+    private static void welcome() {
+        var v2 = new com.mineclone.world.gen.WorldGenSettings(com.mineclone.world.gen.WorldGenVersion.V2,
+                com.mineclone.world.gen.GenFeatures.V2, 1234L);
+        double time = 1234.567890123456789;
+        com.mineclone.net.Welcome sent = com.mineclone.net.Welcome.of(-42L, "Мир у реки", time, 987_654_321L, 1,
+                8.5f, 71f, -3.5f, v2);
+        PacketBuf b = new PacketBuf();
+        sent.write(b);
+        byte[] bytes = b.toBytes();
+        PacketBuf in = PacketBuf.reading(bytes);
+        com.mineclone.net.Welcome back = com.mineclone.net.Welcome.read(in);
+        check(!in.truncated() && !in.hasMore() && back.valid() && back.seed() == -42L && back.name().equals("Мир у реки")
+                && back.gameTime() == time && back.worldTicks() == 987_654_321L && back.mode() == 1
+                && back.spawnX() == 8.5f && back.spawnZ() == -3.5f && v2.equals(back.settings()), "welcome: " + back);
+        for (int n = 0; n < bytes.length; n++) {
+            PacketBuf cut = PacketBuf.reading(bytes, 0, n);
+            com.mineclone.net.Welcome.read(cut);
+            check(cut.truncated(), "welcome cut at " + n + " read as whole");
+        }
+        byte[] future = v2.encode();
+        java.nio.ByteBuffer.wrap(future).putInt(0, 99);
+        check(new com.mineclone.net.Welcome(1, "w", 0, 0, 0, 0, 70, 0, future).settings() == null,
+                "a generator this build lacks");
+        for (com.mineclone.net.Welcome bad : new com.mineclone.net.Welcome[] {
+                new com.mineclone.net.Welcome(1, "w", Double.NaN, 0, 0, 0, 70, 0, v2.encode()),
+                new com.mineclone.net.Welcome(1, "w", 0, -1, 0, 0, 70, 0, v2.encode()),
+                new com.mineclone.net.Welcome(1, "w", 0, 0, 9, 0, 70, 0, v2.encode()),
+                new com.mineclone.net.Welcome(1, "w", 0, 0, 0, Float.NaN, 70, 0, v2.encode()),
+                new com.mineclone.net.Welcome(1, "w".repeat(300), 0, 0, 0, 0, 70, 0, v2.encode()) })
+            check(!bad.valid(), "accepted " + bad);
     }
 
     private static void check(boolean ok, String why) { if (!ok) throw new AssertionError(why); }

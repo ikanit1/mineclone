@@ -37,8 +37,12 @@ public final class NetProto {
      * v8 (the 1.1 cycle, NET-02): raised once, at the first incompatible change,
      * and not again before the release — later 1.1 changes to v8 bodies land
      * under the same number. So far: {@code S_PLAYER_HURT} carries the kind of
-     * harm, its dealer, origin and knockback ({@link PlayerHurt}). The table of
-     * every code is {@code docs/NETWORK_PROTOCOL.md}; a test holds it to this file.
+     * harm, its dealer, origin and knockback ({@link PlayerHurt}); {@code
+     * S_WELCOME} the host's generator and precise clock ({@link Welcome}), after
+     * {@code S_GEN_MAP} with the chunks pinned to another version ({@link
+     * GenMap}); {@code S_CHUNK_DELTA} the version its delta was taken against.
+     * The table of every code is {@code docs/NETWORK_PROTOCOL.md}; a test holds
+     * it to this file.
      */
     public static final int VERSION = 8;
 
@@ -140,6 +144,11 @@ public final class NetProto {
     /** Хозяин выдаёт участнику стопку — подобранное или выбитое. */
     public static final int S_GIVE = 52;
 
+    // ----------------------------------------------------------------- v8
+
+    /** Chunks the host's world generates with another version than its own ({@link GenMap}); before S_WELCOME. */
+    public static final int S_GEN_MAP = 74;
+
     /** Читаемое имя кода — только для отладочной строки и сообщений об ошибке. */
     public static String name(int code) {
         return switch (code) {
@@ -179,6 +188,7 @@ public final class NetProto {
             case X_CHAT -> "CHAT";
             case C_ITEM_PICK -> "ITEM_PICK";
             case S_GIVE -> "GIVE";
+            case S_GEN_MAP -> "GEN_MAP";
             default -> "code" + code;
         };
     }

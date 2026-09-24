@@ -173,9 +173,9 @@ public class NetBaseline {
         public void setTimeOfDay(float value) { time = value; }
         public int gameMode() { return GameMode.SURVIVAL.ordinal(); }
         public Vector3f spawn() { return position; }
-        public void startRemoteWorld(long seed, String name, float t, int mode, float x, float y, float z) {
-            world = new World(seed);
-            time = t;
+        public void startRemoteWorld(com.mineclone.net.RemoteWorld remote) {
+            world = new World(remote.seed(), remote.generator());
+            time = (float) remote.gameTime();
         }
         public void applyRemoteBlock(int x, int y, int z, byte id, byte meta, boolean broke) {
             world.setBlock(x, y, z, BlockType.byId(id), meta);
