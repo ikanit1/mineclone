@@ -1,0 +1,8 @@
+Mineclone 1.1.0-SNAPSHOT (0b7a12a3e132)
+OpenAL: reverb on
+BENCH_PREPARED ocean-r10 {"origin":[0.5,55.0,0.5],"biome":"OCEAN","generation":"NORMAL","natural_mob_spawning":false,"game_mode":"CREATIVE","movement_blocks_per_second":0}
+BENCH_WARMUP scene=ocean-r10 seconds=10.0
+autopilot: E:\mineclone\out-test\bench\m0-baseline-20260924\raw\screenshots\ocean-r10-2\ocean-r10.png
+BENCH_MEASURE scene=ocean-r10 seconds=60.0
+BENCH_JSON E:\mineclone\out-test\bench\m0-baseline-20260924\raw\ocean-r10-2.json
+BENCH_RESULT ocean-r10 PASS {"samples":23385,"mean_ms":2.565837938849693,"p50_ms":2.5131,"p95_ms":3.2354,"p99_ms":3.7457,"worst_ms":10.8378,"fps":389.73622802082207,"low_1pct_fps":226.14158009180966}

@@ -1,0 +1,9 @@
+Mineclone 1.1.0-SNAPSHOT (0b7a12a3e132)
+OpenAL: reverb on
+BENCH_PREPARED flat-idle {"origin":[8.5,67.0,8.5],"biome":"OCEAN","generation":"FLAT","natural_mob_spawning":false,"game_mode":"CREATIVE","movement_blocks_per_second":0}
+UPDATE_SPIKE total=39.2 player=0.0 active=39.1 (fx=0.0 ticks=38.9 save=0.0 mesh=0.1) stream=(light=0.0 upload=0.0 evict=0.0) tick=(block=0.6 water=38.3 lava=0.0 fall=0.0) mobs=0.0 count=0
+BENCH_WARMUP scene=flat-idle seconds=10.0
+autopilot: E:\mineclone\out-test\bench\m0-baseline-20260924\raw\screenshots\flat-idle-2\flat-idle.png
+BENCH_MEASURE scene=flat-idle seconds=60.0
+BENCH_JSON E:\mineclone\out-test\bench\m0-baseline-20260924\raw\flat-idle-2.json
+BENCH_RESULT flat-idle PASS {"samples":24740,"mean_ms":2.425231899757477,"p50_ms":2.2954,"p95_ms":3.1552,"p99_ms":4.2865,"worst_ms":16.994,"fps":412.33170324866654,"low_1pct_fps":177.7324973981539}

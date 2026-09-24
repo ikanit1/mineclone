@@ -1,0 +1,8 @@
+Mineclone 1.1.0-SNAPSHOT (0b7a12a3e132)
+OpenAL: reverb on
+BENCH_PREPARED cave {"torches":5,"origin":[-63.5,20.0,-127.5],"biome":"PLAINS","generation":"NORMAL","natural_mob_spawning":false,"game_mode":"CREATIVE","movement_blocks_per_second":0}
+BENCH_WARMUP scene=cave seconds=10.0
+autopilot: E:\mineclone\out-test\bench\m0-baseline-20260924\raw\screenshots\cave-2\cave.png
+BENCH_MEASURE scene=cave seconds=60.0
+BENCH_JSON E:\mineclone\out-test\bench\m0-baseline-20260924\raw\cave-2.json
+BENCH_RESULT cave PASS {"samples":25106,"mean_ms":2.3898757229347467,"p50_ms":2.3082,"p95_ms":3.1059,"p99_ms":4.1666,"worst_ms":12.7569,"fps":418.4317997807889,"low_1pct_fps":202.05588657352249}

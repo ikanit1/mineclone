@@ -1,0 +1,8 @@
+Mineclone 1.1.0-SNAPSHOT (0b7a12a3e132)
+OpenAL: reverb on
+BENCH_PREPARED chunkgen-sprint {"origin":[-63.5,140.0,-127.5],"biome":"PLAINS","generation":"NORMAL","natural_mob_spawning":false,"game_mode":"CREATIVE","movement_blocks_per_second":30}
+BENCH_WARMUP scene=chunkgen-sprint seconds=10.0
+autopilot: E:\mineclone\out-test\bench\m0-baseline-20260924\raw\screenshots\chunkgen-sprint-1\chunkgen-sprint.png
+BENCH_MEASURE scene=chunkgen-sprint seconds=60.0
+BENCH_JSON E:\mineclone\out-test\bench\m0-baseline-20260924\raw\chunkgen-sprint-1.json
+BENCH_RESULT chunkgen-sprint PASS {"samples":17566,"mean_ms":3.4157148468632648,"p50_ms":3.1785,"p95_ms":4.9176,"p99_ms":7.0506,"worst_ms":15.6576,"fps":292.76448557124866,"low_1pct_fps":119.55380617542957}
