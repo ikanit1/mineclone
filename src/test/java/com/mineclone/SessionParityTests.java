@@ -4,7 +4,9 @@ import com.mineclone.sim.EntityStore;
 import com.mineclone.sim.WorldClock;
 import com.mineclone.sim.WorldEvents;
 import com.mineclone.sim.WorldSession;
+import com.mineclone.world.BlockType;
 import com.mineclone.world.Chunk;
+import com.mineclone.world.Explosion;
 import com.mineclone.world.GenProfile;
 import com.mineclone.world.World;
 import com.mineclone.world.entity.Mob;
@@ -24,16 +26,18 @@ import java.util.function.Consumer;
 import org.joml.Vector3f;
 
 /**
- * SIM-03: the mob loop keeps behaving exactly as it did in {@code Game.updateMobs}.
+ * SIM-03/SIM-04: the mob loop keeps behaving exactly as it did in {@code Game}.
  *
  * <p>One scenario — seed 20260922 at night, nine placed mobs of every temper and
  * attack style, some standing in each other and in the way, a participant
  * walking a fixed path, natural spawning, 600 ticks of 50 ms — is hashed tick by
  * tick: every mob's position, yaw, health, state, fuse and fire, every blow,
- * explosion, drop and arrow. The expected hash was
- * recorded before the loop moved (79318ba) by a transcription of
- * {@code Game.updateMobs} at a8ec5d1 with only the sound and particle calls taken
- * out; {@link WorldSession} now reproduces it for the game and the server alike.
+ * arrow and blast, and every block the run changes. The loop was recorded
+ * before it moved (79318ba) by a transcription of {@code Game.updateMobs} at
+ * a8ec5d1 with only the sound and particle calls taken out;
+ * {@link WorldSession} reproduced it. The hash was recorded again, before
+ * explosions and drops moved, with {@link Scenario#exploded} transcribing
+ * {@code Game.detonate} at 701706f.
  */
 final class SessionParityTests {
     static void runAll(TestMain.Runner r) {
@@ -45,11 +49,11 @@ final class SessionParityTests {
 
     /**
      * Recorded before the move; see the class comment. The run holds two blows,
-     * one explosion, two deaths with drops, 22 spawns (29 mobs at the peak), two
-     * arrows and six strikes by the participant. Pushing each pair twice, or
-     * never out of the participant, changes it.
+     * one explosion with its crater, two deaths with drops, 22 spawns (29 mobs at
+     * the peak), two arrows and six strikes by the participant. Pushing each pair
+     * twice, or never out of the participant, changes it.
      */
-    static final String ETALON = "162d54b2d69799238388ec79ba2117b38d079d75a8140e6d0feabcd1a2fc8e4f";
+    static final String ETALON = "fcc8d937381db87b2cfde58a2b0d766324ba9511cc78d87187252339dc5f2a91";
 
     static final long SEED = 20260922L;
     static final int TICKS = 600;
@@ -83,7 +87,7 @@ final class SessionParityTests {
         final List<Projectile> shots = new ArrayList<>();
         final MessageDigest digest;
         final DataOutputStream log;
-        int struck, exploded, loot, spawned, maxMobs, hits, arrows;
+        int struck, exploded, loot, spawned, maxMobs, hits, arrows, blasts, blocksChanged;
 
         Scenario() throws Exception {
             digest = MessageDigest.getInstance("SHA-256");
@@ -91,6 +95,11 @@ final class SessionParityTests {
             for (int cx = -4; cx <= 8; cx++)
                 for (int cz = -4; cz <= 4; cz++)
                     world.getChunk(cx, cz);
+            // Every block the run changes — a blast crater — is part of the hash.
+            world.setBlockObserver((x, y, z, old, now, meta) -> {
+                blocksChanged++;
+                writeInt('W'); writeInt(x); writeInt(y); writeInt(z); writeInt(now.ordinal()); writeInt(meta);
+            });
             path(0);
             for (int i = 0; i < PLACED.length; i++) {
                 float x = focus.x + OFFSETS[i][0], z = focus.z + OFFSETS[i][1];
@@ -138,15 +147,41 @@ final class SessionParityTests {
             writeFloat(m.attackDamage());
         }
 
-        void exploded(Mob m) {
+        /**
+         * {@code Game.detonate} at 701706f, simulation only: the crater, the blast
+         * on the player (recorded — the participant walks a fixed path) and on
+         * every other mob. Particles, sound and shadows are gone.
+         */
+        void exploded(Mob source) {
             exploded++;
-            write('E', m);
+            float x = source.position.x, y = source.position.y + source.type.height * 0.5f;
+            float z = source.position.z;
+            for (int[] at : Explosion.destroyed(world, x, y, z, Explosion.RADIUS))
+                world.setBlock(at[0], at[1], at[2], BlockType.AIR);
+            float toPlayer = focus.distance(x, y, z);
+            if (toPlayer < Explosion.RADIUS)
+                blast(Explosion.damageAt(toPlayer));
+            for (var other : mobs) {
+                if (other == source || other.dead)
+                    continue;
+                float d = other.position.distance(x, y, z);
+                float damage = Explosion.damageAt(d);
+                if (damage > 0f)
+                    other.hurt(damage, x, z, 1.8f, false);
+            }
         }
 
+        /** The blast reached the participant; what it does to a player is the player's business. */
+        void blast(float damage) {
+            if (damage <= 0f) return;
+            blasts++;
+            writeInt('B');
+            writeFloat(damage);
+        }
+
+        /** Drops leave the mobs alone, so they are counted, not hashed. */
         void loot(Mob m) {
-            loot++;
-            write('L', m);
-            writeInt((m.eaten ? 1 : 0) | (m.killedByParticipant ? 2 : 0));
+            if (!m.eaten) loot++;
         }
 
         private void write(char kind, Mob m) {
@@ -230,9 +265,10 @@ final class SessionParityTests {
     private static void coverage() throws Exception {
         Scenario s = run(x -> session(x, WorldEvents.NONE));
         check(s.struck > 0 && s.loot > 0 && s.spawned > 0 && s.maxMobs > PLACED.length && s.hits > 0
-                        && s.arrows > 0 && s.exploded > 0,
+                        && s.arrows > 0 && s.exploded > 0 && s.blocksChanged > 0,
                 "scenario too quiet: struck=" + s.struck + " loot=" + s.loot + " spawned=" + s.spawned
-                        + " max=" + s.maxMobs + " exploded=" + s.exploded + " hits=" + s.hits + " arrows=" + s.arrows);
+                        + " max=" + s.maxMobs + " exploded=" + s.exploded + " crater=" + s.blocksChanged
+                        + " blasts=" + s.blasts + " hits=" + s.hits + " arrows=" + s.arrows);
     }
 
     /** Counts what would be shown; a presentation reads and never writes. */
