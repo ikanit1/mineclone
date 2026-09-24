@@ -120,8 +120,25 @@ public final class Weather {
     public static float visibility(float precipitation, float storm, boolean snow) {
         float loss = snow
                 ? 0.52f * precipitation + 0.28f * storm
-                : 0.30f * precipitation + 0.28f * storm;
+                : 0.28f * precipitation + 0.44f * storm;
         return Math.max(MIN_VISIBILITY, 1f - loss);
+    }
+
+    /** A dry front lifts sand in sandy biomes, never rain or snow. */
+    public static float dust(Biome biome, float storm) {
+        return biome == Biome.DESERT || biome == Biome.BADLANDS ? Math.max(0, Math.min(1, storm)) : 0;
+    }
+
+    public static float visibility(float precipitation, float storm, boolean snow, float dust) {
+        return lerp(visibility(precipitation, storm, snow), 0.08f, Math.max(0, Math.min(1, dust)));
+    }
+
+    /** Weather limits sight independently of the graphics draw distance. */
+    public static float fogEnd(float clearDistance, float visibility, float storm, float dust) {
+        float normal = Math.max(18f, clearDistance * visibility);
+        float stormLimit = lerp(clearDistance, 28f, Math.max(0, Math.min(1, storm)));
+        float dustLimit = lerp(clearDistance, 12f, Math.max(0, Math.min(1, dust)));
+        return Math.max(8f, Math.min(normal, Math.min(stormLimit, dustLimit)));
     }
 
     /**

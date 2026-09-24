@@ -56,6 +56,7 @@ public class RenderMobPreview {
                     m.animationTime = frame * 0.22f;
                     m.walkedDistance = frame * 0.22f;
                     m.onGround = m.type != MobType.CHICKEN && m.type != MobType.BIRD;
+                    m.airborneAmount = m.onGround ? 0 : 1;
                     m.attackSwing = frame == 1 ? Mob.ATTACK_SWING_TIME * 0.5f : 0f;
                 }
                 if (skyOnly) {
@@ -128,6 +129,7 @@ public class RenderMobPreview {
             for (Mob m : wild) {
                 m.yaw = yaw;
                 m.onGround = !(frame >= 1 && m.type == MobType.BIRD);
+                m.airborneAmount = m.onGround ? 0 : 1;
                 m.walkAmount = frame == 0 ? 0f : 1f;
                 m.animationTime = 0.3f + frame * 0.37f;
                 m.walkedDistance = 0.2f + frame * 0.26f;

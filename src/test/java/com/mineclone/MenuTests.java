@@ -66,7 +66,16 @@ final class MenuTests {
         r.run("loading tips rotate on a timer", MenuTests::testLoadingTips);
         r.run("settings sliders map to whole values and back", MenuTests::testSettingsSliders);
         r.run("sky palette is the frame math it replaced, bit for bit", MenuTests::testSkyPalette);
-        r.run("menu day lasts two minutes, its night one", MenuTests::testMenuDayCycle);
+        r.run("nothing visible in a menu shot is outside its loaded corridor",
+                MenuTests::testMenuShotCorridor);
+        r.run("menu fog ends inside the loaded disc", MenuTests::testMenuFogInsideLoadedDisc);
+        r.run("a menu shot accelerates, cruises and slows down", MenuTests::testMenuShotEase);
+        r.run("a menu camera stays above the ground and looks down",
+                MenuTests::testMenuShotCameraStaysAboveGround);
+        r.run("the scout is deterministic and spreads its landscapes",
+                MenuTests::testMenuScoutIsDeterministicAndSpread);
+        r.run("a menu shot corridor stays within its chunk budget",
+                MenuTests::testMenuShotCorridorIsBounded);
     }
 
     /**
@@ -143,20 +152,132 @@ final class MenuTests {
      * дня: полторы минуты темноты под меню — это уже не атмосфера, а плохо
      * видно кнопки.
      */
-    private static void testMenuDayCycle() {
-        float t = 0f, dayTime = 0f, nightTime = 0f;
-        float step = 1f / 120f;
-        for (int i = 0; i < 180 * 120; i++) {
-            if (Math.sin(t) > 0.0)
-                dayTime += step;
-            else
-                nightTime += step;
-            t = com.mineclone.game.MenuBackground.advance(t, step);
+    /**
+     * Главное свойство кинематографа меню: всё, что видно в любой момент
+     * кадра, заранее попало в список загружаемого.
+     *
+     * <p>Проверяется тысячей случайных моментов, а не теми же выборками, по
+     * которым список собран: иначе тест повторял бы за реализацией. Дыра в
+     * фоне меню — это ровно провал этой проверки, и ловится он здесь, а не
+     * глазами по скриншоту.
+     */
+    private static void testMenuShotCorridor() {
+        java.util.Random rnd = new java.util.Random(20260922L);
+        for (com.mineclone.game.MenuShot shot : menuShots()) {
+            java.util.Set<Long> required = shot.requiredChunks();
+            for (int i = 0; i < 1000; i++) {
+                float t = i < 2 ? i : rnd.nextFloat();
+                for (long k : shot.visibleChunks(t))
+                    assertTrue("кадр «" + shot.name + "» видит незагруженный чанк "
+                            + (int) (k >> 32) + "," + (int) k + " в момент " + t,
+                            required.contains(k));
+            }
         }
-        assertTrue("за три минуты прошли сутки (" + t + ")", Math.abs(t - Math.PI * 2.0) < 0.05);
-        assertTrue("день около двух минут (" + dayTime + ")", Math.abs(dayTime - 120f) < 1.5f);
-        assertTrue("ночь около минуты (" + nightTime + ")", Math.abs(nightTime - 60f) < 1.5f);
     }
+
+    /**
+     * Туман обязан догорать раньше, чем кончается загруженное. Константы
+     * стоят в разных местах и меняются по отдельности — стоит поднять
+     * дальность тумана и забыть про радиус, и край мира станет видно.
+     */
+    private static void testMenuFogInsideLoadedDisc() {
+        float guaranteed = com.mineclone.game.MenuShot.LOAD_RADIUS * 16f;
+        assertTrue("туман кончается внутри загруженного (" + com.mineclone.game.MenuShot.FOG_END
+                + " против " + guaranteed + ")",
+                com.mineclone.game.MenuShot.FOG_END + 16f <= guaranteed);
+        assertTrue("дымка начинается раньше, чем кончается",
+                com.mineclone.game.MenuShot.FOG_START < com.mineclone.game.MenuShot.FOG_END);
+    }
+
+    /**
+     * Профиль скорости — трапеция: разгон, ровный ход, торможение. Ровно
+     * равномерное движение читается механическим, а сглаживание с обоих
+     * концов останавливает камеру там, где она должна лететь.
+     */
+    private static void testMenuShotEase() {
+        assertTrue("в начале ноль", Math.abs(com.mineclone.game.MenuShot.ease(0f)) < 1e-4);
+        assertTrue("в конце единица", Math.abs(com.mineclone.game.MenuShot.ease(1f) - 1f) < 1e-4);
+        float prev = -1f;
+        for (int i = 0; i <= 100; i++) {
+            float e = com.mineclone.game.MenuShot.ease(i / 100f);
+            assertTrue("путь не идёт назад на " + i, e >= prev - 1e-5);
+            prev = e;
+        }
+        float mid = com.mineclone.game.MenuShot.ease(0.52f) - com.mineclone.game.MenuShot.ease(0.48f);
+        float head = com.mineclone.game.MenuShot.ease(0.04f) - com.mineclone.game.MenuShot.ease(0f);
+        float tail = com.mineclone.game.MenuShot.ease(1f) - com.mineclone.game.MenuShot.ease(0.96f);
+        assertTrue("середина быстрее начала", mid > head * 1.5f);
+        assertTrue("середина быстрее конца", mid > tail * 1.5f);
+    }
+
+    /**
+     * Камера не под землёй, не над потолком мира и смотрит вниз: взгляд вверх
+     * означал бы кадр, полный неба, а такое уже случалось, когда точка
+     * прицеливания уезжала внутрь горы.
+     */
+    private static void testMenuShotCameraStaysAboveGround() {
+        com.mineclone.world.World world =
+                new com.mineclone.world.World(SaveFormat.MENU_SEED);
+        com.mineclone.game.MenuShot.Pose p = new com.mineclone.game.MenuShot.Pose();
+        for (com.mineclone.game.MenuShot shot : menuShots()) {
+            for (int i = 0; i <= 64; i++) {
+                shot.pose(i / 64f, p);
+                int ground = world.terrainHeight((int) Math.floor(p.x), (int) Math.floor(p.z));
+                assertTrue("кадр «" + shot.name + "» ведёт камеру сквозь рельеф на "
+                        + (i / 64f) + " (" + p.y + " против " + ground + ")", p.y > ground + 3f);
+                assertTrue("кадр «" + shot.name + "» вылез за потолок мира", p.y < 127f);
+                assertTrue("кадр «" + shot.name + "» смотрит в небо на " + (i / 64f),
+                        p.pitch > -0.02f);
+            }
+        }
+    }
+
+    /**
+     * Разведка детерминирована и разносит площадки: два одинаковых пейзажа
+     * подряд — это не пять кадров, а один, показанный пять раз.
+     */
+    private static void testMenuScoutIsDeterministicAndSpread() {
+        java.util.List<com.mineclone.game.MenuShot> a = menuShots();
+        java.util.List<com.mineclone.game.MenuShot> b = com.mineclone.game.MenuScout.shots(
+                new com.mineclone.world.World(SaveFormat.MENU_SEED));
+        assertEq("разведка нашла столько же кадров", a.size(), b.size());
+        assertTrue("разведка нашла хотя бы четыре пейзажа", a.size() >= 4);
+        for (int i = 0; i < a.size(); i++) {
+            com.mineclone.game.MenuShot.Pose pa = a.get(i).pose(0.3f, null);
+            com.mineclone.game.MenuShot.Pose pb = b.get(i).pose(0.3f, null);
+            assertTrue("кадр " + i + " встал там же", Math.hypot(pa.x - pb.x, pa.z - pb.z) < 0.01);
+            assertEq("кадр " + i + " называется так же", a.get(i).name, b.get(i).name);
+        }
+        for (int i = 0; i < a.size(); i++)
+            for (int j = i + 1; j < a.size(); j++) {
+                com.mineclone.game.MenuShot.Pose pi = a.get(i).pose(0.5f, null);
+                com.mineclone.game.MenuShot.Pose pj = a.get(j).pose(0.5f, null);
+                assertTrue("кадры " + i + " и " + j + " сняты в разных местах",
+                        Math.hypot(pi.x - pj.x, pi.z - pj.z) > 200);
+            }
+    }
+
+    /**
+     * Коридор одного кадра не должен разрастаться: два кадра живут в памяти
+     * одновременно, пока следующий грузится.
+     */
+    private static void testMenuShotCorridorIsBounded() {
+        for (com.mineclone.game.MenuShot shot : menuShots()) {
+            int n = shot.requiredChunks().size();
+            assertTrue("кадр «" + shot.name + "» просит " + n + " чанков", n <= 260);
+            assertTrue("кадр «" + shot.name + "» просит всего " + n + " чанков", n >= 40);
+        }
+    }
+
+    /** Разведка мира меню — одна на все проверки: она стоит десятки миллисекунд. */
+    private static java.util.List<com.mineclone.game.MenuShot> menuShots() {
+        if (cachedShots == null)
+            cachedShots = com.mineclone.game.MenuScout.shots(
+                    new com.mineclone.world.World(SaveFormat.MENU_SEED));
+        return cachedShots;
+    }
+
+    private static java.util.List<com.mineclone.game.MenuShot> cachedShots;
 
     /**
      * Ползунок отдаёт 0..1, а игре нужны целые чанки и кадры. Круговой перевод

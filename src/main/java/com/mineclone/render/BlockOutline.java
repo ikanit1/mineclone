@@ -127,7 +127,7 @@ public class BlockOutline {
     }
 
     // -------------------------------------------------------------------------
-    //  Неоновая рамка
+    //  Тонкий контур выделения
     // -------------------------------------------------------------------------
 
     private int ribbonVao, ribbonVbo;
@@ -141,21 +141,18 @@ public class BlockOutline {
             { 0, 4 }, { 1, 5 }, { 2, 6 }, { 3, 7 } };
 
     /**
-     * Рамка вокруг произвольного бокса: тёмный контур, светлое ядро и мягкое
-     * свечение.
+     * Неброский тёмный контур вокруг выбранного блока.
      *
      * Линии в core-профиле толще пикселя не рисуются, поэтому каждое ребро —
      * это лента из двух треугольников, развёрнутая к камере, с шириной,
      * растущей с расстоянием: так рамка на дальнем блоке не истончается до
-     * пропадания. Тёмный контур делает рамку читаемой на снегу, светлое ядро —
-     * в пещере, а свечение в HDR подхватывает bloom — отсюда «неон».
+     * пропадания. Контур не излучает свет и не попадает в bloom.
      *
      * @param box   minX, minY, minZ, maxX, maxY, maxZ
      * @param alpha 0..1 — плавное появление и исчезновение
-     * @param glow  0.8..1 — пульсация свечения
      */
     public void renderBox(Matrix4f proj, Matrix4f view, float[] box, org.joml.Vector3f camPos,
-                          float alpha, float glow, float linearOut) {
+                          float alpha, float linearOut) {
         if (alpha <= 0.001f)
             return;
         if (ribbonVao == 0) {
@@ -189,24 +186,11 @@ public class BlockOutline {
         shader.setFloat("uLinearOut", linearOut);
         glBindVertexArray(ribbonVao);
 
-        // Контур: тёмная широкая лента — рамка видна даже на снегу.
+        // Одна тонкая полупрозрачная линия, без белого ядра и свечения.
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        drawRibbons(c, camPos, 2.6f);
+        drawRibbons(c, camPos, 0.65f);
         shader.setFloat("uEmissive", 0f);
-        shader.setVec4("uColor", new Vector4f(0f, 0f, 0f, 0.45f * alpha));
-        glDrawArrays(GL_TRIANGLES, 0, 72);
-        // Свечение: сложением, чтобы в HDR из него вырос bloom.
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-        drawRibbons(c, camPos, 3.4f);
-        shader.setFloat("uEmissive", 2.2f);
-        shader.setVec4("uColor", new Vector4f(0.55f, 0.88f, 1.0f, 0.22f * alpha * glow));
-        glDrawArrays(GL_TRIANGLES, 0, 72);
-        // Ядро: тонкая яркая линия.
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        drawRibbons(c, camPos, 1.0f);
-        shader.setFloat("uEmissive", 0.6f);
-        float core = linearOut > 0.5f ? 1f : 0.95f;
-        shader.setVec4("uColor", new Vector4f(0.88f * core, 0.97f * core, 1.0f * core, 0.9f * alpha));
+        shader.setVec4("uColor", new Vector4f(0f, 0f, 0f, 0.40f * alpha));
         glDrawArrays(GL_TRIANGLES, 0, 72);
 
         glBindVertexArray(0);

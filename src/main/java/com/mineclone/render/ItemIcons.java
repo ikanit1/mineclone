@@ -92,7 +92,8 @@ public final class ItemIcons {
 
     private void drawTile(int tile, float x, float y, float size, float alpha) {
         float[] uv = TextureAtlas.uv(tile);
-        ui.quad(x + 3f, y + 4f, size, size, 0f, 0f, 0f, 0.25f * alpha);
+        ui.texQuad(x + 3f, y + 4f, size, size, atlas.getTextureId(),
+                uv[0], uv[1], uv[2], uv[3], 0f, 0f, 0f, 0.25f * alpha);
         ui.texQuad(x, y, size, size, atlas.getTextureId(),
                 uv[0], uv[1], uv[2], uv[3], 1f, 1f, 1f, alpha);
     }

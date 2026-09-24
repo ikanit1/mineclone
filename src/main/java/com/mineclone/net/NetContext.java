@@ -23,6 +23,14 @@ import java.util.List;
  * одного и того же.
  */
 public interface NetContext {
+    /** Stable installation identity; names can change without losing the checkpoint. */
+    default String playerId() { return ""; }
+    default PlayerData capturePlayerData() { return null; }
+    default void restorePlayerData(PlayerData data) { }
+    default PlayerData loadGuest(String id) { return null; }
+    default void saveGuest(String id, PlayerData data) { }
+    /** Only inventory/cursor change in a container response; never teleport a moving player. */
+    default void containerInventory(ItemStack[] inventory, ItemStack cursor, boolean closed) { }
 
     // ------------------------------------------------------------------ мир
 

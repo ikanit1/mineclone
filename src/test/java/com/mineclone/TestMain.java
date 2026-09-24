@@ -61,6 +61,8 @@ public final class TestMain {
         ExplosionTests.runAll((name, check) -> run(name, check::run));
         com.mineclone.game.PlayerPhysicsTests.runAll((name, check) -> run(name, check::run));
         PlayerAnimationTests.runAll((name, check) -> run(name, check::run));
+        PlayerHandednessTests.runAll((name, check) -> run(name, check::run));
+        EquipmentTextureTests.runAll((name, check) -> run(name, check::run));
         PlayerMotionTests.runAll((name, check) -> run(name, check::run));
         com.mineclone.game.StormWeatherTests.runAll((name, check) -> run(name, check::run));
         MobAnimationTests.runAll((name, check) -> run(name, check::run));
@@ -222,6 +224,7 @@ public final class TestMain {
         MusicTests.runAll((name, check) -> run(name, check::run));
         InventoryTests.runAll((name, check) -> run(name, check::run));
         NetworkTests.runAll((name, check) -> run(name, check::run));
+        InventoryNetworkTests.runAll((name, check) -> run(name, check::run));
 
         System.out.println();
         System.out.println("==== " + passed + " passed, " + failed + " failed ====");

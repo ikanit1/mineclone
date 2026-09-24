@@ -34,6 +34,7 @@ public final class PrecipitationRenderer {
     public static final int SNOW_MAX = 12000;
     /** Сколько струй дождя в полную силу. */
     public static final int RAIN_MAX = 7000;
+    public static final int DUST_MAX = 10000, VEIL_MAX = 900;
     /** Коробка частиц вокруг камеры, блоки. */
     public static final float BOX_H = 40f, BOX_V = 28f;
     /** Текстурный юнит карты крыш — выше атласа и карт теней. */
@@ -161,7 +162,15 @@ public final class PrecipitationRenderer {
                        float windX, float windZ, com.mineclone.game.WeatherDrift drift,
                        float snowfall, float rain, float storm,
                        Vector3f snowColor, Vector3f rainColor, float linearOut) {
-        if ((snowfall < 0.01f && rain < 0.01f) || uploadedOriginX == Integer.MIN_VALUE)
+        render(proj, view, camPos, time, windX, windZ, drift, snowfall, rain, storm, 0,
+                snowColor, rainColor, rainColor, linearOut);
+    }
+
+    public void render(Matrix4f proj, Matrix4f view, Vector3f camPos, float time,
+                       float windX, float windZ, com.mineclone.game.WeatherDrift drift,
+                       float snowfall, float rain, float storm, float dust,
+                       Vector3f snowColor, Vector3f rainColor, Vector3f dustColor, float linearOut) {
+        if ((snowfall < 0.01f && rain < 0.01f && dust < 0.01f) || uploadedOriginX == Integer.MIN_VALUE)
             return;
         viewProj.set(proj).mul(view);
         // Оси камеры из матрицы вида: строки её вращательной части.
@@ -195,6 +204,7 @@ public final class PrecipitationRenderer {
         glBindTexture(GL_TEXTURE_2D, heightTex);
         glActiveTexture(GL_TEXTURE0);
         glBindVertexArray(vao);
+        shader.setFloat("uDust", 0f);
 
         if (snowfall >= 0.01f) {
             int count = (int) (SNOW_MAX * Math.min(1f, snowfall));
@@ -204,11 +214,28 @@ public final class PrecipitationRenderer {
             glDrawArraysInstanced(GL_TRIANGLES, 0, 6, count);
         }
         if (rain >= 0.01f) {
-            int count = (int) (RAIN_MAX * Math.min(1f, rain));
+            int count = (int) (RAIN_MAX * Math.min(1f, rain) * (1f + Math.min(1f, storm) * 0.4f));
             shader.setFloat("uSnow", 0f);
             shader.setVec3("uColor", rainColor);
-            shader.setFloat("uAlpha", 0.55f);
+            shader.setFloat("uAlpha", 0.55f + storm * 0.12f);
             glDrawArraysInstanced(GL_TRIANGLES, 0, 6, count);
+        }
+
+        if (dust >= 0.01f) {
+            shader.setFloat("uSnow", 0f);
+            shader.setFloat("uDust", 1f);
+            shader.setVec3("uColor", dustColor);
+            shader.setFloat("uAlpha", 0.60f);
+            glDrawArraysInstanced(GL_TRIANGLES, 0, 6, (int) (DUST_MAX * Math.min(1, dust)));
+        }
+        // Larger low-opacity wisps add depth between nearby grains/drops and the distant fog.
+        float veil = Math.max(dust, rain * storm * 0.70f);
+        if (veil >= 0.01f) {
+            shader.setFloat("uSnow", 0f);
+            shader.setFloat("uDust", 2f);
+            shader.setVec3("uColor", dust > 0.01f ? dustColor : rainColor);
+            shader.setFloat("uAlpha", dust > 0.01f ? 0.24f : 0.12f);
+            glDrawArraysInstanced(GL_TRIANGLES, 0, 6, (int) (VEIL_MAX * Math.min(1, veil)));
         }
 
         glBindVertexArray(0);

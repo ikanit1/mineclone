@@ -29,11 +29,15 @@ $port = $probe.LocalEndpoint.Port
 $probe.Stop()
 
 $work = Join-Path $root 'out-test\net'
+if ([IO.Path]::GetFullPath($work) -ne [IO.Path]::Combine([IO.Path]::GetFullPath($root), 'out-test', 'net')) {
+    throw "Unexpected test output path: $work"
+}
 if (Test-Path $work) { Remove-Item -Recurse -Force $work }
 New-Item -ItemType Directory -Force -Path $work | Out-Null
 
 $cp = "$out;$libs\*"
 $via = if ($Photon) { 'photon' } else { 'lan' }
+$room = ''
 Write-Host "net test: via $via, port $port"
 
 function Start-Side {
@@ -46,9 +50,10 @@ function Start-Side {
         "-Dmineclone.autopilot.net=$mode",
         "-Dmineclone.autopilot.netPort=$port",
         "-Dmineclone.autopilot.netVia=$via",
+        "-Dmineclone.autopilot.netRoom=$room",
         '-cp', $cp, 'com.mineclone.Main'
     )
-    $proc = Start-Process -FilePath 'java' -ArgumentList $args -PassThru -NoNewWindow `
+    $proc = Start-Process -FilePath 'java' -ArgumentList $args -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput "$dir\out.log" -RedirectStandardError "$dir\err.log"
     # Touching Handle caches it; without that, Windows PowerShell hands back an
     # empty ExitCode once the process is gone.
@@ -60,7 +65,25 @@ $host_ = Start-Side 'host' 'host'
 # The host has to create a world and open the room before anyone can knock.
 # Photon needs longer: the room only exists after a round trip through the
 # name server, the master and a game server.
-Start-Sleep -Seconds $(if ($Photon) { 30 } else { 15 })
+if ($Photon) {
+    # Hosting generates a fresh room code. Join the code the game actually
+    # published, not the old autopilot-<port> placeholder.
+    $deadline = [DateTime]::UtcNow.AddSeconds(90)
+    while ([DateTime]::UtcNow -lt $deadline -and -not $host_.HasExited) {
+        $log = Join-Path $work 'host\out.log'
+        if (Test-Path $log) {
+            $match = Select-String -LiteralPath $log -Pattern '^autopilot: room=(.+)$' | Select-Object -Last 1
+            if ($match) { $room = $match.Matches[0].Groups[1].Value.Trim(); break }
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    if (-not $room) {
+        if (-not $host_.HasExited) { $host_.Kill(); $host_.WaitForExit() }
+        throw 'Photon host did not publish its room code within 90 seconds'
+    }
+} else {
+    Start-Sleep -Seconds 15
+}
 $guest = Start-Side 'join' 'guest'
 
 foreach ($proc in @($host_, $guest)) {

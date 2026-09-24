@@ -19,7 +19,7 @@ public final class AmbientSound {
         NONE,
         /** Далёкий звук в темноте под землёй. */
         CAVE,
-        /** Шум дождя. */
+        /** Weather cadence marker; RainAmbience maintains the actual continuous sound. */
         RAIN,
         /** Раскат грома. */
         THUNDER,
@@ -42,7 +42,7 @@ public final class AmbientSound {
 
     /** Пауза между звуками пещеры. Редко — иначе они перестают пугать. */
     public static final float CAVE_MIN = 45f, CAVE_MAX = 160f;
-    /** Пауза между порциями шума дождя. */
+    /** Interval for weather cues and thunder rolls, not for the continuous rain bed. */
     public static final float RAIN_MIN = 7f, RAIN_MAX = 13f;
     /** Пауза между гулами под водой — примерно длина самого сэмпла. */
     public static final float WATER_LOOP = 7.5f;

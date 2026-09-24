@@ -57,12 +57,16 @@ public final class BodyRotation {
             bodyYaw = cameraYaw;
             return;
         }
-        float step = dt <= 0f ? 0f : Math.min(1f, dt * TURN_RATE);
+        float step = dt <= 0f ? 0f : 1f - (float) Math.exp(-dt * TURN_RATE);
         float speed = (float) Math.sqrt(velX * velX + velZ * velZ);
         if (speed > MOVING_SPEED) {
             // Курс камеры при нулевом угле смотрит по −Z — направление
             // движения переводится в ту же систему.
             float moveYaw = (float) Math.atan2(velX, -velZ);
+            // При движении назад плечи остаются направлены вперёд: иначе
+            // корпус пытается развернуться на 180°, а шея упирается в предел.
+            if (Math.abs(wrap(moveYaw - headYaw)) > (float) Math.PI / 2f)
+                moveYaw = wrap(moveYaw + (float) Math.PI);
             bodyYaw = lerpAngle(bodyYaw, moveYaw, step);
         }
         // Предел держится всегда: и стоя, и на ходу боком.

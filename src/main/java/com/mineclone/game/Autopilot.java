@@ -17,6 +17,7 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_E;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F3;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_H;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_W;
 
 /**
  * Автопилот меню в настоящей игре: {@code -Dmineclone.autopilot=<папка>}.
@@ -54,6 +55,21 @@ final class Autopilot {
 
         void setMenuTime(float gameTime);
 
+        /** Встать на кадр кинематографа меню и держать его. */
+        void menuShot(int index, float phase);
+
+        /** Номер идущего кадра фона, или −1. */
+        int menuShotIndex();
+
+        /** Сколько чанков идущего кадра ещё не загружено. */
+        int menuMissingChunks();
+
+        /** Сколько пейзажей нашла разведка; ноль — ещё ищет. */
+        int menuShotCount();
+
+        /** Остаток кроссфейда между кадрами фона, 1..0. */
+        float menuDissolve();
+
         boolean worldHasIcon();
 
         void quit(int exitCode);
@@ -86,6 +102,16 @@ final class Autopilot {
         /** Мы хозяин комнаты. */
         boolean netIsHost();
 
+        String netRoomName();
+
+        void spawnAnimationMobs();
+
+        int mobTypeMask();
+
+        void equipItem(String id);
+
+        boolean seesHeldItem(String id);
+
         /** Точка появления мира в блоках: общая у хозяина и участника. */
         int[] spawnBlock();
 
@@ -94,6 +120,9 @@ final class Autopilot {
 
         /** Поставить блок напрямую — как это сделал бы игрок. */
         void setBlockAt(int x, int y, int z, String block);
+
+        /** Где игрок по высоте: ходьба в стену не должна его поднимать. */
+        float playerY();
 
         /** Поставить курсор в виртуальные координаты интерфейса. */
         void mouseAt(float vx, float vy);
@@ -261,7 +290,8 @@ final class Autopilot {
         String who = address.isEmpty() ? "Хозяин" : "Гость";
         if ("photon".equals(NET_VIA))
             return new com.mineclone.net.NetSettings(com.mineclone.net.NetSettings.PHOTON,
-                    who, "", NET_REGION, "autopilot-" + NET_PORT, "", NET_PORT);
+                    who, "", NET_REGION, System.getProperty("mineclone.autopilot.netRoom",
+                            "autopilot-" + NET_PORT), "", NET_PORT);
         return new com.mineclone.net.NetSettings(com.mineclone.net.NetSettings.LAN,
                 who, "", "", "lan", address, NET_PORT);
     }
@@ -288,6 +318,34 @@ final class Autopilot {
     private static final int PAD_X = 10, PAD_Z = 4;
     /** Насколько участник стоит в стороне от хозяина, блоки. */
     private static final int APART = 6;
+
+    /** Высота игрока перед тем, как он пошёл в стену. */
+    private static float wallStartY;
+
+    /**
+     * Площадка со стеной в два блока прямо по курсу.
+     *
+     * Два блока, а не один: подъём, о котором идёт речь, выносил игрока
+     * именно на высоту такой стены.
+     */
+    private static void buildWall(Driver d) {
+        for (int dx = -2; dx <= 6; dx++)
+            for (int dz = -3; dz <= 3; dz++) {
+                int[] at = floorAt(d, dx, dz);
+                d.setBlockAt(at[0], at[1], at[2], "STONE");
+                for (int up = 1; up <= 3; up++)
+                    d.setBlockAt(at[0], at[1] + up, at[2], "AIR");
+            }
+        int[] here = floorAt(d, 0, 0);
+        d.teleport(here[0] + 0.5f, here[1] + 1f, here[2] + 0.5f);
+        // Стена в четырёх блоках впереди по +X, высотой два.
+        for (int dz = -3; dz <= 3; dz++) {
+            int[] at = floorAt(d, 4, dz);
+            d.setBlockAt(at[0], at[1] + 1, at[2], "STONE");
+            d.setBlockAt(at[0], at[1] + 2, at[2], "STONE");
+        }
+        d.lookAt(here[0] + 8.5f, here[1] + 1f + 1.62f, here[2] + 0.5f);
+    }
 
     private static void buildPad(Driver d) {
         for (int dx = -1; dx < PAD_X; dx++)
@@ -321,9 +379,14 @@ final class Autopilot {
                 d.act(MenuAction.netHost(worlds.get(0).id, netSettings("")));
             }),
             when("the room is open", 0.5f, d -> in(d, "PLAYING") && d.netIsHost(),
-                    d -> ok("hosting the room")),
+                    d -> {
+                        d.equipItem("iron_pickaxe");
+                        ok("hosting the room");
+                        System.out.println("autopilot: room=" + d.netRoomName());
+                    }),
             when("a guest arrived", 0.5f, d -> d.netPlayers() >= 1, d -> ok("a guest arrived")),
             step("build a platform", 0.3f, Autopilot::buildPad),
+            step("spawn all mob species", 0.3f, Driver::spawnAnimationMobs),
             step("stand on it", 0.6f, d -> standAt(d, 0, APART)),
             step("place a block for the guest", 0.4f, d -> {
                 int[] at = mark(d, 0, 0);
@@ -335,6 +398,8 @@ final class Autopilot {
             }, d -> ok("the guest's block arrived")),
             when("the guest is standing where it said", 1.2f,
                     d -> d.netPlayers() >= 1, d -> ok("the guest is in place")),
+            when("guest equipment arrived", 0.2f, d -> d.seesHeldItem("diamond_axe"),
+                    d -> ok("guest equipment replicated")),
             step("look at the guest", 0.3f, d -> standAt(d, 0, APART)),
             step("shoot the host", 0.5f, d -> d.shot("net-host")),
             // Хозяин уходит последним: его выход закрывает комнату, и участник
@@ -345,9 +410,12 @@ final class Autopilot {
             step("join the room", 1.5f,
                     d -> d.act(MenuAction.netJoin(netSettings("127.0.0.1:" + NET_PORT)))),
             when("the host's world is loaded", 0.5f, d -> in(d, "PLAYING"),
-                    d -> ok("joined the world")),
+                    d -> { d.equipItem("diamond_axe"); ok("joined the world"); }),
             when("the host is visible", 0.5f, d -> d.netPlayers() >= 1 && !d.netIsHost(),
                     d -> ok("the host is visible")),
+            when("all mob species arrived", 0.2f,
+                    d -> d.mobTypeMask() == (1 << com.mineclone.world.entity.MobType.values().length) - 1,
+                    d -> ok("all mob species replicated with valid poses")),
             when("the platform arrived", 0.5f, d -> {
                 int[] at = floorAt(d, APART, 0);
                 return "STONE".equals(d.blockAt(at[0], at[1], at[2]));
@@ -365,6 +433,8 @@ final class Autopilot {
                 int[] at = mark(d, 2, 2);
                 return "GLASS".equals(d.blockAt(at[0], at[1], at[2]));
             }, d -> ok("the host kept the guest's block")),
+            when("host equipment arrived", 0.2f, d -> d.seesHeldItem("iron_pickaxe"),
+                    d -> ok("host equipment replicated")),
             step("look at the host", 0.3f, d -> standAt(d, APART, 0)),
             step("shoot the guest", 0.5f, d -> d.shot("net-guest")),
             step("hold still", 2.5f, d -> ok("held still for the host")));
@@ -381,7 +451,8 @@ final class Autopilot {
             step("join the server", 1.5f,
                     d -> d.act(MenuAction.netJoin(netSettings("127.0.0.1:" + NET_PORT)))),
             when("the server's world is loaded", 0.5f, d -> in(d, "PLAYING"),
-                    d -> ok("joined the server's world")),
+                    d -> { d.equipItem(NET_SLOT == 0 ? "iron_pickaxe" : "diamond_axe");
+                        ok("joined the server's world"); }),
             when("we are a guest, not a host", 0.3f, d -> !d.netIsHost(),
                     d -> ok("the server owns the world")),
             // Площадку строит гость: у сервера нет рук. Хватает одного слоя
@@ -404,10 +475,66 @@ final class Autopilot {
             }, d -> ok("the server relayed the other guest's block")),
             when("the other guest is visible", 0.5f, d -> d.netPlayers() >= 1,
                     d -> ok("the other guest is visible")),
+            when("equipment relayed through server", 0.2f,
+                    d -> d.seesHeldItem(NET_SLOT == 0 ? "diamond_axe" : "iron_pickaxe"),
+                    d -> ok("server relayed held equipment")),
             step("shoot the room", 0.5f, d -> d.shot("net-server-" + NET_SLOT)),
             step("hold still", 2.0f, d -> ok("held still")));
 
-    private final List<Step> menuSteps = List.of(
+    /**
+     * Пройти по всем кадрам кинематографа фона и снять каждый с двух
+     * точек траектории.
+     *
+     * <p>Главное здесь не сами снимки, а проверка {@code menuMissingChunks}:
+     * показанный кадр обязан отдавать ноль. Математику коридора
+     * видимости проверяет обычный тест, а вот что этот коридор действительно
+     * успел загрузиться до показа — только живая игра.
+     */
+    private static List<Step> cinematicSteps() {
+        List<Step> out = new java.util.ArrayList<>();
+        out.add(when("the scout found the landscapes", 0.2f,
+                d -> d.menuShotCount() > 0,
+                d -> ok("scout found " + d.menuShotCount() + " landscapes")));
+        for (int i = 0; i < 5; i++) {
+            final int n = i;
+            out.add(step("ask for shot " + n, 0.05f, d -> d.menuShot(n, 0.18f)));
+            out.add(when("shot " + n + " loaded whole", 0.4f,
+                    d -> d.menuShotIndex() == wrap(d, n) && d.menuMissingChunks() == 0,
+                    d -> ok("shot " + n + " shown with no missing chunks")));
+            out.add(step("shoot shot " + n, 0.35f, d -> d.shot("bg-" + n + "-start")));
+            out.add(step("fly on", 0.05f, d -> d.menuShot(n, 0.84f)));
+            out.add(when("shot " + n + " whole at the end too", 0.35f,
+                    d -> d.menuMissingChunks() == 0,
+                    d -> ok("shot " + n + " end has no missing chunks")));
+            out.add(step("shoot the end of shot " + n, 0.35f, d -> d.shot("bg-" + n + "-end")));
+        }
+        // Наплыв между кадрами — единственное, чего не видно на отдельных
+        // снимках: кадр доводится почти до конца и отпускается расписанию.
+        out.add(step("bring the last shot to its end", 0.05f, d -> d.menuShot(4, 0.97f)));
+        out.add(when("that shot is whole", 0.3f,
+                d -> d.menuShotIndex() == wrap(d, 4) && d.menuMissingChunks() == 0,
+                d -> ok("the shot before the handover is whole")));
+        out.add(step("let the schedule take over", 0.05f, d -> d.menuShot(-1, 0f)));
+        out.add(when("the schedule dissolved into the next shot", 0.1f,
+                d -> d.menuShotIndex() != wrap(d, 4) && d.menuDissolve() > 0.05f,
+                d -> ok("shots dissolve into one another, and the new one is whole")));
+        out.add(step("shoot the dissolve", 0.02f, d -> d.shot("bg-dissolve")));
+        out.add(step("release the cinematic", 0.1f, d -> d.menuShot(-1, 0f)));
+        return out;
+    }
+
+    /** Какой номер кадра на самом деле выбрал фон: кадров может быть меньше пяти. */
+    private static int wrap(Driver d, int index) {
+        return Math.floorMod(index, Math.max(1, d.menuShotCount()));
+    }
+
+    private static List<Step> concat(List<Step> a, List<Step> b) {
+        List<Step> out = new java.util.ArrayList<>(a);
+        out.addAll(b);
+        return List.copyOf(out);
+    }
+
+    private final List<Step> menuSteps = concat(cinematicSteps(), List.of(
             step("dusk", 2.5f, d -> d.setMenuTime((float) (Math.PI * 0.93))),
             step("shoot dusk", 0.4f, d -> d.shot("00-title-dusk")),
             step("night", 0.1f, d -> d.setMenuTime((float) (Math.PI * 1.5))),
@@ -437,6 +564,21 @@ final class Autopilot {
                     d.shot("04-loading");
             }),
             when("shoot play", 3f, d -> in(d, "PLAYING"), d -> d.shot("05-play")),
+            // Ходьба в стену на живой физике: синтетический прогон
+            // коллизии ловит не всё, а поднять игрока тут не должно ничем.
+            step("build a wall to walk into", 0.4f, Autopilot::buildWall),
+            step("walk into the wall", 0.1f, d -> {
+                wallStartY = d.playerY();
+                d.holdKey(GLFW_KEY_W, true);
+            }),
+            step("stop walking", 1.6f, d -> d.holdKey(GLFW_KEY_W, false)),
+            step("the wall must not lift the player", 0.3f, d -> {
+                float rose = d.playerY() - wallStartY;
+                if (rose > 0.2f)
+                    throw new IllegalStateException(
+                            "walking into a wall lifted the player by " + rose + " blocks");
+                ok("a wall stops the player instead of lifting them");
+            }),
             step("Esc", 0.2f, d -> d.pressKey(GLFW_KEY_ESCAPE)),
             expect("Esc opens the pause and it stays open", 0.6f, "PAUSED"),
             step("Esc", 0.1f, d -> d.pressKey(GLFW_KEY_ESCAPE)),
@@ -548,7 +690,7 @@ final class Autopilot {
             expect("E opens the creative window", 0.5f, "WINDOW"),
             step("shoot creative", 0.5f, d -> d.shot("12-window-creative")),
             step("Esc closes creative", 0.3f, d -> d.pressKey(GLFW_KEY_ESCAPE)),
-            expect("Esc leaves the creative window", 0.6f, "PLAYING"));
+            expect("Esc leaves the creative window", 0.6f, "PLAYING")));
 
     private final Driver d;
     private final List<Step> steps;

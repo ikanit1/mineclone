@@ -32,9 +32,11 @@ final class Atmosphere {
     float snow;
     /** Сила бури в точке 0..1. */
     float storm;
+    /** Suspended sand in desert and badlands fronts. Smoothed at biome boundaries. */
+    float dust;
     /** Облачность 0..1 — общая: небо над пустыней тоже затянуто. */
     float cloudiness;
-    /** Множитель дальности тумана 0.14..1. */
+    /** Множитель дальности тумана 0.08..1. */
     float visibility = 1f;
     /** Ветер, блоков в секунду. */
     float windX, windZ;
@@ -79,14 +81,16 @@ final class Atmosphere {
         boolean snowing = Weather.snowsAt(biome, pos.y);
 
         float targetPrecip = wet ? global.precipitation() : 0f;
-        float targetStorm = wet ? global.storm() : global.storm() * 0.35f;   // сухая буря — только ветер
+        float targetDust = Weather.dust(biome, global.storm());
+        float targetStorm = wet || targetDust > 0 ? global.storm() : global.storm() * 0.35f;
         float targetSnow = snowing ? 1f : 0f;
-        float targetVis = Weather.visibility(targetPrecip, targetStorm, snowing);
+        float targetVis = Weather.visibility(targetPrecip, targetStorm, snowing, targetDust);
         float targetAurora = NightSky.auroraStrength(world.seed, gameTime, biome, global.cloudiness());
 
         float daylight = Math.max(0f, (float) Math.sin(gameTime));
-        float targetMist = Mist.groundDensity(gameTime, daylight, targetPrecip, biome);
-        float targetHaze = Mist.haze(targetPrecip, biome);
+        float targetMist = Mist.groundDensity(gameTime, daylight, targetPrecip, biome)
+                + targetStorm * 0.018f + targetDust * 0.035f;
+        float targetHaze = Mist.haze(targetPrecip, biome) + targetStorm * 0.008f + targetDust * 0.025f;
 
         float k = primed ? 1f - (float) Math.exp(-dt / LOCAL_SMOOTH) : 1f;
         float kv = primed ? 1f - (float) Math.exp(-dt / VISIBILITY_SMOOTH) : 1f;
@@ -94,10 +98,11 @@ final class Atmosphere {
         haze += (targetHaze - haze) * kv;
         precipitation += (targetPrecip - precipitation) * k;
         storm += (targetStorm - storm) * k;
+        dust += (targetDust - dust) * k;
         snow += (targetSnow - snow) * k;
         visibility += (targetVis - visibility) * kv;
         aurora += (targetAurora - aurora) * k;
-        cloudiness = global.cloudiness();
+        cloudiness += (global.cloudiness() - cloudiness) * k;
         primed = true;
 
         float[] w = Weather.wind(world.seed, clock);
@@ -132,6 +137,9 @@ final class Atmosphere {
     float blizzard() {
         return storm * snow;
     }
+
+    /** Dry sandstorms and blizzards have wind, but no rain lightning or thunder. */
+    float thunderstorm() { return storm * rain(); }
 
     /** Сила ветра, блоков в секунду. */
     float windSpeed() {

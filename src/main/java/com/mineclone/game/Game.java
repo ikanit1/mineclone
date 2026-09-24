@@ -854,6 +854,7 @@ public class Game {
 
     /** Flush level.dat + every loaded chunk whose blocks changed since gen. */
     private void saveAll() {
+        if(net.isClient())net.savePlayerNow();
         // Мир участника — чужой: своей записи о нём быть не должно, и
         // worldId у него пустой именно поэтому.
         if (world == null || worldId == null)
@@ -875,9 +876,9 @@ public class Game {
                 player.camera.yaw, player.camera.pitch,
                 gameTime, selectedSlot, invSnapshot, gameMode, System.currentTimeMillis(),
                 player.health, player.hunger,
-                // Курсор — это предметы игрока, просто ни в одном слоте.
-                // Класть их в инвентарь на записи поздно: он мог быть полон.
-                windowCursor(),
+                // Курсор, сетка крафта и ожидающий выброс тоже принадлежат игроку.
+                // Возвращать их в инвентарь при записи нельзя: он мог быть полон.
+                pendingPlayerItems(),
                 savedSections);
         save.saveLevel(worldId, d);
         // Превью снимет ближайший кадр мира: сейчас идёт обновление, а не отрисовка.
@@ -1063,6 +1064,8 @@ public class Game {
             }
         }
         if (world != null) {
+            if(activeWindow!=null && !net.isClient())closeWindow();
+            net.stop(null);
             saveAll();
             save.flushAndAwait();
         }
@@ -1269,7 +1272,11 @@ public class Game {
     private void unloadWorld() {
         if (world == null)
             return;
+        if(net.isHost())net.stop(null);
+        boolean remoteWorld=worldId==null;
+        if(activeWindow!=null && !remoteWorld)closeWindow();
         saveAll();
+        if(remoteWorld)discardRemoteWindow();
         save.flushAndAwait();
         loader.shutdown();
         for (Mesh m : chunkMeshes.values())
@@ -1987,20 +1994,25 @@ public class Game {
     }
 
     /**
-     * Стопка на курсоре открытого окна — её сохраняет level.dat.
+     * Временные предметы игрока: курсор, ингредиенты крафта и ожидающий выброс.
      *
      * <p>Это предметы игрока, просто ни в одном слоте; класть их в инвентарь
      * при записи поздно — он мог быть полон.
      */
-    private com.mineclone.world.ItemStack[] windowCursor() {
-        if (activeWindow == null || activeWindow.menu().cursor() == null)
-            return null;
-        return new com.mineclone.world.ItemStack[] { activeWindow.menu().cursor().copy() };
+    private com.mineclone.world.ItemStack[] pendingPlayerItems() {
+        var pending=new java.util.ArrayList<com.mineclone.world.ItemStack>();
+        for(var s:pendingDrops)pending.add(s.copy());
+        if(activeWindow!=null)pending.addAll(activeWindow.menu().pendingItems());
+        return pending.toArray(com.mineclone.world.ItemStack[]::new);
     }
 
     /** Закрывает окно: курсор и остатки возвращаются игроку через closed(). */
     private void closeWindow() {
-        netCloseContainer();
+        if(net.closeContainer())return;
+        finishCloseWindow();
+    }
+
+    private void finishCloseWindow() {
         windows.clear();
         activeWindow = null;
         openChest = null;
@@ -2375,6 +2387,7 @@ public class Game {
     private float attackCooldownSpan = 0.5f;
 
     private void handleInteraction(float dt) {
+        if(net.inventoryBusy())return;
         Vector3f origin = new Vector3f(player.camera.position);
         Vector3f dir = player.camera.forward();
         lastHit = Raycaster.cast(world, origin, dir, 6f);
@@ -2778,7 +2791,8 @@ public class Game {
     private void dropItem(com.mineclone.world.ItemStack stack, float x, float y, float z) {
         if (stack == null || stack.count <= 0)
             return;
-        addItemEntity(com.mineclone.world.entity.ItemEntity.popped(stack, x, y, z, itemRandom));
+        var item=com.mineclone.world.entity.ItemEntity.popped(stack,x,y,z,itemRandom);
+        if(!net.requestDrop(item))addItemEntity(item);
     }
 
     private void addItemEntity(com.mineclone.world.entity.ItemEntity e) {
@@ -2854,6 +2868,7 @@ public class Game {
     }
 
     private void throwHeldItem(boolean wholeStack, float charge) {
+        if(net.inventoryBusy())return;
         com.mineclone.world.ItemStack held = inventory.get(selectedSlot);
         if (held == null)
             return;
@@ -3082,7 +3097,7 @@ public class Game {
         e.velocity.set(fwd.x * speed + player.velocity.x,
                 fwd.y * speed + THROW_LIFT * (0.65f + strength * 0.35f),
                 fwd.z * speed + player.velocity.z);
-        addItemEntity(e);
+        if(!net.requestDrop(e))addItemEntity(e);
         sound.playOneOf(sounds.pickup(), 0.3f, 0.75f + 0.15f * itemRandom.nextFloat());
     }
 
@@ -3114,13 +3129,14 @@ public class Game {
      * память и байты в сейве ни за что.
      */
     private void openChest(int x, int y, int z) {
+        if(net.inventoryBusy())return;
         com.mineclone.world.ItemStack[] slots = world.createChest(x, y, z);
         if (slots == null)
             return;
         // Участник открывает сундук по своей копии, а настоящее содержимое
         // подъезжает через кадр: ждать ответа с закрытым окном значило бы
         // залипать на полсекунды на каждом щелчке.
-        netBeginContainer(x, y, z, com.mineclone.net.Multiplayer.CONTAINER_CHEST);
+        if(net.isClient())net.requestContainer(x,y,z);
         openChest = slots;
         chestX = x;
         chestY = y;
@@ -3129,6 +3145,7 @@ public class Game {
         openWindow(new com.mineclone.ui.container.ChestScreen(windowContext, slots,
                 i -> world.markChestDirty(cx, cz),
                 () -> world != null && world.getBlock(cx, cy, cz) == BlockType.CHEST));
+        if(net.isClient())net.bindContainer(activeWindow.menu());
         emitNoise(x + 0.5f, y + 0.5f, z + 0.5f, NOISE_PLACE);
         sound.playOneOfAt(sounds.doorToggle(), blockSoundPosition(x, y, z),
                 0.5f, 1.25f + 0.1f * (float) Math.random());
@@ -3188,10 +3205,11 @@ public class Game {
 
     /** Открывает печь под прицелом. */
     private void openFurnace(int x, int y, int z) {
+        if(net.inventoryBusy())return;
         com.mineclone.world.Furnace f = world.createFurnace(x, y, z);
         if (f == null)
             return;
-        netBeginContainer(x, y, z, com.mineclone.net.Multiplayer.CONTAINER_FURNACE);
+        if(net.isClient())net.requestContainer(x,y,z);
         openFurnace = f;
         furnaceX = x;
         furnaceY = y;
@@ -3199,6 +3217,7 @@ public class Game {
         final int fx = x, fy = y, fz = z;
         openWindow(new com.mineclone.ui.container.FurnaceScreen(windowContext, f,
                 () -> world != null && world.getBlock(fx, fy, fz) == BlockType.FURNACE));
+        if(net.isClient())net.bindContainer(activeWindow.menu());
         sound.playOneOfAt(sounds.doorToggle(), blockSoundPosition(x, y, z),
                 0.45f, 0.8f + 0.1f * (float) Math.random());
     }
@@ -5715,7 +5734,7 @@ public class Game {
         if (menuTheme == null || windows.isEmpty())
             return MenuAction.NONE;
         UiInput in;
-        if (windowInputBlocked || swallowMouseUntilUp) {
+        if (windowInputBlocked || swallowMouseUntilUp || net.inventoryBusy()) {
             in = UiInput.builder()
                     .at((float) (input.getCursorX() / scale), (float) (input.getCursorY() / scale))
                     .build();
@@ -6115,6 +6134,45 @@ public class Game {
      */
     private com.mineclone.net.NetContext netContext() {
         return new com.mineclone.net.NetContext() {
+            @Override public String playerId() { return save.playerId(); }
+            @Override public com.mineclone.net.PlayerData capturePlayerData() {
+                var slots=new com.mineclone.world.ItemStack[com.mineclone.world.Inventory.SIZE];
+                for(int i=0;i<slots.length;i++)slots[i]=inventory.get(i);
+                return new com.mineclone.net.PlayerData(slots,pendingPlayerItems(),
+                        player.position.x,player.position.y,player.position.z,
+                        player.camera.yaw,player.camera.pitch,player.health,player.hunger,
+                        selectedSlot,survivalProgress.encode());
+            }
+            @Override public void restorePlayerData(com.mineclone.net.PlayerData data) {
+                discardRemoteWindow();
+                for(int i=0;i<com.mineclone.world.Inventory.SIZE;i++)
+                    inventory.set(i,data.inventory[i]==null?null:data.inventory[i].copy());
+                pendingDrops.clear();
+                for(var s:data.pending)if(s!=null){
+                    int left=inventory.add(s.copy());
+                    if(left>0)pendingDrops.add(s.copyWithCount(left));
+                }
+                player.respawn(data.x,data.y,data.z);
+                player.health=data.health;player.hunger=data.hunger;
+                player.camera.yaw=data.yaw;player.camera.pitch=data.pitch;
+                selectedSlot=data.selected;
+                survivalProgress=SurvivalProgress.decode(data.progress);
+                bodyRotation.snap(data.yaw,data.pitch);
+                playerAnimation.reset(player.position,data.yaw,player.onGround,player.inWater,player.flying);
+                lastStreamCX=lastStreamCZ=Integer.MIN_VALUE;
+            }
+            @Override public com.mineclone.net.PlayerData loadGuest(String id) {
+                return worldId==null?null:save.loadGuest(worldId,id);
+            }
+            @Override public void saveGuest(String id,com.mineclone.net.PlayerData data) {
+                if(worldId!=null)save.saveGuest(worldId,id,data);
+            }
+            @Override public void containerInventory(com.mineclone.world.ItemStack[] slots,
+                    com.mineclone.world.ItemStack cursor,boolean closed) {
+                for(int i=0;i<slots.length;i++)inventory.set(i,slots[i]);
+                if(activeWindow!=null)activeWindow.menu().setCursor(closed?null:cursor);
+                if(closed && activeWindow!=null)finishCloseWindow();
+            }
             @Override
             public World world() {
                 return world;
@@ -6483,6 +6541,17 @@ public class Game {
         beginLoadingToPlay();
     }
 
+    /** A recovered host checkpoint already owns these temporary items; do not return them twice. */
+    private void discardRemoteWindow() {
+        if(activeWindow==null)return;
+        var menu=activeWindow.menu();
+        menu.setCursor(null);menu.dropped().clear();menu.cancelDrag();
+        for(var group:menu.groups())if(group.role==com.mineclone.ui.container.SlotRole.CRAFT_GRID)
+            for(int i=0;i<group.size();i++)group.storage.set(i,null);
+        windows.clear();activeWindow=null;openChest=null;openFurnace=null;
+        if(state==State.WINDOW)state=State.PLAYING;
+    }
+
     /** Правка блока, пришедшая по сети: та же, что своя, но без отправки обратно. */
     private void applyRemoteBlock(int x, int y, int z, byte id, byte meta, boolean broke) {
         if (world == null)
@@ -6533,41 +6602,6 @@ public class Game {
             f.burnLeft = burnLeft;
             f.burnMax = burnMax;
             f.cook = cook;
-        }
-    }
-
-    /** Открытый участником контейнер: при закрытии окна его надо отдать хозяину. */
-    private int[] netOpenContainer;
-
-    /** Участник открыл контейнер — запросить содержимое и запомнить, какой. */
-    private void netBeginContainer(int x, int y, int z, int kind) {
-        if (!net.isClient())
-            return;
-        netOpenContainer = new int[] { x, y, z, kind };
-        net.requestContainer(x, y, z);
-    }
-
-    /** Участник закрыл контейнер — отдать хозяину то, что получилось. */
-    private void netCloseContainer() {
-        if (netOpenContainer == null || world == null) {
-            netOpenContainer = null;
-            return;
-        }
-        int x = netOpenContainer[0], y = netOpenContainer[1], z = netOpenContainer[2];
-        int kind = netOpenContainer[3];
-        netOpenContainer = null;
-        if (!net.isClient())
-            return;
-        if (kind == com.mineclone.net.Multiplayer.CONTAINER_CHEST) {
-            com.mineclone.world.ItemStack[] slots = world.getChest(x, y, z);
-            if (slots != null)
-                net.commitContainer(x, y, z, kind, slots, 0f, 0f, 0f);
-        } else {
-            com.mineclone.world.Furnace f = world.getFurnace(x, y, z);
-            if (f != null)
-                net.commitContainer(x, y, z, kind,
-                        new com.mineclone.world.ItemStack[] { f.input, f.fuel, f.output },
-                        f.burnLeft, f.burnMax, f.cook);
         }
     }
 

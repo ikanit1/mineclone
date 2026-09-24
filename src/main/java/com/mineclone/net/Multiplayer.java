@@ -85,6 +85,7 @@ public final class Multiplayer implements NetTransport.Listener {
     public static final int CONTAINER_FURNACE = 1;
 
     private final NetContext ctx;
+    private final InventorySync inventorySync;
     private NetTransport transport;
     private NetChannel channel;
     private Role role = Role.NONE;
@@ -146,13 +147,22 @@ public final class Multiplayer implements NetTransport.Listener {
     private long equipmentSequence;
     private String lastHeldId;
     private final Map<Integer, ItemEntity> shownItems = new HashMap<>();
-    /** Предметы, о которых заявка уже ушла: повторять её нечего. */
-    private final Set<Integer> pickRequested = new HashSet<>();
     private final Random visualRandom = new Random(0x5EED);
 
     public Multiplayer(NetContext ctx) {
         this.ctx = ctx;
+        this.inventorySync = new InventorySync(this,ctx);
     }
+
+    PacketBuf inventoryPacket(int code,int actor) { return channel.packet(code,true,actor); }
+    int hostActor() { return hostActor; }
+    void flushInventory() { if(channel!=null)channel.flush(); }
+    void rejectPlayer(int actor,String reason) { channel.packet(NetProto.S_REJECT,true,actor).str(reason); }
+    public boolean inventoryBusy() { return inventorySync.busy(); }
+    public void savePlayerNow() { inventorySync.saveNow();flushInventory(); }
+    public void bindContainer(com.mineclone.ui.container.ContainerMenu menu) { inventorySync.bind(menu); }
+    public boolean closeContainer() { return inventorySync.close(); }
+    public boolean requestDrop(ItemEntity item) { return inventorySync.drop(item); }
 
     // ------------------------------------------------------------- запуск
 
@@ -195,6 +205,7 @@ public final class Multiplayer implements NetTransport.Listener {
     }
 
     public void stop(String reason) {
+        if(channel!=null)inventorySync.stopping();
         factory = null;
         resuming = false;
         resumeLeft = 0f;
@@ -222,13 +233,13 @@ public final class Multiplayer implements NetTransport.Listener {
         lastHeldId = null;
         lastMobSequence = -1;
         shownItems.clear();
-        pickRequested.clear();
         deltaResults.clear();
         if (deltaWorker != null) {
             deltaWorker.shutdownNow();
             deltaWorker = null;
         }
         pristine = null;
+        inventorySync.reset();
         if (reason != null && !reason.isEmpty()) {
             lastError = reason;
             status = reason;
@@ -334,6 +345,7 @@ public final class Multiplayer implements NetTransport.Listener {
 
         if (!joined)
             return;
+        inventorySync.update(dt);
         tickTimer += dt;
         float interval = 1f / NetProto.TICK_RATE;
         if (tickTimer < interval)
@@ -487,36 +499,22 @@ public final class Multiplayer implements NetTransport.Listener {
 
     /** Участник открыл сундук или печь — попросить настоящее содержимое. */
     public void requestContainer(int x, int y, int z) {
-        if (role != Role.CLIENT || !joined)
-            return;
-        channel.packet(NetProto.C_CONTAINER_OPEN, true, hostActor).blockPos(x, y, z);
-        channel.flush();
-    }
-
-    /** Участник закрыл контейнер — отдать хозяину то, что получилось. */
-    public void commitContainer(int x, int y, int z, int kind, ItemStack[] slots,
-            float burnLeft, float burnMax, float cook) {
-        if (role != Role.CLIENT || !joined)
-            return;
-        PacketBuf b = channel.packet(NetProto.C_CONTAINER_COMMIT, true, hostActor);
-        writeContainer(b, x, y, z, kind, slots, burnLeft, burnMax, cook);
-        channel.flush();
+        inventorySync.open(x,y,z);
     }
 
     /**
      * Участник дотянулся до предмета — решает всё равно хозяин.
      *
-     * <p>Заявка на предмет уходит один раз. Игровой кадр зовёт этот метод
-     * шестьдесят раз в секунду, пока предмет в руках, и без памяти о
-     * попрошенном в каждое сообщение уходило бы по пять одинаковых заявок.
+     * <p>Следующий подбор и изменение инвентаря ждут ответа хозяина,
+     * чтобы снимок открываемого сундука не затёр только что подобранное.
      */
     public void requestPickup(ItemEntity e) {
-        if (role != Role.CLIENT || !joined)
+        if (role != Role.CLIENT || !joined || inventoryBusy())
             return;
         Integer id = idOf(shownItems, e);
-        if (id == null || !pickRequested.add(id))
+        if (id == null)
             return;
-        channel.packet(NetProto.C_ITEM_PICK, true, hostActor).varInt(id);
+        inventorySync.pickup(id);
     }
 
     /** Участник ударил моба: урон и отброс считает хозяин. */
@@ -625,7 +623,6 @@ public final class Multiplayer implements NetTransport.Listener {
         lastHeldId = null;
         lastMobSequence = -1;
         shownItems.clear();
-        pickRequested.clear();
     }
 
     /** Очередная попытка вернуться. Зовётся из {@link #update}. */
@@ -686,7 +683,7 @@ public final class Multiplayer implements NetTransport.Listener {
             addChat("Мир открыт: комната «" + roomName + "»");
         } else {
             channel.packet(NetProto.C_HELLO, true, hostActor)
-                    .varInt(NetProto.VERSION).str(nickname);
+                    .varInt(NetProto.VERSION).str(nickname).str(inventorySync.identity());
             channel.flush();
             if (returning) {
                 // Мир у нас уже есть — второй раз строить его не надо, и
@@ -715,6 +712,7 @@ public final class Multiplayer implements NetTransport.Listener {
 
     @Override
     public void onActorLeave(int actor) {
+        inventorySync.left(actor);
         RemotePlayer gone = players.remove(actor);
         if (gone != null)
             addChat(gone.name.isEmpty() ? "Игрок вышел" : gone.name + " вышел");
@@ -746,6 +744,7 @@ public final class Multiplayer implements NetTransport.Listener {
     }
 
     private boolean handle(int from, int code, PacketBuf in) {
+        if(inventorySync.handle(from,code,in))return true;
         switch (code) {
             case NetProto.C_HELLO -> onHello(from, in);
             case NetProto.S_WELCOME -> onWelcome(from, in);
@@ -830,9 +829,8 @@ public final class Multiplayer implements NetTransport.Listener {
                     hostMobHit(id, damage, knockback, fx, fz);
             }
             case NetProto.C_ITEM_PICK -> {
-                int id = in.readVarInt();
-                if (!in.truncated() && role == Role.HOST)
-                    hostPickup(from, id);
+                // Retired in v7: pickup must checkpoint both ownership changes together.
+                in.readVarInt();
             }
             case NetProto.S_GIVE -> {
                 ItemStack s = readStack(in);
@@ -846,13 +844,6 @@ public final class Multiplayer implements NetTransport.Listener {
                     addChat(displayName(from) + ": " + line);
                 }
             }
-            case NetProto.C_CONTAINER_OPEN -> {
-                int[] at = in.readBlockPos();
-                if (!in.truncated() && role == Role.HOST)
-                    sendContainer(from, at[0], at[1], at[2]);
-            }
-            case NetProto.S_CONTAINER -> onContainer(from, in);
-            case NetProto.C_CONTAINER_COMMIT -> onContainerCommit(from, in);
             default -> {
                 return false;
             }
@@ -892,11 +883,14 @@ public final class Multiplayer implements NetTransport.Listener {
             channel.flush();
             return;
         }
+        String identity=in.readStr();
+        if(in.truncated())return;
         Vector3f spawn = ctx.spawn();
         PacketBuf b = channel.packet(NetProto.S_WELCOME, true, from);
         b.i64(ctx.seed()).str(ctx.worldName()).f32(ctx.timeOfDay()).u8(ctx.gameMode())
                 .f32(spawn.x).f32(spawn.y).f32(spawn.z);
         sendInfo(from);
+        inventorySync.hello(from,identity);
         channel.flush();
         addChat(name + " вошёл в мир");
     }
@@ -1221,9 +1215,6 @@ public final class Multiplayer implements NetTransport.Listener {
         if (out == null)
             return;
         shownItems.keySet().retainAll(seen);
-        // Предмет исчез — и заявка на него больше не в силе: следующий с тем
-        // же номером будет уже другим предметом.
-        pickRequested.retainAll(seen);
         out.clear();
         out.addAll(shownItems.values());
     }
@@ -1249,7 +1240,7 @@ public final class Multiplayer implements NetTransport.Listener {
         }
     }
 
-    private void hostPickup(int actor, int id) {
+    void pickupInto(int id, com.mineclone.world.Inventory inventory) {
         List<ItemEntity> items = ctx.groundItems();
         if (items == null)
             return;
@@ -1257,94 +1248,13 @@ public final class Multiplayer implements NetTransport.Listener {
             if (e.getValue() != id)
                 continue;
             ItemEntity ent = e.getKey();
-            if (!items.remove(ent))
+            if (!items.contains(ent))
                 return;
-            PacketBuf b = channel.packet(NetProto.S_GIVE, true, actor);
-            writeStack(b, ent.stack);
-            itemIds.remove(ent);
+            int left=inventory.add(ent.stack);
+            if(left==0){items.remove(ent);itemIds.remove(ent);}
+            else ent.stack.count=left;
             return;
         }
-    }
-
-    // ---------------------------------------------------------- контейнеры
-
-    private void sendContainer(int actor, int x, int y, int z) {
-        World world = ctx.world();
-        if (world == null)
-            return;
-        BlockType t = world.getBlock(x, y, z);
-        if (t == BlockType.CHEST) {
-            ItemStack[] slots = world.getChest(x, y, z);
-            if (slots == null)
-                slots = new ItemStack[Chunk.CHEST_SLOTS];
-            PacketBuf b = channel.packet(NetProto.S_CONTAINER, true, actor);
-            writeContainer(b, x, y, z, CONTAINER_CHEST, slots, 0f, 0f, 0f);
-        } else if (t == BlockType.FURNACE) {
-            Furnace f = world.getFurnace(x, y, z);
-            ItemStack[] slots = f == null ? new ItemStack[3]
-                    : new ItemStack[] { f.input, f.fuel, f.output };
-            PacketBuf b = channel.packet(NetProto.S_CONTAINER, true, actor);
-            writeContainer(b, x, y, z, CONTAINER_FURNACE, slots,
-                    f == null ? 0f : f.burnLeft, f == null ? 0f : f.burnMax,
-                    f == null ? 0f : f.cook);
-        }
-        channel.flush();
-    }
-
-    private void onContainer(int from, PacketBuf in) {
-        int[] at = in.readBlockPos();
-        int kind = in.readU8();
-        int n = in.readVarInt();
-        ItemStack[] slots = new ItemStack[Math.max(0, Math.min(64, n))];
-        for (int i = 0; i < slots.length && !in.truncated(); i++)
-            slots[i] = readStack(in);
-        float burnLeft = in.readF32(), burnMax = in.readF32(), cook = in.readF32();
-        if (in.truncated() || role != Role.CLIENT || from != hostActor)
-            return;
-        ctx.containerFromHost(at[0], at[1], at[2], kind, slots, burnLeft, burnMax, cook);
-    }
-
-    private void onContainerCommit(int from, PacketBuf in) {
-        int[] at = in.readBlockPos();
-        int kind = in.readU8();
-        int n = in.readVarInt();
-        ItemStack[] slots = new ItemStack[Math.max(0, Math.min(64, n))];
-        for (int i = 0; i < slots.length && !in.truncated(); i++)
-            slots[i] = readStack(in);
-        float burnLeft = in.readF32(), burnMax = in.readF32(), cook = in.readF32();
-        if (in.truncated() || role != Role.HOST)
-            return;
-        World world = ctx.world();
-        if (world == null)
-            return;
-        int x = at[0], y = at[1], z = at[2];
-        if (kind == CONTAINER_CHEST && world.getBlock(x, y, z) == BlockType.CHEST) {
-            ItemStack[] live = world.createChest(x, y, z);
-            for (int i = 0; i < live.length; i++)
-                live[i] = i < slots.length ? slots[i] : null;
-            world.markChestDirty(x, z);
-            // Остальным, кто смотрит в тот же сундук, — новое содержимое.
-            for (Integer a : transport.actors())
-                if (a != from)
-                    sendContainer(a, x, y, z);
-        } else if (kind == CONTAINER_FURNACE && world.getBlock(x, y, z) == BlockType.FURNACE) {
-            Furnace f = world.createFurnace(x, y, z);
-            f.input = slots.length > 0 ? slots[0] : null;
-            f.fuel = slots.length > 1 ? slots[1] : null;
-            f.output = slots.length > 2 ? slots[2] : null;
-            f.burnLeft = burnLeft;
-            f.burnMax = burnMax;
-            f.cook = cook;
-            world.markChestDirty(x, z);
-        }
-    }
-
-    private static void writeContainer(PacketBuf b, int x, int y, int z, int kind,
-            ItemStack[] slots, float burnLeft, float burnMax, float cook) {
-        b.blockPos(x, y, z).u8(kind).varInt(slots.length);
-        for (ItemStack s : slots)
-            writeStack(b, s);
-        b.f32(burnLeft).f32(burnMax).f32(cook);
     }
 
     // ------------------------------------------------------------- стопки

@@ -175,6 +175,23 @@ public final class HeldItemRenderer {
                 .scale(lerp(0.34f, 0.30f, k));
     }
 
+    /** Flat inventory sprites face the camera and use the item-only view like tools. */
+    private static Matrix4f materialPose(float equip, float swing, float distance, boolean bobbing,
+                                        float inspect, float spin) {
+        float k = smooth01(inspect);
+        float arc = swingArc(swing) * (1f - inspect);
+        float yaw = swingYaw(swing) * (1f - inspect);
+        float drop = (1f - equipEase(equip)) * 0.8f;
+        return new Matrix4f()
+                .translate(lerp(0.58f + bobX(distance, bobbing) + arc * 0.08f, 0.08f, k),
+                        lerp(-0.45f - drop + bobY(distance, bobbing) - arc * 0.10f, -0.13f, k),
+                        -0.95f - arc * 0.10f)
+                .rotateY(lerp((float) Math.toRadians(-18f + yaw * 14f), spin, k))
+                .rotateX((float) Math.toRadians(-8f - arc * 14f))
+                .rotateZ((float) Math.toRadians(-12f - arc * 12f) * (1f - k))
+                .scale(0.44f);
+    }
+
     /**
      * Матрица инструмента.
      *
@@ -336,6 +353,7 @@ public final class HeldItemRenderer {
                 -0.48f * Math.max(0f, 1f - aspect / (16f / 9f)), 0f, 0f);
         boolean holding = held != null && held.item != null
                 && (heldBlock != null && heldBlock != BlockType.AIR || heldTool != null || held.iconTile() >= 0);
+        boolean flatItem = holding && heldBlock == null;
 
         // Собственный чистый z-буфер на первый план: без него задние грани
         // бокса руки перекрывают передние (обход вершин куба не гарантирован,
@@ -347,8 +365,8 @@ public final class HeldItemRenderer {
         glDisable(GL_BLEND);
         glDisable(GL_CULL_FACE);
 
-        // Tools use the reference-style item-only view; empty hand/blocks keep the arm.
-        if (heldTool == null) {
+        // Flat items use the same item-only view as tools; blocks keep the arm.
+        if (heldTool == null && !flatItem) {
             armShader.bind();
             armShader.setMat4("uProjection", projection);
             armShader.setMat4("uView", view);
@@ -402,6 +420,8 @@ public final class HeldItemRenderer {
             atlas.bind(0);
             Matrix4f pose = heldTool != null
                     ? toolPose(equipProgress, swingProgress, walkDistance, viewBobbing, inspect, spin)
+                    : flatItem
+                    ? materialPose(equipProgress, swingProgress, walkDistance, viewBobbing, inspect, spin)
                     : itemPose(equipProgress, swingProgress, walkDistance, viewBobbing, inspect, spin);
             blockShader.setMat4("uModel", pose);
             mesh.render();
@@ -509,10 +529,9 @@ public final class HeldItemRenderer {
     }
 
     private static Mesh createMaterialMesh(com.mineclone.item.Item item) {
-        List<Float> p = new ArrayList<>(), u = new ArrayList<>(), l = new ArrayList<>(), bl = new ArrayList<>();
-        List<Integer> i = new ArrayList<>();
-        emitSolidBox(p, u, l, bl, i, 122, 0f, -0.18f, 0f, .10f, .82f, .10f);
-        return new Mesh(toFloatArray(p), toFloatArray(u), toFloatArray(l), toFloatArray(bl), toIntArray(i));
+        // Crafting materials and food have their own silhouette too. The old
+        // generic wooden rod made even ingots and diamonds look like a stick.
+        return ItemSpriteMesh.build(TextureAtlas.sprite(item.iconTile), item.iconTile).upload();
     }
 
     /** Dispatches to the correct mesh builder for each block type. */

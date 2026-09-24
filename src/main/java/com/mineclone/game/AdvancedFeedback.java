@@ -17,6 +17,8 @@ public final class AdvancedFeedback {
         exposure += (target - exposure) * (1f - (float)Math.exp(-rate * dt));
     }
 
+    public void clearEffects() { java.util.Arrays.fill(timers, 0f); }
+
     public boolean active(Effect e) { return timers[e.ordinal()] > 0f; }
     public float amount(Effect e) { return Math.min(1f, timers[e.ordinal()] / 2f); }
     public float exposure() { return exposure; }

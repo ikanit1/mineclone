@@ -29,10 +29,6 @@ public final class RemotePlayer implements com.mineclone.world.entity.Hittable {
     private static final float CATCH_UP = 1.25f / NetProto.TICK_RATE;
     /** Сколько держится замах рукой. */
     private static final float SWING_TIME = 0.28f;
-    /** Быстрее этого шага размах уже не растёт, м/с. */
-    private static final float FULL_STRIDE_SPEED = 4.0f;
-    /** Как быстро гаснет размах, когда игрок встал. */
-    private static final float STRIDE_DECAY = 6f;
     /** Перенос дальше этого радиуса — телепорт, а не прогулка по воздуху. */
     private static final float TELEPORT_DISTANCE = 8f;
     /** Длина одного слышимого шага. */
@@ -67,6 +63,7 @@ public final class RemotePlayer implements com.mineclone.world.entity.Hittable {
      * одинаковым.
      */
     private final com.mineclone.render.BodyRotation body = new com.mineclone.render.BodyRotation();
+    public final com.mineclone.render.PlayerAnimation animation = new com.mineclone.render.PlayerAnimation();
     private float yawFrom, yawTo;
     private float pitchFrom, pitchTo;
 
@@ -110,6 +107,8 @@ public final class RemotePlayer implements com.mineclone.world.entity.Hittable {
             footstepDistance = 0f;
             pendingFootsteps = 0;
             body.snap(newYaw, newPitch);
+            animation.reset(position, newYaw, (newFlags & F_ON_GROUND) != 0,
+                    (newFlags & F_IN_WATER) != 0, (newFlags & F_FLYING) != 0);
         } else {
             from.set(position);
             yawFrom = yaw;
@@ -134,6 +133,7 @@ public final class RemotePlayer implements com.mineclone.world.entity.Hittable {
     public void startSwing() {
         swingTimer = SWING_TIME;
         swingStarted = true;
+        animation.startSwing();
     }
 
     /** Показать последнюю реплику игрока над его моделью. */
@@ -202,6 +202,7 @@ public final class RemotePlayer implements com.mineclone.world.entity.Hittable {
 
     /** Довести модель до кадра: положение, поворот, анимация. */
     public void update(float dt) {
+        if (!Float.isFinite(dt) || dt <= 0f) return;
         silence += dt;
         if (chatTimer > 0f) {
             chatTimer = Math.max(0f, chatTimer - dt);
@@ -211,7 +212,8 @@ public final class RemotePlayer implements com.mineclone.world.entity.Hittable {
         float px = position.x, pz = position.z;
         if (lerp < 1f) {
             lerp = Math.min(1f, lerp + dt / CATCH_UP);
-            float k = lerp * lerp * (3f - 2f * lerp);
+            // Do not restart an ease-in at each packet: that brakes a constant-speed walker 12 times/s.
+            float k = lerp;
             position.set(from).lerp(to, k);
             yaw = com.mineclone.render.BodyRotation.lerpAngle(yawFrom, yawTo, k);
             pitch = pitchFrom + (pitchTo - pitchFrom) * k;
@@ -230,17 +232,10 @@ public final class RemotePlayer implements com.mineclone.world.entity.Hittable {
                 && (flags & (F_IN_WATER | F_FLYING)) == 0;
         if (walking)
             walkedDistance += moved;
-        float speed = dt > 1e-4f ? moved / dt : 0f;
-        float target = walking ? Math.min(1f, speed / FULL_STRIDE_SPEED) : 0f;
-        if (!walking)
-            // В воздухе анимация шага не имеет физического смысла. Плавное
-            // затухание оставляло на нескольких кадрах «кривую» позу после
-            // прыжка или переключения полёта.
-            walkAmount = 0f;
-        else if (target > walkAmount)
-            walkAmount = target;
-        else
-            walkAmount = Math.max(target, walkAmount - STRIDE_DECAY * dt);
+        if (placed && !isDead())
+            animation.update(dt, position, body.bodyYaw, (flags & F_ON_GROUND) != 0,
+                    (flags & F_IN_WATER) != 0, (flags & F_FLYING) != 0, (flags & F_SPRINT) != 0);
+        walkAmount = animation.walkAmount();
         if (walking) {
             footstepDistance += moved;
             while (footstepDistance >= FOOTSTEP_DISTANCE) {

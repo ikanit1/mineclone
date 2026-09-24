@@ -22,14 +22,17 @@ public final class CreativeScreen extends ContainerScreen {
     public static final int COLUMNS = 10, VISIBLE_ROWS = 5;
 
     private static final String[] TAB_LABELS = {
-            "Все", "Блоки", "Декор", "Мех.", "Инстр.", "Еда", "Ещё"
+            "Все", "Блоки", "Декор", "Мех.", "Инстр.", "Еда", "Ещё", "Рюкзак"
     };
     private static final String[] TAB_CATEGORIES = {
-            null, "building", "decor", "mechanics", "tools", "food", "materials,misc"
+            null, "building", "decor", "mechanics", "tools", "food", "materials,misc", "inventory"
     };
 
     private final List<Item> allItems;
     private final List<Item> items;
+    private final com.mineclone.ui.TextField search = new com.mineclone.ui.TextField("", 80, null);
+    private boolean typing;
+    private float searchY, trashX;
     private int category;
     private int scrollRow;
     private float gridX, gridY, tabsX, tabsY;
@@ -57,9 +60,13 @@ public final class CreativeScreen extends ContainerScreen {
         Inventory inv = ctx.inventory();
         ContainerMenu m = new ContainerMenu(List.of(
                 new SlotGroup("source", SlotRole.CREATIVE_SOURCE, new Source(items), COLUMNS),
+                new SlotGroup("main", SlotRole.MAIN,
+                        new InventoryStorage(inv, Inventory.HOTBAR, Inventory.SIZE - Inventory.HOTBAR), 9),
                 new SlotGroup("hotbar", SlotRole.HOTBAR,
                         new InventoryStorage(inv, 0, Inventory.HOTBAR), 9)));
         m.route(SlotRole.CREATIVE_SOURCE, SlotRole.HOTBAR, SlotRole.MAIN);
+        m.route(SlotRole.MAIN, SlotRole.HOTBAR);
+        m.route(SlotRole.HOTBAR, SlotRole.MAIN);
         return m;
     }
 
@@ -100,13 +107,20 @@ public final class CreativeScreen extends ContainerScreen {
     @Override
     protected float[] layout(MenuTheme theme) {
         float panelW = gridWidth(COLUMNS) + 2 * PAD;
-        float panelH = 101f + gridHeight(VISIBLE_ROWS) + 34f + SLOT + PAD;
+        float panelH = 178f + gridHeight(VISIBLE_ROWS) + 34f + SLOT + PAD;
         float panelX = theme.width() / 2f - panelW / 2f;
         float panelY = theme.height() / 2f - panelH / 2f;
         gridX = panelX + PAD;
         tabsX = gridX;
         tabsY = panelY + 55f;
-        gridY = panelY + 101f;
+        searchY = panelY + 129f;
+        trashX = gridX + gridWidth(COLUMNS) - 130f;
+        gridY = panelY + 178f;
+        var in = theme.activeInput();
+        typing = category != 7 && (in.mousePressed
+                ? in.mouseX >= gridX && in.mouseX < trashX - 10f
+                    && in.mouseY >= searchY && in.mouseY <= searchY + 32f
+                : theme.focused("creative-search"));
 
         int rows = (items.size() + COLUMNS - 1) / COLUMNS;
         int maxScroll = Math.max(0, rows - VISIBLE_ROWS);
@@ -115,7 +129,10 @@ public final class CreativeScreen extends ContainerScreen {
 
         // Прокрутка сдвигает сетку целыми рядами: дробный сдвиг резал бы
         // слоты пополам, а слот — это цель для мыши.
-        place(menu.group("source"), gridX, gridY - scrollRow * (SLOT + GAP));
+        if (category == 7)
+            place(menu.group("main"), gridX + (gridWidth(COLUMNS) - gridWidth(9)) / 2f, gridY);
+        else
+            place(menu.group("source"), gridX, gridY - scrollRow * (SLOT + GAP));
         place(menu.group("hotbar"),
                 panelX + panelW / 2f - gridWidth(9) / 2f,
                 gridY + gridHeight(VISIBLE_ROWS) + 34f);
@@ -124,10 +141,37 @@ public final class CreativeScreen extends ContainerScreen {
 
     @Override
     protected void drawExtras(MenuTheme theme) {
-        int next = theme.segmentedSmall("creative-category", tabsX, tabsY,
-                gridWidth(COLUMNS), 30f, TAB_LABELS, category);
-        if (next != category)
+        int top = theme.segmentedSmall("creative-category-top", tabsX, tabsY,
+                gridWidth(COLUMNS), 30f, java.util.Arrays.copyOfRange(TAB_LABELS, 0, 4),
+                category < 4 ? category : -1);
+        int bottom = theme.segmentedSmall("creative-category-bottom", tabsX, tabsY + 35f,
+                gridWidth(COLUMNS), 30f, java.util.Arrays.copyOfRange(TAB_LABELS, 4, 8),
+                category >= 4 ? category - 4 : -1);
+        int next = category;
+        if (top >= 0 && top != (category < 4 ? category : -1)) next = top;
+        if (bottom >= 0 && bottom != (category >= 4 ? category - 4 : -1)) next = bottom + 4;
+        if (next != category) {
+            theme.unfocus();
+            typing = false;
             applyCategory(next);
+        }
+        if (category != 7) {
+            String previous = search.text();
+            theme.textField("creative-search", gridX, searchY, trashX - gridX - 10f, 32f,
+                    search, "Поиск: название / ID");
+            if (!previous.equals(search.text())) applyCategory(category);
+        } else {
+            theme.smallText("Все 36 слотов инвентаря", gridX, searchY + 22f, MenuTheme.TEXT_FAINT, 1f);
+        }
+        if (theme.button("creative-trash", trashX, searchY, 130f, 32f, "Сброс")) {
+            if (theme.activeInput().shift()) {
+                for (int i = 0; i < Inventory.SIZE; i++) ctx.inventory().set(i, null);
+            }
+            menu.setCursor(null);
+            ctx.click(0.4f, 0.8f);
+        }
+        theme.smallText("СКМ: стопка · 1–9: хотбар · Shift+Сброс: всё",
+                gridX, gridY + gridHeight(VISIBLE_ROWS) + 23f, MenuTheme.TEXT_FAINT, 1f);
 
         int rows = (items.size() + COLUMNS - 1) / COLUMNS;
         int maxScroll = Math.max(0, rows - VISIBLE_ROWS);
@@ -144,17 +188,29 @@ public final class CreativeScreen extends ContainerScreen {
     @Override
     protected boolean inputWidgetAt(float x, float y) {
         return x >= tabsX && x <= tabsX + gridWidth(COLUMNS)
-                && y >= tabsY && y <= tabsY + 30f;
+                && y >= tabsY && y <= searchY + 32f;
     }
 
-    private void applyCategory(int next) {
+    public void applyCategory(int next) {
         category = Math.max(0, Math.min(TAB_CATEGORIES.length - 1, next));
         String wanted = TAB_CATEGORIES[category];
         items.clear();
         for (Item item : allItems)
-            if (wanted == null || categoryMatches(wanted, item.category))
+            if ((wanted == null || categoryMatches(wanted, item.category)) && matchesSearch(item, search.text()))
                 items.add(item);
         scrollRow = 0;
+    }
+
+    @Override
+    protected boolean capturesKeyboard() { return typing; }
+
+    public void setSearch(String text) { search.setText(text); applyCategory(category); }
+
+    public static boolean matchesSearch(Item item, String query) {
+        String text = (item.name + " " + item.id).toLowerCase(java.util.Locale.ROOT).replace('ё', 'е');
+        for (String token : query.strip().toLowerCase(java.util.Locale.ROOT).replace('ё', 'е').split("\\s+"))
+            if (!text.contains(token)) return false;
+        return true;
     }
 
     private static boolean categoryMatches(String wanted, String category) {

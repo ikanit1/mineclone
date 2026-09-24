@@ -26,6 +26,9 @@ public final class PlayerPhysicsTests {
         r.run("walking into a block or a stair never lifts the player",
                 PlayerPhysicsTests::noAutoStep);
         r.run("but you can still stand on a stair", PlayerPhysicsTests::standOnStair);
+        r.run("grazing a wall while falling never teleports onto it", PlayerPhysicsTests::grazingWall);
+        r.run("a floor collision invalidates the remaining vertical candidates", PlayerPhysicsTests::floorCandidates);
+        r.run("falling lands and jumping still stops at ceilings", PlayerPhysicsTests::verticalContacts);
     }
 
     private static void check(boolean value, String message) {
@@ -97,5 +100,47 @@ public final class PlayerPhysicsTests {
         check(p.onGround, "the player must land, not keep falling");
         check(p.position.y > floorY + 1f,
                 "and land on the stair rather than through it, got y=" + p.position.y);
+    }
+
+    private static void grazingWall() {
+        World w = ground(40);
+        for (int y = 41; y <= 43; y++) {
+            w.setBlock(3, y, 0, BlockType.STONE);
+            w.setBlock(0, y, 3, BlockType.STONE);
+        }
+        for (boolean alongX : new boolean[] {true, false}) {
+            Player p = new Player();
+            p.position.set(alongX ? 2.7f : 0.5f, 41.0001f, alongX ? 0.5f : 2.7f);
+            p.moveAxis(w, 0, -0.01f, 0);
+            check(Math.abs(p.position.y - 41.0001f) < 0.001f,
+                    "touching a wall must land on the floor, not climb the wall: " + p.position);
+        }
+    }
+
+    private static void floorCandidates() {
+        World w = ground(40);
+        w.setBlock(2, 42, 0, BlockType.STONE);
+        Player p = new Player();
+        // The low ceiling is already overlapping the head; gravity must never eject upward onto it.
+        p.position.set(2.5f, 41.0001f, 0.5f);
+        p.moveAxis(w, 0, -0.02f, 0);
+        check(Math.abs(p.position.y - 41.0001f) < 0.001f,
+                "downward floor resolution must not climb other blocks in the broad phase: " + p.position);
+    }
+
+    private static void verticalContacts() {
+        World w = ground(40);
+        w.setBlock(2, 43, 0, BlockType.STONE);
+        Player p = new Player();
+        p.position.set(2.5f, 41, 0.5f);
+        p.velocity.y = 8;
+        p.moveAxis(w, 0, 0.4f, 0);
+        check(Math.abs(p.position.y - (43 - Player.HEIGHT - 0.0001f)) < 0.001f && p.velocity.y == 0,
+                "a real upward crossing still hits the ceiling: " + p.position);
+        p.position.y = 44.2f;
+        p.velocity.y = -8;
+        p.moveAxis(w, 0, -0.4f, 0);
+        check(Math.abs(p.position.y - 44.0001f) < 0.001f && p.onGround && p.velocity.y == 0,
+                "a real downward crossing still lands on top: " + p.position);
     }
 }
