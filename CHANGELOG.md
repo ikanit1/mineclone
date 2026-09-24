@@ -5,6 +5,7 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 ## [Unreleased]
 
 ### Fixed
+- A dedicated server no longer stops with an exception — without saving — at the first item lying on the ground (a guest's throw, a broken chest, sand falling on a torch).
 - The bedroll can be crafted in survival: leaves now drop a leaves block one time in four. Before, leaves dropped nothing while the bedroll's recipe needs three of them, so sleeping and its respawn point were creative-only.
 - A guest's checkpoint over protocol v7 no longer resets what that protocol cannot carry (equipment, effects, personal spawn, sections of newer builds).
 - Guests breaking or replacing a chest or furnace now spill its complete contents on the authority before the container is removed.

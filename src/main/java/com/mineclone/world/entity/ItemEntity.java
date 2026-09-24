@@ -78,7 +78,8 @@ public final class ItemEntity {
     /**
      * Шаг предмета.
      *
-     * @param target   куда тянет магнит — середина тела игрока
+     * @param target   куда тянет магнит — середина тела игрока; null, когда
+     *                 тянуть некому (у выделенного сервера своего игрока нет)
      * @param canTake  в инвентаре есть место под эту стопку: без места
      *                 предмет не срывается к игроку и не мельтешит у ног
      */
@@ -86,8 +87,13 @@ public final class ItemEntity {
         age += dt;
         if (pickupDelay > 0f)
             pickupDelay -= dt;
-        float dx = target.x - position.x, dy = target.y - position.y, dz = target.z - position.z;
-        float dist = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+        float dx = 0f, dy = 0f, dz = 0f, dist = Float.POSITIVE_INFINITY;
+        if (target != null) {
+            dx = target.x - position.x;
+            dy = target.y - position.y;
+            dz = target.z - position.z;
+            dist = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+        }
         magnetized = canTake && pickupDelay <= 0f && dist < MAGNET_RANGE;
         if (magnetized && dist > 1e-3f) {
             // Тяга растёт к игроку: издалека предмет трогается с места, у ног
