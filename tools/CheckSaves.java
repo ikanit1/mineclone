@@ -3,6 +3,7 @@ import com.mineclone.save.LevelData;
 import com.mineclone.save.SaveManager;
 import com.mineclone.save.LevelLoad;
 import com.mineclone.save.ChunkLoad;
+import com.mineclone.save.PlayerRecord;
 import com.mineclone.world.Furnace;
 import com.mineclone.world.ItemStack;
 
@@ -19,8 +20,9 @@ import java.util.Arrays;
  *
  *   java -cp "out;libs/*" tools/CheckSaves.java [saves-dir]
  *
- * Prints one line per world - world, chunks, stacks, missing, failures - and
- * exits 1 when anything failed to load. Writes nothing.
+ * Prints one line per world - world, chunks, players, stacks, missing, failures -
+ * and exits 1 when anything failed to load. Guest checkpoints in players/ are
+ * read too: a guest file the game cannot open locks that guest out. Writes nothing.
  */
 public class CheckSaves {
 
@@ -36,13 +38,14 @@ public class CheckSaves {
         Arrays.sort(worlds, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
 
         SaveManager save = new SaveManager(root);
-        int totalChunks = 0, totalStacks = 0, totalMissing = 0, totalFailures = 0, totalQuarantine = 0, totalSections = 0;
-        System.out.printf("%-34s %8s %8s %8s %9s %10s %8s%n",
-                "world", "chunks", "stacks", "missing", "failures", "quarantine", "sections");
+        int totalChunks = 0, totalPlayers = 0, totalStacks = 0, totalMissing = 0, totalFailures = 0,
+                totalQuarantine = 0, totalSections = 0;
+        System.out.printf("%-34s %8s %8s %8s %8s %9s %10s %8s%n",
+                "world", "chunks", "players", "stacks", "missing", "failures", "quarantine", "sections");
 
         for (File dir : worlds) {
             String id = dir.getName();
-            int chunks = 0, stacks = 0, missing = 0, failures = 0, sections = 0;
+            int chunks = 0, players = 0, stacks = 0, missing = 0, failures = 0, sections = 0;
 
             LevelLoad levelRead = save.readLevel(id);
             if (!(levelRead instanceof LevelLoad.Loaded loaded)) {
@@ -50,19 +53,27 @@ public class CheckSaves {
                 System.err.println(id + ": " + levelRead);
             } else {
                 LevelData level = loaded.data();
-                for (ItemStack s : level.inventory) {
-                    if (s == null)
-                        continue;
-                    stacks++;
-                    if (s.item.missing)
-                        missing++;
-                }
-                for (ItemStack s : level.pending) {
-                    if (s == null)
-                        continue;
-                    stacks++;
-                    if (s.item.missing)
-                        missing++;
+                int[] counted = count(level.player);
+                stacks += counted[0];
+                missing += counted[1];
+            }
+
+            File[] guests = new File(dir, "players").listFiles((d, name) -> name.endsWith(".dat"));
+            if (guests != null) {
+                Arrays.sort(guests, (a, b) -> a.getName().compareTo(b.getName()));
+                for (File guest : guests) {
+                    String guestId = guest.getName().substring(0, guest.getName().length() - 4);
+                    try {
+                        PlayerRecord record = save.loadGuestRecord(id, guestId);
+                        int[] counted = count(record);
+                        stacks += counted[0];
+                        missing += counted[1];
+                        players++;
+                    } catch (RuntimeException e) {
+                        failures++;
+                        System.err.println(id + "/players/" + guest.getName() + ": " + e.getMessage()
+                                + (e.getCause() == null ? "" : " (" + e.getCause() + ")"));
+                    }
                 }
             }
 
@@ -115,8 +126,10 @@ public class CheckSaves {
                 }
             }
 
-            System.out.printf("%-34s %8d %8d %8d %9d %10d %8d%n", id, chunks, stacks, missing, failures, quarantined, sections);
+            System.out.printf("%-34s %8d %8d %8d %8d %9d %10d %8d%n",
+                    id, chunks, players, stacks, missing, failures, quarantined, sections);
             totalChunks += chunks;
+            totalPlayers += players;
             totalStacks += stacks;
             totalMissing += missing;
             totalFailures += failures;
@@ -124,11 +137,25 @@ public class CheckSaves {
             totalSections += sections;
         }
 
-        System.out.printf("%-34s %8d %8d %8d %9d %10d %8d%n",
+        System.out.printf("%-34s %8d %8d %8d %8d %9d %10d %8d%n",
                 "TOTAL (" + worlds.length + " worlds)",
-                totalChunks, totalStacks, totalMissing, totalFailures, totalQuarantine, totalSections);
+                totalChunks, totalPlayers, totalStacks, totalMissing, totalFailures, totalQuarantine, totalSections);
         System.out.println(totalFailures == 0 ? "RESULT: OK" : "RESULT: FAIL");
         System.exit(totalFailures == 0 ? 0 : 1);
+    }
+
+    /** Occupied stacks and unresolved items across a player's inventory, equipment and pending stacks. */
+    static int[] count(PlayerRecord player) {
+        int stacks = 0, missing = 0;
+        for (ItemStack[] slots : new ItemStack[][] { player.inventory(), player.equipment(), player.pending() })
+            for (ItemStack s : slots) {
+                if (s == null)
+                    continue;
+                stacks++;
+                if (s.item.missing)
+                    missing++;
+            }
+        return new int[] { stacks, missing };
     }
 
     /** "c.-3.11.dat" -> {-3, 11}; null when the name is not a chunk file. */

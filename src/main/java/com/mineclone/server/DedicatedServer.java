@@ -535,12 +535,12 @@ public final class DedicatedServer implements NetContext {
         // pending cursor stacks and vitals with a fresh empty player.
         LevelData owner = ownerTemplate;
         com.mineclone.save.PlayerRecord record = owner != null ? owner.player
-                : com.mineclone.save.PlayerRecord.builder().pose(spawn.x,spawn.y,spawn.z,0,0,0).build();
+                : com.mineclone.save.PlayerRecord.builder().pose(spawn.x, spawn.y, spawn.z, 0, 0, 0).build();
         save.saveLevel(config.worldId, new LevelData(
                 config.worldName, world.seed,
-                owner != null && (float)owner.spawnX==spawn.x ? owner.spawnX : spawn.x,
-                owner != null && (float)owner.spawnY==spawn.y ? owner.spawnY : spawn.y,
-                owner != null && (float)owner.spawnZ==spawn.z ? owner.spawnZ : spawn.z,
+                owner != null ? com.mineclone.save.PlayerRecord.keepPrecision(spawn.x, owner.spawnX) : spawn.x,
+                owner != null ? com.mineclone.save.PlayerRecord.keepPrecision(spawn.y, owner.spawnY) : spawn.y,
+                owner != null ? com.mineclone.save.PlayerRecord.keepPrecision(spawn.z, owner.spawnZ) : spawn.z,
                 worldClock.gameTimeFloat(),
                 config.creative ? GameMode.CREATIVE : GameMode.SURVIVAL,
                 System.currentTimeMillis(), record, sections));

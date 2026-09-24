@@ -100,16 +100,18 @@ public final class LevelData {
                      ItemStack[] inventory, GameMode gameMode, long lastPlayed, float health,
                      float hunger, ItemStack[] pending,
                      java.util.Map<String, byte[]> extraSections) {
-        this(name,seed,px,py,pz,spawnX,spawnY,spawnZ,yaw,pitch,timeOfDay,selectedSlot,
-                inventory,gameMode,lastPlayed,health,hunger,pending,extraSections,null);
+        this(name, seed, px, py, pz, spawnX, spawnY, spawnZ, yaw, pitch, timeOfDay, selectedSlot,
+                inventory, gameMode, lastPlayed, health, hunger, pending, extraSections, null);
     }
 
+    /** A level whose player is a full record: the form every current writer uses. */
     public LevelData(String name, long seed, double spawnX, double spawnY, double spawnZ,
                      float timeOfDay, GameMode gameMode, long lastPlayed, PlayerRecord player,
                      java.util.Map<String, byte[]> extraSections) {
-        this(name,seed,player.pose().x(),player.pose().y(),player.pose().z(),spawnX,spawnY,spawnZ,
-                player.pose().yaw(),player.pose().pitch(),timeOfDay,player.pose().selected(),player.inventory(),
-                gameMode,lastPlayed,player.vitals().health(),player.vitals().hunger(),player.pending(),extraSections,player);
+        this(name, seed, player.pose().x(), player.pose().y(), player.pose().z(), spawnX, spawnY, spawnZ,
+                player.pose().yaw(), player.pose().pitch(), timeOfDay, player.pose().selected(),
+                player.inventory(), gameMode, lastPlayed, player.vitals().health(), player.vitals().hunger(),
+                player.pending(), extraSections, player);
     }
 
     private LevelData(String name, long seed, double px, double py, double pz,
@@ -133,10 +135,15 @@ public final class LevelData {
         this.inventory = normalizeInventory(inventory);
         this.gameMode = gameMode != null ? gameMode : GameMode.CREATIVE;
         this.lastPlayed = lastPlayed;
+        // A level written before the record existed: the record is assembled from
+        // its separate fields, and survival progress moves in from its old section.
         this.player = record != null ? record : PlayerRecord.builder()
-                .pose(px,py,pz,yaw,pitch,Math.floorMod(selectedSlot,9))
-                .vitals(this.health,this.hunger,5,20).inventory(this.inventory).pending(this.pending)
-                .progress(this.extraSections.get(PlayerRecord.LEGACY_PROGRESS_SECTION)).build();
+                .pose(px, py, pz, yaw, pitch, Math.floorMod(selectedSlot, 9))
+                .vitals(PlayerRecord.Vitals.legacy(this.health, this.hunger))
+                .inventory(this.inventory)
+                .pending(this.pending)
+                .progress(this.extraSections.get(PlayerRecord.LEGACY_PROGRESS_SECTION))
+                .build();
     }
 
     /** Empty inventory (survival start). */
@@ -158,12 +165,14 @@ public final class LevelData {
 
     /** Та же запись, но с другими отложенными стопками — для выхода из мира. */
     public LevelData withPending(ItemStack[] newPending) {
-        return new LevelData(name,seed,spawnX,spawnY,spawnZ,timeOfDay,gameMode,lastPlayed,
-                player.toBuilder().pending(newPending).build(),extraSections);
+        return new LevelData(name, seed, spawnX, spawnY, spawnZ, timeOfDay, gameMode, lastPlayed,
+                player.toBuilder().pending(newPending).build(), extraSections);
     }
 
+    /** The same world under another display name: renaming, copies, restored backups. */
     public LevelData withName(String newName) {
-        return new LevelData(newName,seed,spawnX,spawnY,spawnZ,timeOfDay,gameMode,lastPlayed,player,extraSections);
+        return new LevelData(newName, seed, spawnX, spawnY, spawnZ, timeOfDay, gameMode, lastPlayed,
+                player, extraSections);
     }
 
     private static ItemStack[] normalizeInventory(ItemStack[] src) {

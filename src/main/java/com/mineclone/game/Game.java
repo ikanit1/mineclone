@@ -899,12 +899,13 @@ public class Game {
         java.util.LinkedHashMap<String, byte[]> savedSections =
                 new java.util.LinkedHashMap<>(levelExtraSections);
         savedSections.put(com.mineclone.sim.WorldClock.SAVE_SECTION, worldClock.encode());
+        var loaded = loadedLevelTemplate;
         com.mineclone.save.LevelData d = new com.mineclone.save.LevelData(
                 worldDisplayName,
                 world.seed,
-                loadedLevelTemplate==null ? worldSpawn.x : preserveCoordinate(worldSpawn.x,loadedLevelTemplate.spawnX),
-                loadedLevelTemplate==null ? worldSpawn.y : preserveCoordinate(worldSpawn.y,loadedLevelTemplate.spawnY),
-                loadedLevelTemplate==null ? worldSpawn.z : preserveCoordinate(worldSpawn.z,loadedLevelTemplate.spawnZ),
+                loaded == null ? worldSpawn.x : com.mineclone.save.PlayerRecord.keepPrecision(worldSpawn.x, loaded.spawnX),
+                loaded == null ? worldSpawn.y : com.mineclone.save.PlayerRecord.keepPrecision(worldSpawn.y, loaded.spawnY),
+                loaded == null ? worldSpawn.z : com.mineclone.save.PlayerRecord.keepPrecision(worldSpawn.z, loaded.spawnZ),
                 worldClock.gameTimeFloat(), gameMode, System.currentTimeMillis(), capturePlayer(), savedSections);
         save.saveLevel(worldId, d);
         // Превью снимет ближайший кадр мира: сейчас идёт обновление, а не отрисовка.
@@ -2061,39 +2062,65 @@ public class Game {
         return pending.toArray(com.mineclone.world.ItemStack[]::new);
     }
 
-    /** One detached checkpoint for local disk saves and the temporary v7 network adapter. */
+    /**
+     * The player as one detached checkpoint: the only place that gathers it,
+     * for the level save and for the protocol-v7 adapter alike.
+     *
+     * <p>Built on the record the player was restored from, so what this build
+     * does not model yet — equipment, effects, a personal spawn, sections of a
+     * newer build — is carried forward instead of being reset on every save.
+     */
     public com.mineclone.save.PlayerRecord capturePlayer() {
-        var slots=new com.mineclone.world.ItemStack[com.mineclone.world.Inventory.SIZE];
-        for(int i=0;i<slots.length;i++)slots[i]=inventory.get(i);
-        var previous=playerRecordTemplate.pose();var vitals=playerRecordTemplate.vitals();
-        byte[] progress=playerRecordTemplate.progress();
-        // A future progress payload remains opaque until a reader understands it.
-        if(progress.length==0 || progress.length==2 && (progress[0]==1 || progress[0]==2))progress=survivalProgress.encode();
-        return playerRecordTemplate.toBuilder().inventory(slots).pending(pendingPlayerItems())
-                .pose(preserveCoordinate(player.position.x,previous.x()),preserveCoordinate(player.position.y,previous.y()),
-                        preserveCoordinate(player.position.z,previous.z()),player.camera.yaw,player.camera.pitch,selectedSlot)
-                .vitals(player.health,player.hunger,vitals.saturation(),vitals.air()).progress(progress).build();
+        var template = playerRecordTemplate;
+        var slots = new com.mineclone.world.ItemStack[com.mineclone.world.Inventory.SIZE];
+        for (int i = 0; i < slots.length; i++)
+            slots[i] = inventory.get(i);
+        byte[] progress = template.progress();
+        // A progress payload this build cannot read stays opaque rather than being reset.
+        if (progress.length == 0 || SurvivalProgress.readable(progress))
+            progress = survivalProgress.encode();
+        var pose = template.pose();
+        var vitals = template.vitals();
+        return template.toBuilder()
+                .inventory(slots)
+                .pending(pendingPlayerItems())
+                .pose(com.mineclone.save.PlayerRecord.keepPrecision(player.position.x, pose.x()),
+                        com.mineclone.save.PlayerRecord.keepPrecision(player.position.y, pose.y()),
+                        com.mineclone.save.PlayerRecord.keepPrecision(player.position.z, pose.z()),
+                        player.camera.yaw, player.camera.pitch, selectedSlot)
+                .vitals(com.mineclone.save.PlayerRecord.Vitals.live(player.health, player.hunger,
+                        vitals.saturation(), vitals.exhaustion(), vitals.air()))
+                .progress(progress)
+                .build();
     }
-
-    private static double preserveCoordinate(float current,double saved) { return current==(float)saved ? saved : current; }
 
     private void restorePlayer(com.mineclone.save.PlayerRecord record) {
         // A host checkpoint supersedes an old remote window; closing normally would return its items twice.
-        discardRemoteWindow();playerRecordTemplate=record;
-        inventory=new com.mineclone.world.Inventory();var slots=record.inventory();
-        for(int i=0;i<slots.length;i++)inventory.set(i,slots[i]);
+        discardRemoteWindow();
+        playerRecordTemplate = record;
+        inventory = new com.mineclone.world.Inventory();
+        var slots = record.inventory();
+        for (int i = 0; i < slots.length; i++)
+            inventory.set(i, slots[i]);
         pendingDrops.clear();
-        for(var stack:record.pending())if(stack!=null) {
-            int left=inventory.add(stack);if(left>0)pendingDrops.add(stack.copyWithCount(left));
+        for (var stack : record.pending()) {
+            if (stack == null)
+                continue;
+            int left = inventory.add(stack);
+            if (left > 0)
+                pendingDrops.add(stack.copyWithCount(left));
         }
-        var pose=record.pose();var vitals=record.vitals();
-        player.respawn((float)pose.x(),(float)pose.y(),(float)pose.z());
-        player.health=vitals.health();player.hunger=vitals.hunger();
-        player.camera.yaw=pose.yaw();player.camera.pitch=pose.pitch();selectedSlot=pose.selected();
-        survivalProgress=SurvivalProgress.decode(record.progress());
-        bodyRotation.snap(pose.yaw(),pose.pitch());
-        playerAnimation.reset(player.position,pose.yaw(),player.onGround,player.inWater,player.flying);
-        lastStreamCX=lastStreamCZ=Integer.MIN_VALUE;
+        var pose = record.pose();
+        player.respawn((float) pose.x(), (float) pose.y(), (float) pose.z());
+        player.health = record.vitals().health();
+        player.hunger = record.vitals().hunger();
+        player.camera.yaw = pose.yaw();
+        player.camera.pitch = pose.pitch();
+        selectedSlot = pose.selected();
+        survivalProgress = SurvivalProgress.decode(record.progress());
+        bodyRotation.snap(pose.yaw(), pose.pitch());
+        playerAnimation.reset(player.position, pose.yaw(), player.onGround, player.inWater, player.flying);
+        lastStreamCX = lastStreamCZ = Integer.MIN_VALUE;
     }
 
     /** Закрывает окно: курсор и остатки возвращаются игроку через closed(). */

@@ -68,6 +68,7 @@ public final class TestMain {
         suite("save", "SaveMigrationTests", SaveMigrationTests::runAll);
         suite("save", "ChunkSectionTests", ChunkSectionTests::runAll);
         suite("save", "QueuedChunkSaveTests", QueuedChunkSaveTests::runAll);
+        suite("save", "PlayerRecordTests", PlayerRecordTests::runAll);
         suite("chunk", "ChunkPublicationTests", ChunkPublicationTests::runAll);
         suite("clock", "WorldClockTests", WorldClockTests::runAll);
         suite("sim", "ParticipantTests", ParticipantTests::runAll);

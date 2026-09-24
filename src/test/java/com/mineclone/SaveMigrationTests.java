@@ -15,16 +15,20 @@ public final class SaveMigrationTests {
     private static final Path ROOT = Path.of("src/test/resources/fixtures/saves");
     private static final String[] WORLDS = {"alpha-small", "alpha-chests", "alpha-creative",
             "legacy-level-v6-chunk-v4", "legacy-level-v8-chunk-v4", "legacy-level-v9-chunk-v5"};
+    /** Written by v1.0.1-alpha, the build that introduced guest checkpoints (players/*.dat v1). */
+    private static final String GUEST_WORLD = "beta-guest";
 
     public static void runAll(TestMain.Runner runner) {
         runner.run("legacy fixture corpus is pinned and under two megabytes", SaveMigrationTests::corpusIntegrity);
         for (String id : WORLDS) runner.run("migrate golden save " + id, () -> migrate(id));
+        runner.run("migrate golden guest checkpoint " + GUEST_WORLD + " to player record v2", SaveMigrationTests::migrateGuest);
     }
 
     public static void main(String[] args) throws Exception {
         corpusIntegrity();
         for (String id : WORLDS) migrate(id);
-        System.out.println("SAVE_MIGRATION PASS: 6 historical worlds read and migrated; source hashes unchanged");
+        migrateGuest();
+        System.out.println("SAVE_MIGRATION PASS: 7 historical worlds read and migrated; source hashes unchanged");
     }
 
     private static void corpusIntegrity() throws Exception {
@@ -50,6 +54,75 @@ public final class SaveMigrationTests {
                 check(version(file) == manifest.integer("chunkVersion"), "wrong old chunk version");
             }
         }
+        JsonObject guest = manifest(GUEST_WORLD);
+        check(guest.string("writerTag").equals("v1.0.1-alpha")
+                && guest.string("writerCommit").equals("967011088d641cdb83e1c895537c515ff3f52cb6")
+                && guest.string("kind").equals("tagged-writer"), "guest golden provenance changed");
+        verifyFileHashes(ROOT.resolve(GUEST_WORLD), guest);
+        check(version(ROOT.resolve(GUEST_WORLD).resolve("level.dat")) == guest.integer("levelVersion"),
+                "wrong old guest-world level version");
+        check(version(guestFile(ROOT, guest)) == guest.integer("guestVersion"), "wrong old guest version");
+    }
+
+    /**
+     * SAVE-07 on real bytes: the checkpoint v1.0.1-alpha wrote for a guest opens
+     * as a player record, is backed up with the world, then rewritten as v2.
+     */
+    private static void migrateGuest() throws Exception {
+        JsonObject expected = manifest(GUEST_WORLD);
+        Path source = ROOT.resolve(GUEST_WORLD);
+        verifyFileHashes(source, expected);
+        byte[] originalGuest = Files.readAllBytes(guestFile(ROOT, expected));
+        String guestId = expected.object("guest").string("id");
+        Path temporary = Files.createTempDirectory("mineclone-guest-migration-");
+        SaveManager save = new SaveManager(temporary.toFile());
+        try {
+            copyTree(source, temporary.resolve(GUEST_WORLD));
+            LevelData level = loadedLevel(save, GUEST_WORLD);
+            assertLevel(level, expected);
+            PlayerRecord guest = save.loadGuestRecord(GUEST_WORLD, guestId);
+            assertGuest(guest, expected.object("guest"));
+            save.saveLevel(GUEST_WORLD, level);
+            save.saveGuestRecord(GUEST_WORLD, guestId, guest);
+            save.flushAndAwait();
+            check(version(temporary.resolve(GUEST_WORLD).resolve("level.dat")) == SaveFormat.LEVEL_VERSION,
+                    "level was not upgraded");
+            check(version(guestFile(temporary, expected)) == SaveFormat.GUEST_VERSION, "guest was not upgraded to v2");
+            var backups = save.listBackups(GUEST_WORLD);
+            check(backups.size() == 1 && backups.get(0).migration(), "no migration backup before the upgrade");
+            try (var zip = new java.util.zip.ZipFile(backups.get(0).path().toFile());
+                 var in = zip.getInputStream(zip.getEntry("players/" + guestId + ".dat"))) {
+                check(Arrays.equals(originalGuest, in.readAllBytes()), "migration backup lost the v1 guest bytes");
+            }
+            SaveManager reopened = new SaveManager(temporary.toFile());
+            assertLevel(loadedLevel(reopened, GUEST_WORLD), expected);
+            assertGuest(reopened.loadGuestRecord(GUEST_WORLD, guestId), expected.object("guest"));
+            reopened.flushAndAwait();
+        } finally {
+            save.flushAndAwait();
+            try (var paths = Files.walk(temporary)) {
+                for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
+            }
+            verifyFileHashes(source, expected);
+        }
+    }
+
+    private static Path guestFile(Path savesRoot, JsonObject manifest) {
+        return savesRoot.resolve(GUEST_WORLD).resolve("players/" + manifest.object("guest").string("id") + ".dat");
+    }
+
+    private static void assertGuest(PlayerRecord guest, JsonObject expected) {
+        check(guest != null, "guest checkpoint missing");
+        var pose = guest.pose();
+        assertVector(new double[]{pose.x(), pose.y(), pose.z()}, expected.array("position"), "guest position");
+        near(pose.yaw(), number(expected, "yaw"), "guest yaw");
+        near(pose.pitch(), number(expected, "pitch"), "guest pitch");
+        check(pose.selected() == expected.integer("selectedSlot"), "guest selected slot changed");
+        near(guest.vitals().health(), number(expected, "health"), "guest health");
+        near(guest.vitals().hunger(), number(expected, "hunger"), "guest hunger");
+        check(HexFormat.of().formatHex(guest.progress()).equals(expected.string("progress")), "guest progress changed");
+        assertSlots(guest.inventory(), expected, "inventory");
+        assertSlots(guest.pending(), expected, "pending");
     }
 
     private static void migrate(String id) throws Exception {
@@ -127,6 +200,8 @@ public final class SaveMigrationTests {
         JsonObject extra = expected.object("extraSections");
         for (String key : extra.keys()) {
             byte[] bytes = level.extraSections.get(key);
+            // Once written as a record, survival progress lives in the player, not beside it.
+            if (bytes == null && key.equals(PlayerRecord.LEGACY_PROGRESS_SECTION)) bytes = level.player.progress();
             check(bytes != null && HexFormat.of().formatHex(bytes).equals(extra.string(key)), "opaque section lost: " + key);
         }
     }
@@ -181,6 +256,9 @@ public final class SaveMigrationTests {
         check(stack.item.id.toString().equals(expected.string("id")), "item id changed");
         check(stack.count == expected.integer("count"), "stack count changed");
         check(stack.damage() == expected.integer("damage"), "tool wear changed");
+        if (expected.has("customName"))
+            check(expected.string("customName").equals(stack.get(com.mineclone.item.Components.CUSTOM_NAME)),
+                    "custom name changed");
     }
 
     private static void verifyFileHashes(Path source, JsonObject expected) throws Exception {

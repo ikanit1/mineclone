@@ -17,6 +17,7 @@ on the writer classpath. `tools/MakeSaveFixtures.java` drives that old public AP
 | legacy-level-v6-chunk-v4 | v6 / v4 | Old block/count inventory, default health/hunger, raw block arrays, tagged legacy container stacks |
 | legacy-level-v8-chunk-v4 | v8 / v4 | Tagged tools and wear, saved health, default hunger |
 | legacy-level-v9-chunk-v5 | v9 / v5 | Saved hunger, handwritten RLE arrays, legacy container and dropped stacks |
+| beta-guest | v10 / — | Written by `v1.0.1-alpha`: a guest checkpoint `players/<uuid>.dat` version 1 (worn named tool, pending stacks, pose, vitals, progress) and a level carrying survival progress |
 
 The three `legacy-*` files are explicitly synthetic historical layouts, not
 claimed as output from their historical writers. Their field ordering follows
@@ -53,3 +54,21 @@ finally { Pop-Location }
 current level/chunk formats and verifies source hashes remain unchanged. Nightly
 CI also runs the read-only `tools/CheckSaves.java` sweep over this corpus. Adding
 future v7 chunk/v2 entity coverage must preserve these original golden files.
+
+## Guest checkpoint (`beta-guest`)
+
+`players/<uuid>.dat` version 1 first shipped in `v1.0.1-alpha` (commit
+`967011088d641cdb83e1c895537c515ff3f52cb6`, protocol v7), so this world comes
+from that tag rather than from `v1.0.0-alpha`. `tools/MakeGuestFixture.java`
+drives the tag's own `SaveManager.saveGuest` and refuses any other writer.
+`SaveMigrationTests` reads the guest as a player record, upgrades it to version 2
+behind a migration backup and checks the backup still holds the version-1 bytes.
+Reproduce like the worlds above, with `v1.0.1-alpha` compiled into
+`build/guest-fixture-writer` and a new empty output directory:
+
+```powershell
+$guestGenerator = Join-Path $PWD 'tools/MakeGuestFixture.java'   # repository root
+Push-Location build/guest-fixture-writer
+try { java -cp "out-fixtures;$fixtureLibraries" $guestGenerator $fixtureFresh }
+finally { Pop-Location }
+```

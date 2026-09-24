@@ -35,6 +35,17 @@ public final class SaveFormat {
      */
     public static final int OPTIONS_VERSION = 7;
 
+    /**
+     * A guest's {@code players/<uuid>.dat}. Version 1 is the protocol-v7
+     * checkpoint as sent over the wire; version 2 adds a minimum reader and
+     * holds a {@link PlayerRecord} — the same bytes as the host's player
+     * section. Version 1 is read and rewritten as 2 by the next save.
+     */
+    public static final int GUEST_VERSION = 2;
+    public static final int GUEST_V1 = 1;
+    /** Bound on a version-1 payload before it is parsed. */
+    public static final int GUEST_V1_MAX_BYTES = 262_144;
+
     /** Blocks per chunk = SIZE_X*SIZE_Y*SIZE_Z (16*128*16 = 32768). */
     public static final int CHUNK_VOLUME = Chunk.SIZE_X * Chunk.SIZE_Y * Chunk.SIZE_Z;
 

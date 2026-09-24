@@ -100,6 +100,15 @@ public final class SurvivalProgress {
         return new byte[] { 2, (byte) stage };
     }
 
+    /**
+     * Whether {@link #decode} understands this payload. One it does not — a
+     * newer build's progress — must be kept as it is, not replaced by a fresh
+     * chain, or opening the world here would erase that build's progress.
+     */
+    public static boolean readable(byte[] bytes) {
+        return bytes != null && bytes.length == 2 && (bytes[0] == 1 || bytes[0] == 2);
+    }
+
     public static SurvivalProgress decode(byte[] bytes) {
         if (bytes == null || bytes.length < 2)
             return new SurvivalProgress();

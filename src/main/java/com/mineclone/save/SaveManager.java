@@ -228,68 +228,108 @@ public final class SaveManager {
     }
 
     public com.mineclone.net.PlayerData loadGuest(String world, String id) {
-        PlayerRecord record = loadGuestRecord(world,id);
+        PlayerRecord record = loadGuestRecord(world, id);
         return record == null ? null : new com.mineclone.net.PlayerData(record);
     }
 
     public void saveGuest(String world, String id, com.mineclone.net.PlayerData data) {
-        saveGuestRecord(world,id,PlayerRecord.fromPlayerData(data));
+        saveGuestRecord(world, id, data.record());
     }
 
-    public PlayerRecord loadGuestRecord(String world,String id) {
-        File file=guestFile(world,id);
-        if(Thread.currentThread()!=writerThread) {
-            var pending=pendingGuests.get(file.toPath());
-            if(pending!=null)try{pending.join();}catch(java.util.concurrent.CompletionException ignored){}
+    /**
+     * A guest's checkpoint, or null if this world has never seen the guest.
+     *
+     * @throws IllegalStateException if the file exists but cannot be read; the
+     *         file is then protected and this manager will never overwrite it
+     */
+    public PlayerRecord loadGuestRecord(String world, String id) {
+        File file = guestFile(world, id);
+        if (Thread.currentThread() != writerThread) {
+            var pending = pendingGuests.get(file.toPath());
+            if (pending != null) {
+                try { pending.join(); }
+                catch (java.util.concurrent.CompletionException ignored) { /* inspect the preserved file */ }
+            }
         }
-        synchronized(this) {
-            try{return readGuestRecord(file);}
-            catch(IOException | RuntimeException error){throw new IllegalStateException("Cannot load player " + id,error);}
-        }
-    }
-
-    private PlayerRecord readGuestRecord(File file)throws IOException {
-        var path=file.toPath();checkedGuests.add(path);
-        if(Files.notExists(path))return null;
-        try(var raw=new FileInputStream(file);var in=new DataInputStream(new GZIPInputStream(raw))) {
-            if(in.readInt()!=SaveFormat.MAGIC)throw new IOException("invalid player file magic");
-            int version=in.readInt();PlayerRecord result;
-            if(version==1) {
-                byte[] bytes=in.readNBytes(262145);
-                if(bytes.length>262144)throw new IOException("player checkpoint too large");
-                var buffer=com.mineclone.net.PacketBuf.reading(bytes);
-                var data=com.mineclone.net.PlayerData.read(buffer);
-                if(data==null || buffer.hasMore())throw new IOException("invalid legacy player checkpoint");
-                result=PlayerRecord.fromPlayerData(data);
-            } else if(version>=2) {
-                int minReader=in.readInt();
-                if(minReader<1 || minReader>version)throw new IOException("invalid player minimum reader");
-                if(minReader>2)throw new IOException("player file requires reader " + minReader);
-                result=PlayerRecordCodec.read(in);
-            } else throw new IOException("invalid player file version " + version);
-            requireEnd(in);return result;
-        } catch(IOException | RuntimeException failure) {
-            protectedGuests.add(path);throw failure;
+        synchronized (this) {
+            try { return readGuestRecord(file); }
+            catch (IOException | RuntimeException error) {
+                throw new IllegalStateException("Cannot load player " + id, error);
+            }
         }
     }
 
-    public void saveGuestRecord(String world,String id,PlayerRecord record) {
-        File file=guestFile(world,id);final byte[] bytes;
-        try{bytes=PlayerRecordCodec.encode(record);}catch(IOException failure){throw new IllegalArgumentException("Cannot encode player",failure);}
-        synchronized(queueLock) {
-            var backup=sessionBackup(world);
-            var write=java.util.concurrent.CompletableFuture.runAsync(()->{
+    /**
+     * Guest file: {@code MAGIC, version}. Version 1 holds a protocol-v7
+     * checkpoint; version 2 adds {@code minReader} and the record sections.
+     */
+    private PlayerRecord readGuestRecord(File file) throws IOException {
+        var path = file.toPath();
+        checkedGuests.add(path);
+        if (Files.notExists(path)) return null;
+        try (var raw = new FileInputStream(file); var in = new DataInputStream(new GZIPInputStream(raw))) {
+            if (in.readInt() != SaveFormat.MAGIC) throw new IOException("invalid player file magic");
+            int version = in.readInt();
+            PlayerRecord result;
+            if (version == SaveFormat.GUEST_V1) {
+                byte[] bytes = in.readNBytes(SaveFormat.GUEST_V1_MAX_BYTES + 1);
+                if (bytes.length > SaveFormat.GUEST_V1_MAX_BYTES) throw new IOException("player checkpoint too large");
+                var buffer = com.mineclone.net.PacketBuf.reading(bytes);
+                var data = com.mineclone.net.PlayerData.read(buffer);
+                if (data == null || buffer.hasMore()) throw new IOException("invalid legacy player checkpoint");
+                result = data.record();
+            } else if (version >= SaveFormat.GUEST_VERSION) {
+                int minReader = in.readInt();
+                if (minReader < 1 || minReader > version) throw new IOException("invalid player minimum reader");
+                if (minReader > SaveFormat.GUEST_VERSION)
+                    throw new IOException("player file requires reader " + minReader);
+                result = PlayerRecordCodec.read(in);
+            } else {
+                throw new IOException("invalid player file version " + version);
+            }
+            requireEnd(in);
+            for (String warning : result.warnings())
+                System.err.println("player " + path.getFileName() + ": " + warning);
+            return result;
+        } catch (IOException | RuntimeException failure) {
+            protectedGuests.add(path);
+            throw failure;
+        }
+    }
+
+    /**
+     * Queue a guest's checkpoint behind the session backup. The first write for
+     * a file reads it first; a file that failed to read is never replaced.
+     */
+    public void saveGuestRecord(String world, String id, PlayerRecord record) {
+        File file = guestFile(world, id);
+        var path = file.toPath();
+        final byte[] bytes;
+        try { bytes = PlayerRecordCodec.encode(record); }
+        catch (IOException failure) { throw new IllegalArgumentException("Cannot encode player", failure); }
+        synchronized (queueLock) {
+            var backup = sessionBackup(world);
+            var write = java.util.concurrent.CompletableFuture.runAsync(() -> {
                 try {
                     awaitBackup(backup);
-                    synchronized(this) {
-                        if(!checkedGuests.contains(file.toPath()))readGuestRecord(file);
-                        if(protectedGuests.contains(file.toPath()))throw new IOException("player failed its read check");
-                        writeGzipAtomic(file,out->{out.writeInt(SaveFormat.MAGIC);out.writeInt(2);out.writeInt(2);out.write(bytes);});
+                    synchronized (this) {
+                        if (!checkedGuests.contains(path)) readGuestRecord(file);
+                        if (protectedGuests.contains(path)) throw new IOException("player failed its read check");
+                        writeGzipAtomic(file, out -> {
+                            out.writeInt(SaveFormat.MAGIC);
+                            out.writeInt(SaveFormat.GUEST_VERSION);
+                            out.writeInt(SaveFormat.GUEST_VERSION); // minimum reader
+                            out.write(bytes);
+                        });
                     }
-                } catch(IOException failure){throw new java.util.concurrent.CompletionException(failure);}
-            },chunkWriter);
-            pendingGuests.put(file.toPath(),write);
-            write.whenComplete((ignored,failure)->{if(failure!=null)System.err.println("saveGuest refused: "+failure.getCause());});
+                } catch (IOException failure) { throw new java.util.concurrent.CompletionException(failure); }
+            }, chunkWriter);
+            pendingGuests.put(path, write);
+            write.whenComplete((ignored, failure) -> {
+                // Only a completed write leaves the barrier; a newer queued one stays.
+                pendingGuests.remove(path, write);
+                if (failure != null) System.err.println("saveGuest refused: " + failure.getCause());
+            });
         }
     }
 

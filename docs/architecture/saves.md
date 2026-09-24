@@ -108,13 +108,51 @@ The level header is `MAGIC, version, minReaderVersion, writtenBy UTF`, followed 
 The codec bounds count at 64, each payload at 4 MiB, and combined payloads at
 64 MiB. Duplicate names, invalid counts and oversize lengths fail closed.
 
-Version 11 stores `world` (name/seed/lastPlayed), `player` (legacy pose, spawn,
-slot/vitals), `clock` (the precise `WorldClock` state), `rules` (game-mode prefix),
-`worldgen` (generator version), `inventory`, optional `pending`, and opaque extra
-sections. The player's structured record is a subsequent extension. Unknown
-sections, including survival progress, survive rewriting. A version 12 file
-with minimum reader 11 is accepted; minimum reader 12 is refused. A 1.0 reader
-rejects version 11 before reading any new fields.
+Version 11 stores `world` (name/seed/lastPlayed), `player_format` (a marker),
+`player` (the host's `PlayerRecord`), `world_spawn`, `clock` (the precise
+`WorldClock` state), `rules` (game-mode prefix), `worldgen` (generator version)
+and opaque extra sections. Unknown sections survive rewriting. A version 12
+file with minimum reader 11 is accepted; minimum reader 12 is refused. A 1.0
+reader rejects version 11 before reading any new fields.
+
+The development build of M0 wrote v11 without the marker: a fixed `player`
+payload (pose, spawn, slot, health, hunger) beside `inventory`, `pending` and
+`mineclone:survival_progress` sections. The reader tells the two apart by the
+marker, never by trying one parser and then the other, and such a level is
+backed up as a migration before its first rewrite.
+
+## Player records (SAVE-07)
+
+`save.PlayerRecord` is one player's checkpoint in the same shape everywhere: the
+host's `player` level section, a guest's `players/<uuid>.dat`, and — through the
+`net.PlayerData` adapter — protocol v7. `Game.capturePlayer` is the single
+place that gathers it. The record is immutable and copies stacks in and out.
+
+`PlayerRecordCodec` writes named sections: `format` (magic, version 2, minimum
+reader), `pose` (double position, yaw, pitch, slot), `vitals` (health, hunger,
+saturation, exhaustion, air in 20 Hz ticks up to 300), `inventory` (exactly 36),
+`equipment` (5: head, chest, legs, feet, offhand), `pending` (cursor/grid stacks),
+`effects` (by name), `spawn` (personal, optional), `advancements`, `recipes`,
+`progress` (opaque `SurvivalProgress` bytes) and unknown sections verbatim.
+`format`, `pose`, `vitals` and `inventory` are required. Each section reads to
+its exact end. Item sections fail closed; a damaged `effects` section alone is
+kept byte for byte, reported in `warnings()` and the items still load.
+Records from before the fields existed get saturation `min(5, hunger)`, zero
+exhaustion and full air.
+
+Guest files: version 1 is `MAGIC, 1, <protocol-v7 checkpoint>`; version 2 is
+`MAGIC, 2, minReader, <record>`. Version 1 is read and rewritten as 2 by the next
+save, which is queued behind the session backup. A guest file that fails to
+read — damaged, or requiring a newer reader — refuses the guest's join and is
+never overwritten by that `SaveManager`. Protocol v7 carries only pose, health,
+hunger, inventory, pending and progress; `PlayerRecord.mergeLegacy` applies a
+guest's checkpoint to the stored record so equipment, effects, spawn and
+unknown sections survive (`InventoryNetworkTests`). The record goes on the wire
+itself with protocol v8 (NET-02).
+
+`PlayerRecordTests` covers per-section round trips, immutability, damaged and
+missing sections, too-new files, v1 migration with its backup, opaque sections
+over five saves, host/guest byte identity and the recordless M0 level.
 
 Chunk version 7 adds minimum reader 7, keeps RLE blocks/meta, then writes the
 same section envelope with `chests`, `furnaces`, `items`, and opaque extras.

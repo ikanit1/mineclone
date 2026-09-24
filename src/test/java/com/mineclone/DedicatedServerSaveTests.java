@@ -35,10 +35,19 @@ final class DedicatedServerSaveTests {
             byte[] opaque = { 9, 8, 7, 6 };
             WorldClock clock = new WorldClock(37.25);
             clock.advance(1.25);
-            LevelData before = new LevelData("Owner world", 3232L, 3.25, 81.5, 4.75,
+            LevelData legacy = new LevelData("Owner world", 3232L, 3.25, 81.5, 4.75,
                     8.5, 85, 8.5, .33f, -.12f, clock.gameTimeFloat(), 5, inventory,
                     GameMode.SURVIVAL, 12345, 7.5f, 3.5f, new ItemStack[] { ItemStack.of("coal", 11) },
                     Map.of("future:owner", opaque, WorldClock.SAVE_SECTION, clock.encode()));
+            // What only a record can hold must also survive a server that has no owner to recapture.
+            ItemStack[] equipment = new ItemStack[com.mineclone.save.PlayerRecord.EQUIPMENT_SLOTS];
+            equipment[0] = ItemStack.of("iron_ingot", 1);
+            var ownerRecord = legacy.player.toBuilder().equipment(equipment)
+                    .spawn(new com.mineclone.save.PlayerRecord.Spawn(1.5, 70, 2.5))
+                    .effects(java.util.List.of(new com.mineclone.save.PlayerRecord.Effect("mineclone:speed", 80, 1)))
+                    .section("future:owner_record", new byte[] { 3, 1, 4 }).build();
+            LevelData before = new LevelData(legacy.name, legacy.seed, legacy.spawnX, legacy.spawnY, legacy.spawnZ,
+                    legacy.timeOfDay, legacy.gameMode, legacy.lastPlayed, ownerRecord, legacy.extraSections);
             original.saveLevel("world", before);
             original.flushAndAwait();
             Path configPath = root.resolve("server.properties");
@@ -60,6 +69,7 @@ final class DedicatedServerSaveTests {
                     && after.yaw == before.yaw && after.pitch == before.pitch && after.selectedSlot == 5, "server reset owner pose");
             check(after.health == 7.5f && after.hunger == 3.5f, "server reset owner vitals");
             check(Arrays.equals(opaque, after.extraSections.get("future:owner")), "server discarded unknown section");
+            PlayerRecordTests.same(before.player, after.player, "server autosave of the owner record");
             check(Arrays.equals(serverClock.encode(), after.extraSections.get(WorldClock.SAVE_SECTION)), "server clock did not persist exactly");
         } finally {
             if (server != null) {

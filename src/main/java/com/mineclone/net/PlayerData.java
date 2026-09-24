@@ -1,12 +1,20 @@
 package com.mineclone.net;
 
+import com.mineclone.save.PlayerRecord;
 import com.mineclone.world.Inventory;
 import com.mineclone.world.ItemStack;
 import org.joml.Vector3f;
 
-/** A detached player checkpoint; world blocks belong to the world's own save. */
+/**
+ * The protocol-v7 view of a player checkpoint; world blocks belong to the world's own save.
+ *
+ * <p>A thin adapter over {@link PlayerRecord}: the wire format still carries
+ * only the fields below, while the record behind it keeps everything the wire
+ * cannot express (equipment, effects, personal spawn, unknown sections).
+ * Retired with protocol v8 (NET-02), when the record itself goes on the wire.
+ */
 public final class PlayerData {
-    private final com.mineclone.save.PlayerRecord record;
+    private final PlayerRecord record;
     public final ItemStack[] inventory, pending;
     public final float x, y, z, yaw, pitch, health, hunger;
     public final int selected;
@@ -14,19 +22,25 @@ public final class PlayerData {
 
     public PlayerData(ItemStack[] inventory, ItemStack[] pending, float x, float y, float z,
             float yaw, float pitch, float health, float hunger, int selected, byte[] progress) {
-        this(com.mineclone.save.PlayerRecord.builder().inventory(inventory).pending(pending)
-                .pose(x,y,z,yaw,pitch,selected).vitals(health,hunger,5,20).progress(progress).build());
+        this(PlayerRecord.builder().inventory(inventory).pending(pending)
+                .pose(x, y, z, yaw, pitch, selected)
+                .vitals(PlayerRecord.Vitals.legacy(health, hunger))
+                .progress(progress).build());
     }
 
-    public PlayerData(com.mineclone.save.PlayerRecord record) {
-        this.record=java.util.Objects.requireNonNull(record);
-        this.inventory=record.inventory(); this.pending=record.pending();
-        var pose=record.pose();var vitals=record.vitals();
-        this.x=(float)pose.x();this.y=(float)pose.y();this.z=(float)pose.z();this.yaw=pose.yaw();this.pitch=pose.pitch();
-        this.health=vitals.health();this.hunger=vitals.hunger();this.selected=pose.selected();this.progress=record.progress();
+    public PlayerData(PlayerRecord record) {
+        this.record = java.util.Objects.requireNonNull(record);
+        this.inventory = record.inventory();
+        this.pending = record.pending();
+        var pose = record.pose();
+        this.x = (float) pose.x(); this.y = (float) pose.y(); this.z = (float) pose.z();
+        this.yaw = pose.yaw(); this.pitch = pose.pitch(); this.selected = pose.selected();
+        this.health = record.vitals().health();
+        this.hunger = record.vitals().hunger();
+        this.progress = record.progress();
     }
 
-    public com.mineclone.save.PlayerRecord record() { return record; }
+    public PlayerRecord record() { return record; }
 
     public static PlayerData empty(Vector3f spawn) {
         return new PlayerData(null,null,spawn.x,spawn.y,spawn.z,0,0,20,20,0,null);

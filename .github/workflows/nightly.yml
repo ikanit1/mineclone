@@ -49,7 +49,9 @@ jobs:
           $fixtures = 'src/test/resources/fixtures/saves'
           if (-not (Test-Path -LiteralPath $fixtures)) { throw 'Reference save corpus is missing' }
           $levels = @(Get-ChildItem -Path $fixtures -Filter level.dat -Recurse)
-          if ($levels.Count -lt 6) { throw 'Reference save corpus is incomplete' }
+          if ($levels.Count -lt 7) { throw 'Reference save corpus is incomplete' }
+          $guests = @(Get-ChildItem -Path (Join-Path $fixtures 'beta-guest/players') -Filter *.dat)
+          if ($guests.Count -lt 1) { throw 'Reference guest checkpoint is missing' }
           java -cp 'out;libs/*' tools/CheckSaves.java $fixtures
           if ($LASTEXITCODE -ne 0) { throw 'Reference save audit failed' }
       - name: Upload LAN evidence

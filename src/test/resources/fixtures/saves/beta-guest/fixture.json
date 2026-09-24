@@ -1,0 +1,74 @@
+{
+  "writerTag": "v1.0.1-alpha",
+  "writerCommit": "967011088d641cdb83e1c895537c515ff3f52cb6",
+  "kind": "tagged-writer",
+  "levelVersion": 10,
+  "chunkVersion": 6,
+  "guestVersion": 1,
+  "name": "beta-guest",
+  "seed": 91001,
+  "health": 18.0,
+  "hunger": 16.5,
+  "mode": "SURVIVAL",
+  "lastPlayed": 1727000000000,
+  "position": [2.5, 76.0, -4.5],
+  "spawn": [8.5, 81.0, 8.5],
+  "yaw": 0.75,
+  "pitch": -0.125,
+  "gameTime": 21.5,
+  "selectedSlot": 2,
+  "inventory": [{
+    "count": 12,
+    "damage": 0,
+    "id": "mineclone:log",
+    "slot": 0
+  }],
+  "pending": [],
+  "extraSections": {
+    "fixture:opaque": "0501",
+    "mineclone:survival_progress": "0203"
+  },
+  "chunks": [],
+  "guest": {
+    "id": "3f2a7c1e-5b6d-4e8f-9a0b-1c2d3e4f5a6b",
+    "position": [-12.5, 70.25, 30.75],
+    "yaw": 1.5,
+    "pitch": 0.25,
+    "health": 13.5,
+    "hunger": 7.25,
+    "selectedSlot": 5,
+    "progress": "0206",
+    "inventory": [{
+      "count": 5,
+      "damage": 0,
+      "id": "mineclone:diamond",
+      "slot": 0
+    }, {
+      "count": 1,
+      "customName": "Guest pick",
+      "damage": 21,
+      "id": "mineclone:iron_pickaxe",
+      "slot": 3
+    }, {
+      "count": 40,
+      "damage": 0,
+      "id": "mineclone:cobblestone",
+      "slot": 35
+    }],
+    "pending": [{
+      "count": 3,
+      "damage": 0,
+      "id": "mineclone:stick",
+      "slot": 0
+    }, {
+      "count": 7,
+      "damage": 0,
+      "id": "mineclone:coal",
+      "slot": 1
+    }]
+  },
+  "files": {
+    "level.dat": "8b13959ab0773f1bbfad21228d0c9fa8f2f81a729209fc546f970f873ac2d5a2",
+    "players/3f2a7c1e-5b6d-4e8f-9a0b-1c2d3e4f5a6b.dat": "c6a800519cf45a08016840447a3a7ab84b8e2a2f8617f159c06d3dea6bc689b7"
+  }
+}

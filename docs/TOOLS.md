@@ -55,7 +55,7 @@ writer and its assets, as described in the [fixture reproduction guide](../src/t
 | [BenchUi.java](../tools/BenchUi.java) | J | Real GL inventory draw cost | `console` |
 | [BenchWater.java](../tools/BenchWater.java) | J | Water tick benchmark | `console` |
 | [build-common.ps1](../tools/build-common.ps1) | via run.ps1/run-tests.ps1 | Dot-sourced build helper, not a standalone command | `libs; out*/generated/com/mineclone/core/BuildInfo.java` |
-| [CheckSaves.java](../tools/CheckSaves.java) | J | Read-only level/chunk/item audit; pass a saves directory | `console; no save writes` |
+| [CheckSaves.java](../tools/CheckSaves.java) | J | Read-only level/chunk/guest-record/item audit; pass a saves directory | `console; no save writes` |
 | [ComparePreviews.java](../tools/ComparePreviews.java) | J | Pixel comparison; pass baseline and candidate directories | `console; reads image folders` |
 | [ContainerBreakSmoke.java](../tools/ContainerBreakSmoke.java) | compiled command above | Actual Game host container destruction and guest item delivery | `out-test/container-break-smoke` |
 | [CreativeGameSmoke.java](../tools/CreativeGameSmoke.java) | J | Real Game mouse interaction in temporary creative world | `out-test/creative-game` |
@@ -73,6 +73,7 @@ writer and its assets, as described in the [fixture reproduction guide](../src/t
 | [InventorySafetySmoke.java](../tools/InventorySafetySmoke.java) | J | Inventory/conservation gameplay smoke | `out-test/inventory-safety` |
 | [make_trailer.py](../tools/make_trailer.py) | PY | Compose rendered frames with ffmpeg/Pillow | `out-test/trailer-clean.mp4; out-test/trailer-ru.mp4` |
 | [MakeSaveFixtures.java](../tools/MakeSaveFixtures.java) | [old-writer recipe](../src/test/resources/fixtures/saves/README.md) | Authenticated alpha writer and explicitly synthetic historical save corpus; refuses current format writers | `required new/empty output directory; never replace the golden corpus` |
+| [MakeGuestFixture.java](../tools/MakeGuestFixture.java) | [old-writer recipe](../src/test/resources/fixtures/saves/README.md) | `beta-guest`: guest checkpoint v1 written by the v1.0.1-alpha tag; refuses any other writer | `required new/empty output directory; never replace the golden corpus` |
 | [MakeTrailer.java](../tools/MakeTrailer.java) | J | Compose before/after image sequence from existing captures | `out-test/trailer` |
 | [PhotonSmoke.java](../tools/PhotonSmoke.java) | J | Opt-in external Photon connection test; consumes cloud slots | `console; network traffic` |
 | [PlayerCollisionSmoke.java](../tools/PlayerCollisionSmoke.java) | J | Native held-key player movement/collision | `console` |

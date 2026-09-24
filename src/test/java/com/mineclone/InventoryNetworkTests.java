@@ -27,6 +27,44 @@ final class InventoryNetworkTests {
         r.run("closing a remote chest with a full inventory drops overflow on the host",InventoryNetworkTests::fullInventory);
         r.run("container transfers and guest drops work over actual TCP sockets",InventoryNetworkTests::sockets);
         r.run("old whole-container commits cannot replace authoritative contents",InventoryNetworkTests::oldCommit);
+        r.run("v7 guest checkpoints keep on disk what the wire cannot carry",InventoryNetworkTests::recordThroughWire);
+    }
+
+    /**
+     * SAVE-07: a guest's record holds equipment, effects, a personal spawn and a
+     * newer build's section, none of which protocol v7 can carry. A guest's own
+     * checkpoint must update what it does carry and leave the rest on disk.
+     */
+    private static void recordThroughWire() throws Exception {
+        Path root=Files.createTempDirectory("mineclone-record-wire");
+        LoopbackTransport.reset();
+        C host=new C(new World(42),"host"),guest=new C(null,"g");
+        SaveManager disk=new SaveManager(root.toFile());
+        host.persistence=disk;
+        var seeded=PlayerRecordTests.sample();
+        disk.saveGuestRecord("test",guest.id,seeded);disk.flushAndAwait();
+        Multiplayer hostNet=new Multiplayer(host),guestNet=new Multiplayer(guest);
+        try {
+            hostNet.start(new LoopbackTransport(hostNet),"record",true,"host");
+            guestNet.start(new LoopbackTransport(guestNet),"record",false,"g");
+            for(int i=0;i<10;i++){hostNet.update(.1f);guestNet.update(.1f);}
+            check(guest.inv.get(0)!=null && guest.inv.get(0).count==17,"guest did not receive its saved inventory");
+            guest.inv.set(5,ItemStack.of("coal",9));
+            guestNet.savePlayerNow();
+            for(int i=0;i<3;i++){hostNet.update(.1f);guestNet.update(.1f);}
+            disk.flushAndAwait();
+            PlayerRecord stored=new SaveManager(root.toFile()).loadGuestRecord("test",guest.id);
+            check(stored.inventory()[5]!=null && stored.inventory()[5].count==9,"carried inventory was not stored");
+            PlayerRecordTests.same(seeded.toBuilder().inventory(stored.inventory()).pending(stored.pending())
+                    .pose(stored.pose().x(),stored.pose().y(),stored.pose().z(),stored.pose().yaw(),stored.pose().pitch(),stored.pose().selected())
+                    .vitals(new PlayerRecord.Vitals(stored.vitals().health(),stored.vitals().hunger(),seeded.vitals().saturation(),
+                            seeded.vitals().exhaustion(),seeded.vitals().air()))
+                    .progress(stored.progress()).build(),stored,"uncarried fields after a v7 checkpoint");
+        } finally {
+            guestNet.stop(null);hostNet.update(.1f);hostNet.stop(null);LoopbackTransport.reset();
+            disk.flushAndAwait();
+            try(var paths=Files.walk(root)){for(Path p:paths.sorted(Comparator.reverseOrder()).toList())Files.deleteIfExists(p);}
+        }
     }
     private static void check(boolean v,String why){if(!v)throw new AssertionError(why);}
     private static int count(ItemStack[] a){int n=0;for(var s:a)if(s!=null)n+=s.count;return n;}
