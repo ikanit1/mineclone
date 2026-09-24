@@ -157,16 +157,16 @@ public class Game {
     private boolean throwWholeStack;
     /** Дальше этого звук не даёт дуги — столько же, сколько слышит OpenAL. */
     private static final float SOUND_CUE_RANGE = 24f;
-    private final java.util.List<com.mineclone.world.entity.Mob> mobs = new java.util.ArrayList<>();
+    /** Сущности открытого мира; у гостя — снимки хозяина. */
+    private final com.mineclone.sim.EntityStore entities = new com.mineclone.sim.EntityStore();
+    private final java.util.List<com.mineclone.world.entity.Mob> mobs = entities.mobs;
     /** Списки под дальность сущностей — переиспользуются, чтобы не сорить каждый кадр. */
     private final java.util.List<com.mineclone.world.entity.Mob> nearMobs = new java.util.ArrayList<>();
     private final java.util.List<com.mineclone.world.entity.ItemEntity> nearItems = new java.util.ArrayList<>();
     /** Только поставленные в этой сессии тяжёлые блоки участвуют в обрушениях. */
     private final java.util.Set<Long> playerStructures = new java.util.HashSet<>();
-    private com.mineclone.world.entity.MobSpawner mobSpawner;
-    private float mobSpawnTimer = 0f;
-    /** Herd and wildlife neighbourhoods are perception data, not 60 Hz physics. */
-    private float mobSenseTimer;
+    /** Мобы открытого мира; null у гостя — их симулирует хозяин. */
+    private com.mineclone.sim.WorldSession session;
     /** Музыка: ситуация из мира → режиссёр → потоковый плеер. */
     private final MusicSense musicSense = new MusicSense();
     private com.mineclone.audio.MusicDirector music;
@@ -200,7 +200,6 @@ public class Game {
      * ничего — нужно видеть худший кадр и то, в какой фазе он застрял.
      */
     private final FrameProfiler profiler = new FrameProfiler();
-    private final com.mineclone.world.entity.MobSpatialGrid collisionGrid = new com.mineclone.world.entity.MobSpatialGrid();
 
     private float stepDistance = 0f;
     /** Левая или правая нога игрока: следы идут в две дорожки, а не в колею. */
@@ -1300,12 +1299,13 @@ public class Game {
         lastHealth = player.health;
         healthGhost = player.health;
         healthGhostDelay = 0f;
-        mobSpawner = new com.mineclone.world.entity.MobSpawner(world.seed ^ 0x51E7B0BL);
+        session = new com.mineclone.sim.WorldSession(world, worldClock,
+                new com.mineclone.world.entity.MobSpawner(world.seed ^ 0x51E7B0BL), entities,
+                sessionHost, entityPresentation);
         simulation = new WorldSimulation(world.seed);
         atmosphere.snap();
         storm.reset();
         musicSense.reset();
-        mobSpawnTimer = 0f;
 
         WaterSimulator.reset();
         LavaSimulator.reset();
@@ -1357,7 +1357,7 @@ public class Game {
         mobs.clear();
         playerStructures.clear();
         ropeRenderer.clear();
-        mobSpawner = null;
+        session = null;
         debris.clear();
         sound.stopAllLoops();
         if (rainAmbience != null) rainAmbience.reset();
@@ -1365,7 +1365,6 @@ public class Game {
         waterFlowSoundPosition = null;
         waterFlowProbeTimer = 0f;
         voxelBounceProbeTimer = 0f;
-        mobSenseTimer = 0f;
         soundCues.clear();
         items.clear();   // уже записаны в чанки через saveAll выше
         resetBreakState();
@@ -1808,7 +1807,8 @@ public class Game {
     }
 
     /**
-     * Тик мобов: ИИ + физика, события в звуки/частицы/урон, затем спавн-деспавн.
+     * Тик мобов — {@link com.mineclone.sim.WorldSession}, тот же, что у
+     * выделенного сервера; звук и частицы — {@link EntityPresentation}.
      *
      * Зовётся только из updatePlaying — в PAUSED / CREATIVE_MENU / DEAD мобы
      * замирают (иначе зомби добивал бы игрока в меню паузы).
@@ -1819,176 +1819,78 @@ public class Game {
     private void updateMobs(float dt) {
         // Мобы живут у хозяина и приезжают снимками: думать за них ещё раз
         // значило бы получить второго зомби на том же месте.
-        if (net.isClient())
+        if (net.isClient() || session == null)
             return;
-        if (world == null || mobSpawner == null)
-            return;
-        boolean hostileEnabled = gameMode == com.mineclone.world.GameMode.SURVIVAL;
-
-        // Кто с кем пасётся — до тика: моб решает, куда идти, уже зная, где
-        // его сородичи.
-        mobSenseTimer -= dt;
-        if (mobSenseTimer <= 0f) {
-            mobSenseTimer = 0.20f;
-            com.mineclone.world.entity.MobHerd.update(mobs);
-            // Кто кому угроза и кто чья добыча — тоже до тика, как и стадо.
-            com.mineclone.world.entity.Wildlife.sense(mobs);
-        }
-        float dayPhase = worldClock.dayPhase();
-        com.mineclone.world.entity.MobTactics.updateGroup(mobs, dayPhase, dt);
-        BlockType heldBlock = currentBlock();
-        boolean torchInHand = heldBlock != null && heldBlock.emittedLight > 0;
-
-        java.util.List<com.mineclone.world.entity.Mob> killedByWolves = null;
-        java.util.Iterator<com.mineclone.world.entity.Mob> it = mobs.iterator();
-        while (it.hasNext()) {
-            com.mineclone.world.entity.Mob m = it.next();
-            m.setPlayerTorch(torchInHand);
-            // Стрелы мобов сыплются в общий список снарядов — но только у
-            // хозяина: участник мир не симулирует и получает их готовыми.
-            m.shotSink = net.isClient() ? null : projectiles::add;
-            if (!m.updateLod(world, player.position, dt, daylight, hostileEnabled)) continue;
-
-            if (m.justIdleSound) {
-                boolean danger = m.type.hostile || m.isAngry();
-                java.util.List<String> voice = m.isAngry() ? sounds.mobAngry(m.type) : sounds.mobSay(m.type);
-                // Ночью волк иногда воет вместо дыхания — далеко слышно и
-                // сразу понятно, что в лесу кто-то есть.
-                if (m.type == com.mineclone.world.entity.MobType.WOLF && !m.isAngry()
-                        && daylight < 0.2f && Math.random() < 0.3)
-                    voice = sounds.mobHowl(m.type);
-                playOccluded(voice, m.soundPosition(), 0.7f, 0.9f + 0.2f * (float) Math.random());
-                // Дуга только от угрозы: мычание коровы за спиной ничего не
-                // решает, а рычание зомби — решает.
-                if (danger)
-                    cueSound(m.soundPosition(), 1f, true);
-            }
-
-            if (m.justSplashed) {
-                float impact = Math.max(0.15f, Math.min(1.4f, m.splashSpeed / 7f));
-                playOccluded(sounds.waterSplash(), m.soundPosition(),
-                        0.2f + 0.42f * Math.min(1f, impact),
-                        1.12f - 0.16f * Math.min(1f, impact) + 0.08f * (float) Math.random());
-                int wx = (int) Math.floor(m.position.x), wy = (int) Math.floor(m.position.y + 0.5f),
-                    wz = (int) Math.floor(m.position.z);
-                particles.emitWaterSplash(m.position.x, m.position.y + 0.4f, m.position.z,
-                        world.getSkyLight(wx, wy, wz) / (float) Chunk.MAX_LIGHT,
-                        world.getBlockLightWorld(wx, wy, wz) / (float) Chunk.MAX_LIGHT, impact);
-            }
-
-            if (m.justEnraged) {
-                // Ярость слышна и видна: низкий рёв и вспышка искр над головой.
-                playOccluded(sounds.mobAngry(m.type), m.soundPosition(), 1f, 0.62f);
-                particles.emitHitImpact(m.position.x, m.position.y + m.type.height, m.position.z,
-                        0f, 1f, 0f, true, new float[] { 0.9f, 0.15f, 0.1f }, 1f, 0f);
-                cueSound(m.soundPosition(), 1f, true);
-            }
-
-            if (m.justTookOff)
-                playOccluded(sounds.mobFly(m.type), m.soundPosition(), 0.35f, 1f + 0.2f * (float) Math.random());
-
-            if (m.justBitMob != null) {
-                com.mineclone.world.entity.Mob prey = m.justBitMob;
-                if (prey.hurt(com.mineclone.world.entity.Wildlife.BITE_DAMAGE, m.position.x, m.position.z, 0.6f, false)) {
-                    playOccluded(sounds.mobAngry(m.type), m.soundPosition(), 0.6f, 1.1f);
-                    playOccluded(sounds.mobHurt(prey.type), prey.soundPosition(), 0.6f, 1f);
-                    if (prey.dead) {
-                        if (killedByWolves == null)
-                            killedByWolves = new java.util.ArrayList<>();
-                        killedByWolves.add(m);
-                    }
-                }
-            }
-
-            if (m.justStepSound) {
-                playOccluded(sounds.mobStep(m.type),
-                        new Vector3f(m.position.x, m.position.y + 0.1f, m.position.z),
-                        0.22f, 0.9f + 0.2f * (float) Math.random());
-                if (m.type.hostile && m.state == com.mineclone.world.entity.Mob.State.CHASE)
-                    cueSound(m.soundPosition(), 0.55f, true);
-                // След моба крупнее или мельче по его габариту: курица и
-                // корова не могут топтать снег одинаково.
-                // Чётность шага берётся из пройденного пути самого моба:
-                // общий переключатель на всех сбил бы дорожки в одну колею.
-                boolean left = ((int) (m.walkedDistance
-                        / com.mineclone.world.entity.Mob.STEP_DISTANCE)) % 2 == 0;
-                dropFootprint(m.position.x, m.position.y, m.position.z, m.yaw,
-                        0.46f + m.type.width * 0.5f, left);
-                if (m.position.distanceSquared(player.position) < 24f * 24f)
-                    kickSnow(m.position.x, m.position.y, m.position.z,
-                            (float) -Math.sin(m.yaw), (float) -Math.cos(m.yaw), false);
-            }
-
-            // Урон игроку — через окно неуязвимости: иначе стая зомби снимает
-            // здоровье втрое быстрее одного, у каждого ведь свой кулдаун.
-            if (m.justAttacked && player.takeAttackDamage(m.attackDamage())) {
-                applyMobKnockback(m);
-                if (m.elite == com.mineclone.world.entity.MobTactics.Elite.VENOMOUS)
-                    advancedFeedback.apply(AdvancedFeedback.Effect.POISON, 7f);
-                else if (m.elite == com.mineclone.world.entity.MobTactics.Elite.FROST)
-                    advancedFeedback.apply(AdvancedFeedback.Effect.FREEZE, 4f);
-                else if (m.elite == com.mineclone.world.entity.MobTactics.Elite.BURNING)
-                    advancedFeedback.apply(AdvancedFeedback.Effect.STUN, 1.1f);
-                sound.playOneOfAt(sounds.hurt(), playerSoundPosition(),
-                        0.8f, 0.9f + 0.1f * (float) Math.random());
-            }
-
-            if (m.justExploded)
-                detonate(m);
-
-            if (m.burning) {
-                particles.emitMobFlame(m.position.x, m.position.y + m.type.height * 0.5f,
-                        m.position.z);
-                if (Math.random() < 0.35)
-                    particles.emitMobSmoke(m.position.x, m.position.y + m.type.height * 0.9f,
-                            m.position.z);
-            }
-
-            // Звук и облако — один раз в момент смерти; сам моб ещё полсекунды
-            // валится набок, и только потом уходит из списка.
-            if (m.dead && !m.deathEffectsDone) {
-                m.deathEffectsDone = true;
-                com.mineclone.world.entity.MobTactics.leaderFell(mobs, m);
-                giveMobDrop(m);
-                playOccluded(sounds.mobDeath(m.type), m.soundPosition(),
-                        0.8f, 0.95f + 0.1f * (float) Math.random());
-                particles.emitMobDeath(m.position.x, m.position.y + m.type.height * 0.5f,
-                        m.position.z, m.type.particleColor);
-            }
-            if (m.dead && m.deathTimer <= 0f)
-                it.remove();
-        }
-        if (killedByWolves != null)
-            for (com.mineclone.world.entity.Mob wolf : killedByWolves)
-                com.mineclone.world.entity.Wildlife.sate(wolf);
-
-        // Расталкивание: без него стадо слипается в одну точку, а моб спокойно
-        // стоит внутри игрока. Игрока не двигаем — свою физику он считает сам.
-        collisionGrid.rebuild(mobs);
-        java.util.IdentityHashMap<com.mineclone.world.entity.Mob, Integer> collisionOrder = new java.util.IdentityHashMap<>();
-        for (int i = 0; i < mobs.size(); i++) collisionOrder.put(mobs.get(i), i);
-        for (int i = 0; i < mobs.size(); i++) {
-            com.mineclone.world.entity.Mob a = mobs.get(i);
-            for (com.mineclone.world.entity.Mob b : collisionGrid.nearby(a, 2.0f)) {
-                if (b == a || collisionOrder.getOrDefault(b, Integer.MAX_VALUE) <= i)
-                    continue;
-                com.mineclone.world.entity.EntityPhysics.separate(
-                        a.position, a.type.width, a.type.height, 0.25f,
-                        b.position, b.type.width, b.type.height, 0.25f);
-            }
-            com.mineclone.world.entity.EntityPhysics.separate(
-                    player.position, Player.WIDTH, Player.HEIGHT, 0f,
-                    a.position, a.type.width, a.type.height, 0.5f);
-        }
-
-        mobSpawner.despawnFar(mobs, player.position);
-
-        mobSpawnTimer -= dt;
-        if (bench == null && mobSpawnTimer <= 0f) {
-            mobSpawnTimer = com.mineclone.world.entity.MobSpawner.TICK_INTERVAL;
-            mobSpawner.trySpawn(world, mobs, player.position, daylight);
-        }
+        session.tickMobs(dt);
     }
+
+    /** Стрелы мобов сыплются в общий список снарядов хозяина. */
+    private final java.util.function.Consumer<com.mineclone.world.entity.Projectile> mobShots = projectiles::add;
+
+    /**
+     * Что сессия пока берёт у игры: мобы живут вокруг своего игрока, бьют
+     * только его, а взрыв и добычу делает игра (SIM-04, SIM-07).
+     */
+    private final com.mineclone.sim.WorldSession.Host sessionHost = new com.mineclone.sim.WorldSession.Host() {
+        @Override public Vector3f mobFocus() { return player.position; }
+        @Override public boolean hostileMobs() { return gameMode == com.mineclone.world.GameMode.SURVIVAL; }
+
+        @Override
+        public boolean focusHoldsLight() {
+            BlockType held = currentBlock();
+            return held != null && held.emittedLight > 0;
+        }
+
+        @Override public boolean focusIsBody() { return true; }
+        @Override public java.util.function.Consumer<com.mineclone.world.entity.Projectile> mobShots() { return mobShots; }
+        @Override public boolean spawnMobs() { return bench == null; }
+
+        /** Урон игроку — через окно неуязвимости: иначе стая зомби снимает здоровье втрое быстрее одного. */
+        @Override
+        public void mobStruck(com.mineclone.world.entity.Mob m) {
+            if (!player.takeAttackDamage(m.attackDamage()))
+                return;
+            applyMobKnockback(m);
+            if (m.elite == com.mineclone.world.entity.MobTactics.Elite.VENOMOUS)
+                advancedFeedback.apply(AdvancedFeedback.Effect.POISON, 7f);
+            else if (m.elite == com.mineclone.world.entity.MobTactics.Elite.FROST)
+                advancedFeedback.apply(AdvancedFeedback.Effect.FREEZE, 4f);
+            else if (m.elite == com.mineclone.world.entity.MobTactics.Elite.BURNING)
+                advancedFeedback.apply(AdvancedFeedback.Effect.STUN, 1.1f);
+            sound.playOneOfAt(sounds.hurt(), playerSoundPosition(),
+                    0.8f, 0.9f + 0.1f * (float) Math.random());
+        }
+
+        @Override public void mobExploded(com.mineclone.world.entity.Mob m) { detonate(m); }
+        @Override public void mobLoot(com.mineclone.world.entity.Mob m) { giveMobDrop(m); }
+    };
+
+    private final EntityPresentation entityPresentation = new EntityPresentation(sounds, particles,
+            new EntityPresentation.Stage() {
+                @Override public World world() { return world; }
+                @Override public float daylight() { return daylight; }
+                @Override public Vector3f listener() { return player.position; }
+
+                @Override
+                public void playOccluded(java.util.List<String> paths, Vector3f at, float volume, float pitch) {
+                    Game.this.playOccluded(paths, at, volume, pitch);
+                }
+
+                @Override
+                public void cueSound(Vector3f at, float loudness, boolean danger) {
+                    Game.this.cueSound(at, loudness, danger);
+                }
+
+                @Override
+                public void dropFootprint(float x, float y, float z, float yaw, float size, boolean left) {
+                    Game.this.dropFootprint(x, y, z, yaw, size, left);
+                }
+
+                @Override
+                public void kickSnow(float x, float y, float z, float dirX, float dirZ, boolean hard) {
+                    Game.this.kickSnow(x, y, z, dirX, dirZ, hard);
+                }
+            });
 
     /** Горизонтальное отбрасывание игрока от моба + небольшой подброс. */
     private void applyMobKnockback(com.mineclone.world.entity.Mob m) {
@@ -6648,13 +6550,12 @@ public class Game {
         healthGhostDelay = 0f;
         // У участника мир не живёт своей жизнью: мобов, воду и случайные тики
         // считает хозяин, а сюда они приезжают готовыми.
-        mobSpawner = null;
+        session = null;
         // У участника мир тикает тот же объект, но с выключенной симуляцией:
         // таймеры ему нужны, право что-то менять — нет.
         simulation = new WorldSimulation(world == null ? 0L : world.seed);
         atmosphere.snap();
         musicSense.reset();
-        mobSpawnTimer = 0f;
         WaterSimulator.reset();
         LavaSimulator.reset();
         beginLoadingToPlay();

@@ -15,6 +15,10 @@ import org.joml.Vector3fc;
  * them before keeping them past the current tick.
  */
 public interface Participant extends Damageable {
+    /** A participant's body in blocks, the same for everyone: mobs are pushed out of it. */
+    float BODY_WIDTH = 0.6f;
+    float BODY_HEIGHT = 1.8f;
+
     /** Network actor number, or 0 for an offline single player. */
     int id();
 

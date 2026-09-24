@@ -27,6 +27,7 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 - Eleven reproducible benchmark scenes with frame, GPU, queue, allocation, network and save metrics; frozen build snapshots and repeated-run aggregation retain measurement provenance.
 
 ### Changed
+- The game's host and the dedicated server tick mobs with one shared loop (`WorldSession`), pinned to the previous behavior by a recorded parity hash; mobs on a dedicated server are now pushed apart instead of standing inside one another.
 - All 35 crafting recipes and nine smelting recipes load from validated JSON with their legacy order, shapes and outputs preserved. Tag ingredients and configured smelting times/counts are executed by the real crafting/furnace paths.
 - Block behavior flags and numeric properties now come from one exhaustive `BlockProps` table without changing existing block IDs.
 - Historical root generators and obsolete manual test sources moved to `tools/legacy`; generated scratch artifacts are kept outside the source tree.

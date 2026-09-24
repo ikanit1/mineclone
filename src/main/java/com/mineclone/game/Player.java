@@ -95,8 +95,8 @@ public class Player {
     private boolean wasOnGround = false;
     private float regenTimer = 0f;
 
-    public static final float WIDTH = 0.6f;
-    public static final float HEIGHT = 1.8f;
+    public static final float WIDTH = com.mineclone.sim.Participant.BODY_WIDTH;
+    public static final float HEIGHT = com.mineclone.sim.Participant.BODY_HEIGHT;
     public static final float EYE_HEIGHT = 1.62f;
 
     public static final float WALK_SPEED = 4.8f;

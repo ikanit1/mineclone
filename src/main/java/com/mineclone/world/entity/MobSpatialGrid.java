@@ -12,7 +12,9 @@ public final class MobSpatialGrid {
     public void rebuild(List<Mob> mobs) {
         for (var bucket : cells.values()) { bucket.clear(); pool.add(bucket); }
         cells.clear();
-        for (Mob m : mobs) {
+        for (int i = 0; i < mobs.size(); i++) {
+            Mob m = mobs.get(i);
+            m.gridOrder = i;
             if (m.dead) continue;
             long key = com.mineclone.world.World.key(cell(m.position.x), cell(m.position.z));
             var bucket = cells.get(key);
@@ -33,4 +35,11 @@ public final class MobSpatialGrid {
         return found;
     }
     private static int cell(float x) { return (int)Math.floor(x / 16f); }
+
+    /**
+     * The mob's index in the list of the latest rebuild by any grid — the same
+     * list, rebuilt right before use. Lets a pass handle each pair once without
+     * a map from mob to index every frame.
+     */
+    public static int order(Mob m) { return m.gridOrder; }
 }

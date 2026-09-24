@@ -1,30 +1,26 @@
 package com.mineclone;
 
-import com.mineclone.game.Player;
+import com.mineclone.sim.EntityStore;
 import com.mineclone.sim.WorldClock;
+import com.mineclone.sim.WorldEvents;
+import com.mineclone.sim.WorldSession;
 import com.mineclone.world.Chunk;
 import com.mineclone.world.GenProfile;
 import com.mineclone.world.World;
-import com.mineclone.world.entity.EntityPhysics;
 import com.mineclone.world.entity.Mob;
-import com.mineclone.world.entity.MobHerd;
-import com.mineclone.world.entity.MobSpatialGrid;
 import com.mineclone.world.entity.MobSpawner;
-import com.mineclone.world.entity.MobTactics;
 import com.mineclone.world.entity.MobType;
 import com.mineclone.world.entity.Projectile;
-import com.mineclone.world.entity.Wildlife;
 import com.mineclone.world.gen.GenPolicy;
 import com.mineclone.world.gen.WorldGenVersion;
-import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HexFormat;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
+import java.util.function.Consumer;
 import org.joml.Vector3f;
 
 /**
@@ -35,19 +31,22 @@ import org.joml.Vector3f;
  * walking a fixed path, natural spawning, 600 ticks of 50 ms — is hashed tick by
  * tick: every mob's position, yaw, health, state, fuse and fire, every blow,
  * explosion, drop and arrow. The expected hash was
- * recorded before the loop moved, by {@link LegacyMobLoop}: {@code Game.updateMobs}
- * at a8ec5d1 with only the sound and particle calls taken out.
+ * recorded before the loop moved (79318ba) by a transcription of
+ * {@code Game.updateMobs} at a8ec5d1 with only the sound and particle calls taken
+ * out; {@link WorldSession} now reproduces it for the game and the server alike.
  */
 final class SessionParityTests {
     static void runAll(TestMain.Runner r) {
-        r.run("the mob loop reproduces the hash recorded from Game.updateMobs", SessionParityTests::etalon);
+        r.run("the session reproduces the hash recorded from Game.updateMobs", SessionParityTests::etalon);
         r.run("the parity scenario exercises blows, arrows, explosions, drops and spawning", SessionParityTests::coverage);
+        r.run("what the game shows does not change what the server simulates", SessionParityTests::presentation);
+        r.run("the dedicated server has no mob loop of its own", SessionParityTests::serverUsesSession);
     }
 
     /**
-     * Recorded from {@link LegacyMobLoop}; see the class comment. The run holds two
-     * blows, one explosion, two deaths with drops, 22 spawns (29 mobs at the peak),
-     * two arrows and six strikes by the participant. Pushing each pair twice, or
+     * Recorded before the move; see the class comment. The run holds two blows,
+     * one explosion, two deaths with drops, 22 spawns (29 mobs at the peak), two
+     * arrows and six strikes by the participant. Pushing each pair twice, or
      * never out of the participant, changes it.
      */
     static final String ETALON = "162d54b2d69799238388ec79ba2117b38d079d75a8140e6d0feabcd1a2fc8e4f";
@@ -78,7 +77,8 @@ final class SessionParityTests {
         final World world = new World(SEED, GenProfile.NORMAL, GenPolicy.fixed(WorldGenVersion.V1));
         final WorldClock clock = new WorldClock(NIGHT);
         final MobSpawner spawner = new MobSpawner(SEED ^ 0x51E7B0BL);
-        final List<Mob> mobs = new ArrayList<>();
+        final EntityStore entities = new EntityStore();
+        final List<Mob> mobs = entities.mobs;
         final Vector3f focus = new Vector3f();
         final List<Projectile> shots = new ArrayList<>();
         final MessageDigest digest;
@@ -206,105 +206,91 @@ final class SessionParityTests {
         return s;
     }
 
+    /** The session as the game runs it: around its own player, with blows, arrows, explosions and drops. */
+    static Loop session(Scenario s, WorldEvents events) {
+        WorldSession.Host host = new WorldSession.Host() {
+            private final Consumer<Projectile> shots = s.shots::add;
+            @Override public Vector3f mobFocus() { return s.focus; }
+            @Override public boolean hostileMobs() { return true; }
+            @Override public boolean focusIsBody() { return true; }
+            @Override public Consumer<Projectile> mobShots() { return shots; }
+            @Override public void mobStruck(Mob m) { s.struck(m); }
+            @Override public void mobExploded(Mob m) { s.exploded(m); }
+            @Override public void mobLoot(Mob m) { s.loot(m); }
+        };
+        return new WorldSession(s.world, s.clock, s.spawner, s.entities, host, events)::tickMobs;
+    }
+
     private static void etalon() throws Exception {
-        String legacy = run(LegacyMobLoop::new).hash();
-        check(legacy.equals(run(LegacyMobLoop::new).hash()), "the scenario is not deterministic");
-        check(legacy.equals(ETALON), "mob loop hash " + legacy + " differs from the recorded " + ETALON);
+        String hash = run(s -> session(s, WorldEvents.NONE)).hash();
+        check(hash.equals(run(s -> session(s, WorldEvents.NONE)).hash()), "the scenario is not deterministic");
+        check(hash.equals(ETALON), "mob loop hash " + hash + " differs from the recorded " + ETALON);
     }
 
     private static void coverage() throws Exception {
-        Scenario s = run(LegacyMobLoop::new);
+        Scenario s = run(x -> session(x, WorldEvents.NONE));
         check(s.struck > 0 && s.loot > 0 && s.spawned > 0 && s.maxMobs > PLACED.length && s.hits > 0
                         && s.arrows > 0 && s.exploded > 0,
                 "scenario too quiet: struck=" + s.struck + " loot=" + s.loot + " spawned=" + s.spawned
                         + " max=" + s.maxMobs + " exploded=" + s.exploded + " hits=" + s.hits + " arrows=" + s.arrows);
     }
 
-    /**
-     * {@code Game.updateMobs} at a8ec5d1, simulation only. Sound, particles,
-     * footprints and sound cues are gone; the blow, the explosion and the drop
-     * call the scenario where the game called {@code takeAttackDamage},
-     * {@code detonate} and {@code giveMobDrop}. The game was in survival, with
-     * no torch in hand and no benchmark running.
-     */
-    static final class LegacyMobLoop implements Loop {
-        private final Scenario s;
-        private final MobSpatialGrid collisionGrid = new MobSpatialGrid();
-        private float mobSenseTimer;
-        private float mobSpawnTimer;
+    /** Counts what would be shown; a presentation reads and never writes. */
+    private static final class Shown implements WorldEvents {
+        int voices, splashes, rages, takeoffs, bites, steps, burning, deaths;
+        @Override public void mobVoice(Mob m) { voices++; }
+        @Override public void mobSplash(Mob m) { splashes++; }
+        @Override public void mobEnraged(Mob m) { rages++; }
+        @Override public void mobTookOff(Mob m) { takeoffs++; }
+        @Override public void mobBit(Mob predator, Mob prey) { bites++; }
+        @Override public void mobStep(Mob m) { steps++; }
+        @Override public void mobBurning(Mob m) { burning++; }
+        @Override public void mobDied(Mob m) { deaths++; }
+    }
 
-        LegacyMobLoop(Scenario s) { this.s = s; }
+    private static void presentation() throws Exception {
+        Shown shown = new Shown();
+        Scenario s = run(x -> session(x, shown));
+        check(s.hash().equals(ETALON), "presenting the mobs changed the simulation");
+        check(shown.voices > 0 && shown.steps > 0 && shown.rages > 0, "events never reached the presentation: voices="
+                + shown.voices + " steps=" + shown.steps + " rages=" + shown.rages);
+        check(shown.deaths == s.loot, "each death is shown once: " + shown.deaths + " vs " + s.loot + " drops");
+    }
 
-        @Override
-        public void tick(float dt) {
-            List<Mob> mobs = s.mobs;
-            float daylight = s.clock.daylight();
-            Vector3f playerPosition = s.focus;
-            boolean hostileEnabled = true;
-            mobSenseTimer -= dt;
-            if (mobSenseTimer <= 0f) {
-                mobSenseTimer = 0.20f;
-                MobHerd.update(mobs);
-                Wildlife.sense(mobs);
+    private static void serverUsesSession() throws Exception {
+        String source = java.nio.file.Files.readString(
+                java.nio.file.Path.of("src/main/java/com/mineclone/server/DedicatedServer.java"));
+        for (String rule : new String[] { "updateLod(", "MobHerd", "Wildlife", "MobTactics", "despawnFar", "trySpawn" })
+            check(!source.contains(rule), "DedicatedServer runs mob rules itself again: " + rule);
+        java.nio.file.Path root = java.nio.file.Files.createTempDirectory("mineclone-session-server-");
+        com.mineclone.server.DedicatedServer server = null;
+        try {
+            java.nio.file.Path config = root.resolve("server.properties");
+            java.nio.file.Files.writeString(config, "saves-dir=" + root.toString().replace('\\', '/')
+                    + "\nworld=mobs\nseed=" + SEED + "\ndirect=false\nphoton=false\nupnp=false\n");
+            server = new com.mineclone.server.DedicatedServer(com.mineclone.server.ServerConfig.load(config.toFile()));
+            var open = com.mineclone.server.DedicatedServer.class.getDeclaredMethod("openWorld");
+            open.setAccessible(true);
+            check((boolean) open.invoke(server), "server refused to create a world");
+            WorldSession session = (WorldSession) field(server, "session");
+            check(session != null && session.entities().mobs == server.mobs(),
+                    "the server's mobs are not the session's");
+        } finally {
+            if (server != null) {
+                var loader = (com.mineclone.world.ChunkLoader) field(server, "loader");
+                if (loader != null) loader.shutdown();
+                ((com.mineclone.save.SaveManager) field(server, "save")).flushAndAwait();
             }
-            float dayPhase = s.clock.dayPhase();
-            MobTactics.updateGroup(mobs, dayPhase, dt);
-            boolean torchInHand = false;
-
-            List<Mob> killedByWolves = null;
-            Iterator<Mob> it = mobs.iterator();
-            while (it.hasNext()) {
-                Mob m = it.next();
-                m.setPlayerTorch(torchInHand);
-                m.shotSink = s.shots::add;
-                if (!m.updateLod(s.world, playerPosition, dt, daylight, hostileEnabled)) continue;
-                if (m.justBitMob != null) {
-                    Mob prey = m.justBitMob;
-                    if (prey.hurt(Wildlife.BITE_DAMAGE, m.position.x, m.position.z, 0.6f, false)) {
-                        if (prey.dead) {
-                            if (killedByWolves == null)
-                                killedByWolves = new ArrayList<>();
-                            killedByWolves.add(m);
-                        }
-                    }
-                }
-                if (m.justAttacked)
-                    s.struck(m);
-                if (m.justExploded)
-                    s.exploded(m);
-                if (m.dead && !m.deathEffectsDone) {
-                    m.deathEffectsDone = true;
-                    MobTactics.leaderFell(mobs, m);
-                    s.loot(m);
-                }
-                if (m.dead && m.deathTimer <= 0f)
-                    it.remove();
-            }
-            if (killedByWolves != null)
-                for (Mob wolf : killedByWolves)
-                    Wildlife.sate(wolf);
-
-            collisionGrid.rebuild(mobs);
-            java.util.IdentityHashMap<Mob, Integer> collisionOrder = new java.util.IdentityHashMap<>();
-            for (int i = 0; i < mobs.size(); i++) collisionOrder.put(mobs.get(i), i);
-            for (int i = 0; i < mobs.size(); i++) {
-                Mob a = mobs.get(i);
-                for (Mob b : collisionGrid.nearby(a, 2.0f)) {
-                    if (b == a || collisionOrder.getOrDefault(b, Integer.MAX_VALUE) <= i)
-                        continue;
-                    EntityPhysics.separate(a.position, a.type.width, a.type.height, 0.25f,
-                            b.position, b.type.width, b.type.height, 0.25f);
-                }
-                EntityPhysics.separate(playerPosition, Player.WIDTH, Player.HEIGHT, 0f,
-                        a.position, a.type.width, a.type.height, 0.5f);
-            }
-
-            s.spawner.despawnFar(mobs, playerPosition);
-            mobSpawnTimer -= dt;
-            if (mobSpawnTimer <= 0f) {
-                mobSpawnTimer = MobSpawner.TICK_INTERVAL;
-                s.spawner.trySpawn(s.world, mobs, playerPosition, daylight);
+            try (var paths = java.nio.file.Files.walk(root)) {
+                for (var path : paths.sorted(java.util.Comparator.reverseOrder()).toList())
+                    java.nio.file.Files.deleteIfExists(path);
             }
         }
+    }
+
+    private static Object field(Object owner, String name) throws Exception {
+        var f = owner.getClass().getDeclaredField(name);
+        f.setAccessible(true);
+        return f.get(owner);
     }
 }

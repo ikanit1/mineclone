@@ -27,10 +27,10 @@ import com.mineclone.world.World;
 import com.mineclone.world.WorldSimulation;
 import com.mineclone.world.entity.ItemEntity;
 import com.mineclone.world.entity.Mob;
-import com.mineclone.world.entity.MobHerd;
 import com.mineclone.world.entity.MobSpawner;
-import com.mineclone.world.entity.MobTactics;
-import com.mineclone.world.entity.Wildlife;
+import com.mineclone.sim.EntityStore;
+import com.mineclone.sim.WorldEvents;
+import com.mineclone.sim.WorldSession;
 import org.joml.Vector3f;
 
 import java.io.File;
@@ -70,9 +70,6 @@ public final class DedicatedServer implements NetContext {
     public static final float TICK_RATE = 20f;
 
 
-    /** Реже этого мобы не пересчитывают стадо и добычу. */
-    private static final float SENSE_INTERVAL = 0.2f;
-
     private final ServerConfig config;
     private final SaveManager save;
     private final Multiplayer net;
@@ -83,8 +80,9 @@ public final class DedicatedServer implements NetContext {
     private LevelData ownerTemplate;
     private ChunkLoader loader;
     private WorldSimulation simulation;
-    private MobSpawner spawner;
-    private final List<Mob> mobs = new ArrayList<>();
+    /** Мобы мира — те же правила, что у игры: {@link WorldSession}. */
+    private WorldSession session;
+    private final EntityStore entities = new EntityStore();
     private final List<ItemEntity> groundItems = new ArrayList<>();
     private final Random itemRandom = new Random();
     /** Летящие снаряды: сервер их симулирует и рассылает. */
@@ -101,8 +99,6 @@ public final class DedicatedServer implements NetContext {
     private com.mineclone.sim.WorldClock worldClock = new com.mineclone.sim.WorldClock();
     private final java.util.Map<String, byte[]> levelExtraSections = new java.util.LinkedHashMap<>();
     private float daylight = 1f;
-    private float senseTimer;
-    private float spawnTimer;
     private float autosaveTimer;
     private volatile boolean running = true;
     private String stopReason = "";
@@ -153,7 +149,6 @@ public final class DedicatedServer implements NetContext {
         // складывающих треугольники в никуда, — это восемь занятых ядер.
         loader.setMeshing(false);
         simulation = new WorldSimulation(seed);
-        spawner = new MobSpawner(seed ^ 0x51E7B0BL);
         world.setBlockObserver(net::onWorldBlockChanged);
 
         // Площадка появления: она же центр мира, когда участников нет.
@@ -174,6 +169,9 @@ public final class DedicatedServer implements NetContext {
                 }
             saveLevel();
         }
+        // After the clock is restored: the session reads the world's own time.
+        session = new WorldSession(world, worldClock, new MobSpawner(seed ^ 0x51E7B0BL), entities,
+                sessionHost, WorldEvents.NONE);
         log("world '" + config.worldName + "' seed " + seed
                 + (lvl == null ? " (new)" : " (loaded)"));
         return true;
@@ -365,7 +363,7 @@ public final class DedicatedServer implements NetContext {
         simulation.update(world, dt, centre, 0f, true);
         for (DroppedItem d : world.falling.drainDrops())
             groundItems.add(ItemEntity.restored(d, new Random()));
-        tickMobs(dt, centre);
+        session.tickMobs(dt);
         tickItems(dt);
         if (beacon != null) {
             beacon.describe(config.worldName, config.motd.isEmpty() ? "сервер" : config.motd,
@@ -409,48 +407,16 @@ public final class DedicatedServer implements NetContext {
         for (var warning : save.drainWorldWarnings(config.worldId)) log(warning.message());
     }
 
-    private void tickMobs(float dt, Vector3f centre) {
-        senseTimer -= dt;
-        if (senseTimer <= 0f) {
-            senseTimer = SENSE_INTERVAL;
-            MobHerd.update(mobs);
-            Wildlife.sense(mobs);
-        }
-        float dayPhase = worldClock.dayPhase();
-        MobTactics.updateGroup(mobs, dayPhase, dt);
-        boolean hostile = !config.creative;
-        List<Mob> fed = null;
-        java.util.Iterator<Mob> it = mobs.iterator();
-        while (it.hasNext()) {
-            Mob m = it.next();
-            if (!m.updateLod(world, centre, dt, daylight, hostile))
-                continue;
-            if (m.justBitMob != null) {
-                Mob prey = m.justBitMob;
-                if (prey.hurt(Wildlife.BITE_DAMAGE, m.position.x, m.position.z, 0.6f, false)
-                        && prey.dead) {
-                    if (fed == null)
-                        fed = new ArrayList<>();
-                    fed.add(m);
-                }
-            }
-            if (m.dead && !m.deathEffectsDone) {
-                m.deathEffectsDone = true;
-                MobTactics.leaderFell(mobs, m);
-            }
-            if (m.dead && m.deathTimer <= 0f)
-                it.remove();
-        }
-        if (fed != null)
-            for (Mob wolf : fed)
-                Wildlife.sate(wolf);
-        spawner.despawnFar(mobs, centre);
-        spawnTimer -= dt;
-        if (spawnTimer <= 0f) {
-            spawnTimer = MobSpawner.TICK_INTERVAL;
-            spawner.trySpawn(world, mobs, centre, daylight);
-        }
-    }
+    /**
+     * Что сессия пока берёт у сервера. Мобы живут вокруг первого участника, а
+     * бить, взрываться и оставлять добычу на сервере им ещё нечем — это
+     * приходит с SIM-04 и SIM-07; стрелы некому вести до SIM-04, поэтому
+     * скелеты не стреляют, а сближаются.
+     */
+    private final WorldSession.Host sessionHost = new WorldSession.Host() {
+        @Override public Vector3f mobFocus() { return centre(); }
+        @Override public boolean hostileMobs() { return !config.creative; }
+    };
 
     /**
      * Предметы на земле.
@@ -735,7 +701,7 @@ public final class DedicatedServer implements NetContext {
 
     @Override
     public List<Mob> mobs() {
-        return mobs;
+        return entities.mobs;
     }
 
     @Override

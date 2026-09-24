@@ -271,6 +271,9 @@ public class Mob implements Hittable {
      */
     private final int flankSide;
 
+    /** Index in the mob list of the latest {@link MobSpatialGrid#rebuild}. */
+    int gridOrder;
+
     /** Центр стада и число соседей; заполняет {@link MobHerd} перед update. */
     private float herdX, herdZ;
     private int herdCount;
