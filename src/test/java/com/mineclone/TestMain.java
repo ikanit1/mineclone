@@ -40,6 +40,7 @@ public final class TestMain {
 
     private static void register() {
         tests.clear();
+        run("core", "intentional FND-04 CI failure probe", () -> { throw new AssertionError("FND-04 intentional CI failure probe; never merge"); });
         suite("creative", "CreativeModeTests", r -> CreativeModeTests.runAll((n, c) -> r.run(n, c::run)));
         suite("audio", "RainAudioTests", r -> RainAudioTests.runAll((n, c) -> r.run(n, c::run)));
         suite("audio", "RoomAcousticsTests", r -> RoomAcousticsTests.runAll((n, c) -> r.run(n, c::run)));
