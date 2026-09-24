@@ -41,6 +41,7 @@ public final class ItemRegistry {
     private final Map<ResourceId, Item> missing = new HashMap<>();
     private TagRegistry tags = TagRegistry.empty();
     private RecipeRegistry recipes = RecipeRegistry.empty();
+    private com.mineclone.item.loot.LootRegistry loot = com.mineclone.item.loot.LootRegistry.empty(this);
 
     private ItemRegistry(Map<ResourceId, Item> byId, Item[] byBlock, Categories categories) {
         this.byId = byId;
@@ -80,6 +81,7 @@ public final class ItemRegistry {
         reg.tags = TagRegistry.load(pack, byId.values(), byId);
         // Recipes resolve item identities and tag memberships from this registry.
         reg.recipes = RecipeRegistry.load(pack, reg);
+        reg.loot = com.mineclone.item.loot.LootRegistry.load(pack, reg);
         return reg;
     }
 
@@ -239,6 +241,7 @@ public final class ItemRegistry {
     }
 
     public RecipeRegistry recipes() { return recipes; }
+    public com.mineclone.item.loot.LootRegistry loot() { return loot; }
 
     public Categories categories() {
         return categories;

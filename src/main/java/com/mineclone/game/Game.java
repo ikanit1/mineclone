@@ -373,6 +373,8 @@ public class Game {
      * терять то, что записала новая.
      */
     private java.util.Map<String, byte[]> levelExtraSections = java.util.Map.of();
+    private com.mineclone.save.PlayerRecord playerRecordTemplate = com.mineclone.save.PlayerRecord.builder().build();
+    private com.mineclone.save.LevelData loadedLevelTemplate;
     /**
      * Стопки из сейва, которым не хватило места в инвентаре: их роняют под
      * ноги, как только чанк под игроком загрузится. Ронять сразу нельзя —
@@ -893,28 +895,16 @@ public class Game {
         // worldId у него пустой именно поэтому.
         if (world == null || worldId == null)
             return;
-        com.mineclone.world.ItemStack[] invSnapshot =
-                new com.mineclone.world.ItemStack[com.mineclone.world.Inventory.SIZE];
-        for (int i = 0; i < invSnapshot.length; i++) {
-            com.mineclone.world.ItemStack s = inventory.get(i);
-            invSnapshot[i] = s == null ? null : s.copy();
-        }
         java.util.LinkedHashMap<String, byte[]> savedSections =
                 new java.util.LinkedHashMap<>(levelExtraSections);
-        savedSections.put(SurvivalProgress.SAVE_SECTION, survivalProgress.encode());
         savedSections.put(com.mineclone.sim.WorldClock.SAVE_SECTION, worldClock.encode());
         com.mineclone.save.LevelData d = new com.mineclone.save.LevelData(
                 worldDisplayName,
                 world.seed,
-                player.position.x, player.position.y, player.position.z,
-                worldSpawn.x, worldSpawn.y, worldSpawn.z,
-                player.camera.yaw, player.camera.pitch,
-                worldClock.gameTimeFloat(), selectedSlot, invSnapshot, gameMode, System.currentTimeMillis(),
-                player.health, player.hunger,
-                // Курсор, сетка крафта и ожидающий выброс тоже принадлежат игроку.
-                // Возвращать их в инвентарь при записи нельзя: он мог быть полон.
-                pendingPlayerItems(),
-                savedSections);
+                loadedLevelTemplate==null ? worldSpawn.x : preserveCoordinate(worldSpawn.x,loadedLevelTemplate.spawnX),
+                loadedLevelTemplate==null ? worldSpawn.y : preserveCoordinate(worldSpawn.y,loadedLevelTemplate.spawnY),
+                loadedLevelTemplate==null ? worldSpawn.z : preserveCoordinate(worldSpawn.z,loadedLevelTemplate.spawnZ),
+                worldClock.gameTimeFloat(), gameMode, System.currentTimeMillis(), capturePlayer(), savedSections);
         save.saveLevel(worldId, d);
         // Превью снимет ближайший кадр мира: сейчас идёт обновление, а не отрисовка.
         iconRequested = true;
@@ -1261,44 +1251,27 @@ public class Game {
         survivalProgress = new SurvivalProgress();
 
         levelExtraSections = java.util.Map.of();
+        loadedLevelTemplate = lvl;
         pendingDrops.clear();
         if (lvl != null) {
             java.util.LinkedHashMap<String, byte[]> extra =
                     new java.util.LinkedHashMap<>(lvl.extraSections);
-            survivalProgress = SurvivalProgress.decode(
-                    extra.remove(SurvivalProgress.SAVE_SECTION));
+            extra.remove(SurvivalProgress.SAVE_SECTION);
             levelExtraSections = java.util.Collections.unmodifiableMap(extra);
             worldDisplayName = lvl.name.isEmpty() ? "World" : lvl.name;
             worldSpawn.set((float) lvl.spawnX, (float) lvl.spawnY, (float) lvl.spawnZ);
-            player.position.set((float) lvl.px, (float) lvl.py, (float) lvl.pz);
-            player.camera.yaw = lvl.yaw;
-            player.camera.pitch = lvl.pitch;
             worldClock = com.mineclone.sim.WorldClock.fromSaved(lvl.timeOfDay,
                     lvl.extraSections.get(com.mineclone.sim.WorldClock.SAVE_SECTION));
-            selectedSlot = Math.floorMod(lvl.selectedSlot, 9);
             gameMode = lvl.gameMode;
-            inventory = new com.mineclone.world.Inventory();
-            for (int i = 0; i < com.mineclone.world.Inventory.SIZE && i < lvl.inventory.length; i++)
-                inventory.set(i, lvl.inventory[i]);
-            for (com.mineclone.world.ItemStack s : lvl.pending) {
-                if (s == null || s.count <= 0)
-                    continue;
-                int leftover = giveStack(s);
-                if (leftover > 0)
-                    pendingDrops.add(s.copyWithCount(leftover));
-            }
+            restorePlayer(lvl.player);
         } else {
             worldDisplayName = "World";
+            restorePlayer(com.mineclone.save.PlayerRecord.builder().pose(player.position.x,player.position.y,player.position.z,0,0,0).build());
         }
         // Миры, созданные до появления цепочки, начинают не с рубки дерева,
         // если в инвентаре уже лежит железная или алмазная кирка.
         survivalProgress.synchronize(inventory);
 
-        player.respawn(player.position.x, player.position.y, player.position.z);
-        bodyRotation.snap(player.camera.yaw, player.camera.pitch);
-        playerAnimation.reset(player.position, player.camera.yaw, player.onGround, player.inWater, player.flying);
-        player.health = lvl != null ? lvl.health : Player.MAX_HEALTH;
-        player.hunger = lvl != null ? lvl.hunger : Player.MAX_HUNGER;
         player.velocity.set(0, 0, 0);
         player.lastFallDistance = 0f;
         lastHeldBlock = currentBlock();
@@ -2087,6 +2060,41 @@ public class Game {
         return pending.toArray(com.mineclone.world.ItemStack[]::new);
     }
 
+    /** One detached checkpoint for local disk saves and the temporary v7 network adapter. */
+    public com.mineclone.save.PlayerRecord capturePlayer() {
+        var slots=new com.mineclone.world.ItemStack[com.mineclone.world.Inventory.SIZE];
+        for(int i=0;i<slots.length;i++)slots[i]=inventory.get(i);
+        var previous=playerRecordTemplate.pose();var vitals=playerRecordTemplate.vitals();
+        byte[] progress=playerRecordTemplate.progress();
+        // A future progress payload remains opaque until a reader understands it.
+        if(progress.length==0 || progress.length==2 && (progress[0]==1 || progress[0]==2))progress=survivalProgress.encode();
+        return playerRecordTemplate.toBuilder().inventory(slots).pending(pendingPlayerItems())
+                .pose(preserveCoordinate(player.position.x,previous.x()),preserveCoordinate(player.position.y,previous.y()),
+                        preserveCoordinate(player.position.z,previous.z()),player.camera.yaw,player.camera.pitch,selectedSlot)
+                .vitals(player.health,player.hunger,vitals.saturation(),vitals.air()).progress(progress).build();
+    }
+
+    private static double preserveCoordinate(float current,double saved) { return current==(float)saved ? saved : current; }
+
+    private void restorePlayer(com.mineclone.save.PlayerRecord record) {
+        // A host checkpoint supersedes an old remote window; closing normally would return its items twice.
+        discardRemoteWindow();playerRecordTemplate=record;
+        inventory=new com.mineclone.world.Inventory();var slots=record.inventory();
+        for(int i=0;i<slots.length;i++)inventory.set(i,slots[i]);
+        pendingDrops.clear();
+        for(var stack:record.pending())if(stack!=null) {
+            int left=inventory.add(stack);if(left>0)pendingDrops.add(stack.copyWithCount(left));
+        }
+        var pose=record.pose();var vitals=record.vitals();
+        player.respawn((float)pose.x(),(float)pose.y(),(float)pose.z());
+        player.health=vitals.health();player.hunger=vitals.hunger();
+        player.camera.yaw=pose.yaw();player.camera.pitch=pose.pitch();selectedSlot=pose.selected();
+        survivalProgress=SurvivalProgress.decode(record.progress());
+        bodyRotation.snap(pose.yaw(),pose.pitch());
+        playerAnimation.reset(player.position,pose.yaw(),player.onGround,player.inWater,player.flying);
+        lastStreamCX=lastStreamCZ=Integer.MIN_VALUE;
+    }
+
     /** Закрывает окно: курсор и остатки возвращаются игроку через closed(). */
     private void closeWindow() {
         if(net.closeContainer())return;
@@ -2845,12 +2853,14 @@ public class Game {
     private void giveMobDrop(com.mineclone.world.entity.Mob m) {
         if (gameMode != com.mineclone.world.GameMode.SURVIVAL)
             return;
-        String drop = m.type.drop();
         // Задранного волком съели — мяса с него нет.
-        if (drop == null || m.eaten || m.type.dropCount() <= 0)
+        if (m.eaten)
             return;
-        dropItem(com.mineclone.world.ItemStack.of(drop, m.type.dropCount()),
-                m.position.x, m.position.y + m.type.height * 0.5f, m.position.z);
+        var context = new com.mineclone.item.loot.LootContext(world.seed,
+                (int) Math.floor(m.position.x), (int) Math.floor(m.position.y), (int) Math.floor(m.position.z),
+                heldTool(), m.killedByParticipant, gameMode, itemRandom);
+        for (var drop : com.mineclone.item.Items.get().loot().entityDrops(m.type, context))
+            dropItem(drop, m.position.x, m.position.y + m.type.height * 0.5f, m.position.z);
     }
 
     /**
@@ -3637,11 +3647,7 @@ public class Game {
      * но ничего не оставляет — как в MC.
      */
     private boolean canHarvest(BlockType target) {
-        int need = target.requiredToolLevel();
-        if (need <= 0)
-            return true;
-        com.mineclone.world.ItemStack tool = heldTool();
-        return tool != null && tool.tool().suits(target) && tool.tool().level() >= need;
+        return com.mineclone.item.loot.LootRegistry.canHarvest(target, heldTool());
     }
 
     /** Сносит очко прочности и убирает инструмент, если он развалился. */
@@ -3678,9 +3684,12 @@ public class Game {
                 ? BlockType.WATER : BlockType.AIR);
         playerStructures.remove(com.mineclone.world.StructureStability.placementKey(x, y, z));
         if (gameMode == com.mineclone.world.GameMode.SURVIVAL) {
-            com.mineclone.world.ItemStack drop = harvest ? blockDrop(target) : null;
-            if (drop != null)
-                dropItem(drop, x + 0.5f, y + 0.3f, z + 0.5f);
+            if (harvest) {
+                var context = new com.mineclone.item.loot.LootContext(world.seed, x, y, z,
+                        heldTool(), true, gameMode, itemRandom);
+                for (var drop : com.mineclone.item.Items.get().loot().blockDrops(target, context))
+                    dropItem(drop, x + 0.5f, y + 0.3f, z + 0.5f);
+            }
             wearHeldTool();
         }
         float pSky = world.getSkyLight(x, y, z) / (float) com.mineclone.world.Chunk.MAX_LIGHT;
@@ -3701,16 +3710,6 @@ public class Game {
                 world.setBlock(x, otherY, z, BlockType.AIR);
         }
         collapseUnsupportedNeighbours(x, y, z);
-    }
-
-    /** Руды с самостоятельным предметом не должны выпадать как блоки руды. */
-    private static com.mineclone.world.ItemStack blockDrop(BlockType target) {
-        if (target == BlockType.COAL_ORE)
-            return com.mineclone.world.ItemStack.of("coal");
-        if (target == BlockType.DIAMOND_ORE)
-            return com.mineclone.world.ItemStack.of("diamond");
-        BlockType block = target.getDrop();
-        return block == BlockType.AIR ? null : new com.mineclone.world.ItemStack(block, 1);
     }
 
     private void collapseUnsupportedNeighbours(int x, int y, int z) {
@@ -6232,30 +6231,10 @@ public class Game {
         return new com.mineclone.net.NetContext() {
             @Override public String playerId() { return save.playerId(); }
             @Override public com.mineclone.net.PlayerData capturePlayerData() {
-                var slots=new com.mineclone.world.ItemStack[com.mineclone.world.Inventory.SIZE];
-                for(int i=0;i<slots.length;i++)slots[i]=inventory.get(i);
-                return new com.mineclone.net.PlayerData(slots,pendingPlayerItems(),
-                        player.position.x,player.position.y,player.position.z,
-                        player.camera.yaw,player.camera.pitch,player.health,player.hunger,
-                        selectedSlot,survivalProgress.encode());
+                return new com.mineclone.net.PlayerData(capturePlayer());
             }
             @Override public void restorePlayerData(com.mineclone.net.PlayerData data) {
-                discardRemoteWindow();
-                for(int i=0;i<com.mineclone.world.Inventory.SIZE;i++)
-                    inventory.set(i,data.inventory[i]==null?null:data.inventory[i].copy());
-                pendingDrops.clear();
-                for(var s:data.pending)if(s!=null){
-                    int left=inventory.add(s.copy());
-                    if(left>0)pendingDrops.add(s.copyWithCount(left));
-                }
-                player.respawn(data.x,data.y,data.z);
-                player.health=data.health;player.hunger=data.hunger;
-                player.camera.yaw=data.yaw;player.camera.pitch=data.pitch;
-                selectedSlot=data.selected;
-                survivalProgress=SurvivalProgress.decode(data.progress);
-                bodyRotation.snap(data.yaw,data.pitch);
-                playerAnimation.reset(player.position,data.yaw,player.onGround,player.inWater,player.flying);
-                lastStreamCX=lastStreamCZ=Integer.MIN_VALUE;
+                restorePlayer(playerRecordTemplate.mergeLegacy(data));
             }
             @Override public com.mineclone.net.PlayerData loadGuest(String id) {
                 return worldId==null?null:save.loadGuest(worldId,id);
@@ -6597,6 +6576,8 @@ public class Game {
         inventory = new com.mineclone.world.Inventory();
         survivalProgress = new SurvivalProgress();
         levelExtraSections = java.util.Map.of();
+        playerRecordTemplate = com.mineclone.save.PlayerRecord.builder().build();
+        loadedLevelTemplate = null;
         pendingDrops.clear();
         worldSpawn.set(sx, sy, sz);
         player.position.set(sx, sy, sz);

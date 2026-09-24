@@ -1,0 +1,13 @@
+{
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "item": "mineclone:coal",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

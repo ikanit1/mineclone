@@ -179,14 +179,4 @@ public enum BlockType {
         return i < VALUES.length ? VALUES[i] : AIR;
     }
 
-    /** What this block yields when broken in survival. AIR = no drop. */
-    public BlockType getDrop() {
-        return switch (this) {
-            case STONE -> COBBLE;
-            case GRASS, SNOWY_GRASS, PODZOL, DRY_GRASS -> DIRT;
-            case LEAVES, WATER, WATER_FLOW, LAVA, AIR, DOOR_OPEN, FIRE, SNOW_LAYER,
-                    ICE, THIN_ICE, WEB, JOURNAL -> AIR;
-            default -> this;
-        };
-    }
 }

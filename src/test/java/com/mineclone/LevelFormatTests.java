@@ -57,8 +57,10 @@ final class LevelFormatTests {
                 check(version == 11 && version > 10, "old reader guard");
                 check(in.readInt() == 11 && !in.readUTF().isBlank(), "minimum reader/writtenBy");
                 var sections = SectionCodec.read(in);
-                for (String name : new String[] { "world", "player", "clock", "rules", "worldgen", "inventory" })
+                for (String name : new String[] { "world", "player", "player_format", "world_spawn", "clock", "rules", "worldgen" })
                     check(sections.containsKey(name), "missing " + name);
+                check(com.mineclone.save.PlayerRecordCodec.decode(sections.get("player")).inventory()[0].count==23,
+                        "inventory is nested in the canonical player record");
                 check(in.read() == -1, "unexpected trailing data");
             }
         }

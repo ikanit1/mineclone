@@ -534,18 +534,16 @@ public final class DedicatedServer implements NetContext {
         // the loaded single-player world instead of replacing its inventory,
         // pending cursor stacks and vitals with a fresh empty player.
         LevelData owner = ownerTemplate;
+        com.mineclone.save.PlayerRecord record = owner != null ? owner.player
+                : com.mineclone.save.PlayerRecord.builder().pose(spawn.x,spawn.y,spawn.z,0,0,0).build();
         save.saveLevel(config.worldId, new LevelData(
                 config.worldName, world.seed,
-                owner != null ? owner.px : spawn.x,
-                owner != null ? owner.py : spawn.y,
-                owner != null ? owner.pz : spawn.z,
-                spawn.x, spawn.y, spawn.z,
-                owner != null ? owner.yaw : 0f, owner != null ? owner.pitch : 0f,
-                worldClock.gameTimeFloat(), owner != null ? owner.selectedSlot : 0,
-                owner != null ? owner.inventory : new ItemStack[Inventory.SIZE],
+                owner != null && (float)owner.spawnX==spawn.x ? owner.spawnX : spawn.x,
+                owner != null && (float)owner.spawnY==spawn.y ? owner.spawnY : spawn.y,
+                owner != null && (float)owner.spawnZ==spawn.z ? owner.spawnZ : spawn.z,
+                worldClock.gameTimeFloat(),
                 config.creative ? GameMode.CREATIVE : GameMode.SURVIVAL,
-                System.currentTimeMillis(), owner != null ? owner.health : 20f,
-                owner != null ? owner.hunger : 20f, owner != null ? owner.pending : null, sections));
+                System.currentTimeMillis(), record, sections));
     }
 
     private List<DroppedItem> itemsInChunk(Chunk c) {

@@ -84,6 +84,11 @@ public final class SaveManager {
     // Keep the newest detached checkpoint visible until its own write succeeds.
     private final java.util.Map<java.nio.file.Path, ChunkSnapshot> pendingChunks =
             new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Map<java.nio.file.Path, java.util.concurrent.CompletableFuture<Void>> pendingGuests =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private final java.util.Set<java.nio.file.Path> checkedGuests = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final java.util.Set<java.nio.file.Path> protectedGuests = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    private final java.util.Set<String> legacyPlayerLevels = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private volatile Thread writerThread;
     private final java.util.concurrent.atomic.LongAdder completedWrites = new java.util.concurrent.atomic.LongAdder();
     private final java.util.concurrent.atomic.LongAdder writtenBytes = new java.util.concurrent.atomic.LongAdder();
@@ -154,7 +159,7 @@ public final class SaveManager {
                         throw new java.util.concurrent.CompletionException(new IOException("cannot back up unreadable world: " + load));
                     try {
                         return backups.snapshot(id, levelVersions.getOrDefault(id, SaveFormat.LEVEL_VERSION)
-                                < SaveFormat.LEVEL_VERSION ? "migration" : reason);
+                                < SaveFormat.LEVEL_VERSION || legacyPlayerLevels.contains(id) ? "migration" : reason);
                     } catch (IOException e) { throw new java.util.concurrent.CompletionException(e); }
                 }
             }, chunkWriter);
@@ -223,31 +228,69 @@ public final class SaveManager {
     }
 
     public com.mineclone.net.PlayerData loadGuest(String world, String id) {
-        File file = guestFile(world,id);
-        if (!file.isFile()) return null;
-        try (var in = new DataInputStream(new GZIPInputStream(new FileInputStream(file)))) {
-            if (in.readInt()!=SaveFormat.MAGIC || in.readInt()!=1) throw new IOException("player format");
-            byte[] bytes=in.readNBytes(262145);
-            if(bytes.length>262144) throw new IOException("player checkpoint too large");
-            var data=com.mineclone.net.PlayerData.read(com.mineclone.net.PacketBuf.reading(bytes));
-            if(data==null) throw new IOException("invalid player checkpoint");
-            return data;
-        } catch (IOException e) {
-            // A damaged checkpoint must never silently replace a real inventory with an empty one.
-            throw new IllegalStateException("Cannot load player " + id, e);
-        }
+        PlayerRecord record = loadGuestRecord(world,id);
+        return record == null ? null : new com.mineclone.net.PlayerData(record);
     }
 
     public void saveGuest(String world, String id, com.mineclone.net.PlayerData data) {
+        saveGuestRecord(world,id,PlayerRecord.fromPlayerData(data));
+    }
+
+    public PlayerRecord loadGuestRecord(String world,String id) {
         File file=guestFile(world,id);
-        byte[] bytes=data.bytes();
-        var backup = sessionBackup(world);
-        chunkWriter.submit(() -> {
-            try {
-                awaitBackup(backup);
-                writeGzipAtomic(file,out -> { out.writeInt(SaveFormat.MAGIC);out.writeInt(1);out.write(bytes); });
-            } catch (IOException e) { System.err.println("saveGuest failed: " + e.getMessage()); }
-        });
+        if(Thread.currentThread()!=writerThread) {
+            var pending=pendingGuests.get(file.toPath());
+            if(pending!=null)try{pending.join();}catch(java.util.concurrent.CompletionException ignored){}
+        }
+        synchronized(this) {
+            try{return readGuestRecord(file);}
+            catch(IOException | RuntimeException error){throw new IllegalStateException("Cannot load player " + id,error);}
+        }
+    }
+
+    private PlayerRecord readGuestRecord(File file)throws IOException {
+        var path=file.toPath();checkedGuests.add(path);
+        if(Files.notExists(path))return null;
+        try(var raw=new FileInputStream(file);var in=new DataInputStream(new GZIPInputStream(raw))) {
+            if(in.readInt()!=SaveFormat.MAGIC)throw new IOException("invalid player file magic");
+            int version=in.readInt();PlayerRecord result;
+            if(version==1) {
+                byte[] bytes=in.readNBytes(262145);
+                if(bytes.length>262144)throw new IOException("player checkpoint too large");
+                var buffer=com.mineclone.net.PacketBuf.reading(bytes);
+                var data=com.mineclone.net.PlayerData.read(buffer);
+                if(data==null || buffer.hasMore())throw new IOException("invalid legacy player checkpoint");
+                result=PlayerRecord.fromPlayerData(data);
+            } else if(version>=2) {
+                int minReader=in.readInt();
+                if(minReader<1 || minReader>version)throw new IOException("invalid player minimum reader");
+                if(minReader>2)throw new IOException("player file requires reader " + minReader);
+                result=PlayerRecordCodec.read(in);
+            } else throw new IOException("invalid player file version " + version);
+            requireEnd(in);return result;
+        } catch(IOException | RuntimeException failure) {
+            protectedGuests.add(path);throw failure;
+        }
+    }
+
+    public void saveGuestRecord(String world,String id,PlayerRecord record) {
+        File file=guestFile(world,id);final byte[] bytes;
+        try{bytes=PlayerRecordCodec.encode(record);}catch(IOException failure){throw new IllegalArgumentException("Cannot encode player",failure);}
+        synchronized(queueLock) {
+            var backup=sessionBackup(world);
+            var write=java.util.concurrent.CompletableFuture.runAsync(()->{
+                try {
+                    awaitBackup(backup);
+                    synchronized(this) {
+                        if(!checkedGuests.contains(file.toPath()))readGuestRecord(file);
+                        if(protectedGuests.contains(file.toPath()))throw new IOException("player failed its read check");
+                        writeGzipAtomic(file,out->{out.writeInt(SaveFormat.MAGIC);out.writeInt(2);out.writeInt(2);out.write(bytes);});
+                    }
+                } catch(IOException failure){throw new java.util.concurrent.CompletionException(failure);}
+            },chunkWriter);
+            pendingGuests.put(file.toPath(),write);
+            write.whenComplete((ignored,failure)->{if(failure!=null)System.err.println("saveGuest refused: "+failure.getCause());});
+        }
     }
 
     private File worldDir(String id) { return new File(savesRoot, id); }
@@ -388,10 +431,8 @@ public final class SaveManager {
             return null;
         }
         saveLevel(copy, new LevelData(d.name + " (копия)", d.seed,
-                d.px, d.py, d.pz, d.spawnX, d.spawnY, d.spawnZ,
-                d.yaw, d.pitch, d.timeOfDay, d.selectedSlot,
-                d.inventory, d.gameMode, System.currentTimeMillis(), d.health, d.hunger,
-                d.pending, d.extraSections));
+                d.spawnX, d.spawnY, d.spawnZ, d.timeOfDay, d.gameMode,
+                System.currentTimeMillis(), d.player, d.extraSections));
         return copy;
     }
 
@@ -517,6 +558,7 @@ public final class SaveManager {
         }
         writeGzipAtomic(levelFile(id), o -> o.write(payload));
         levelVersions.put(id, SaveFormat.LEVEL_VERSION);
+        legacyPlayerLevels.remove(id);
     }
 
     /** Имя секции инвентаря игрока. */
@@ -533,12 +575,9 @@ public final class SaveManager {
         sections.put("world", sectionBytes(out -> {
             out.writeUTF(d.name); out.writeLong(d.seed); out.writeLong(d.lastPlayed);
         }));
-        sections.put("player", sectionBytes(out -> {
-            out.writeDouble(d.px); out.writeDouble(d.py); out.writeDouble(d.pz);
-            out.writeDouble(d.spawnX); out.writeDouble(d.spawnY); out.writeDouble(d.spawnZ);
-            out.writeFloat(d.yaw); out.writeFloat(d.pitch); out.writeInt(d.selectedSlot);
-            out.writeFloat(d.health); out.writeFloat(d.hunger);
-        }));
+        sections.put(PlayerRecordCodec.LEVEL_MARKER, sectionBytes(out -> out.writeInt(PlayerRecordCodec.MAGIC)));
+        sections.put("player", PlayerRecordCodec.encode(d.player));
+        sections.put("world_spawn",sectionBytes(out->{out.writeDouble(d.spawnX);out.writeDouble(d.spawnY);out.writeDouble(d.spawnZ);}));
         sections.put("clock", com.mineclone.sim.WorldClock.fromSaved(d.timeOfDay, d.extraSections.get("clock")).encode());
         // Rules/worldgen evolve independently; preserve their full section payloads.
         byte[] rules = d.extraSections.getOrDefault("rules", new byte[Integer.BYTES]).clone();
@@ -546,12 +585,11 @@ public final class SaveManager {
         java.nio.ByteBuffer.wrap(rules).putInt(d.gameMode.ordinal());
         sections.put("rules", rules);
         sections.put("worldgen", d.extraSections.getOrDefault("worldgen", sectionBytes(out -> out.writeInt(1))));
-        sections.put(SECTION_INVENTORY, stacksToBytes(d.inventory));
-        if (d.pending.length > 0)
-            sections.put(SECTION_PENDING, stacksToBytes(d.pending));
         // Чужие секции идут последними и ровно теми байтами, что пришли.
         for (var e : d.extraSections.entrySet())
-            sections.putIfAbsent(e.getKey(), e.getValue());
+            if(!e.getKey().equals(PlayerRecord.LEGACY_PROGRESS_SECTION)
+                    && !e.getKey().equals(SECTION_INVENTORY) && !e.getKey().equals(SECTION_PENDING))
+                sections.putIfAbsent(e.getKey(), e.getValue());
         com.mineclone.data.SectionCodec.write(o, sections);
     }
 
@@ -619,7 +657,9 @@ public final class SaveManager {
                     return new LevelLoad.TooNew(version, SaveFormat.LEVEL_VERSION);
                 if (minReader < 1) throw new IOException("invalid minimum reader version " + minReader);
                 in.readUTF(); // writtenBy, informational; never execute or interpret it.
-                LevelData data = readLevelSections(com.mineclone.data.SectionCodec.read(in));
+                var sections=com.mineclone.data.SectionCodec.read(in);
+                LevelData data = readLevelSections(sections);
+                if(!sections.containsKey(PlayerRecordCodec.LEVEL_MARKER))legacyPlayerLevels.add(id);
                 requireEnd(in);
                 levelVersions.put(id, version);
                 return new LevelLoad.Loaded(data);
@@ -798,13 +838,29 @@ public final class SaveManager {
         }
         double px, py, pz, spawnX, spawnY, spawnZ;
         float yaw, pitch, health, hunger;
-        int slot;
-        try (var player = requiredSection(sections, "player")) {
-            px = player.readDouble(); py = player.readDouble(); pz = player.readDouble();
-            spawnX = player.readDouble(); spawnY = player.readDouble(); spawnZ = player.readDouble();
-            yaw = player.readFloat(); pitch = player.readFloat(); slot = player.readInt();
-            health = player.readFloat(); hunger = player.readFloat();
-            requireEnd(player);
+        int slot; PlayerRecord record=null;
+        if(sections.containsKey(PlayerRecordCodec.LEVEL_MARKER)) {
+            try(var marker=requiredSection(sections,PlayerRecordCodec.LEVEL_MARKER)) {
+                if(marker.readInt()!=PlayerRecordCodec.MAGIC)throw new IOException("unsupported level player format");
+                requireEnd(marker);
+            }
+            byte[] bytes=sections.get("player");if(bytes==null)throw new IOException("missing level player section");
+            record=PlayerRecordCodec.decode(bytes);
+            var pose=record.pose();var vitals=record.vitals();
+            px=pose.x();py=pose.y();pz=pose.z();yaw=pose.yaw();pitch=pose.pitch();slot=pose.selected();
+            health=vitals.health();hunger=vitals.hunger();
+            try(var spawn=requiredSection(sections,"world_spawn")) {
+                spawnX=spawn.readDouble();spawnY=spawn.readDouble();spawnZ=spawn.readDouble();requireEnd(spawn);
+            }
+        } else {
+            // M0 v11 has an exact fixed payload. Never guess based on whether another parser succeeds.
+            try (var player = requiredSection(sections, "player")) {
+                px = player.readDouble(); py = player.readDouble(); pz = player.readDouble();
+                spawnX = player.readDouble(); spawnY = player.readDouble(); spawnZ = player.readDouble();
+                yaw = player.readFloat(); pitch = player.readFloat(); slot = player.readInt();
+                health = player.readFloat(); hunger = player.readFloat();
+                requireEnd(player);
+            }
         }
         for (double value : new double[] { px, py, pz, spawnX, spawnY, spawnZ, yaw, pitch, health, hunger })
             if (!Double.isFinite(value)) throw new IOException("non-finite player field");
@@ -817,13 +873,19 @@ public final class SaveManager {
         byte[] clockBytes = sections.get("clock");
         if (clockBytes == null) throw new IOException("missing level section clock");
         var clock = com.mineclone.sim.WorldClock.fromSaved(0, clockBytes);
+        java.util.Map<String, byte[]> extra = new java.util.LinkedHashMap<>(sections);
+        extra.remove("world"); extra.remove("player"); extra.remove(SECTION_INVENTORY); extra.remove(SECTION_PENDING);
+        extra.remove(PlayerRecordCodec.LEVEL_MARKER);extra.remove("world_spawn");
+        if(record!=null) {
+            extra.remove(PlayerRecord.LEGACY_PROGRESS_SECTION);
+            return new LevelData(name,seed,spawnX,spawnY,spawnZ,clock.gameTimeFloat(),
+                    com.mineclone.world.GameMode.values()[mode],lastPlayed,record,extra);
+        }
         byte[] invBytes = sections.get(SECTION_INVENTORY);
         if (invBytes == null) throw new IOException("missing level section inventory");
         var inventory = stacksFromBytes(invBytes, 256);
         var pending = sections.containsKey(SECTION_PENDING) ? stacksFromBytes(sections.get(SECTION_PENDING), 256)
                 : new com.mineclone.world.ItemStack[0];
-        java.util.Map<String, byte[]> extra = new java.util.LinkedHashMap<>(sections);
-        extra.remove("world"); extra.remove("player"); extra.remove(SECTION_INVENTORY); extra.remove(SECTION_PENDING);
         return new LevelData(name, seed, px, py, pz, spawnX, spawnY, spawnZ, yaw, pitch,
                 clock.gameTimeFloat(), slot, inventory, com.mineclone.world.GameMode.values()[mode], lastPlayed,
                 health, hunger, pending, extra);
@@ -1014,11 +1076,7 @@ public final class SaveManager {
     public void renameWorld(String id, String newName) {
         LevelData d = loadLevel(id);
         if (d == null) return;
-        saveLevel(id, new LevelData(newName, d.seed,
-                d.px, d.py, d.pz, d.spawnX, d.spawnY, d.spawnZ,
-                d.yaw, d.pitch, d.timeOfDay, d.selectedSlot,
-                d.inventory, d.gameMode, d.lastPlayed, d.health, d.hunger,
-                d.pending, d.extraSections));
+        saveLevel(id, d.withName(newName));
     }
 
     /** Метки слота инвентаря в формате уровня v8. */

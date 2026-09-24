@@ -6,6 +6,7 @@ import org.joml.Vector3f;
 
 /** A detached player checkpoint; world blocks belong to the world's own save. */
 public final class PlayerData {
+    private final com.mineclone.save.PlayerRecord record;
     public final ItemStack[] inventory, pending;
     public final float x, y, z, yaw, pitch, health, hunger;
     public final int selected;
@@ -13,19 +14,26 @@ public final class PlayerData {
 
     public PlayerData(ItemStack[] inventory, ItemStack[] pending, float x, float y, float z,
             float yaw, float pitch, float health, float hunger, int selected, byte[] progress) {
-        this.inventory = copy(inventory == null ? new ItemStack[Inventory.SIZE] : inventory);
-        this.pending = copy(pending == null ? new ItemStack[0] : pending);
-        this.x=x; this.y=y; this.z=z; this.yaw=yaw; this.pitch=pitch;
-        this.health=health; this.hunger=hunger; this.selected=selected;
-        this.progress=progress == null ? new byte[0] : progress.clone();
+        this(com.mineclone.save.PlayerRecord.builder().inventory(inventory).pending(pending)
+                .pose(x,y,z,yaw,pitch,selected).vitals(health,hunger,5,20).progress(progress).build());
     }
+
+    public PlayerData(com.mineclone.save.PlayerRecord record) {
+        this.record=java.util.Objects.requireNonNull(record);
+        this.inventory=record.inventory(); this.pending=record.pending();
+        var pose=record.pose();var vitals=record.vitals();
+        this.x=(float)pose.x();this.y=(float)pose.y();this.z=(float)pose.z();this.yaw=pose.yaw();this.pitch=pose.pitch();
+        this.health=vitals.health();this.hunger=vitals.hunger();this.selected=pose.selected();this.progress=record.progress();
+    }
+
+    public com.mineclone.save.PlayerRecord record() { return record; }
 
     public static PlayerData empty(Vector3f spawn) {
         return new PlayerData(null,null,spawn.x,spawn.y,spawn.z,0,0,20,20,0,null);
     }
 
     public PlayerData withItems(ItemStack[] inv, ItemStack[] held) {
-        return new PlayerData(inv,held,x,y,z,yaw,pitch,health,hunger,selected,progress);
+        return new PlayerData(record.withItems(inv,held));
     }
 
     public static ItemStack[] copy(ItemStack[] a) {

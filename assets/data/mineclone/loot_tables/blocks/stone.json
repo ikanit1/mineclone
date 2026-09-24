@@ -1,0 +1,13 @@
+{
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "item": "mineclone:cobblestone",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

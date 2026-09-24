@@ -6,6 +6,8 @@ import com.mineclone.world.ItemStack;
 
 /** Everything stored in level.dat. Immutable. */
 public final class LevelData {
+    /** Canonical player checkpoint; compatibility fields below are detached views. */
+    public final PlayerRecord player;
     public final String name;
     public final long seed;
     public final double px, py, pz;
@@ -98,10 +100,27 @@ public final class LevelData {
                      ItemStack[] inventory, GameMode gameMode, long lastPlayed, float health,
                      float hunger, ItemStack[] pending,
                      java.util.Map<String, byte[]> extraSections) {
-        this.pending = pending == null ? new ItemStack[0] : pending.clone();
+        this(name,seed,px,py,pz,spawnX,spawnY,spawnZ,yaw,pitch,timeOfDay,selectedSlot,
+                inventory,gameMode,lastPlayed,health,hunger,pending,extraSections,null);
+    }
+
+    public LevelData(String name, long seed, double spawnX, double spawnY, double spawnZ,
+                     float timeOfDay, GameMode gameMode, long lastPlayed, PlayerRecord player,
+                     java.util.Map<String, byte[]> extraSections) {
+        this(name,seed,player.pose().x(),player.pose().y(),player.pose().z(),spawnX,spawnY,spawnZ,
+                player.pose().yaw(),player.pose().pitch(),timeOfDay,player.pose().selected(),player.inventory(),
+                gameMode,lastPlayed,player.vitals().health(),player.vitals().hunger(),player.pending(),extraSections,player);
+    }
+
+    private LevelData(String name, long seed, double px, double py, double pz,
+                     double spawnX, double spawnY, double spawnZ, float yaw, float pitch,
+                     float timeOfDay, int selectedSlot, ItemStack[] inventory, GameMode gameMode,
+                     long lastPlayed, float health, float hunger, ItemStack[] pending,
+                     java.util.Map<String, byte[]> extraSections, PlayerRecord record) {
+        this.pending = pending == null ? new ItemStack[0] : PlayerRecord.copy(pending);
         this.extraSections = extraSections == null || extraSections.isEmpty()
                 ? java.util.Map.of()
-                : java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(extraSections));
+                : PlayerRecord.copySections(extraSections);
         this.hunger = Float.isFinite(hunger) ? Math.max(0f, Math.min(20f, hunger)) : 20f;
         this.health = Float.isFinite(health) ? Math.max(0f, Math.min(20f, health)) : 20f;
         this.name = name != null ? name : "";
@@ -114,6 +133,10 @@ public final class LevelData {
         this.inventory = normalizeInventory(inventory);
         this.gameMode = gameMode != null ? gameMode : GameMode.CREATIVE;
         this.lastPlayed = lastPlayed;
+        this.player = record != null ? record : PlayerRecord.builder()
+                .pose(px,py,pz,yaw,pitch,Math.floorMod(selectedSlot,9))
+                .vitals(this.health,this.hunger,5,20).inventory(this.inventory).pending(this.pending)
+                .progress(this.extraSections.get(PlayerRecord.LEGACY_PROGRESS_SECTION)).build();
     }
 
     /** Empty inventory (survival start). */
@@ -135,16 +158,19 @@ public final class LevelData {
 
     /** Та же запись, но с другими отложенными стопками — для выхода из мира. */
     public LevelData withPending(ItemStack[] newPending) {
-        return new LevelData(name, seed, px, py, pz, spawnX, spawnY, spawnZ, yaw, pitch,
-                timeOfDay, selectedSlot, inventory, gameMode, lastPlayed, health, hunger,
-                newPending, extraSections);
+        return new LevelData(name,seed,spawnX,spawnY,spawnZ,timeOfDay,gameMode,lastPlayed,
+                player.toBuilder().pending(newPending).build(),extraSections);
+    }
+
+    public LevelData withName(String newName) {
+        return new LevelData(newName,seed,spawnX,spawnY,spawnZ,timeOfDay,gameMode,lastPlayed,player,extraSections);
     }
 
     private static ItemStack[] normalizeInventory(ItemStack[] src) {
         ItemStack[] inv = emptyInventory();
         if (src == null) return inv;
         int n = Math.min(inv.length, src.length);
-        for (int i = 0; i < n; i++) inv[i] = src[i]; // null preserved
+        for (int i = 0; i < n; i++) inv[i] = src[i] == null ? null : src[i].copy();
         return inv;
     }
 }

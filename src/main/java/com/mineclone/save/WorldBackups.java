@@ -187,9 +187,7 @@ public final class WorldBackups {
                 throw new IOException("backup level cannot be opened: " + result);
             LevelData d = loaded.data();
             String label = (d.name.isBlank() ? SaveManager.UNNAMED : d.name) + " (бэкап " + backup.label() + ")";
-            validator.writeRestoredLevel(stage.getFileName().toString(), new LevelData(label, d.seed,
-                    d.px, d.py, d.pz, d.spawnX, d.spawnY, d.spawnZ, d.yaw, d.pitch, d.timeOfDay,
-                    d.selectedSlot, d.inventory, d.gameMode, d.lastPlayed, d.health, d.hunger, d.pending, d.extraSections));
+            validator.writeRestoredLevel(stage.getFileName().toString(), d.withName(label));
             String base = SaveFormat.newWorldId() + "_backup";
             int suffix = 1;
             for (;;) {

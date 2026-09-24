@@ -621,7 +621,8 @@ final class FeatureTests {
         }
         assertTrue("open tundra water freezes again", refroze);
         assertTrue("ice is slippery", BlockType.ICE.grip() < 0.5f);
-        assertEq("ice drops nothing", BlockType.AIR, BlockType.ICE.getDrop());
+        assertTrue("ice drops nothing", com.mineclone.item.Items.get().loot()
+                .blockDrops(BlockType.ICE, com.mineclone.item.loot.LootContext.chest(1, 0, 60, 0)).isEmpty());
     }
 
     private static int[] findFrozenWater(World w) {

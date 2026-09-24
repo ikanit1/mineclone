@@ -1,0 +1,42 @@
+    /** What this block yields when broken in survival. AIR = no drop. */
+    public BlockType getDrop() {
+        return switch (this) {
+            case STONE -> COBBLE;
+            case GRASS, SNOWY_GRASS, PODZOL, DRY_GRASS -> DIRT;
+            case LEAVES, WATER, WATER_FLOW, LAVA, AIR, DOOR_OPEN, FIRE, SNOW_LAYER,
+                    ICE, THIN_ICE, WEB, JOURNAL -> AIR;
+            default -> this;
+        };
+    }
+
+    private static com.mineclone.world.ItemStack blockDrop(BlockType target) {
+        if (target == BlockType.COAL_ORE)
+            return com.mineclone.world.ItemStack.of("coal");
+        if (target == BlockType.DIAMOND_ORE)
+            return com.mineclone.world.ItemStack.of("diamond");
+        BlockType block = target.getDrop();
+        return block == BlockType.AIR ? null : new com.mineclone.world.ItemStack(block, 1);
+    }
+
+    public String drop() {
+        return switch (this) {
+            case COW -> "beef";
+            case PIG -> "porkchop";
+            case CHICKEN, RABBIT -> "chicken";
+            case SHEEP -> "mutton";
+            // Скелет роняет то, чем стрелял: стрелы возвращаются в оборот,
+            // и лук перестаёт упираться в один поход за паутиной.
+            case SKELETON -> "arrow";
+            case SPIDER -> "cobweb";
+            default -> null;
+        };
+    }
+
+    /** Сколько единиц падает. */
+    public int dropCount() {
+        if (this == SKELETON)
+            return 2;
+        if (this == SPIDER)
+            return 1;
+        return this == CHICKEN || this == RABBIT ? 1 : 2;
+    }

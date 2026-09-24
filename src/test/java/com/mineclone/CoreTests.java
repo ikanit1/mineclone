@@ -2299,14 +2299,17 @@ final class CoreTests {
     }
 
     private static void testDropTable() {
-        assertEq("stone drops cobble", BlockType.COBBLE, BlockType.STONE.getDrop());
-        assertEq("grass drops dirt", BlockType.DIRT, BlockType.GRASS.getDrop());
-        assertEq("snowy grass drops dirt", BlockType.DIRT, BlockType.SNOWY_GRASS.getDrop());
-        assertEq("leaves drop nothing", BlockType.AIR, BlockType.LEAVES.getDrop());
-        assertEq("water drops nothing", BlockType.AIR, BlockType.WATER.getDrop());
-        assertEq("torch drops itself", BlockType.TORCH, BlockType.TORCH.getDrop());
-        assertEq("dirt drops itself", BlockType.DIRT, BlockType.DIRT.getDrop());
-        assertEq("wood drops itself", BlockType.WOOD, BlockType.WOOD.getDrop());
+        var loot = com.mineclone.item.Items.get().loot();
+        var context = new com.mineclone.item.loot.LootContext(1, 0, 60, 0,
+                ItemStack.of("diamond_pickaxe"), true, GameMode.SURVIVAL, new java.util.Random(1));
+        assertEq("stone drops cobble", BlockType.COBBLE, loot.blockDrops(BlockType.STONE, context).get(0).block());
+        assertEq("grass drops dirt", BlockType.DIRT, loot.blockDrops(BlockType.GRASS, context).get(0).block());
+        assertEq("snowy grass drops dirt", BlockType.DIRT, loot.blockDrops(BlockType.SNOWY_GRASS, context).get(0).block());
+        assertTrue("leaves drop nothing", loot.blockDrops(BlockType.LEAVES, context).isEmpty());
+        assertTrue("water drops nothing", loot.blockDrops(BlockType.WATER, context).isEmpty());
+        assertEq("torch drops itself", BlockType.TORCH, loot.blockDrops(BlockType.TORCH, context).get(0).block());
+        assertEq("dirt drops itself", BlockType.DIRT, loot.blockDrops(BlockType.DIRT, context).get(0).block());
+        assertEq("wood drops itself", BlockType.WOOD, loot.blockDrops(BlockType.WOOD, context).get(0).block());
     }
 
     private static void testMobTypeParams() {
@@ -3295,16 +3298,19 @@ final class CoreTests {
     }
 
     private static void testMobDrops() {
-        assertEq("cow drops beef", item("beef"), item(MobType.COW.drop()));
-        assertEq("pig drops pork", item("porkchop"), item(MobType.PIG.drop()));
-        assertEq("chicken drops chicken", item("chicken"), item(MobType.CHICKEN.drop()));
-        assertEq("sheep drops mutton", item("mutton"), item(MobType.SHEEP.drop()));
+        var loot = com.mineclone.item.Items.get().loot();
+        var context = new com.mineclone.item.loot.LootContext(1, 0, 60, 0,
+                null, true, GameMode.SURVIVAL, new java.util.Random(1));
+        assertEq("cow drops beef", item("beef"), loot.entityDrops(MobType.COW, context).get(0).item);
+        assertEq("pig drops pork", item("porkchop"), loot.entityDrops(MobType.PIG, context).get(0).item);
+        assertEq("chicken drops chicken", item("chicken"), loot.entityDrops(MobType.CHICKEN, context).get(0).item);
+        assertEq("sheep drops mutton", item("mutton"), loot.entityDrops(MobType.SHEEP, context).get(0).item);
         // Зомби ничего не даёт: иначе ночь превращается в ферму и сидеть в
         // темноте становится выгоднее, чем строить дом.
-        assertTrue("zombie drops nothing", MobType.ZOMBIE.drop() == null);
+        assertTrue("zombie drops nothing", loot.entityDrops(MobType.ZOMBIE, context).isEmpty());
         for (MobType t : MobType.values())
-            if (t.drop() != null)
-                assertTrue("drop count is sane for " + t, t.dropCount() > 0 && t.dropCount() <= 4);
+            for (var drop : loot.entityDrops(t, context))
+                assertTrue("drop count is sane for " + t, drop.count > 0 && drop.count <= 4);
     }
 
     private static void testFoodSaveRoundTrip() throws Exception {

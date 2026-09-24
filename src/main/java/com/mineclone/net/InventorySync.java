@@ -35,6 +35,7 @@ final class InventorySync {
     InventorySync(Multiplayer net,NetContext ctx){this.net=net;this.ctx=ctx;}
 
     String identity(){String id=ctx.playerId();return id==null||id.isBlank()?fallbackId:id;}
+    boolean identified(int actor) { return identities.containsKey(actor); }
     boolean busy(){return net.isClient() && (!net.joined() || !ready || dropPending || pickupPending || !drops.isEmpty());}
 
     void hello(int actor,String id) {
@@ -96,6 +97,10 @@ final class InventorySync {
     private PlayerData profile(int actor){String id=identities.get(actor);return id==null?null:profiles.get(id);}
     private void store(int actor,PlayerData data) {
         String id=identities.get(actor);if(id==null||data==null)return;
+        PlayerData previous=profiles.get(id);
+        // Protocol v7 omits equipment/effects/personal spawn and opaque sections.
+        // Its checkpoint only replaces the fields it actually carries.
+        if(previous!=null)data=new PlayerData(previous.record().mergeLegacy(data));
         profiles.put(id,data);ctx.saveGuest(id,data);
     }
 

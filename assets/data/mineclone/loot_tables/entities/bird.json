@@ -1,0 +1,8 @@
+{
+  "conditions": [
+    {
+      "not_creative": true
+    }
+  ],
+  "pools": []
+}

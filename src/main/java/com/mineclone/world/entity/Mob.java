@@ -304,6 +304,8 @@ public class Mob implements Hittable {
     final float homeX, homeY, homeZ;
     /** Убит волком: съеден, добычи с него нет. */
     public boolean eaten;
+    /** True only for a lethal participant hit; natural deaths retain their legacy loot behavior. */
+    public boolean killedByParticipant;
 
     /** Контекст тика для дерева поведения — один на моба, не на кадр. */
     private final MobContext ctx = new MobContext();
@@ -1387,6 +1389,7 @@ public class Mob implements Hittable {
             angryTimer = Wildlife.ANGER_TIME;
         if (health <= 0f) {
             eaten = !byPlayer;
+            killedByParticipant = byPlayer;
             die(dx, dz, true);
         }
         return true;
