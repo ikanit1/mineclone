@@ -146,6 +146,12 @@ public final class NetProto {
 
     // ----------------------------------------------------------------- v8
 
+    /**
+     * A guest uses a block (BLK-03): {@code blockPos, u8 face, u8 hitX, hitY,
+     * hitZ, varInt sequence}. The host runs the block's behaviour itself; what
+     * it changes comes back as {@code S_BLOCK_SET}.
+     */
+    public static final int C_USE_BLOCK = 70;
     /** Chunks the host's world generates with another version than its own ({@link GenMap}); before S_WELCOME. */
     public static final int S_GEN_MAP = 74;
 
@@ -188,6 +194,7 @@ public final class NetProto {
             case X_CHAT -> "CHAT";
             case C_ITEM_PICK -> "ITEM_PICK";
             case S_GIVE -> "GIVE";
+            case C_USE_BLOCK -> "USE_BLOCK";
             case S_GEN_MAP -> "GEN_MAP";
             default -> "code" + code;
         };

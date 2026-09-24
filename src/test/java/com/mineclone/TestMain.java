@@ -53,6 +53,7 @@ public final class TestMain {
         suite("physics", "ShapeTests", ShapeTests::runAll);
         suite("physics", "CollisionParityTests", r -> com.mineclone.game.CollisionParityTests.runAll((n, c) -> r.run(n, c::run)));
         suite("physics", "RaycastShapeTests", RaycastShapeTests::runAll);
+        suite("core", "BehaviorTests", BehaviorTests::runAll);
         suite("animation", "PlayerAnimationTests", r -> PlayerAnimationTests.runAll((n, c) -> r.run(n, c::run)));
         suite("animation", "PlayerHandednessTests", r -> PlayerHandednessTests.runAll((n, c) -> r.run(n, c::run)));
         suite("animation", "EquipmentTextureTests", r -> EquipmentTextureTests.runAll((n, c) -> r.run(n, c::run)));

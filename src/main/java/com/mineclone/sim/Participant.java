@@ -18,6 +18,8 @@ public interface Participant extends Damageable {
     /** A participant's body in blocks, the same for everyone: mobs are pushed out of it. */
     float BODY_WIDTH = 0.6f;
     float BODY_HEIGHT = 1.8f;
+    /** Eyes above the feet: where a participant looks and reaches from. */
+    float EYE_HEIGHT = 1.62f;
 
     /** Network actor number, or 0 for an offline single player. */
     int id();

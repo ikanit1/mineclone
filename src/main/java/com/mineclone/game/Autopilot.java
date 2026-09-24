@@ -314,6 +314,20 @@ final class Autopilot {
         return new int[] { f[0], f[1] + 3, f[2] };
     }
 
+    /**
+     * Метка-факел — на площадке, в стороне от обоих игроков: факел держится
+     * только на опоре (BLK-03), а повисший в воздухе падает предметом.
+     */
+    private static int[] torchMark(Driver d) {
+        int[] f = floorAt(d, 1, 2);
+        return new int[] { f[0], f[1] + 1, f[2] };
+    }
+
+    /** Метка участника выделенного сервера: факел у первого, стекло у второго. */
+    private static int[] slotMark(Driver d, int slot) {
+        return slot == 0 ? torchMark(d) : mark(d, 2, 2);
+    }
+
     /** Ширина и глубина площадки в блоках. */
     private static final int PAD_X = 10, PAD_Z = 4;
     /** Насколько участник стоит в стороне от хозяина, блоки. */
@@ -389,7 +403,7 @@ final class Autopilot {
             step("spawn all mob species", 0.3f, Driver::spawnAnimationMobs),
             step("stand on it", 0.6f, d -> standAt(d, 0, APART)),
             step("place a block for the guest", 0.4f, d -> {
-                int[] at = mark(d, 0, 0);
+                int[] at = torchMark(d);
                 d.setBlockAt(at[0], at[1], at[2], "TORCH");
             }),
             when("the guest answered with a block", 0.5f, d -> {
@@ -422,7 +436,7 @@ final class Autopilot {
             }, d -> ok("the platform arrived")),
             step("stand on it", 0.4f, d -> standAt(d, APART, 0)),
             when("the host's block arrived", 0.5f, d -> {
-                int[] at = mark(d, 0, 0);
+                int[] at = torchMark(d);
                 return "TORCH".equals(d.blockAt(at[0], at[1], at[2]));
             }, d -> ok("the host's block arrived")),
             step("answer with a block", 0.4f, d -> {
@@ -460,17 +474,17 @@ final class Autopilot {
             step("build a floor", 0.4f, Autopilot::buildPad),
             step("stand on it", 0.5f, d -> standAt(d, NET_SLOT * APART, 0)),
             step("place our own block", 0.4f, d -> {
-                int[] at = mark(d, NET_SLOT * 2, NET_SLOT * 2);
+                int[] at = slotMark(d, NET_SLOT);
                 d.setBlockAt(at[0], at[1], at[2], NET_SLOT == 0 ? "TORCH" : "GLASS");
             }),
             when("the server kept our block", 1.5f, d -> {
-                int[] at = mark(d, NET_SLOT * 2, NET_SLOT * 2);
+                int[] at = slotMark(d, NET_SLOT);
                 return (NET_SLOT == 0 ? "TORCH" : "GLASS")
                         .equals(d.blockAt(at[0], at[1], at[2]));
             }, d -> ok("the server confirmed our block")),
             when("the other guest's block arrived", 1.0f, d -> {
                 int other = NET_SLOT == 0 ? 1 : 0;
-                int[] at = mark(d, other * 2, other * 2);
+                int[] at = slotMark(d, other);
                 return (other == 0 ? "TORCH" : "GLASS").equals(d.blockAt(at[0], at[1], at[2]));
             }, d -> ok("the server relayed the other guest's block")),
             when("the other guest is visible", 0.5f, d -> d.netPlayers() >= 1,

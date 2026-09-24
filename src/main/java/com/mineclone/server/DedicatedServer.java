@@ -596,29 +596,9 @@ public final class DedicatedServer implements NetContext {
         BlockType type = BlockType.byId(blockId);
         if (type == null)
             return;
-        BlockType before = world.getBlock(x, y, z);
-        if (before != type) {
-            if (before == BlockType.CHEST) {
-                ItemStack[] slots = world.getChest(x, y, z);
-                if (slots != null) for (int i = 0; i < slots.length; i++) {
-                    spillItem(slots[i], x, y, z);
-                    slots[i] = null;
-                }
-            } else if (before == BlockType.FURNACE) {
-                var furnace = world.getFurnace(x, y, z);
-                if (furnace != null) {
-                    spillItem(furnace.input, x, y, z);
-                    spillItem(furnace.fuel, x, y, z);
-                    spillItem(furnace.output, x, y, z);
-                    furnace.input = furnace.fuel = furnace.output = null;
-                }
-            }
-        }
+        // A chest or furnace a guest removes spills inside setBlock, through
+        // its behaviour: the session gave this world its drop sink (BLK-03).
         world.setBlock(x, y, z, type, meta);
-    }
-
-    private void spillItem(ItemStack stack, int x, int y, int z) {
-        session.dropStack(stack, x + .5f, y + .5f, z + .5f);
     }
 
     @Override

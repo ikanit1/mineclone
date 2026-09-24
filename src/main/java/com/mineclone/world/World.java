@@ -25,6 +25,14 @@ public class World {
     private final GenProfile profile;
     private final com.mineclone.world.gen.GenPolicy genPolicy;
     public final FallingBlocks falling = new FallingBlocks(this);
+    /**
+     * Where removed containers spill and fallen blocks drop (BLK-03): nowhere
+     * until a session simulates this world. A guest's mirror keeps
+     * {@link com.mineclone.world.behavior.DropSink#NONE} — the host spills for everyone.
+     */
+    private com.mineclone.world.behavior.DropSink drops = com.mineclone.world.behavior.DropSink.NONE;
+    /** Cells whose support changed; null while nobody simulates this world. */
+    private NeighbourUpdates neighbours;
 
     /** A world generated entirely by the 1.0 generator (V1). */
     public World(long seed) {
@@ -781,6 +789,9 @@ public class World {
         BlockType old = c.get(lx, wy, lz);
         if (old == t)
             return;
+        // The block that leaves says goodbye first, whoever removed it: a
+        // chest spills here, while what it holds is still in the chunk.
+        com.mineclone.world.behavior.Behaviors.of(old).onRemoved(this, wx, wy, wz, c.getMeta(lx, wy, lz), t, drops);
         c.set(lx, wy, lz, t);
         c.modified = true;
         // Сундук перестал быть сундуком — забываем содержимое, иначе оно
@@ -837,8 +848,40 @@ public class World {
         if (t.emittedLight > 0)
             floodFillAdd(wx, wy, wz);
         falling.changed(wx, wy, wz);
+        if (neighbours != null)
+            neighbours.around(this, wx, wy, wz);
         if (!deferObserver)
             notifyChanged(wx, wy, wz, old, t, c.getMeta(lx, wy, lz));
+    }
+
+    /**
+     * This world is simulated here (the host, a single-player game, a
+     * dedicated server): removed containers spill into {@code sink}, and
+     * blocks that lose their support fall ({@link NeighbourUpdates}).
+     */
+    public void simulate(com.mineclone.world.behavior.DropSink sink) {
+        drops = java.util.Objects.requireNonNull(sink, "sink");
+        if (neighbours == null)
+            neighbours = new NeighbourUpdates();
+    }
+
+    /** Where this world's drops go; {@code NONE} unless it is simulated here. */
+    public com.mineclone.world.behavior.DropSink drops() {
+        return drops;
+    }
+
+    /**
+     * Works the neighbour queue for one tick.
+     *
+     * @return cells checked; zero in a world nobody simulates
+     */
+    public int processNeighbourUpdates(int budget) {
+        return neighbours == null ? 0 : neighbours.process(this, drops, budget);
+    }
+
+    /** Cells still waiting for a support check. */
+    public int pendingNeighbourUpdates() {
+        return neighbours == null ? 0 : neighbours.pending();
     }
 
     /**

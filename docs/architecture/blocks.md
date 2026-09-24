@@ -79,3 +79,61 @@ drawn vertex is a corner of the shape and every corner is drawn.
 `RaycastShapeTests` compares 1000 rays through random cubes with the old walk
 and aims at slab tops, a step from the front and from behind, lava, an open
 doorway, a torch and snow.
+
+## Behaviours (BLK-03)
+
+`world/behavior/Behaviors` gives every block a `BlockBehavior` — what it does,
+as `Shapes` says what it is made of: `canPlaceAt`, `placementMeta`, `onPlaced`,
+`interactive` and `use` (→ `UseResult`: pass, consumed, open a menu, sleep),
+`needsSupport`/`canSurvive`/`collapse`, `onRemoved`, and `scheduledTick`
+(reserved for BLK-04). The switch is exhaustive. Nothing in it knows the screen
+or the network; host, server and tests run the same code.
+
+| Behaviour | Blocks | Rules |
+|---|---|---|
+| chest, furnace | `CHEST`, `FURNACE` | open their window; **spill on any removal** |
+| crafting table | `CRAFTING_TABLE` | opens the 3×3 grid |
+| bedroll | `BEDROLL` | placed half a block high; used to sleep |
+| door | `DOOR_CLOSED`, `DOOR_OPEN` | needs air above and something solid below; placed, opened and removed as two halves |
+| torch | `TORCH` | stands on a floor or leans from a wall (mount 1..4), never hangs from a ceiling; falls as an item without its support |
+| stairs | `STAIRS` | the step faces away from the placer |
+| snow layer | `SNOW_LAYER` | lies on something solid, goes when that is dug out |
+| default | everything else | none |
+
+**Removal.** `World.setBlock` calls the leaving block's `onRemoved` before it
+writes the new one, whoever changes the cell: the pickaxe, a guest's edit, an
+explosion, `/fill`. A chest and a furnace spill there — and clear their slots,
+because an open window holds the same array. The drops go to the world's
+`DropSink`, which a `WorldSession` installs (`World.simulate`); a guest's
+mirror has none, so the host alone spills. `Game` and `DedicatedServer` no
+longer spill containers themselves (TD-05, closed systemically).
+
+**Support.** A change queues the cell and its six neighbours in
+`NeighbourUpdates` — only those whose block can fall (`needsSupport`), since
+water alone moves hundreds of cells a tick. `WorldSimulation.update` works the
+queue last in the world's tick, `NeighbourUpdates.BUDGET` (256) cells at a time;
+what cannot stay collapses and drops its own loot table, rolled as bare hands
+in survival — a fallen torch is a torch in any mode. A check whose support lies
+in an unloaded chunk waits for the next change instead. A door's two halves
+hold each other up: the first to go drops the door, the one that follows drops
+nothing. Only the host queues: a guest sees the result as block sets.
+
+**Clicks.** `game/InteractionController` (extracted from `Game.handleInteraction`)
+turns input into calls on behaviours: dig, place (`canPlaceAt` →
+`placementMeta` → `setBlock` → `onPlaced`), use, pipette. A right click on an
+interactive block is a use, repeated only by a fresh press — a held button
+repeats placement, and Shift places against the block instead. A thin snow
+layer (the first eighth) gives way to a placed block, as in Minecraft, so a
+torch can still be set on snowy ground. A guest predicts a door's swing and
+sends `C_USE_BLOCK` (see [network](network.md)); a guest's sleep moves only its
+own respawn point, since the night is the host's clock.
+
+`BehaviorTests` (12): a chest spills whatever removes it (air, stone, water)
+and the open window's view is cleared, a furnace too, an explosion through a
+real session, a door placed/opened/removed whole with one drop, a torch on a
+floor and on each wall, snow, a mirror queues nothing, the budget over 512
+torches, the world tick works the queue only when simulating, placement
+facings transcribed from the removed `Game` methods, the interactive set, and
+the acceptance scan. `NetworkTests`: a guest's `C_USE_BLOCK` opens the host's
+door whole; stone, a truncated packet and a guest out of reach change nothing.
+`ContainerBreakNetworkTests` (TD-05) is green without the old special case.

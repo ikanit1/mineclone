@@ -5,6 +5,8 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 ## [Unreleased]
 
 ### Fixed
+- A chest or furnace spills its contents whatever removes it — a creeper's blast and a `/fill` included — instead of only when broken by hand or by a guest; an open chest window can no longer hand out what already spilled.
+- A guest sleeping in a bedroll no longer jumps its own clock to dawn only to be snapped back: the bedroll sets the guest's respawn point, and the night passes when the host sleeps.
 - Lava is no longer a target: the crosshair passes through it to the block beneath, as it does through water, so lava cannot be "broken" by clicking it.
 - Stairs collide by their slab and their step. A player near the edge of a stair no longer sinks into the step, a jump under a hanging stair stops at its underside, and walking along the slab into the step stops at the step instead of throwing the player back to the far side of the block. Running into a stair ends a sprint, as any block does; walking into one still never lifts you — a stair is taken by jumping.
 - A hit that a mob's invulnerability window refuses no longer wounds its limb: clicking faster than the window used to cripple legs and arms without doing damage.
@@ -38,6 +40,8 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 - Eleven reproducible benchmark scenes with frame, GPU, queue, allocation, network and save metrics; frozen build snapshots and repeated-run aggregation retain measurement provenance.
 
 ### Changed
+- Blocks follow their support: a torch falls as an item when its floor or wall is dug out, snow goes with the ground under it, and a door comes down whole (dropping once) when either half or its floor goes. A door needs air above and something solid below to be placed; a torch cannot hang from a ceiling. A thin snow layer gives way to a placed block.
+- A guest's click on a door is carried out by the host (protocol v8 `C_USE_BLOCK`), which checks the guest can reach it; the guest's door swings at once.
 - Blocks have shapes: the selection outline follows them (an L for stairs; torches, snow, fire, webs and doors by their real size, open doors included), and the aim passes through the empty part of a cell — an open doorway, beside a torch, above a thin snow layer. Mobs and dropped items land on a stair's slab.
 - Network protocol v8 (builds before it cannot join, and are told why with both versions and the host's build): a guest now learns what hurt it, who and from where, so it is knocked back by blows and blasts like the host's own player and its death has a cause. `docs/NETWORK_PROTOCOL.md` lists every packet.
 - A guest's whole player record travels with protocol v8 — equipment, effects, a personal spawn and data of newer builds reach the guest and come back with its checkpoints; the host keeps what it owns (effects, the spawn, unknown data) even if a guest's checkpoint leaves it out.

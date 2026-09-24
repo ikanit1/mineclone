@@ -67,6 +67,7 @@ final class NetworkTests {
     }
 
     static void runAll(Runner r) {
+        r.run("a guest's use opens the host's door; out of reach or on stone it does nothing", NetworkTests::testUseBlock);
         r.run("selected equipment changes and empty hands replicate both ways", NetworkTests::testEquipment);
         r.run("invalid stale and truncated equipment preserve the last valid item", NetworkTests::testBadEquipment);
         r.run("invalid player snapshots leave the last valid pose intact", NetworkTests::testInvalidPlayerState);
@@ -811,6 +812,51 @@ final class NetworkTests {
         assertEq("правка хозяина дошла", BlockType.OBSIDIAN, p.guest.world.getBlock(3, 90, 3));
         assertEq("чанк закреплён за версией хозяина", com.mineclone.world.gen.WorldGenVersion.V1,
                 p.guest.world.genPolicy().versionAt(0, 0));
+        p.close();
+    }
+
+    /**
+     * BLK-03: {@code C_USE_BLOCK}. The host runs the block's own behaviour on
+     * the real world; the door it swings reaches the guest as block sets.
+     */
+    private static void testUseBlock() {
+        Pair p = Pair.open(4246L, "Мир", 0.5f);
+        World w = p.host.world;
+        for (int cx = -1; cx <= 1; cx++)
+            for (int cz = -1; cz <= 1; cz++)
+                w.getChunk(cx, cz);
+        w.setBlock(8, 79, 10, BlockType.STONE);
+        w.setBlock(8, 80, 10, BlockType.DOOR_CLOSED, (byte) 0);
+        w.setBlock(8, 81, 10, BlockType.DOOR_CLOSED, (byte) 4);
+        p.guest.position.set(8.5f, 80f, 8.5f);
+        p.pump(4);
+
+        p.guestNet.requestUse(8, 80, 10, 0, 0, -1, 0.5f, 0.5f, 0f);
+        p.pump(3);
+        assertTrue("both halves opened on the host", w.getBlock(8, 80, 10) == BlockType.DOOR_OPEN
+                && w.getBlock(8, 81, 10) == BlockType.DOOR_OPEN);
+        assertEq("the upper half keeps its bit", 4, (int) w.getBlockMeta(8, 81, 10));
+        if (p.guest.world != null && p.guest.world.getChunkIfExists(0, 0) != null)
+            assertTrue("the guest sees the host's door", p.guest.world.getBlock(8, 81, 10) == BlockType.DOOR_OPEN);
+
+        p.guestNet.requestUse(8, 81, 10, 0, 0, -1, 0.5f, 0.5f, 0f);
+        p.pump(3);
+        assertTrue("a use is a toggle on the host's state", w.getBlock(8, 80, 10) == BlockType.DOOR_CLOSED);
+
+        p.guestNet.requestUse(8, 79, 10, 0, 1, 0, 0.5f, 1f, 0.5f);
+        p.pump(3);
+        assertTrue("stone has no use", w.getBlock(8, 79, 10) == BlockType.STONE);
+
+        PacketBuf cut = new PacketBuf();
+        cut.u8(NetProto.C_USE_BLOCK).blockPos(8, 80, 10);
+        p.hostNet.onPayload(p.guestT.myActor(), cut.toBytes());
+        assertTrue("a truncated use changes nothing", w.getBlock(8, 80, 10) == BlockType.DOOR_CLOSED);
+
+        p.guest.position.set(40.5f, 80f, 40.5f);
+        p.pump(4);
+        p.guestNet.requestUse(8, 80, 10, 0, 0, -1, 0.5f, 0.5f, 0f);
+        p.pump(3);
+        assertTrue("a guest out of reach cannot open it", w.getBlock(8, 80, 10) == BlockType.DOOR_CLOSED);
         p.close();
     }
 

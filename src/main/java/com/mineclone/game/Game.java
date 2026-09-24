@@ -544,6 +544,7 @@ public class Game {
     public Game(Window window, boolean regenAtlas) {
         this.window = window;
         this.input = new Input(window.getHandle());
+        this.interaction = new InteractionController(interactionHost, input, net);
         net.setLocalParticipant(new LocalParticipant(player, net::localActor));
         com.mineclone.save.Options opts = save.loadOptions();
         this.renderRadius    = opts.renderRadius;
@@ -1349,7 +1350,7 @@ public class Game {
         voxelBounceProbeTimer = 0f;
         soundCues.clear();
         items.clear();   // уже записаны в чанки через saveAll выше
-        resetBreakState();
+        interaction.resetBreak();
         world = null;
         mesher = null;
         loader = null;
@@ -1469,7 +1470,7 @@ public class Game {
                             + (advancedTooltips ? "вкл" : "выкл"));
                     save.saveOptions(buildOptions());
                 }
-                case CYCLE_META -> cycleTargetMeta();
+                case CYCLE_META -> interaction.cycleMeta();
             }
         }
         if (input.keyPressed(GLFW.GLFW_KEY_F4))
@@ -1576,7 +1577,7 @@ public class Game {
         updateFootsteps();
         // Стриминга здесь нет намеренно: его делает updateActiveWorld ниже,
         // а два вызова за кадр удваивали бы бюджет загрузки мешей на GPU.
-        handleInteraction(dt);
+        interaction.update(dt);
         long activeProbe = System.nanoTime();
         updateActiveWorld(dt);
         activeProbe = System.nanoTime() - activeProbe;
@@ -1815,6 +1816,76 @@ public class Game {
      * Что сессия пока берёт у игры: мобы появляются вокруг своего игрока
      * (SIM-05); свой игрок чувствует удар, подбирает предметы и стрелы.
      */
+    /** Клик по блоку под прицелом: ломание, постановка, использование (BLK-03). */
+    private final InteractionController interaction;
+
+    /** Всё, что контроллеру клика нужно от игры: картинка, звук, инвентарь, окна. */
+    private final InteractionController.Host interactionHost = new InteractionController.Host() {
+        @Override public World world() { return world; }
+        @Override public Player player() { return player; }
+        @Override public GameMode gameMode() { return gameMode; }
+        @Override public Inventory inventory() { return inventory; }
+        @Override public int selectedSlot() { return selectedSlot; }
+
+        @Override
+        public void pickedSlot(int slot) {
+            selectedSlot = slot;
+            equipProgress = 0f;
+            sound.playOneOf(sounds.uiClick(), 0.35f, 1.2f);
+        }
+
+        @Override public boolean instantBreak() { return instantBreak; }
+        @Override public java.util.random.RandomGenerator itemRandom() { return itemRandom; }
+
+        @Override
+        public boolean attack(Vector3f origin, Vector3f dir, float dt, Raycaster.Hit hit) {
+            return attackAimedMob(origin, dir, dt, hit);
+        }
+
+        @Override public void swingAtAir() { Game.this.swingAtAir(); }
+        @Override public boolean tryEat() { return Game.this.tryEat(); }
+        @Override public void swing() { startHandSwing(); }
+        @Override public boolean occupiedByPlayer(int x, int y, int z) { return playerOccupies(x, y, z); }
+        @Override public void wearHeldTool() { Game.this.wearHeldTool(); }
+        @Override public void drop(ItemStack stack, float x, float y, float z) { dropItem(stack, x, y, z); }
+
+        @Override
+        public void digSound(int x, int y, int z, BlockType block) {
+            sound.playOneOfAt(sounds.dig(block), blockSoundPosition(x, y, z),
+                    0.8f, 0.9f + 0.2f * (float) Math.random());
+        }
+
+        @Override public void broken(int x, int y, int z, BlockType block) { blockBroken(x, y, z, block); }
+
+        @Override
+        public void placed(int x, int y, int z, BlockType block) {
+            emitNoise(x + 0.5f, y + 0.5f, z + 0.5f, NOISE_PLACE);
+            sound.playOneOfAt(sounds.place(block), blockSoundPosition(x, y, z),
+                    0.8f, 0.85f + 0.2f * (float) Math.random());
+            if (StructureStability.heavy(block))
+                playerStructures.add(StructureStability.placementKey(x, y, z));
+            musicSense.onBlockPlaced();
+            emitPlacementParticles(x, y, z, block);
+        }
+
+        @Override
+        public void used(int x, int y, int z, BlockType block) {
+            sound.playOneOfAt(sounds.doorToggle(), blockSoundPosition(x, y, z),
+                    0.8f, 0.95f + 0.1f * (float) Math.random());
+        }
+
+        @Override
+        public void openMenu(com.mineclone.world.behavior.UseResult.Menu menu, int x, int y, int z) {
+            switch (menu) {
+                case CHEST -> openChest(x, y, z);
+                case FURNACE -> openFurnace(x, y, z);
+                case CRAFTING -> openCraftingTable(x, y, z);
+            }
+        }
+
+        @Override public void sleep(int x, int y, int z) { trySleep(x, y, z); }
+    };
+
     private final com.mineclone.sim.WorldSession.Host sessionHost = new com.mineclone.sim.WorldSession.Host() {
         @Override public Vector3f mobFocus() { return player.position; }
 
@@ -2440,13 +2511,6 @@ public class Game {
                         <= LOADING_TAIL_ALLOWANCE;
     }
 
-    private Raycaster.Hit lastHit = null;
-    private static final int NO_BREAK = Integer.MIN_VALUE;
-    private int breakX = NO_BREAK, breakY = NO_BREAK, breakZ = NO_BREAK;
-    private final InteractionRepeat creativeBreakRepeat = new InteractionRepeat();
-    private final InteractionRepeat placeRepeat = new InteractionRepeat();
-    private float breakProgress = 0f;
-    private float breakDigTimer = 0f;
     private BlockBreakOverlay breakOverlay;
     /** Дальность удара по мобу. */
     private static final float MOB_REACH = 4.5f;
@@ -2460,27 +2524,17 @@ public class Game {
     /** Откат, из которого он отсчитывается: нужен, чтобы показать готовность. */
     private float attackCooldownSpan = 0.5f;
 
-    private void handleInteraction(float dt) {
-        if(net.inventoryBusy())return;
-        Vector3f origin = new Vector3f(player.camera.position);
-        Vector3f dir = player.camera.forward();
-        lastHit = Raycaster.cast(world, origin, dir, 6f);
-        boolean creative = gameMode == com.mineclone.world.GameMode.CREATIVE;
-        boolean breakNow = creativeBreakRepeat.update(dt,
-                input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT),
-                input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT), creative);
-        boolean placeNow = placeRepeat.update(dt,
-                input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT),
-                input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_RIGHT), true);
-
-        // Моб под прицелом проверяется ДО работы с блоками: пока он на линии
-        // взгляда и ближе блока, ломание не идёт вообще — не только в кадре
-        // нажатия. Иначе, удерживая ЛКМ на мобе, игрок докапывался бы до блока
-        // за ним.
+    /**
+     * Удар по мобу под прицелом — часть клика, которая не про блоки
+     * ({@link InteractionController} спрашивает её первой).
+     *
+     * @return есть ли моб под прицелом ближе блока
+     */
+    private boolean attackAimedMob(Vector3f origin, Vector3f dir, float dt, Raycaster.Hit blockHit) {
         if (attackCooldown > 0f)
             attackCooldown -= dt;
 
-        com.mineclone.world.entity.Mob aimedMob = pickAimedMob(origin, dir);
+        com.mineclone.world.entity.Mob aimedMob = pickAimedMob(origin, dir, blockHit);
         aimingAtMob = aimedMob != null && !aimedMob.dead;
         if (aimedMob != null && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
             com.mineclone.item.Item weapon = heldItem();
@@ -2516,255 +2570,21 @@ public class Game {
             }
         }
 
-        if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT) && tryEat())
-            return;
-
-        if (lastHit == null) {
-            // Взмах в пустоту: рука и инструмент отыгрывают удар, а инструмент
-            // ещё и свистит — без этого клик по воздуху выглядит зависанием.
-            if (aimedMob == null && attackCooldown <= 0f
-                    && input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
-                attackCooldownSpan = com.mineclone.item.Combat.cooldown(heldItem()) * 0.6f;
-                attackCooldown = attackCooldownSpan;
-                startHandSwing();
-                if (heldTool() != null)
-                    sound.playOneOf(sounds.playerAttack("sweep"), 0.25f,
-                            0.95f + 0.15f * (float) Math.random());
-            }
-            resetBreakState();
-            return;
-        }
-
-        // Средняя кнопка — пипетка; перебор meta уехал под F3+средняя:
-        // отладочная палка не должна отнимать у игры обычное действие.
-        if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_MIDDLE)
-                && !input.keyDown(GLFW.GLFW_KEY_F3))
-            pickBlock(lastHit.x, lastHit.y, lastHit.z, input.keyDown(GLFW.GLFW_KEY_LEFT_CONTROL)
-                    || input.keyDown(GLFW.GLFW_KEY_RIGHT_CONTROL));
-
-        // --- Left mouse: break ---
-        if (aimedMob != null) {
-            resetBreakState();
-        } else if (creative || instantBreak) {
-            if (breakNow) {
-                BlockType target = world.getBlock(lastHit.x, lastHit.y, lastHit.z);
-                if (gameMode.canBreak(target)) {
-                    startHandSwing();
-                    executeBlockBreak(lastHit.x, lastHit.y, lastHit.z, target);
-                }
-            }
-            resetBreakState();
-        } else if (input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_LEFT)) {
-            BlockType target = world.getBlock(lastHit.x, lastHit.y, lastHit.z);
-            if (gameMode.canBreak(target)) {
-                if (breakX == lastHit.x && breakY == lastHit.y && breakZ == lastHit.z) {
-                    // Accumulate progress on the same block
-                    breakProgress += dt * miningSpeed(target) / target.hardness;
-                    breakDigTimer -= dt;
-                    if (breakDigTimer <= 0f) {
-                        startHandSwing();
-                        sound.playOneOfAt(sounds.dig(target),
-                                blockSoundPosition(lastHit.x, lastHit.y, lastHit.z),
-                                0.8f, 0.9f + 0.2f * (float) Math.random());
-                        breakDigTimer = 0.4f;
-                    }
-                    if (breakProgress >= 1f) {
-                        executeBlockBreak(lastHit.x, lastHit.y, lastHit.z, target);
-                        resetBreakState();
-                    }
-                } else {
-                    // New target block
-                    breakX = lastHit.x; breakY = lastHit.y; breakZ = lastHit.z;
-                    breakProgress = 0f;
-                    breakDigTimer = 0f;
-                }
-            } else {
-                resetBreakState();
-            }
-        } else {
-            resetBreakState();
-        }
-
-        // Repeated placement; Shift lets builders place against interactive blocks.
-        if (placeNow) {
-            boolean interact = !input.down(KeyBindings.Action.DESCEND);
-            startHandSwing();
-            BlockType target = world.getBlock(lastHit.x, lastHit.y, lastHit.z);
-            if (interact && !input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT)
-                    && (target == BlockType.CHEST || target == BlockType.FURNACE
-                    || target == BlockType.CRAFTING_TABLE || target == BlockType.BEDROLL
-                    || target == BlockType.DOOR_CLOSED || target == BlockType.DOOR_OPEN)) return;
-            if (interact && target == BlockType.CHEST) {
-                openChest(lastHit.x, lastHit.y, lastHit.z);
-                return;
-            }
-            if (interact && target == BlockType.FURNACE) {
-                openFurnace(lastHit.x, lastHit.y, lastHit.z);
-                return;
-            }
-            if (interact && target == BlockType.CRAFTING_TABLE) {
-                openCraftingTable(lastHit.x, lastHit.y, lastHit.z);
-                return;
-            }
-            if (interact && target == BlockType.BEDROLL) {
-                trySleep(lastHit.x, lastHit.y, lastHit.z);
-                return;
-            }
-            if (interact && (target == BlockType.DOOR_CLOSED || target == BlockType.DOOR_OPEN)) {
-                byte m = world.getBlockMeta(lastHit.x, lastHit.y, lastHit.z);
-                BlockType next = (target == BlockType.DOOR_CLOSED) ? BlockType.DOOR_OPEN : BlockType.DOOR_CLOSED;
-                world.setBlock(lastHit.x, lastHit.y, lastHit.z, next, m);
-                // Toggle the other half too
-                int otherY = ((m & 0x4) != 0) ? lastHit.y - 1 : lastHit.y + 1;
-                BlockType other = world.getBlock(lastHit.x, otherY, lastHit.z);
-                if (other == BlockType.DOOR_CLOSED || other == BlockType.DOOR_OPEN) {
-                    byte om = world.getBlockMeta(lastHit.x, otherY, lastHit.z);
-                    world.setBlock(lastHit.x, otherY, lastHit.z, next, om);
-                }
-                sound.playOneOfAt(sounds.doorToggle(), blockSoundPosition(lastHit.x, lastHit.y, lastHit.z),
-                        0.8f, 0.95f + 0.1f * (float) Math.random());
-            } else {
-                int px = lastHit.x + lastHit.nx;
-                int py = lastHit.y + lastHit.ny;
-                int pz = lastHit.z + lastHit.nz;
-                if (py < 0 || py >= Chunk.SIZE_Y
-                        || world.getChunkIfExists(Math.floorDiv(px, Chunk.SIZE_X),
-                                Math.floorDiv(pz, Chunk.SIZE_Z)) == null)
-                    return;
-                BlockType existing = world.getBlock(px, py, pz);
-                if (existing != BlockType.AIR && existing != BlockType.WATER
-                        && existing != BlockType.WATER_FLOW && existing != BlockType.LAVA
-                        && existing != BlockType.SNOW_LAYER && existing != BlockType.FIRE)
-                    return;
-                if (!playerOccupies(px, py, pz)) {
-                    BlockType placing = currentBlock();
-                    if (placing == null || placing == BlockType.AIR)
-                        return;
-                    if (gameMode == com.mineclone.world.GameMode.SURVIVAL && !inventory.hasItem(selectedSlot))
-                        return;
-                    byte meta = 0;
-                    boolean placed = false;
-                    if (placing == BlockType.DOOR_CLOSED) {
-                        meta = facingFromCamera();
-                        // Place 2-block door: bottom + top
-                        if (py + 1 < Chunk.SIZE_Y
-                                && world.getBlock(px, py + 1, pz) == BlockType.AIR
-                                && !playerOccupies(px, py + 1, pz)) {
-                            emitNoise(px + 0.5f, py + 0.5f, pz + 0.5f, NOISE_PLACE);
-                            sound.playOneOfAt(sounds.place(placing),
-                                    blockSoundPosition(px, py, pz),
-                                    0.8f, 0.85f + 0.2f * (float) Math.random());
-                            net.noteBlockAction(placing, false, px, py, pz);
-                            world.setBlock(px, py, pz, BlockType.DOOR_CLOSED, meta);
-                            world.setBlock(px, py + 1, pz, BlockType.DOOR_CLOSED, (byte) (meta | 0x4));
-                            placed = true;
-                        }
-                    } else {
-                        if (placing == BlockType.TORCH && lastHit.ny < 0)
-                            return;
-                        if (placing == BlockType.STAIRS)
-                            meta = stairFacingFromCamera();
-                        // Спальник рисуется тем же emitLayer, что снег, и
-                        // высоту берёт из meta: с нулём он был бы плёнкой в
-                        // 1/8 блока.
-                        if (placing == BlockType.BEDROLL)
-                            meta = BEDROLL_META;
-                        emitNoise(px + 0.5f, py + 0.5f, pz + 0.5f, NOISE_PLACE);
-                        sound.playOneOfAt(sounds.place(placing), blockSoundPosition(px, py, pz),
-                                0.8f, 0.85f + 0.2f * (float) Math.random());
-                        com.mineclone.world.ItemStack held = inventory.get(selectedSlot);
-                        com.mineclone.item.BlockState carried = held == null ? null
-                                : held.get(com.mineclone.item.Components.BLOCK_STATE);
-                        meta = metaFrom(carried, placing, meta);
-                        if (placing == BlockType.TORCH)
-                            meta = torchPlacementMeta(lastHit.nx, lastHit.ny, lastHit.nz);
-                        world.setBlock(px, py, pz, placing, meta);
-                        net.noteBlockAction(placing, false, px, py, pz);
-                        restoreBlockState(carried, px, py, pz);
-                        if (com.mineclone.world.StructureStability.heavy(placing))
-                            playerStructures.add(com.mineclone.world.StructureStability.placementKey(px, py, pz));
-                        placed = true;
-                    }
-                    if (placed)
-                        musicSense.onBlockPlaced();
-                    if (placed)
-                        emitPlacementParticles(px, py, pz, placing);
-                    if (placed && gameMode == com.mineclone.world.GameMode.SURVIVAL)
-                        inventory.removeOne(selectedSlot);
-                }
-            }
-        }
-    }
-
-    /** Перебор meta блока под прицелом — отладочная палка под F3. */
-    private void cycleTargetMeta() {
-        if (world == null || lastHit == null)
-            return;
-        byte m = world.getBlockMeta(lastHit.x, lastHit.y, lastHit.z);
-        world.setBlock(lastHit.x, lastHit.y, lastHit.z,
-                world.getBlock(lastHit.x, lastHit.y, lastHit.z), (byte) ((m + 1) & 0x0F));
+        return aimedMob != null;
     }
 
     /**
-     * Пипетка: берёт в руку блок, во что целишься.
-     *
-     * <p>С Ctrl в творческом режиме предмет уносит с собой и начинку блока —
-     * meta, содержимое сундука, состояние печи. Без этого «скопировать сундук»
-     * означало бы скопировать только его оболочку.
+     * Взмах в пустоту: рука и инструмент отыгрывают удар, а инструмент ещё и
+     * свистит — без этого клик по воздуху выглядит зависанием.
      */
-    private void pickBlock(int x, int y, int z, boolean withState) {
-        BlockType target = world.getBlock(x, y, z);
-        com.mineclone.item.Item item = com.mineclone.item.Items.get().forBlock(target);
-        if (item == null)
+    private void swingAtAir() {
+        if (attackCooldown > 0f)
             return;
-        boolean creative = gameMode == com.mineclone.world.GameMode.CREATIVE;
-        com.mineclone.world.ItemStack give = null;
-        if (creative) {
-            give = new com.mineclone.world.ItemStack(item, item.maxStack);
-            if (withState)
-                give.set(com.mineclone.item.Components.BLOCK_STATE, captureState(x, y, z));
-        }
-        int slot = PickBlock.pick(inventory, selectedSlot, item, creative, give);
-        if (slot != selectedSlot || creative) {
-            selectedSlot = slot;
-            equipProgress = 0f;
-            sound.playOneOf(sounds.uiClick(), 0.35f, 1.2f);
-        }
-    }
-
-    /** Снимок блока: meta и то, что в нём лежит. */
-    private com.mineclone.item.BlockState captureState(int x, int y, int z) {
-        byte meta = world.getBlockMeta(x, y, z);
-        com.mineclone.world.ItemStack[] chest = world.getChest(x, y, z);
-        com.mineclone.world.Furnace f = world.getFurnace(x, y, z);
-        com.mineclone.item.FurnaceState furnace = f == null ? null
-                : new com.mineclone.item.FurnaceState(f.input, f.fuel, f.output,
-                        f.burnLeft, f.burnMax, f.cook);
-        return new com.mineclone.item.BlockState(meta,
-                chest == null ? null : java.util.Arrays.asList(chest), furnace);
-    }
-
-    /**
-     * Meta из снимка блока.
-     *
-     * <p>Дверь свою meta считает сама — у неё две половины и своё правило
-     * поворота, и чужое число сломало бы верхнюю.
-     */
-    private static byte metaFrom(com.mineclone.item.BlockState st, BlockType placing,
-            byte fallbackMeta) {
-        if (st == null || placing == BlockType.DOOR_CLOSED)
-            return fallbackMeta;
-        return st.meta();
-    }
-
-    /** 0=floor; 1/2 and 3/4 are the four wall-support directions. */
-    static byte torchPlacementMeta(int nx, int ny, int nz) {
-        if (ny > 0) return 0;
-        if (nx > 0) return 1;
-        if (nx < 0) return 2;
-        if (nz > 0) return 3;
-        if (nz < 0) return 4;
-        return 0;
+        attackCooldownSpan = com.mineclone.item.Combat.cooldown(heldItem()) * 0.6f;
+        attackCooldown = attackCooldownSpan;
+        startHandSwing();
+        if (heldTool() != null)
+            sound.playOneOf(sounds.playerAttack("sweep"), 0.25f, 0.95f + 0.15f * (float) Math.random());
     }
 
     private void emitPlacementParticles(int x, int y, int z, BlockType block) {
@@ -2774,39 +2594,6 @@ public class Game {
         float blockLight = Math.max(block.emittedLight / (float) Chunk.MAX_LIGHT,
                 world.getBlockLightWorld(x, y, z) / (float) Chunk.MAX_LIGHT);
         particles.emitBlockPlace(x, y, z, block.sideTile, sky, blockLight);
-    }
-
-    /**
-     * Возвращает в мир начинку, которую пипетка унесла с блоком.
-     *
-     * <p>Строго после {@code setBlock}: он же и создаёт пустой сундук, стирая
-     * всё, что положили в него раньше.
-     */
-    private void restoreBlockState(com.mineclone.item.BlockState st, int x, int y, int z) {
-        if (st == null)
-            return;
-        if (st.hasChest()) {
-            com.mineclone.world.ItemStack[] slots = world.createChest(x, y, z);
-            if (slots != null) {
-                java.util.List<com.mineclone.world.ItemStack> src = st.chestCopy();
-                for (int i = 0; i < slots.length; i++)
-                    slots[i] = i < src.size() ? src.get(i) : null;
-                world.markChestDirty(x, z);
-            }
-        }
-        if (st.hasFurnace()) {
-            com.mineclone.world.Furnace f = world.createFurnace(x, y, z);
-            if (f != null) {
-                com.mineclone.item.FurnaceState fs = st.furnace();
-                f.input = fs.inputCopy();
-                f.fuel = fs.fuelCopy();
-                f.output = fs.outputCopy();
-                f.burnLeft = fs.burnLeft();
-                f.burnMax = fs.burnMax();
-                f.cook = fs.cook();
-                world.markChestDirty(x, z);
-            }
-        }
     }
 
     /**
@@ -3205,6 +2992,13 @@ public class Game {
             }
             default -> { }
         }
+        // Время мира — хозяина: гость, проматывающий ночь у себя, откатывался
+        // бы назад с первым же S_TIME. Спальник переносит ему точку возрождения.
+        if (net.isClient()) {
+            worldSpawn.set(x + 0.5f, y + 1f, z + 0.5f);
+            showCommandToast("Точка возрождения здесь. Ночь пройдёт, когда уснёт хозяин");
+            return;
+        }
         worldClock.advanceToDawn();
         daylight = computeDaylight();
         // Спальник становится точкой возрождения: ради этого его и носят с
@@ -3431,19 +3225,6 @@ public class Game {
         return new Vector3f(eye);
     }
 
-    /** Высыпает содержимое печи на землю — вызывается до того, как блок снят. */
-    private void spillFurnace(int x, int y, int z) {
-        com.mineclone.world.Furnace f = world.getFurnace(x, y, z);
-        if (f == null)
-            return;
-        dropItem(f.input, x + 0.5f, y + 0.5f, z + 0.5f);
-        dropItem(f.fuel, x + 0.5f, y + 0.5f, z + 0.5f);
-        dropItem(f.output, x + 0.5f, y + 0.5f, z + 0.5f);
-        f.input = null;
-        f.fuel = null;
-        f.output = null;
-    }
-
     /**
      * Съесть то, что в руке.
      *
@@ -3470,7 +3251,7 @@ public class Game {
      * радиусе MOB_REACH. Возвращает null, если мобов на линии взгляда нет или
      * блок под прицелом ближе — тогда работают обычные блочные механики.
      */
-    private com.mineclone.world.entity.Mob pickAimedMob(Vector3f origin, Vector3f dir) {
+    private com.mineclone.world.entity.Mob pickAimedMob(Vector3f origin, Vector3f dir, Raycaster.Hit lastHit) {
         if (mobs.isEmpty())
             return null;
 
@@ -3494,12 +3275,6 @@ public class Game {
         return (best != null && bestT < blockDist) ? best : null;
     }
 
-    private void resetBreakState() {
-        breakX = NO_BREAK; breakY = NO_BREAK; breakZ = NO_BREAK;
-        breakProgress = 0f;
-        breakDigTimer = 0f;
-    }
-
     /**
      * Инструмент в руке, или null.
      *
@@ -3517,27 +3292,6 @@ public class Game {
         return s != null && s.tool() != null ? s : null;
     }
 
-    /**
-     * Во сколько раз быстрее голых рук идёт копание этого блока.
-     *
-     * Неподходящий инструмент не помогает вообще: киркой по земле копается
-     * ровно так же, как руками. Это и делает выбор инструмента осмысленным.
-     */
-    private float miningSpeed(BlockType target) {
-        com.mineclone.world.ItemStack tool = heldTool();
-        if (tool == null || !tool.tool().suits(target))
-            return 1f;
-        return tool.tool().speed();
-    }
-
-    /**
-     * Даёт ли блок дроп при текущем инструменте. Камень без кирки крошится,
-     * но ничего не оставляет — как в MC.
-     */
-    private boolean canHarvest(BlockType target) {
-        return com.mineclone.item.loot.LootRegistry.canHarvest(target, heldTool());
-    }
-
     /** Сносит очко прочности и убирает инструмент, если он развалился. */
     private void wearHeldTool() {
         if (gameMode != com.mineclone.world.GameMode.SURVIVAL)
@@ -3552,34 +3306,16 @@ public class Game {
         }
     }
 
-    private void executeBlockBreak(int x, int y, int z, BlockType target) {
-        boolean harvest = canHarvest(target);
-        startHandSwing();
-        byte targetMeta = world.getBlockMeta(x, y, z);
-        // Содержимое забирается ДО setBlock: он же и стирает сундук. Высыпается
-        // на землю в любом режиме — это вещи игрока, и полный инвентарь больше
-        // не повод оставлять сундук стоять.
-        if (target == BlockType.CHEST)
-            spillChest(x, y, z);
-        if (target == BlockType.FURNACE)
-            spillFurnace(x, y, z);
+    /**
+     * Сломанный рукой блок: звук, обломки, шум и обрушение постройки над ним.
+     * Сам разлом — {@link InteractionController#breakBlock}; содержимое
+     * сундука высыпает поведение блока, вторая половина двери уходит
+     * обновлением соседей.
+     */
+    private void blockBroken(int x, int y, int z, BlockType target) {
         sound.playOneOfAt(sounds.breakBlock(target), blockSoundPosition(x, y, z),
                 0.8f, 0.9f + 0.2f * (float) Math.random());
-        net.noteBlockAction(target, true, x, y, z);
-        // Разбитый лёд возвращается водой: иначе замёрзшее озеро превращалось
-        // бы в яму, а под льдом всегда была вода.
-        world.setBlock(x, y, z, target == BlockType.ICE && gameMode == com.mineclone.world.GameMode.SURVIVAL
-                ? BlockType.WATER : BlockType.AIR);
         playerStructures.remove(com.mineclone.world.StructureStability.placementKey(x, y, z));
-        if (gameMode == com.mineclone.world.GameMode.SURVIVAL) {
-            if (harvest) {
-                var context = new com.mineclone.item.loot.LootContext(world.seed, x, y, z,
-                        heldTool(), true, gameMode, itemRandom);
-                for (var drop : com.mineclone.item.Items.get().loot().blockDrops(target, context))
-                    dropItem(drop, x + 0.5f, y + 0.3f, z + 0.5f);
-            }
-            wearHeldTool();
-        }
         float pSky = world.getSkyLight(x, y, z) / (float) com.mineclone.world.Chunk.MAX_LIGHT;
         float pBlk = world.getBlockLightWorld(x, y, z) / (float) com.mineclone.world.Chunk.MAX_LIGHT;
         // Объёмные обломки вместо плоских квадратиков; у крестов (факел,
@@ -3591,12 +3327,6 @@ public class Game {
         else
             debris.spawn(x, y, z, target, pSky, pBlk);
         emitNoise(x + 0.5f, y + 0.5f, z + 0.5f, NOISE_BREAK);
-        if (target == BlockType.DOOR_CLOSED || target == BlockType.DOOR_OPEN) {
-            int otherY = ((targetMeta & 0x4) != 0) ? y - 1 : y + 1;
-            BlockType other = world.getBlock(x, otherY, z);
-            if (other == BlockType.DOOR_CLOSED || other == BlockType.DOOR_OPEN)
-                world.setBlock(x, otherY, z, BlockType.AIR);
-        }
         collapseUnsupportedNeighbours(x, y, z);
     }
 
@@ -3621,28 +3351,6 @@ public class Game {
             emitNoise(x + 0.5f, y + 0.5f, z + 0.5f, NOISE_BREAK * 1.8f);
             invalidateShadows();
         }
-    }
-
-    /** Высыпает содержимое сундука на землю — вызывается до того, как блок снят. */
-    private void spillChest(int x, int y, int z) {
-        com.mineclone.world.ItemStack[] slots = world.getChest(x, y, z);
-        if (slots == null)
-            return;
-        for (int i = 0; i < slots.length; i++) {
-            if (slots[i] == null)
-                continue;
-            dropItem(slots[i], x + 0.5f, y + 0.5f, z + 0.5f);
-            slots[i] = null;
-        }
-    }
-
-    private byte facingFromCamera() {
-        Vector3f fwd = player.camera.forward();
-        float ax = Math.abs(fwd.x), az = Math.abs(fwd.z);
-        if (ax > az)
-            return (byte) (fwd.x > 0 ? 1 : 3);
-        else
-            return (byte) (fwd.z > 0 ? 0 : 2);
     }
 
     private void executeCommand(String cmd) {
@@ -3714,7 +3422,7 @@ public class Game {
                 case "/debug" -> showDebug = !showDebug;
                 case "/instamine" -> {
                     instantBreak = !instantBreak;
-                    resetBreakState();
+                    interaction.resetBreak();
                     showCommandToast(instantBreak ? "Instamine ON" : "Instamine OFF");
                 }
                 case "/gamemode", "/gm" -> {
@@ -3743,9 +3451,7 @@ public class Game {
     private void setGameMode(com.mineclone.world.GameMode mode) {
         gameMode = mode;
         player.setGameMode(mode);
-        resetBreakState();
-        creativeBreakRepeat.reset();
-        placeRepeat.reset();
+        interaction.reset();
         if (mode == com.mineclone.world.GameMode.CREATIVE) {
             advancedFeedback.clearEffects();
             damageFlash = damageShake = 0f;
@@ -3879,15 +3585,6 @@ public class Game {
     private void showCommandHelp() {
         commandHelpTimer = 6.0f;
         showCommandToast("Showing command help");
-    }
-
-    private byte stairFacingFromCamera() {
-        Vector3f fwd = player.camera.forward();
-        float ax = Math.abs(fwd.x), az = Math.abs(fwd.z);
-        if (ax > az)
-            return (byte) (fwd.x > 0 ? 1 : 3);
-        else
-            return (byte) (fwd.z > 0 ? 2 : 0);
     }
 
     /**
@@ -4675,9 +4372,10 @@ public class Game {
         }
         updateHint();
 
-        if (state == State.PLAYING && breakX != NO_BREAK && breakProgress > 0f) {
-            int stage = Math.min(9, (int) (breakProgress * 10f));
-            breakOverlay.render(proj, view, breakX, breakY, breakZ, stage, atlas, hdr ? 1f : 0f);
+        if (state == State.PLAYING && interaction.breaking()) {
+            int stage = Math.min(9, (int) (interaction.breakProgress() * 10f));
+            breakOverlay.render(proj, view, interaction.breakX(), interaction.breakY(), interaction.breakZ(),
+                    stage, atlas, hdr ? 1f : 0f);
         }
 
         // Следы кладутся до частиц: они лежат на грани, а частицы летают
@@ -4834,6 +4532,7 @@ public class Game {
 
     /** Дистанция до блока под прицелом или дефолт, если прицел в небе. */
     private float focusDistance() {
+        Raycaster.Hit lastHit = interaction.hit();
         if (lastHit == null)
             return 12f;
         Vector3f eye = photoMode ? photoPos : player.camera.position;
@@ -4944,6 +4643,7 @@ public class Game {
      * обведены, ступень — Г-образно.
      */
     private float[] outlineTarget() {
+        Raycaster.Hit lastHit = interaction.hit();
         if (lastHit == null || world == null)
             return null;
         int n = com.mineclone.world.shape.Shapes.outline(world, lastHit.x, lastHit.y, lastHit.z, outlineBoxes);
@@ -4972,6 +4672,7 @@ public class Game {
     private void updateHint() {
         ContextHint.Hint target = null;
         if (gameOpts.contextHints() && state == State.PLAYING && !photoMode && !consoleOpen && world != null) {
+            Raycaster.Hit lastHit = interaction.hit();
             BlockType block = lastHit != null ? world.getBlock(lastHit.x, lastHit.y, lastHit.z) : null;
             target = ContextHint.forTarget(block, inventory.get(selectedSlot), player.canEat(),
                     aimingAtMob);
@@ -5636,6 +5337,7 @@ public class Game {
                 if (showDebug) {
                     int pcx = (int) Math.floor(player.position.x / Chunk.SIZE_X);
                     int pcz = (int) Math.floor(player.position.z / Chunk.SIZE_Z);
+                    Raycaster.Hit lastHit = interaction.hit();
                     BlockType tgt = lastHit != null ? world.getBlock(lastHit.x, lastHit.y, lastHit.z) : null;
                     byte tgtMeta = lastHit != null ? world.getBlockMeta(lastHit.x, lastHit.y, lastHit.z) : 0;
                     int bx = (int) Math.floor(player.position.x);
@@ -6565,12 +6267,8 @@ public class Game {
         BlockType before = world.getBlock(x, y, z);
         if (before == now && world.getBlockMeta(x, y, z) == meta)
             return;
-        // Only the authority owns these stacks. Client block snapshots must
-        // never turn a stale container view into a second set of drops.
-        if (!net.isClient() && before != now) {
-            if (before == BlockType.CHEST) spillChest(x, y, z);
-            if (before == BlockType.FURNACE) spillFurnace(x, y, z);
-        }
+        // A chest or furnace a guest removed spills inside setBlock, through
+        // its behaviour — on the host only: a guest's world has no drop sink.
         world.setBlock(x, y, z, now, meta);
         if (!broke || before == BlockType.AIR)
             return;

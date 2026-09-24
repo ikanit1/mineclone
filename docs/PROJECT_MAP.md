@@ -73,6 +73,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [Frost](../src/main/java/com/mineclone/game/Frost.java) | Сколько мороза набрал игрок: 0 — тепло, 1 — края экрана затянуло инеем. |
 | [Game](../src/main/java/com/mineclone/game/Game.java) | Javadoc summary not yet supplied. |
 | [Hud](../src/main/java/com/mineclone/game/Hud.java) | Игровой интерфейс поверх мира: F3, хотбар, сердца, сытость, компас, подсказки и консоль. |
+| [InteractionController](../src/main/java/com/mineclone/game/InteractionController.java) | What a click does to the block under the crosshair (BLK-03): breaking, placing, using, picking. |
 | [InteractionRepeat](../src/main/java/com/mineclone/game/InteractionRepeat.java) | Immediate press plus a bounded repeat cadence while a button stays held. |
 | [LocalParticipant](../src/main/java/com/mineclone/game/LocalParticipant.java) | The player of this process as the simulation sees it. |
 | [MenuBackground](../src/main/java/com/mineclone/game/MenuBackground.java) | Кинематограф главного меню: серия пролётов камеры над отобранными пейзажами мира меню. |
@@ -374,6 +375,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [LavaSimulator](../src/main/java/com/mineclone/world/LavaSimulator.java) | Overworld lava: one scheduled wave every 1.5s, three lateral cells, persistent falls. |
 | [Lightning](../src/main/java/com/mineclone/world/Lightning.java) | Где и когда бьёт молния — чистая функция от сида и времени. |
 | [LoadStage](../src/main/java/com/mineclone/world/LoadStage.java) | Этап подготовки мира перед входом в игру. |
+| [NeighbourUpdates](../src/main/java/com/mineclone/world/NeighbourUpdates.java) | Cells whose support may have gone (BLK-03): a torch whose wall was dug out, the upper half of a door whose lower half broke. |
 | [NightSky](../src/main/java/com/mineclone/world/NightSky.java) | Ночное небо: фазы луны и северное сияние. |
 | [OreGenerator](../src/main/java/com/mineclone/world/OreGenerator.java) | Жилы руды в камне. |
 | [PaletteStorage](../src/main/java/com/mineclone/world/PaletteStorage.java) | Eight 16-cubed sections with local palettes and 0/1/2/4/8-bit indices. |
@@ -389,7 +391,26 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [WaterSimulator](../src/main/java/com/mineclone/world/WaterSimulator.java) | Incremental water flow simulator. |
 | [Weather](../src/main/java/com/mineclone/world/Weather.java) | Погода: общий на весь мир график атмосферных фронтов. |
 | [World](../src/main/java/com/mineclone/world/World.java) | Javadoc summary not yet supplied. |
-| [WorldSimulation](../src/main/java/com/mineclone/world/WorldSimulation.java) | Мировой тик: печи, случайные тики блоков, вода, лава и обвалы. |
+| [WorldSimulation](../src/main/java/com/mineclone/world/WorldSimulation.java) | Мировой тик: печи, случайные тики блоков, вода, лава, обвалы и блоки, потерявшие опору (NeighbourUpdates). |
+
+## com.mineclone.world.behavior
+
+| Type | Purpose |
+|---|---|
+| [BedrollBehavior](../src/main/java/com/mineclone/world/behavior/BedrollBehavior.java) | A bedroll is laid half a block high and slept in. |
+| [Behaviors](../src/main/java/com/mineclone/world/behavior/Behaviors.java) | Every block's behaviour (BLK-03). |
+| [BlockBehavior](../src/main/java/com/mineclone/world/behavior/BlockBehavior.java) | What a block does, as opposed to what it is made of (BlockShape): how it is placed, what a right click does, what holds it up and what it leaves when it goes (AC-06, BLK-03). |
+| [ChestBehavior](../src/main/java/com/mineclone/world/behavior/ChestBehavior.java) | A chest opens its window and, whatever removes it, spills what it holds first. |
+| [CraftingTableBehavior](../src/main/java/com/mineclone/world/behavior/CraftingTableBehavior.java) | A crafting table opens the 3x3 grid. |
+| [DoorBehavior](../src/main/java/com/mineclone/world/behavior/DoorBehavior.java) | A door is two blocks: the lower half (meta bit 2 clear) stands on something solid, the upper half (bit 2 set) on the lower. |
+| [DropSink](../src/main/java/com/mineclone/world/behavior/DropSink.java) | Where the things a block leaves behind go: a spilled chest, the torch that lost its wall. |
+| [FurnaceBehavior](../src/main/java/com/mineclone/world/behavior/FurnaceBehavior.java) | A furnace opens its window and spills its three slots whatever removes it. |
+| [PlaceContext](../src/main/java/com/mineclone/world/behavior/PlaceContext.java) | How a block is being placed. |
+| [SnowLayerBehavior](../src/main/java/com/mineclone/world/behavior/SnowLayerBehavior.java) | A snow layer lies on something solid and goes when that is dug out. |
+| [StairsBehavior](../src/main/java/com/mineclone/world/behavior/StairsBehavior.java) | A stair's step faces away from the placer: it is climbed from where they stand. |
+| [TorchBehavior](../src/main/java/com/mineclone/world/behavior/TorchBehavior.java) | A torch stands on a block or leans from a wall (meta 1..4, the mount the mesher tilts it by) and falls, as an item, when that block goes. |
+| [UseContext](../src/main/java/com/mineclone/world/behavior/UseContext.java) | Who uses a block. |
+| [UseResult](../src/main/java/com/mineclone/world/behavior/UseResult.java) | What a right click on a block did (AC-06). |
 
 ## com.mineclone.world.damage
 
@@ -440,4 +461,4 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [BlockShape](../src/main/java/com/mineclone/world/shape/BlockShape.java) | What a block is made of, as boxes in its own cell (0..1 on each axis): what a body collides with, and what the aim and the outline see (AC-05). |
 | [Shapes](../src/main/java/com/mineclone/world/shape/Shapes.java) | The shape of every block (BLK-02): one registry that collision, the aim, the outline and the mesher read instead of five places that knew stairs apart. |
 
-Top-level declarations: 319.
+Top-level declarations: 335.

@@ -142,6 +142,13 @@ public final class Multiplayer implements NetTransport.Listener {
     private float itemSyncTimer;
     /** Пока true, правка блока пришла по сети и обратно не уходит. */
     private boolean applyingRemote;
+    /** A guest's uses, numbered for the host's log and a later reply (BLK-03). */
+    private int useSequence;
+    /**
+     * How far from a guest's eye a block it uses may be: the reach of a hand
+     * and a margin for the snapshot the host last accepted being one interval old.
+     */
+    static final float USE_REACH = 8f;
     private boolean swingPending;
     private float infoTimer;
     private float lastSentHealth = -1f;
@@ -592,6 +599,79 @@ public final class Multiplayer implements NetTransport.Listener {
      * но он также описывает тихие тики воды и растений — звук нужен только
      * для явного действия игрока.
      */
+    /**
+     * Runs an edit the guest can foresee — a door's swing — without sending it
+     * as an edit: the host is asked to do it with {@link #requestUse}, and its
+     * {@code S_BLOCK_SET} settles the result either way.
+     */
+    public void predicted(Runnable edit) {
+        boolean was = applyingRemote;
+        applyingRemote = true;
+        try {
+            edit.run();
+        } finally {
+            applyingRemote = was;
+        }
+    }
+
+    /**
+     * Guest: ask the host to use a block (BLK-03).
+     *
+     * @param nx normal of the face clicked
+     * @param hx where in the block the click landed, 0..1 on each axis
+     */
+    public void requestUse(int x, int y, int z, int nx, int ny, int nz, float hx, float hy, float hz) {
+        if (role != Role.CLIENT || !joined || channel == null)
+            return;
+        channel.packet(NetProto.C_USE_BLOCK, true, hostActor)
+                .blockPos(x, y, z).u8(faceCode(nx, ny, nz))
+                .u8(unit(hx)).u8(unit(hy)).u8(unit(hz)).varInt(++useSequence);
+    }
+
+    /** 0 none; 1..6 = +X, -X, +Y, -Y, +Z, -Z. */
+    static int faceCode(int nx, int ny, int nz) {
+        if (nx > 0) return 1;
+        if (nx < 0) return 2;
+        if (ny > 0) return 3;
+        if (ny < 0) return 4;
+        if (nz > 0) return 5;
+        if (nz < 0) return 6;
+        return 0;
+    }
+
+    private static int unit(float v) {
+        return Float.isFinite(v) ? Math.round(Math.max(0f, Math.min(1f, v)) * 255f) : 0;
+    }
+
+    /**
+     * Host: a guest's use. The block's own behaviour runs here, on the real
+     * world, and whatever it changes goes out as {@code S_BLOCK_SET} to all —
+     * the guest's prediction included. A guest farther than it can reach, or
+     * clicking a block with nothing to use, changes nothing.
+     */
+    private void onUseBlock(int from, PacketBuf in) {
+        int[] at = in.readBlockPos();
+        int face = in.readU8();
+        in.readU8(); in.readU8(); in.readU8();
+        in.readVarInt();
+        if (in.truncated() || role != Role.HOST || face > 6)
+            return;
+        World world = ctx.world();
+        RemotePlayer guest = players.get(from);
+        if (world == null || guest == null || !guest.placed())
+            return;
+        org.joml.Vector3fc p = guest.acceptedPosition();
+        float dx = at[0] + 0.5f - p.x(), dy = at[1] + 0.5f - (p.y() + Participant.EYE_HEIGHT),
+                dz = at[2] + 0.5f - p.z();
+        if (dx * dx + dy * dy + dz * dz > USE_REACH * USE_REACH)
+            return;
+        BlockType type = world.getBlock(at[0], at[1], at[2]);
+        var behavior = com.mineclone.world.behavior.Behaviors.of(type);
+        if (behavior.interactive())
+            behavior.use(world, at[0], at[1], at[2], world.getBlockMeta(at[0], at[1], at[2]),
+                    new com.mineclone.world.behavior.UseContext(from));
+    }
+
     public void noteBlockAction(BlockType block, boolean broke, int x, int y, int z) {
         if (!joined || channel == null || block == null)
             return;
@@ -941,6 +1021,7 @@ public final class Multiplayer implements NetTransport.Listener {
                     // разошлёт её всем — включая того, кто просил.
                     ctx.applyRemoteBlock(at[0], at[1], at[2], (byte) id, (byte) meta, broke);
             }
+            case NetProto.C_USE_BLOCK -> onUseBlock(from, in);
             case NetProto.C_CHUNK_REQUEST -> {
                 int cx = in.readI32(), cz = in.readI32();
                 if (!in.truncated() && role == Role.HOST)

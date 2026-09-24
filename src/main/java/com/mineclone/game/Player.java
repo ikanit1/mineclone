@@ -106,7 +106,7 @@ public class Player implements Damageable {
 
     public static final float WIDTH = com.mineclone.sim.Participant.BODY_WIDTH;
     public static final float HEIGHT = com.mineclone.sim.Participant.BODY_HEIGHT;
-    public static final float EYE_HEIGHT = 1.62f;
+    public static final float EYE_HEIGHT = com.mineclone.sim.Participant.EYE_HEIGHT;
 
     public static final float WALK_SPEED = 4.8f;
     public static final float FLY_SPEED = 12f;

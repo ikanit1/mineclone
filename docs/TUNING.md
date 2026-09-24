@@ -11,6 +11,10 @@ Moved from the pre-foundation CLAUDE.md on 2026-09-24; structure placement corre
 | `ChunkMesher` | `FACE_LIGHT[]` | Per-face directional brightness |
 | `ChunkMesher` | `AO_TABLE[]` | AO corner darkening curve |
 | `Shapes` | `define()` | Which shape each block has: what stops a body and what the aim hits |
+| `Behaviors` | `define()` | What each block does: placement, use, support, what it spills |
+| `NeighbourUpdates` | `BUDGET` | Support checks per world tick (256); the rest waits for the next |
+| `InteractionController` | `REACH` | How far the hand reaches (6 blocks) |
+| `Multiplayer` | `USE_REACH` | How far from a guest's eye a block it uses may be (8: reach plus a snapshot's lag) |
 | `Shapes` | `STAIR_SLAB / DOOR_THICKNESS / CROSS_HEIGHT / TORCH_HALF_WIDTH` | Stair slab height, door panel, cross and torch geometry — shared by collision, aim, outline and mesher |
 | `World` | `SEA_LEVEL = 50` | Water/sand threshold |
 | `BiomeProvider` | `CONT/TEMP/HUM_FREQ` | Biome region size |

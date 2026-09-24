@@ -2,7 +2,8 @@ package com.mineclone.world;
 
 
 /**
- * Мировой тик: печи, случайные тики блоков, вода, лава и обвалы.
+ * Мировой тик: печи, случайные тики блоков, вода, лава, обвалы и блоки,
+ * потерявшие опору ({@link NeighbourUpdates}).
  *
  * <p>Вынут из {@code Game.updateActiveWorld}, где жил вперемешку с частицами,
  * следами, звуком и обратной связью камеры. Причина простая: у выделенного
@@ -113,6 +114,8 @@ public final class WorldSimulation {
             long start = System.nanoTime();
             world.falling.update(dt);
             fallingNanos = System.nanoTime() - start;
+            // Last: every change of this tick has queued its neighbours.
+            world.processNeighbourUpdates(NeighbourUpdates.BUDGET);
         }
     }
 

@@ -7,8 +7,9 @@ metadata, containers and meshes. Read [chunk publication](chunk-publication.md)
 before changing generation, restoration or worker access.
 
 To add a block: append its enum constant to `world/BlockType.java`, define its
-properties in `world/BlockProps.java` and its shape in `world/shape/Shapes.java`
-(both switches are exhaustive, so a block without them does not compile; see
+properties in `world/BlockProps.java`, its shape in `world/shape/Shapes.java`
+and its behaviour in `world/behavior/Behaviors.java` (all three switches are
+exhaustive, so a block without them does not compile; see
 [blocks](blocks.md#shapes-blk-02)), wire PNG tile names in `render/TextureAtlas.java`,
 then add the item JSON and recipes/tags under `assets/data/mineclone/`. Existing
 block IDs are saved ordinals: never insert/reorder/remove the existing prefix.
@@ -54,6 +55,11 @@ After publication, container mutation belongs to the main simulation thread;
 - Biomes: `BiomeProvider` (3 climate noises → Whittaker table, 4×4-block quantisation, 5×5 height-param smoothing). Biomes are never persisted — recomputed from the seed.
 - `ChunkLoader` streams chunk generation onto a background thread pool; results drip back as `Ready` records which `Game` uploads to GPU.
 - `Chunk.computeSkyLight()` runs a column-flood BFS then one self-weighted blur pass to soften gradients.
+- `World.setBlock()` сначала зовёт `onRemoved` уходящего блока — сундук и печь
+  высыпаются там, кто бы их ни убрал, — а после правки ставит соседей, которым
+  нужна опора, в очередь `NeighbourUpdates` (BLK-03, [blocks](blocks.md#behaviours-blk-03)).
+  И то и другое включается, только когда мир симулирует сессия
+  (`World.simulate`): у зеркала гостя стока предметов и очереди нет.
 - `World.setBlock()` пересчитывает свет и будит воду **только когда это нужно**:
   `WaterSimulator` будится при смене проходимости или когда в замене участвует
   вода (снятие источника проходимость не меняет, но бассейн обязан стечь).

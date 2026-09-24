@@ -147,6 +147,9 @@ public final class WorldSession {
         this.events = Objects.requireNonNull(events, "events");
         this.random = new Random(world.seed ^ 0x1735_D40BL);
         this.shots = entities.projectiles::add;
+        // A session means this world is the real one: whatever takes a chest
+        // away spills it here, and blocks that lose their support fall.
+        world.simulate(this::dropStack);
     }
 
     public World world() { return world; }

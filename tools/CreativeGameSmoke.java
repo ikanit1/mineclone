@@ -10,6 +10,11 @@ public class CreativeGameSmoke {
     static Object get(Object o,String name)throws Exception {Field f=o.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(o);}
     static void set(Object o,String name,Object value)throws Exception {Field f=o.getClass().getDeclaredField(name);f.setAccessible(true);f.set(o,value);}
     static void call(Game g,String method,Class<?> type,Object value)throws Exception {
+        if(method.equals("handleInteraction")){
+            // Clicks live in the interaction controller since BLK-03.
+            Object c=get(g,"interaction");Method m=c.getClass().getDeclaredMethod("update",float.class);
+            m.setAccessible(true);m.invoke(c,value);return;
+        }
         Method m=Game.class.getDeclaredMethod(method,type);m.setAccessible(true);m.invoke(g,value);
     }
     static void check(boolean ok,String message){if(!ok)throw new AssertionError(message);}
@@ -52,7 +57,30 @@ public class CreativeGameSmoke {
             call(g,"handleInteraction",float.class,.05f);
             check(w.getBlock(8,12,6)==BlockType.BEDROCK,"survival cannot break bedrock");
             call(g,"executeCommand",String.class,"/gm 1");check(p.isCreative(),"numeric creative command");
-            System.out.println("PASS: Game instant/repeated breaking, bedrock, no tool wear/drops, repeated infinite placement, body collision, Shift against chest, numeric mode commands");
+            // BLK-03: a door by real clicks — placed whole, opened whole — and a
+            // torch placed through the open doorway (BLK-02: the aim misses the panel).
+            in.injectMouseButton(0,false);in.update();
+            for(int z=0;z<8;z++)for(int y=11;y<14;y++)c.set(8,y,z,BlockType.AIR);
+            p.respawn(8.5f,11.001f,8.5f);p.camera.yaw=0;
+            inv.set(0,ItemStack.of("door"));
+            p.camera.pitch=(float)Math.atan2(12.621-11.0,8.5-6.5);
+            in.injectMouseButton(1,true);in.update();call(g,"handleInteraction",float.class,.01f);
+            in.injectMouseButton(1,false);in.update();call(g,"handleInteraction",float.class,.01f);
+            check(w.getBlock(8,11,6)==BlockType.DOOR_CLOSED && w.getBlock(8,12,6)==BlockType.DOOR_CLOSED
+                    && (w.getBlockMeta(8,12,6)&4)!=0,"a right click places a whole door");
+            p.camera.pitch=(float)Math.atan2(12.621-11.5,8.5-6.09);
+            in.injectMouseButton(1,true);in.update();call(g,"handleInteraction",float.class,.01f);
+            in.injectMouseButton(1,false);in.update();call(g,"handleInteraction",float.class,.01f);
+            check(w.getBlock(8,11,6)==BlockType.DOOR_OPEN && w.getBlock(8,12,6)==BlockType.DOOR_OPEN,
+                    "a right click on the panel opens both halves");
+            inv.set(0,ItemStack.of("torch"));
+            p.camera.pitch=(float)Math.atan2(12.621-11.0,8.5-4.5);
+            in.injectMouseButton(1,true);in.update();call(g,"handleInteraction",float.class,.01f);
+            in.injectMouseButton(1,false);in.update();call(g,"handleInteraction",float.class,.01f);
+            check(w.getBlock(8,11,4)==BlockType.TORCH && w.getBlockMeta(8,11,4)==0,
+                    "a torch goes on the floor beyond the open doorway");
+            check(w.getBlock(8,11,6)==BlockType.DOOR_OPEN,"aiming through the doorway left the door alone");
+            System.out.println("PASS: Game instant/repeated breaking, bedrock, no tool wear/drops, repeated infinite placement, body collision, Shift against chest, numeric mode commands, whole door by clicks, torch through an open doorway");
         } finally {window.destroy();}
     }
 }

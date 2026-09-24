@@ -50,6 +50,15 @@ come under the same number. Changed or new in v8 so far:
   pins the host's and rebases the chunk on its generation before applying the
   delta.
 
+- `C_USE_BLOCK` (70, new) — `blockPos, u8 face (0 none, 1..6: +X, -X, +Y, -Y,
+  +Z, -Z), u8 hit x, y, z (the point in the block, in 255ths), varInt sequence`
+  (BLK-03). A guest's right click on an interactive block: the host checks the
+  guest is within reach, runs the block's behaviour (`BlockBehavior.use`) and
+  sends back what changed as `S_BLOCK_SET`. The guest applies a door's swing at
+  once without sending it as an edit; windows still open through `C_OPEN`, and
+  a guest's sleep only moves its own respawn point. Before, a guest toggled a
+  door by editing both halves itself (`C_BLOCK_EDIT`).
+
 - `C_PLAYER`, `S_PLAYER` and every packet that carries a checkpoint
   (`C_OPEN`, `C_DROP`, `C_PICKUP`, `S_PICKUP`) — `bytes PlayerRecordCodec`: the
   whole `PlayerRecord` with its own format version (SAVE-07), no longer v7's
@@ -104,6 +113,7 @@ reserved and are never reused.
 | 67 | `S_DROP_ACK` | host → guest | reliable | the drop landed |
 | 68 | `C_PICKUP` | guest → host | reliable | pick up, with a checkpoint |
 | 69 | `S_PICKUP` | host → guest | reliable | what was picked up |
+| 70 | `C_USE_BLOCK` | guest → host | reliable | **v8, new**: use a block; the host runs its behaviour |
 | 74 | `S_GEN_MAP` | host → guest | reliable | **v8, new**: `GenMap`, right before `S_WELCOME` |
 
 Traffic by code, measured: [perf/net-baseline.md](perf/net-baseline.md).
