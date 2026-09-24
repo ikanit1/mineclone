@@ -340,6 +340,7 @@ public final class SaveManager {
         return new File(chunksDir(id), SaveFormat.chunkFileName(cx, cz));
     }
     private File iconFile(String id) { return new File(worldDir(id), SaveFormat.ICON_FILE); }
+    private File ledgerFile(String id) { return new File(chunksDir(id), SaveFormat.LEDGER_FILE); }
     private File optionsFile() { return new File(savesRoot.getParentFile() != null
             ? savesRoot.getParentFile() : new File("."), SaveFormat.OPTIONS_FILE); }
 
@@ -1074,6 +1075,123 @@ public final class SaveManager {
         if (in.read() != -1) throw new IOException("unexpected trailing save data");
     }
 
+    // ---- chunk ledger (GEN-02) ----
+
+    /** Ledger bytes queued but not yet on disk: a read sees the newest. */
+    private final java.util.Map<String, byte[]> pendingLedgers = new java.util.concurrent.ConcurrentHashMap<>();
+    /** Worlds whose damaged ledger could not be moved aside: it stays unwritten this session. */
+    private final java.util.Set<String> protectedLedgers = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    /** No real ledger comes near this; more is damage, not a world. */
+    private static final int MAX_LEDGER_BYTES = 64 * 1024 * 1024;
+
+    /** The keys of every chunk the world saved: an upgrade pins the land around them. */
+    public java.util.List<Long> savedChunkKeys(String id) {
+        java.util.List<Long> keys = new java.util.ArrayList<>();
+        if (nameless(id)) return keys;
+        String[] names = chunksDir(id).list();
+        if (names == null) return keys;
+        for (String name : names) {
+            if (!name.startsWith("c.") || !name.endsWith(".dat")) continue;
+            String[] parts = name.substring(2, name.length() - 4).split("\\.");
+            if (parts.length != 2) continue;
+            try {
+                keys.add(com.mineclone.world.World.key(Integer.parseInt(parts[0]), Integer.parseInt(parts[1])));
+            } catch (NumberFormatException notAChunk) { }
+        }
+        java.util.Collections.sort(keys);
+        return keys;
+    }
+
+    /** Inspection only: a damaged ledger stays where it is until {@link #openLedger} moves it aside. */
+    public synchronized LedgerLoad readLedger(String id) {
+        if (nameless(id)) return new LedgerLoad.Absent();
+        try {
+            byte[] pending = pendingLedgers.get(id);
+            if (pending != null) return new LedgerLoad.Loaded(com.mineclone.world.gen.ChunkLedger.decode(pending));
+            File f = ledgerFile(id);
+            if (Files.notExists(f.toPath())) return new LedgerLoad.Absent();
+            byte[] bytes;
+            try (var in = new GZIPInputStream(new BufferedInputStream(new FileInputStream(f)))) {
+                bytes = in.readNBytes(MAX_LEDGER_BYTES + 1);
+            }
+            if (bytes.length > MAX_LEDGER_BYTES) throw new IOException("chunk ledger too large");
+            return new LedgerLoad.Loaded(com.mineclone.world.gen.ChunkLedger.decode(bytes));
+        } catch (IOException | IllegalArgumentException | SecurityException e) {
+            return new LedgerLoad.Unreadable(readReason(e));
+        }
+    }
+
+    /**
+     * The world's ledger, ready to generate with; a world always opens. A
+     * damaged file is moved aside as evidence ({@code ledger.dat.corrupt-<millis>})
+     * after the session backup; when either fails, the file stays where it is
+     * and this session never writes over it. A missing or damaged ledger of a
+     * world that was ever upgraded is rebuilt conservatively — saved chunks, the
+     * land around them and around the {@code anchors} (spawn, players) count as
+     * V1 — because unedited land it no longer knows about would otherwise
+     * regenerate with the new generator.
+     */
+    public com.mineclone.world.gen.ChunkLedger openLedger(String id, com.mineclone.world.gen.WorldGenSettings generator,
+                                                          float[][] anchors) {
+        LedgerLoad read = readLedger(id);
+        if (read instanceof LedgerLoad.Loaded loaded) return loaded.ledger();
+        if (read instanceof LedgerLoad.Unreadable unreadable) {
+            try {
+                moveLedgerAside(id);
+                System.err.println("chunk ledger of " + id + " unreadable (" + unreadable.reason() + "); rebuilt");
+            } catch (IOException e) {
+                protectedLedgers.add(id);
+                System.err.println("chunk ledger of " + id + " unreadable (" + unreadable.reason()
+                        + ") and kept in place (" + e.getMessage() + "); rebuilt for this session only");
+            }
+        }
+        var ledger = new com.mineclone.world.gen.ChunkLedger();
+        if (generator.upgradedAt() > 0)
+            com.mineclone.world.gen.WorldGenUpgrade.pinSeen(ledger, com.mineclone.world.gen.WorldGenVersion.V1,
+                    savedChunkKeys(id), anchors);
+        return ledger;
+    }
+
+    private void moveLedgerAside(String id) throws IOException {
+        awaitBackup(sessionBackup(id));
+        synchronized (this) {
+            java.nio.file.Path source = ledgerFile(id).toPath();
+            long stamp = System.currentTimeMillis();
+            for (;;) {
+                java.nio.file.Path evidence = source.resolveSibling(source.getFileName() + ".corrupt-" + stamp++);
+                try {
+                    Files.move(source, evidence);
+                    return;
+                } catch (java.nio.file.FileAlreadyExistsException collision) { }
+            }
+        }
+    }
+
+    /** Queues the ledger's bytes behind the session backup; reads see them at once. */
+    public void saveLedgerAsync(String id, byte[] encoded) {
+        if (nameless(id) || encoded == null) return;
+        byte[] copy = encoded.clone();
+        synchronized (queueLock) {
+            var backup = sessionBackup(id);
+            pendingLedgers.put(id, copy);
+            chunkWriter.submit(() -> {
+                try {
+                    awaitBackup(backup);
+                    synchronized (SaveManager.this) {
+                        if (protectedLevels.contains(id))
+                            throw new IOException("world '" + id + "' failed its read check");
+                        if (protectedLedgers.contains(id))
+                            throw new IOException("the damaged chunk ledger of '" + id + "' is kept in place");
+                        writeGzipAtomic(ledgerFile(id), o -> o.write(copy));
+                    }
+                    pendingLedgers.remove(id, copy);
+                } catch (IOException e) {
+                    System.err.println("saveLedger refused: " + e.getMessage());
+                }
+            });
+        }
+    }
+
     /**
      * Preserve the original bytes before allowing regenerated data to save.
      * A failed move leaves protection latched; the caller must use read-only mode.
@@ -1135,6 +1253,8 @@ public final class SaveManager {
         flushAndAwait();
         deleteRecursive(worldDir(id));
         synchronized (queueLock) { sessions.remove(id); pendingLevels.remove(id); }
+        pendingLedgers.remove(id);
+        protectedLedgers.remove(id);
         java.nio.file.Path removed = chunksDir(id).toPath();
         pendingChunks.keySet().removeIf(path -> path.startsWith(removed));
     }

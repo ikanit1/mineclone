@@ -161,6 +161,8 @@ public class Game {
     private final java.util.Set<Long> playerStructures = new java.util.HashSet<>();
     /** Мобы открытого мира; null у гостя — их симулирует хозяин. */
     private com.mineclone.sim.WorldSession session;
+    /** Каким генератором сделан каждый чанк; null у гостя — мир чужой. */
+    private com.mineclone.world.gen.ChunkLedger ledger;
     /** Гость мир не симулирует; таймерам его тика нужна хоть одна точка. */
     private final java.util.List<org.joml.Vector3fc> aroundSelf = java.util.List.of(player.position);
     /** Музыка: ситуация из мира → режиссёр → потоковый плеер. */
@@ -908,6 +910,8 @@ public class Game {
         for (com.mineclone.world.Chunk c : world.getLoadedChunks()) {
             saveChunkIfModified(c);
         }
+        if (ledger != null)
+            save.saveLedgerAsync(worldId, ledger.encodeIfDirty());
     }
 
     /** Чанк и лежащие в нём предметы — той же записью, что у выделенного сервера. */
@@ -1193,7 +1197,11 @@ public class Game {
                 ? com.mineclone.world.gen.WorldGenSettings.decode(
                         lvl.extraSections.get(com.mineclone.world.gen.WorldGenSettings.SAVE_SECTION))
                 : com.mineclone.world.gen.WorldGenSettings.forNewWorld();
-        this.world = new World(seed, generator.policy());
+        // Every chunk keeps the generator that first made it (GEN-02); spawn and
+        // the player anchor the rebuild of a lost ledger.
+        this.ledger = save.openLedger(id, generator, lvl == null ? new float[0][] : new float[][] {
+                { (float) lvl.spawnX, (float) lvl.spawnZ }, { (float) lvl.px, (float) lvl.pz } });
+        this.world = new World(seed, generator.policy(ledger));
         this.mesher = new ChunkMesher(world);
         this.loader = new ChunkLoader(world, mesher, save, id);
         this.loader.setLodEnabled(gfxOpts.chunkLod());
@@ -1331,6 +1339,7 @@ public class Game {
         playerStructures.clear();
         ropeRenderer.clear();
         session = null;
+        ledger = null;
         debris.clear();
         sound.stopAllLoops();
         if (rainAmbience != null) rainAmbience.reset();
@@ -6488,6 +6497,7 @@ public class Game {
         // У участника мир не живёт своей жизнью: мобов, воду и случайные тики
         // считает хозяин, а сюда они приезжают готовыми.
         session = null;
+        ledger = null;
         // У участника мир тикает тот же объект, но с выключенной симуляцией:
         // таймеры ему нужны, право что-то менять — нет.
         simulation = new WorldSimulation(world == null ? 0L : world.seed);

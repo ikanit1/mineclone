@@ -106,8 +106,11 @@ final class WorldGenGoldenTests {
                 "new worlds use the latest generator with everything it implements");
         // A guest builds the host's world from the seed with V1 (Game.startRemoteWorld) and
         // the welcome packet does not name a generator yet: a V2 host would send wrong deltas.
+        // Old worlds have no way to move to V2 either: the chunk ledger and WorldGenUpgrade
+        // exist, the upgrade dialog and upgrade-worldgen (GEN-02) wait for V2 to change land.
         check(WorldGenVersion.LATEST == WorldGenVersion.V1, "new worlds moved past V1 before guests can learn the"
-                + " host's generator: carry the worldgen settings in S_WELCOME (GEN-02), then update this check");
+                + " host's generator: carry the worldgen settings and the ledger's pins to guests (GEN-02 network),"
+                + " offer the upgrade (world menu dialog, server upgrade-worldgen), then update this check");
         // The recorded features, not the build's own set, decide what a world's land gets
         // (the two can only differ once V2 implements a change).
         var recorded = new WorldGenSettings(WorldGenVersion.V2, GenFeatures.V1, 0).policy();

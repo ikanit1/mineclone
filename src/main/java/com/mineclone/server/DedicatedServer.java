@@ -75,6 +75,8 @@ public final class DedicatedServer implements NetContext {
     private final ConcurrentLinkedQueue<Runnable> tasks = new ConcurrentLinkedQueue<>();
 
     private World world;
+    /** Which generator made each chunk of the world. */
+    private com.mineclone.world.gen.ChunkLedger ledger;
     /** The local owner's checkpoint survives server sessions that have no local player. */
     private LevelData ownerTemplate;
     private ChunkLoader loader;
@@ -137,7 +139,11 @@ public final class DedicatedServer implements NetContext {
                 : com.mineclone.world.gen.WorldGenSettings.forNewWorld();
         if (lvl == null)
             levelExtraSections.put(com.mineclone.world.gen.WorldGenSettings.SAVE_SECTION, generator.encode());
-        world = new World(seed, generator.policy());
+        // Every chunk keeps the generator that first made it (GEN-02); spawn and
+        // the owner's checkpoint anchor the rebuild of a lost ledger.
+        ledger = save.openLedger(config.worldId, generator, lvl == null ? new float[0][] : new float[][] {
+                { (float) lvl.spawnX, (float) lvl.spawnZ }, { (float) lvl.px, (float) lvl.pz } });
+        world = new World(seed, generator.policy(ledger));
         loader = new ChunkLoader(world, new ChunkMesher(world), save, config.worldId);
         // Меши сервер не строит: рисовать ему нечем, а восемь потоков,
         // складывающих треугольники в никуда, — это восемь занятых ядер.
@@ -450,6 +456,7 @@ public final class DedicatedServer implements NetContext {
             save.saveChunkAsync(config.worldId, snapshot);
             written++;
         }
+        save.saveLedgerAsync(config.worldId, ledger.encodeIfDirty());
         if (written > 0)
             log("saved " + written + " chunks");
     }

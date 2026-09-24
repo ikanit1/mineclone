@@ -53,6 +53,8 @@ public final class SaveFormat {
     public static final String DEFAULT_WORLD_ID = "world";
     public static final String LEVEL_FILE = "level.dat";
     public static final String CHUNKS_DIR = "chunks";
+    /** Which generator made each chunk (GEN-02); lives beside the chunks it describes. */
+    public static final String LEDGER_FILE = "ledger.dat";
     /** Снимок мира для списка миров, 256×144. */
     public static final String ICON_FILE = "icon.png";
 

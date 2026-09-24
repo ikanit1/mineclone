@@ -53,6 +53,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [ResourceId](../src/main/java/com/mineclone/data/ResourceId.java) | Идентификатор контента: mineclone:iron_pickaxe. |
 | [SectionCodec](../src/main/java/com/mineclone/data/SectionCodec.java) | Bounded named byte sections; unknown keys are preserved without interpreting payloads. |
 | [VarInt](../src/main/java/com/mineclone/data/VarInt.java) | Целое переменной длины: по семь бит на байт, старший бит — «есть продолжение». |
+| [VarLong](../src/main/java/com/mineclone/data/VarLong.java) | A long of variable length: seven bits a byte, the high bit meaning "more follows". |
 
 ## com.mineclone.game
 
@@ -248,6 +249,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [ChunkSectionCodec](../src/main/java/com/mineclone/save/ChunkSectionCodec.java) | Version 7 chunk body: RLE terrain followed by bounded, extensible sections. |
 | [ChunkSnapshot](../src/main/java/com/mineclone/save/ChunkSnapshot.java) | Снимок чанка: блоки, meta, сундуки и печи. |
 | [ItemStackCodec](../src/main/java/com/mineclone/save/ItemStackCodec.java) | Стопка на диске: новый формат и чтение старого. |
+| [LedgerLoad](../src/main/java/com/mineclone/save/LedgerLoad.java) | Typed chunk-ledger read (GEN-02); reading never renames or replaces the file. |
 | [LevelData](../src/main/java/com/mineclone/save/LevelData.java) | Everything stored in level.dat. |
 | [LevelLoad](../src/main/java/com/mineclone/save/LevelLoad.java) | A missing file is the only read result that permits creating a new world. |
 | [Options](../src/main/java/com/mineclone/save/Options.java) | Global settings; sibling of saves/ (not per-world). |
@@ -418,9 +420,11 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 
 | Type | Purpose |
 |---|---|
+| [ChunkLedger](../src/main/java/com/mineclone/world/gen/ChunkLedger.java) | Which generator version each chunk of a world was first generated with (GEN-02). |
 | [GenFeatures](../src/main/java/com/mineclone/world/gen/GenFeatures.java) | The generation changes a chunk is made with. |
 | [GenPolicy](../src/main/java/com/mineclone/world/gen/GenPolicy.java) | Which generator version a chunk is generated with. |
 | [WorldGenSettings](../src/main/java/com/mineclone/world/gen/WorldGenSettings.java) | The level's worldgen section: which generator the world uses, the 1.1 changes it was created with, and when it was last upgraded (0 when never). |
+| [WorldGenUpgrade](../src/main/java/com/mineclone/world/gen/WorldGenUpgrade.java) | Moving a world to a newer generator (GEN-02) without changing land anyone has seen. |
 | [WorldGenVersion](../src/main/java/com/mineclone/world/gen/WorldGenVersion.java) | Which generator made a chunk. |
 
-Top-level declarations: 307.
+Top-level declarations: 311.

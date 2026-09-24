@@ -159,6 +159,16 @@ Chunk version 7 adds minimum reader 7, keeps RLE blocks/meta, then writes the
 same section envelope with `chests`, `furnaces`, `items`, and opaque extras.
 The extras travel through `ChunkSnapshot` and `Chunk` across load/unload cycles.
 
+`chunks/ledger.dat` (GEN-02) records which generator made each chunk; its format
+and meaning are in [worldgen.md](worldgen.md#chunk-ledger-gen-02). For saving it
+behaves like a chunk: `saveLedgerAsync` queues the whole file behind the session
+backup, a read sees the queued bytes, a world that failed its read check never
+gets it written. Unlike a chunk it never stops a world from opening:
+`openLedger` moves a damaged file aside as `ledger.dat.corrupt-<millis>` — or,
+when the backup or the move fails, leaves it in place and latches a write guard
+for that `SaveManager` — and rebuilds the ledger. `savedChunkKeys` lists only
+`c.<x>.<z>.dat`, so the ledger is never taken for a chunk.
+
 `saveLevel` serializes a complete immutable byte snapshot on the caller, then
 queues all filesystem operations behind the session backup. It does not wait
 for the writer. `readLevel`, the nullable adapter and world-list refresh wait for

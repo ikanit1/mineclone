@@ -17,9 +17,9 @@ public enum WorldGenVersion {
 
     /**
      * The version new worlds are created with. It stays V1 until V2 has
-     * something to generate, the ledger (GEN-02) keeps old land on V1 and the
-     * welcome packet tells a guest the host's generator — a guest still
-     * generates V1.
+     * something to generate, old worlds can be offered the upgrade (GEN-02: the
+     * ledger keeps their land, the dialog does not exist yet) and the welcome
+     * packet tells a guest the host's generator — a guest still generates V1.
      */
     public static final WorldGenVersion LATEST = V1;
 

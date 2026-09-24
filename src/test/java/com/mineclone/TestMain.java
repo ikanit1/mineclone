@@ -58,6 +58,7 @@ public final class TestMain {
         suite("optimization", "OptimizationTests", r -> r.run("optimization invariants", OptimizationTests::run));
         suite("worldgen", "WorldGenerationTests", r -> r.run("biome assets, sparse structures, seams and falling-block conservation", WorldGenerationTests::run));
         suite("worldgen", "WorldGenGoldenTests", WorldGenGoldenTests::runAll);
+        suite("worldgen", "ChunkLedgerTests", ChunkLedgerTests::runAll);
         suite("core", "CoreTests", CoreTests::runAll);
         suite("core", "BlockOrdinalTests", BlockOrdinalTests::runAll);
         suite("data", "RecipeDataTests", RecipeDataTests::runAll);

@@ -27,8 +27,8 @@ deltas. Generation is therefore versioned (`world/gen`):
 
 - `WorldGenVersion` — V1 is the 1.0 generator; V2 collects what 1.1 adds. The
   number, not the ordinal, is persisted. `LATEST` stays V1 until V2 has something
-  to generate, the chunk ledger (GEN-02) keeps explored land on V1 and the welcome
-  packet names the host's generator: a guest still builds the host's world as V1
+  to generate, old worlds can be upgraded and the welcome packet names the host's
+  generator: a guest still builds the host's world as V1
   (`Game.startRemoteWorld`), and a test fails if `LATEST` moves first.
 - `GenFeatures` — one flag per 1.1 generation change (`copperOre`, `vegetation2`,
   `structures2`, `caves2`, `livestockAtGen`), each with a bit that never moves.
@@ -37,7 +37,8 @@ deltas. Generation is therefore versioned (`world/gen`):
   is what this build implements — switch a flag on there in the commit that
   implements it, never earlier. Today it is empty.
 - `GenPolicy` — which version and features a chunk is generated with; a `World`
-  asks it per chunk from worker threads. Today every world uses a fixed policy.
+  asks it per chunk from worker threads. The game and the dedicated server use
+  the ledger-backed policy (below); guests, the menu and tests use fixed ones.
   `World.blankTwin()` gives the network delta baseline the same seed, profile and
   policy as the live world.
 - `WorldGenSettings` — the level's `worldgen` section: `int version, int feature
@@ -61,6 +62,61 @@ The layout is fixed: new generator data belongs in a section of its own, or an
 older build would report a newer world as damaged instead of too new.
 
 `GenProfile` (NORMAL/FLAT) is unrelated: a debug profile for benchmarks only.
+
+## Chunk ledger (GEN-02)
+
+`world/gen/ChunkLedger` records the version each chunk was first generated with.
+The game and the server generate through `WorldGenSettings.policy(ledger)`: a
+chunk the ledger knows keeps its version (with that version's full feature set);
+a new one gets the world's version and is recorded. A chunk missing from the
+ledger is the world's own version — a world that was never upgraded needs no
+entries for the land it made before the ledger existed: all of it is V1.
+
+- **File** `chunks/ledger.dat`, gzip: `int MAGIC ("MCLG"), int FORMAT (1), VarInt
+  count`, the keys sorted — the first zigzagged, then the differences — as
+  VarLongs (`data/VarLong`), then the versions as runs `VarInt length, VarInt id`.
+  About 1–2 bytes a chunk before gzip. Unsorted or repeated keys, an unknown
+  version, a run past the end or trailing bytes refuse the file whole.
+- **One file, not the roadmap's `ledger.log`.** Every save that recorded something
+  (`encodeIfDirty`) rewrites the whole file atomically, queued behind the session
+  backup like chunks; a read sees queued bytes at once. 100 000 chunks is about
+  200 KB before gzip, less than the chunk writes of the same autosave, and a single
+  file has no replay or compaction to get wrong.
+- **Damage.** `SaveManager.openLedger` always returns a ledger: the ledger is
+  derived data, and the world opens. A damaged file is moved aside as
+  `ledger.dat.corrupt-<millis>` after the session backup; if the backup or the
+  move fails it stays in place and that `SaveManager` never writes over it. A
+  world that failed its level read check never gets a ledger written either.
+- **Rebuild.** A missing or damaged ledger of a world that was ever upgraded
+  (`upgradedAt > 0`) is rebuilt conservatively by `WorldGenUpgrade.pinSeen`: every
+  saved chunk and `SEEN_RADIUS` (12) chunks around it, and as much around spawn
+  and the player (the owner's checkpoint on a server), count as V1. A world that
+  was never upgraded rebuilds empty.
+- **Upgrade.** `WorldGenUpgrade.upgrade(from, target, ledger, saved chunks, anchors,
+  now)` pins the same seen land to the old version and returns the new settings.
+  `ChunkLedgerTests` upgrades the 1.0 fixture `alpha-small` and compares chunks 0
+  and 12 away from every saved chunk with the V1 generator by hash; land 200
+  chunks away gets V2.
+- **Seams.** `WorldGenUpgrade.seams` — recorded chunks whose side neighbour has
+  another version: the rim of the pinned land. `tools/SeamReport.java [saves]
+  <world> [--list]` prints them, read-only.
+- **One chunk, one feature set.** Everything a chunk's generation reads, neighbour
+  crowns reproduced across its border included, follows that chunk's own
+  features. Never ask the policy about a neighbour: a pinned chunk would change
+  when its neighbour moves to V2. The price is crowns that do not match along a
+  seam.
+- Backups and world copies carry the ledger with `chunks/`; `CheckSaves` reads
+  only `c.*.dat`. A guest has no ledger: the world is the host's.
+
+**Not yet** — each waits for V2 to change land; until then it would only record a
+version, and `WorldGenGoldenTests` fails if `LATEST` moves past V1 first:
+
+- the world-list dialog "update generation for new land?" and `upgrade-worldgen`
+  in `server.properties`;
+- the network part: `S_WELCOME` naming the host's generator, `S_GEN_MAP (74)` with
+  the pinned keys, a version byte in `S_CHUNK_DELTA` (the guest regenerates on a
+  mismatch);
+- guests' checkpoints (`players/`) as anchors of a server's upgrade.
 
 **The V1 golden.** `src/test/resources/fixtures/worldgen-v1.txt` holds SHA-1 of
 blocks and meta for 120 chunks — seeds 0, 20260922 and −77231; negative, far
