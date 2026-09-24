@@ -1,5 +1,9 @@
 # Roadmap paused at user request — 2026-09-24
 
+> **Status: resumed.** The resume points below were completed on
+> `claude/jolly-franklin-wiwdbh` (SIM-02, SAVE-07, BLK-06); see
+> [ROADMAP_PROGRESS.md](ROADMAP_PROGRESS.md). This file records the pause as it was.
+
 The user requested that development and long-running checks stop and that all
 current work be committed and pushed. No automatic continuation is scheduled.
 
