@@ -52,23 +52,23 @@ public final class WorldSession {
     public static final float ITEM_MERGE_INTERVAL = 0.5f;
     /** Below this an item has fallen out of the world. */
     private static final float ITEM_VOID = -16f;
+    /** How far a broken or placed block is heard by mobs, in blocks. */
+    public static final float NOISE_BREAK = 16f, NOISE_PLACE = 10f;
+    private static final java.util.function.Predicate<Participant> ANYONE = p -> true;
 
     /**
-     * What the session still borrows from whoever runs it. The single focus and
-     * its blow give way to participants (SIM-05, SIM-07).
+     * What the session still borrows from whoever runs it. The single focus
+     * gives way to all participants with SIM-05.
      */
     public interface Host {
         /**
-         * The point mobs live around: the host's own player, or the dedicated
-         * server's first guest. Mobs read it; only a body's share of zero is
-         * ever applied to it.
+         * The point mobs spawn and despawn around, and look at when no one is
+         * here: the host's own player, or the dedicated server's first guest.
+         * Mobs read it; only a body's share of zero is ever applied to it.
          */
         Vector3f mobFocus();
 
-        /** Whether hostile mobs hunt the focus: not in creative. */
-        boolean hostileMobs();
-
-        /** The focus holds a light source, and zombies hesitate before it. */
+        /** The host's own player holds a light source, and zombies hesitate before it. */
         default boolean focusHoldsLight() { return false; }
 
         /** Mobs are pushed out of the focus as out of a player's body; a server's focus is only a point. */
@@ -77,8 +77,8 @@ public final class WorldSession {
         /** False stops natural spawning (benchmarks); despawning goes on. */
         default boolean spawnMobs() { return true; }
 
-        /** A mob's blow reached the focus. */
-        default void mobStruck(Mob mob) {}
+        /** A mob's blow hurt this participant; a local player is thrown back and feels the elite's touch. */
+        default void participantStruck(Participant participant, Mob mob) {}
 
         /** Who an arrow can hit besides mobs: the host's own player and the guests. */
         default void projectileTargets(List<Hittable> out) {}
@@ -129,6 +129,8 @@ public final class WorldSession {
     /** Arrow targets of this tick; reused. */
     private final List<Hittable> targets = new ArrayList<>();
     private final Consumer<Projectile> shots;
+    /** Where the mob being ticked looks; copied from its target, never kept past its tick. */
+    private final Vector3f aim = new Vector3f();
     private float senseTimer;
     private float spawnTimer;
     private float mergeTimer;
@@ -152,11 +154,13 @@ public final class WorldSession {
 
     // ----------------------------------------------------------------- mobs
 
-    /** One step of every mob: senses, the tick, what came of it, collisions, then spawning. */
+    /**
+     * One step of every mob: senses, a target among the participants, the tick,
+     * what came of it, collisions, then spawning.
+     */
     public void tickMobs(float dt) {
         List<Mob> mobs = entities.mobs;
         Vector3f focus = host.mobFocus();
-        boolean hostile = host.hostileMobs();
         float daylight = clock.daylight();
 
         // Who grazes with whom, who is a threat and who is prey — before the
@@ -175,7 +179,14 @@ public final class WorldSession {
             Mob m = it.next();
             m.setPlayerTorch(torch);
             m.shotSink = shots;
-            if (!m.updateLod(world, focus, dt, daylight, hostile)) continue;
+            // A mob hunts its target; with no one to hunt it still looks at
+            // the nearest participant, and at the focus in an empty world.
+            Participant target = TargetSelector.select(m, participants, world, dt);
+            Participant seen = target != null ? target
+                    : participants.nearest(m.position.x, m.position.y, m.position.z, ANYONE);
+            if (seen != null) aim.set(seen.position());
+            else aim.set(focus);
+            if (!m.updateLod(world, aim, dt, daylight, target != null)) continue;
             if (m.justIdleSound) events.mobVoice(m);
             if (m.justSplashed) events.mobSplash(m);
             if (m.justEnraged) events.mobEnraged(m);
@@ -188,7 +199,9 @@ public final class WorldSession {
                 }
             }
             if (m.justStepSound) events.mobStep(m);
-            if (m.justAttacked) host.mobStruck(m);
+            if (m.justAttacked && target != null && target.damage(new DamageSource(DamageType.MELEE,
+                    DamageSource.NO_ATTACKER, m.type, m.position.x, m.position.y, m.position.z, 1f), m.attackDamage()))
+                host.participantStruck(target, m);
             if (m.justExploded)
                 explode(m.position.x, m.position.y + m.type.height * 0.5f, m.position.z, Explosion.RADIUS, m);
             if (m.burning) events.mobBurning(m);
@@ -260,6 +273,12 @@ public final class WorldSession {
                 null, m.killedByParticipant, mode, random);
         for (var drop : Items.get().loot().entityDrops(m.type, context))
             dropStack(drop, m.position.x, m.position.y + m.type.height * 0.5f, m.position.z);
+    }
+
+    /** A sound a mob may come to check: a block broken or placed, by anyone. */
+    public void noise(float x, float y, float z, float loudness) {
+        for (Mob m : entities.mobs)
+            m.hearNoise(x, y, z, loudness);
     }
 
     // ---------------------------------------------------------- explosions

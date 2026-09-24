@@ -276,6 +276,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [EntityStore](../src/main/java/com/mineclone/sim/EntityStore.java) | The entities of one world. |
 | [Participant](../src/main/java/com/mineclone/sim/Participant.java) | Someone the world is simulated for: the host's own player or an accepted guest. |
 | [Participants](../src/main/java/com/mineclone/sim/Participants.java) | The live list of participants, kept in ascending id order. |
+| [TargetSelector](../src/main/java/com/mineclone/sim/TargetSelector.java) | Who a mob is after, among the participants. |
 | [WorldClock](../src/main/java/com/mineclone/sim/WorldClock.java) | World time and a monotonic 20 Hz simulation clock, independent of rendering. |
 | [WorldEvents](../src/main/java/com/mineclone/sim/WorldEvents.java) | What the simulation tells whoever shows it: sounds, particles, footprints, sound cues. |
 | [WorldSession](../src/main/java/com/mineclone/sim/WorldSession.java) | The simulation of one open world, run by the game's host and the dedicated server alike, so neither keeps its own copy of the rules. |
@@ -422,4 +423,4 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [WorldGenSettings](../src/main/java/com/mineclone/world/gen/WorldGenSettings.java) | The level's worldgen section: which generator the world uses, the 1.1 changes it was created with, and when it was last upgraded (0 when never). |
 | [WorldGenVersion](../src/main/java/com/mineclone/world/gen/WorldGenVersion.java) | Which generator made a chunk. |
 
-Top-level declarations: 306.
+Top-level declarations: 307.

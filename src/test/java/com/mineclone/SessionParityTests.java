@@ -150,12 +150,6 @@ final class SessionParityTests {
             return 1f;
         }
 
-        void struck(Mob m) {
-            struck++;
-            write('S', m);
-            writeFloat(m.attackDamage());
-        }
-
         /** The blast reached the participant; what it does to a player is the player's business. */
         void blast(float damage) {
             if (damage <= 0f) return;
@@ -181,9 +175,18 @@ final class SessionParityTests {
             @Override public ArmorView armor() { return ArmorView.NONE; }
             @Override public boolean local() { return true; }
 
+            /** A blow is recorded as the game recorded it before targets existed; a blast as a blast. */
             @Override
             public boolean damage(DamageSource source, float amount) {
-                blast(amount);
+                if (source.type() == com.mineclone.world.damage.DamageType.MELEE) {
+                    struck++;
+                    writeInt('S');
+                    writeInt(source.attackerType().ordinal());
+                    writeFloat(source.originX()); writeFloat(source.originY()); writeFloat(source.originZ());
+                    writeFloat(amount);
+                } else {
+                    blast(amount);
+                }
                 return true;
             }
         }
@@ -246,9 +249,7 @@ final class SessionParityTests {
     static Loop session(Scenario s, WorldEvents events) {
         WorldSession.Host host = new WorldSession.Host() {
             @Override public Vector3f mobFocus() { return s.focus; }
-            @Override public boolean hostileMobs() { return true; }
             @Override public boolean focusIsBody() { return true; }
-            @Override public void mobStruck(Mob m) { s.struck(m); }
         };
         return new WorldSession(s.world, s.clock, s.spawner, s.entities, s.participants, host, events)::tickMobs;
     }

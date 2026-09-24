@@ -37,6 +37,8 @@ final class ServerSimulationTests {
         r.run("a creeper blows up on the server: blocks go and the guest is hurt", ServerSimulationTests::creeper);
         r.run("a cow killed by a guest drops beef on the server and at the guest", ServerSimulationTests::guestKillDrops);
         r.run("a creative killer gets no drop", ServerSimulationTests::creativeKiller);
+        r.run("a zombie next to a guest strikes the guest on the server", ServerSimulationTests::zombieStrikesGuest);
+        r.run("a guest breaking a block is heard by the server's mobs", ServerSimulationTests::guestNoise);
     }
 
     private static final long SEED = 20260922L;
@@ -272,6 +274,28 @@ final class ServerSimulationTests {
             s.await(() -> cow.dead, 100, "the guest's hit never reached the cow");
             s.pump(40);
             check(count(s.server.groundItems(), "beef") == 0, "a creative guest's kill dropped beef");
+        }
+    }
+
+    /** Regression: on the server a zombie's blow landed on no one. */
+    private static void zombieStrikesGuest() throws Exception {
+        try (TempRoot root = new TempRoot(); Server s = new Server(root.path, "")) {
+            s.join();
+            s.await(() -> s.net().participants().get(0).mode() == GameMode.SURVIVAL, 100,
+                    "the guest never announced survival");
+            place(s, MobType.ZOMBIE, 1.2f, 0f);
+            s.await(() -> s.guest.hurtTaken > 0f, 200, "the zombie never struck the guest");
+        }
+    }
+
+    /** A guest's broken block sends a zombie to look, as the host's own would. */
+    private static void guestNoise() throws Exception {
+        try (TempRoot root = new TempRoot(); Server s = new Server(root.path, "")) {
+            Mob zombie = place(s, MobType.ZOMBIE, 14f, 0f);
+            check(!zombie.isInvestigating(), "the zombie was investigating before anything happened");
+            s.server.remoteBlockAction(2, 10, (int) surface(s.world(), 10.5f, 8.5f) - 1, 8,
+                    (byte) com.mineclone.world.BlockType.DIRT.ordinal(), true);
+            check(zombie.isInvestigating(), "the zombie paid no attention to a block broken twelve blocks away");
         }
     }
 

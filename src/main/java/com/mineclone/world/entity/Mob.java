@@ -315,6 +315,15 @@ public class Mob implements Hittable {
      * takes no drop.
      */
     public int killer = com.mineclone.world.damage.DamageSource.NO_ATTACKER;
+    /** How long a mob holds a grudge against the participant who hit it. */
+    public static final float REVENGE_TIME = 20f;
+    /** The participant this mob is after, chosen by {@code sim.TargetSelector}; NO_ATTACKER when none. */
+    public int targetId = com.mineclone.world.damage.DamageSource.NO_ATTACKER;
+    /** How long the current target has been out of sight. */
+    public float targetUnseen;
+    /** Who hit this mob last and how much longer that is remembered. */
+    public int revengeId = com.mineclone.world.damage.DamageSource.NO_ATTACKER;
+    public float revengeTimer;
 
     /** Контекст тика для дерева поведения — один на моба, не на кадр. */
     private final MobContext ctx = new MobContext();
@@ -1406,6 +1415,10 @@ public class Mob implements Hittable {
         }
         if (type.temper == MobType.Temper.NEUTRAL && byPlayer)
             angryTimer = Wildlife.ANGER_TIME;
+        if (attacker != com.mineclone.world.damage.DamageSource.NO_ATTACKER) {
+            revengeId = attacker;
+            revengeTimer = REVENGE_TIME;
+        }
         if (health <= 0f) {
             eaten = !byPlayer;
             killedByParticipant = byPlayer;

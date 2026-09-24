@@ -405,13 +405,12 @@ public final class DedicatedServer implements NetContext {
     }
 
     /**
-     * Что сессия пока берёт у сервера. Мобы живут вокруг первого участника, а
-     * бить им на сервере некого, пока цель не выбирается среди участников
-     * (SIM-07). Стрелы летят в гостей.
+     * Что сессия пока берёт у сервера. Мобы появляются и исчезают вокруг
+     * первого участника (SIM-05); цель и удар — среди всех гостей. Стрелы
+     * летят в гостей.
      */
     private final WorldSession.Host sessionHost = new WorldSession.Host() {
         @Override public Vector3f mobFocus() { return centre(); }
-        @Override public boolean hostileMobs() { return !config.creative; }
         @Override public void projectileTargets(List<com.mineclone.world.entity.Hittable> out) { out.addAll(net.players()); }
     };
 
@@ -622,7 +621,10 @@ public final class DedicatedServer implements NetContext {
 
     @Override
     public void remoteBlockAction(int actor, int x, int y, int z, byte blockId, boolean broke) {
-        // Звук и пыль — дело тех, у кого есть экран.
+        // Звук и пыль — дело тех, у кого есть экран; мобы же слышат и здесь.
+        if (session != null)
+            session.noise(x + 0.5f, y + 0.5f, z + 0.5f,
+                    broke ? WorldSession.NOISE_BREAK : WorldSession.NOISE_PLACE);
     }
 
     @Override

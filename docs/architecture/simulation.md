@@ -62,23 +62,52 @@ guest the store holds the host's snapshots and no session exists.
 | Seam | Game (host) | Dedicated server |
 | --- | --- | --- |
 | `WorldEvents` — what to show | `game.EntityPresentation`: voices, splashes, rage, footprints, fire, deaths, blasts, sound cues | `WorldEvents.NONE` |
-| `Host.mobFocus` | its own player | `centre()`: the first guest, else the spawn point |
-| `Host.hostileMobs` | survival mode | `!creative` in `server.properties` |
+| `Host.mobFocus` — spawning, despawning, an empty world | its own player | `centre()`: the first guest, else the spawn point |
 | `Host.focusIsBody` | yes: mobs are pushed out of the player | no: the focus is only a point |
-| `Host.mobStruck` | player damage and knockback | nothing yet (SIM-07) |
+| `Host.participantStruck` | knockback, an elite's poison or frost, the hurt sound | nothing |
 | `Host.projectileTargets` | its own player and the guests | the guests |
 | `Host.itemCollector` | its own player picks up items and its arrows | none: guests ask with `C_ITEM_PICK` |
 | `Host.blasted` | a local player is thrown back | nothing |
 
 `WorldEvents` only reads; the session calls it in simulation order. `Host` is
-temporary by design: blows go to `Participant.damage` of a chosen target with
-SIM-07, and the single focus gives way to all participants with SIM-05.
+temporary by design: the single focus gives way to all participants with SIM-05.
 Collisions handle each pair once, by the earlier mob in the list
 (`MobSpatialGrid.order`), without the per-frame identity map the game used to
 allocate.
 
 The server gained one behaviour by sharing the loop: its mobs are now pushed
 apart like the host's instead of standing inside one another.
+
+## Targets (SIM-07)
+
+Each tick `sim.TargetSelector` picks every mob's target among the participants
+that are alive and outside creative mode, and the mob runs its whole brain
+against that target: chase, fuse, aim, sight, torch fear. A new target is the
+nearest one the mob can see, else the nearest. It is kept — a pack does not swap
+victims every step — unless someone in view is 30 % nearer (`SWITCH_MARGIN`), or
+it has been out of sight for `LOST_TIME` (3 s) while someone else is in view.
+Whoever hit the mob comes first for `Mob.REVENGE_TIME` (20 s): that is how a
+wolf pays back. The memory (`targetId`, `targetUnseen`, `revengeId`,
+`revengeTimer`) lives on the mob; the selector is in `sim` because it reads
+participants.
+
+With a single candidate the selector returns it, seen or not: range, darkness
+and the sight cone stay the mob's own business, so a lone player's world is
+exactly as before (the parity hash did not move). With no candidate a mob is
+not hostile and looks at the nearest participant, or at the focus in an empty
+world.
+
+A mob's blow goes to its target's `Participant.damage` with a `MELEE` source
+(the mob's type and position); the host's own player then gets knockback and
+the elite's effect through `Host.participantStruck`, a guest the damage over
+`S_PLAYER_HURT` — knockback for guests waits for protocol v8 (NET-02). Mobs hear
+every participant: a guest's broken or placed block (`remoteBlockAction`) is a
+`WorldSession.noise` like the host's own.
+
+`TargetSelectionTests` cover the nearest visible choice, creative and dead
+players, a target lost behind a wall, the 30 % margin, the grudge and the lone
+candidate; `ServerSimulationTests` a zombie striking a guest on the server
+(it struck no one there before) and a guest's broken block heard by a zombie.
 
 ## World session: items, arrows, blasts, drops, saving (SIM-04)
 

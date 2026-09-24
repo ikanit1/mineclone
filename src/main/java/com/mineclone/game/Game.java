@@ -274,8 +274,8 @@ public class Game {
 
     // ---- Слышимость: радиус в блоках, на котором моб замечает шум ----
     /** Ломающийся блок слышно дальше всего. */
-    private static final float NOISE_BREAK = 16f;
-    private static final float NOISE_PLACE = 10f;
+    private static final float NOISE_BREAK = com.mineclone.sim.WorldSession.NOISE_BREAK;
+    private static final float NOISE_PLACE = com.mineclone.sim.WorldSession.NOISE_PLACE;
     private static final float NOISE_SPRINT = 11f;
     private static final float NOISE_WALK = 4f;
     private static final float NOISE_LAND = 14f;
@@ -1799,12 +1799,11 @@ public class Game {
     }
 
     /**
-     * Что сессия пока берёт у игры: мобы живут вокруг своего игрока и бьют
-     * только его (SIM-05, SIM-07); свой игрок подбирает предметы и стрелы.
+     * Что сессия пока берёт у игры: мобы появляются вокруг своего игрока
+     * (SIM-05); свой игрок чувствует удар, подбирает предметы и стрелы.
      */
     private final com.mineclone.sim.WorldSession.Host sessionHost = new com.mineclone.sim.WorldSession.Host() {
         @Override public Vector3f mobFocus() { return player.position; }
-        @Override public boolean hostileMobs() { return gameMode == com.mineclone.world.GameMode.SURVIVAL; }
 
         @Override
         public boolean focusHoldsLight() {
@@ -1815,10 +1814,14 @@ public class Game {
         @Override public boolean focusIsBody() { return true; }
         @Override public boolean spawnMobs() { return bench == null; }
 
-        /** Урон игроку — через окно неуязвимости: иначе стая зомби снимает здоровье втрое быстрее одного. */
+        /**
+         * Удар дошёл до своего игрока — урон уже снят через окно неуязвимости
+         * ({@link LocalParticipant}): иначе стая зомби снимает здоровье втрое
+         * быстрее одного. Здесь отброс, яд элитника и вскрик.
+         */
         @Override
-        public void mobStruck(com.mineclone.world.entity.Mob m) {
-            if (!player.takeAttackDamage(m.attackDamage()))
+        public void participantStruck(com.mineclone.sim.Participant participant, com.mineclone.world.entity.Mob m) {
+            if (!participant.local())
                 return;
             applyMobKnockback(m);
             if (m.elite == com.mineclone.world.entity.MobTactics.Elite.VENOMOUS)
@@ -3900,8 +3903,9 @@ public class Game {
     }
 
     private void emitNoise(float x, float y, float z, float loudness) {
-        for (com.mineclone.world.entity.Mob m : mobs)
-            m.hearNoise(x, y, z, loudness);
+        // Мобов слышит тот, у кого они живут: у гостя они — снимки хозяина.
+        if (session != null)
+            session.noise(x, y, z, loudness);
     }
 
     private void emitTorchParticles() {
@@ -6171,6 +6175,8 @@ public class Game {
             public void remoteBlockAction(int actor, int x, int y, int z, byte blockId,
                     boolean broke) {
                 Game.this.playRemoteBlockAction(x, y, z, blockId, broke);
+                // Гостя мобы слышат так же, как своего игрока.
+                emitNoise(x + 0.5f, y + 0.5f, z + 0.5f, broke ? NOISE_BREAK : NOISE_PLACE);
             }
 
             @Override
