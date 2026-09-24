@@ -74,7 +74,7 @@ folders; check `.gitignore` before creating a new top-level output directory.
 | `world` | Chunks, blocks, fluids, crafting; [world](docs/architecture/world.md) |
 | `world` generation | Biomes, caves, rivers, ores, structures; [worldgen](docs/architecture/worldgen.md) |
 | `world/entity`, `world/ai` | Mobs, physics, navigation; [combat](docs/architecture/combat-mobs.md) |
-| `sim` | Shared world simulation and WorldClock; [server](docs/architecture/server.md), [weather](docs/architecture/weather.md) |
+| `sim` | Shared world simulation, participants and WorldClock; [simulation](docs/architecture/simulation.md), [server](docs/architecture/server.md) |
 | `render` | GPU lifetime, meshing, shadows, water/post; [rendering](docs/architecture/rendering.md) |
 | `audio` | OpenAL, acoustic probes, rain; [audio](docs/architecture/audio.md) |
 | `audio` music, `game/MusicSense` | Catalog, scheduling and PCM streaming; [music](docs/architecture/music.md) |

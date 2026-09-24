@@ -272,4 +272,15 @@ public final class RemotePlayer implements com.mineclone.world.entity.Hittable {
         return placed;
     }
 
+    /**
+     * Where the last snapshot put the player, without the catch-up easing.
+     *
+     * <p>{@link #position} trails the snapshot by up to one network interval so
+     * the model glides; the simulation must aim at where the player is, not at
+     * where the drawing has got to.
+     */
+    public org.joml.Vector3fc acceptedPosition() {
+        return to;
+    }
+
 }

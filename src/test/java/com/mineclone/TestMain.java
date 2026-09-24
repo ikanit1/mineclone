@@ -70,6 +70,7 @@ public final class TestMain {
         suite("save", "QueuedChunkSaveTests", QueuedChunkSaveTests::runAll);
         suite("chunk", "ChunkPublicationTests", ChunkPublicationTests::runAll);
         suite("clock", "WorldClockTests", WorldClockTests::runAll);
+        suite("sim", "ParticipantTests", ParticipantTests::runAll);
         suite("render", "GpuTimersRingTests", GpuTimersRingTests::runAll);
         suite("perf", "BenchMetricsTests", BenchMetricsTests::runAll);
         suite("feature", "FeatureTests", r -> FeatureTests.runAll((n, c) -> r.run(n, c::run)));

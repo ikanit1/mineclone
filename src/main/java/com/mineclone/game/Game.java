@@ -547,6 +547,7 @@ public class Game {
     public Game(Window window, boolean regenAtlas) {
         this.window = window;
         this.input = new Input(window.getHandle());
+        net.setLocalParticipant(new LocalParticipant(player, net::localActor));
         com.mineclone.save.Options opts = save.loadOptions();
         this.renderRadius    = opts.renderRadius;
         this.fovDegrees      = opts.fovDegrees;

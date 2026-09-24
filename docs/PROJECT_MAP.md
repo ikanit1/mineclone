@@ -72,6 +72,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [Game](../src/main/java/com/mineclone/game/Game.java) | Javadoc summary not yet supplied. |
 | [Hud](../src/main/java/com/mineclone/game/Hud.java) | Игровой интерфейс поверх мира: F3, хотбар, сердца, сытость, компас, подсказки и консоль. |
 | [InteractionRepeat](../src/main/java/com/mineclone/game/InteractionRepeat.java) | Immediate press plus a bounded repeat cadence while a button stays held. |
+| [LocalParticipant](../src/main/java/com/mineclone/game/LocalParticipant.java) | The player of this process as the simulation sees it. |
 | [MenuBackground](../src/main/java/com/mineclone/game/MenuBackground.java) | Кинематограф главного меню: серия пролётов камеры над отобранными пейзажами мира меню. |
 | [MenuScout](../src/main/java/com/mineclone/game/MenuScout.java) | Разведчик пейзажей для фона меню: находит в мире меню пять мест, которые стоит показать, и ставит над каждым камеру. |
 | [MenuShot](../src/main/java/com/mineclone/game/MenuShot.java) | Один кадр кинематографа главного меню: траектория камеры над пейзажем плюс атмосфера, в которой этот пейзаж снят. |
@@ -110,6 +111,15 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [ToolClass](../src/main/java/com/mineclone/item/ToolClass.java) | Класс инструмента: чем предмет копает быстро. |
 | [ToolSpec](../src/main/java/com/mineclone/item/ToolSpec.java) | Инструментальная часть предмета: класс, уровень материала и скорость. |
 
+## com.mineclone.item.loot
+
+| Type | Purpose |
+|---|---|
+| [LootContext](../src/main/java/com/mineclone/item/loot/LootContext.java) | Inputs to one loot roll; a null session RNG explicitly requests deterministic chest loot. |
+| [LootReachability](../src/main/java/com/mineclone/item/loot/LootReachability.java) | A least fixed point of obtainable items. |
+| [LootRegistry](../src/main/java/com/mineclone/item/loot/LootRegistry.java) | Content registry; block harvestability stays in BlockProps, tables decide only the outputs. |
+| [LootTable](../src/main/java/com/mineclone/item/loot/LootTable.java) | Validated immutable weighted pools. |
+
 ## com.mineclone.item.recipe
 
 | Type | Purpose |
@@ -137,6 +147,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [PhotonTransport](../src/main/java/com/mineclone/net/PhotonTransport.java) | Комната в облаке Photon. |
 | [PlayerData](../src/main/java/com/mineclone/net/PlayerData.java) | A detached player checkpoint; world blocks belong to the world's own save. |
 | [RemoteMob](../src/main/java/com/mineclone/net/RemoteMob.java) | Render interpolation only: clients never run the authoritative mob AI or physics. |
+| [RemoteParticipant](../src/main/java/com/mineclone/net/RemoteParticipant.java) | A guest as the host's simulation sees it. |
 | [RemotePlayer](../src/main/java/com/mineclone/net/RemotePlayer.java) | Чужой игрок: что о нём известно и где его рисовать. |
 | [RoomBrowser](../src/main/java/com/mineclone/net/RoomBrowser.java) | Список открытых комнат: подключение к лобби Photon и ничего больше. |
 
@@ -239,6 +250,8 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [LevelData](../src/main/java/com/mineclone/save/LevelData.java) | Everything stored in level.dat. |
 | [LevelLoad](../src/main/java/com/mineclone/save/LevelLoad.java) | A missing file is the only read result that permits creating a new world. |
 | [Options](../src/main/java/com/mineclone/save/Options.java) | Global settings; sibling of saves/ (not per-world). |
+| [PlayerRecord](../src/main/java/com/mineclone/save/PlayerRecord.java) | Immutable player checkpoint shared by owner and guest storage. |
+| [PlayerRecordCodec](../src/main/java/com/mineclone/save/PlayerRecordCodec.java) | One section payload for owner and guest storage; network v7 remains a separate adapter. |
 | [RunLengthCodec](../src/main/java/com/mineclone/save/RunLengthCodec.java) | Bounded byte runs; the enclosing save stream also applies GZIP. |
 | [SaveFormat](../src/main/java/com/mineclone/save/SaveFormat.java) | Single source of truth for the on-disk save format. |
 | [SaveManager](../src/main/java/com/mineclone/save/SaveManager.java) | All save-file I/O. |
@@ -259,6 +272,8 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 
 | Type | Purpose |
 |---|---|
+| [Participant](../src/main/java/com/mineclone/sim/Participant.java) | Someone the world is simulated for: the host's own player or an accepted guest. |
+| [Participants](../src/main/java/com/mineclone/sim/Participants.java) | The live list of participants, kept in ascending id order. |
 | [WorldClock](../src/main/java/com/mineclone/sim/WorldClock.java) | World time and a monotonic 20 Hz simulation clock, independent of rendering. |
 
 ## com.mineclone.ui
@@ -365,6 +380,15 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [World](../src/main/java/com/mineclone/world/World.java) | Javadoc summary not yet supplied. |
 | [WorldSimulation](../src/main/java/com/mineclone/world/WorldSimulation.java) | Мировой тик: печи, случайные тики блоков, вода, лава и обвалы. |
 
+## com.mineclone.world.damage
+
+| Type | Purpose |
+|---|---|
+| [ArmorView](../src/main/java/com/mineclone/world/damage/ArmorView.java) | The armor a damage calculation sees on a target. |
+| [DamageSource](../src/main/java/com/mineclone/world/damage/DamageSource.java) | One hit: its kind, who dealt it and where it came from. |
+| [DamageType](../src/main/java/com/mineclone/world/damage/DamageType.java) | What kind of harm a hit is, independent of who dealt it. |
+| [Damageable](../src/main/java/com/mineclone/world/damage/Damageable.java) | Anything that can be hurt through the shared damage vocabulary. |
+
 ## com.mineclone.world.entity
 
 | Type | Purpose |
@@ -385,4 +409,4 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [Projectile](../src/main/java/com/mineclone/world/entity/Projectile.java) | Летящий снаряд: стрела и всё, что полетит после неё. |
 | [Wildlife](../src/main/java/com/mineclone/world/entity/Wildlife.java) | Поведение диких зверей: кролик, волк, птица. |
 
-Top-level declarations: 284.
+Top-level declarations: 298.

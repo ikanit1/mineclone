@@ -8,6 +8,8 @@ import com.mineclone.world.*;
 import com.mineclone.world.damage.*;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.function.Consumer;
 
 /** Participant queries and real loopback membership, independent of graphics. */
@@ -16,9 +18,11 @@ public final class ParticipantTests {
         runner.run("nearest hostile target ignores dead and creative players with stable ties", ParticipantTests::nearest);
         runner.run("participant radius queries include the boundary without allocating", ParticipantTests::radius);
         runner.run("remote participants use accepted positions rather than rendered interpolation", ParticipantTests::remotePosition);
-        runner.run("local participant follows player state and legacy attack invulnerability", ParticipantTests::local);
+        runner.run("local participant follows player state and the attack invulnerability window", ParticipantTests::local);
+        runner.run("damage kinds split armor, invulnerability and fire as specified", ParticipantTests::damageKinds);
         runner.run("loopback membership follows handshake, leave, timeout and reconnect", ParticipantTests::membership);
         runner.run("dedicated authority has no local avatar and clients have no participants", ParticipantTests::authority);
+        runner.run("the simulation package never reaches for the client", ParticipantTests::headless);
     }
 
     private static void nearest() {
@@ -33,6 +37,11 @@ public final class ParticipantTests {
         left.position.x = 6;
         check(all.nearest(0, 0, 0, Participants.HOSTILE_TARGETS) == right, "positions are not live");
         all.put(right); check(all.size() == 4, "duplicate participant");
+        Stub replacement = new Stub(5, 9);
+        all.put(replacement);
+        check(all.getById(5) == replacement && all.size() == 4, "same id did not replace");
+        check(all.get(0).id() == 3 && all.get(3).id() == 8, "list is not in id order");
+        check(all.remove(42) == null && all.remove(3) == left && all.getById(3) == null, "removal");
     }
 
     private static void radius() {
@@ -40,10 +49,12 @@ public final class ParticipantTests {
         int[] hits = {0}; Consumer<Participant> count = p -> hits[0]++;
         check(all.forEachWithin(0, 0, 0, 5, Participants.HOSTILE_TARGETS, count) == 1 && hits[0] == 1,
                 "radius boundary");
-        boolean bad = false;
-        try { all.forEachWithin(0, 0, 0, Float.NaN, Participants.HOSTILE_TARGETS, count); }
-        catch (IllegalArgumentException expected) { bad = true; }
-        check(bad, "NaN radius accepted");
+        for (float bad : new float[] { Float.NaN, -1f, Float.POSITIVE_INFINITY }) {
+            boolean rejected = false;
+            try { all.forEachWithin(0, 0, 0, bad, Participants.HOSTILE_TARGETS, count); }
+            catch (IllegalArgumentException expected) { rejected = true; }
+            check(rejected, "radius " + bad + " accepted");
+        }
         var bean = java.lang.management.ManagementFactory.getThreadMXBean();
         if (bean instanceof com.sun.management.ThreadMXBean allocation && allocation.isThreadAllocatedMemorySupported()) {
             allocation.setThreadAllocatedMemoryEnabled(true);
@@ -68,6 +79,16 @@ public final class ParticipantTests {
         check(player.position.x == 0 && participant.position().x() == 4, "simulation used interpolation");
         Vector3fc eye = participant.eye();
         check(eye.y() == 20 + Player.EYE_HEIGHT && eye == participant.eye(), "eye allocation/height");
+        check(participant.id() == 4 && !participant.local() && participant.armor() == ArmorView.NONE, "remote adapter");
+        float[] sent = {0};
+        player.onHurt = damage -> sent[0] += (float) damage;
+        check(participant.damage(DamageSource.of(DamageType.MELEE), 3) && sent[0] == 3, "hit was not forwarded");
+        check(!participant.damage(DamageSource.of(DamageType.MELEE), Float.NaN) && sent[0] == 3, "NaN hit forwarded");
+        player.gameMode = GameMode.CREATIVE.ordinal();
+        check(!participant.damage(DamageSource.of(DamageType.MELEE), 3) && sent[0] == 3, "creative guest hit");
+        player.gameMode = 77;
+        check(participant.mode() == GameMode.CREATIVE, "unknown mode must not make a guest a target");
+        player.gameMode = GameMode.SURVIVAL.ordinal();
         player.flags |= RemotePlayer.F_DEAD;
         check(!participant.alive(), "dead flag ignored");
         player.flags = 0; player.health = Float.NaN;
@@ -75,17 +96,51 @@ public final class ParticipantTests {
     }
 
     private static void local() {
-        Player player = new Player(); Inventory inventory = new Inventory();
-        LocalParticipant participant = new LocalParticipant(player, () -> inventory, () -> 1,
-                () -> player.isCreative() ? GameMode.CREATIVE : GameMode.SURVIVAL, () -> true);
+        Player player = new Player();
+        int[] actor = {0};
+        LocalParticipant participant = new LocalParticipant(player, () -> actor[0]);
         player.position.set(2, 3, 4);
         check(participant.position() == player.position && participant.eye().y() == 3 + Player.EYE_HEIGHT, "local pose");
-        check(participant.local() && participant.active() && participant.armor() == ArmorView.NONE, "local adapter");
+        check(participant.local() && participant.armor() == ArmorView.NONE && participant.id() == 0, "local adapter");
+        actor[0] = 1;
+        check(participant.id() == 1, "actor number is not live");
         DamageSource melee = DamageSource.of(DamageType.MELEE);
         check(participant.damage(melee, 3) && player.health == 17, "local attack");
         check(!participant.damage(melee, 3) && player.health == 17, "attack invulnerability bypassed");
+        check(participant.damage(DamageSource.of(DamageType.FALL), 2) && player.health == 15,
+                "fall damage was swallowed by the attack window");
+        check(!participant.damage(melee, -1) && !participant.damage(melee, Float.NaN) && player.health == 15,
+                "invalid amounts");
         player.setGameMode(GameMode.CREATIVE);
-        check(!participant.damage(melee, 3), "creative damage");
+        check(participant.mode() == GameMode.CREATIVE, "local mode");
+        check(!participant.damage(melee, 3) && !participant.damage(DamageSource.of(DamageType.VOID), 3),
+                "creative damage");
+        player.setGameMode(GameMode.SURVIVAL);
+        player.health = 0;
+        check(!participant.alive() && !participant.damage(DamageSource.of(DamageType.FALL), 1), "dead participant");
+    }
+
+    private static void damageKinds() {
+        for (DamageType type : new DamageType[] { DamageType.DROWN, DamageType.STARVE, DamageType.POISON })
+            check(type.bypassesArmor(), type + " must ignore armor");
+        for (DamageType type : new DamageType[] { DamageType.MELEE, DamageType.PROJECTILE, DamageType.EXPLOSION })
+            check(!type.bypassesArmor() && !type.bypassesInvulnerability(), type + " is an attack");
+        check(DamageType.FALL.bypassesInvulnerability(), "fall must bypass the attack window");
+        check(DamageType.FIRE.isFire() && DamageType.LAVA.isFire() && !DamageType.LIGHTNING.isFire(), "fire kinds");
+        DamageSource source = DamageSource.of(DamageType.CACTUS);
+        check(source.attackerId() == DamageSource.NO_ATTACKER && source.attackerType() == null
+                && Float.isNaN(source.originX()) && source.knockback() == 0, "anonymous source");
+        for (Runnable bad : new Runnable[] {
+                () -> new DamageSource(null, -1, null, Float.NaN, Float.NaN, Float.NaN, 0),
+                () -> new DamageSource(DamageType.MELEE, -2, null, Float.NaN, Float.NaN, Float.NaN, 0),
+                () -> new DamageSource(DamageType.MELEE, 3, null, 1, Float.NaN, 2, 0),
+                () -> new DamageSource(DamageType.MELEE, 3, null, 1, 2, 3, -1),
+                () -> new ArmorView(-1, 0) }) {
+            boolean rejected = false;
+            try { bad.run(); }
+            catch (IllegalArgumentException | NullPointerException expected) { rejected = true; }
+            check(rejected, "invalid damage data accepted");
+        }
     }
 
     private static void membership() {
@@ -94,23 +149,30 @@ public final class ParticipantTests {
             check(live.size() == 2, "host local + accepted guest missing");
             int actor = room.guestTransport.myActor();
             Participant guest = live.getById(actor); check(guest != null && !guest.local(), "guest identity");
-            float health = room.guestContext.health;
+            check(live.getById(1) != null && live.getById(1).local(), "host's own player missing");
             check(guest.damage(DamageSource.of(DamageType.MELEE), 2), "remote damage not forwarded");
-            room.pump(3); check(room.guestContext.health == health - 2, "guest did not receive damage");
+            room.pump(3); check(room.guestContext.hurtTaken == 2, "guest did not receive damage");
             room.host.onActorJoin(999, "unidentified");
-            room.host.onPayload(999, new PacketBuf().u8(NetProto.X_PLAYER_STATE).f32(0).f32(80).f32(0)
-                    .f32(0).f32(0).u8(0).toBytes());
-            check(live.size() == 2, "unidentified placeholder entered simulation");
+            room.host.onPayload(999, state());
+            check(live.size() == 2 && live.getById(999) == null, "unidentified placeholder entered simulation");
             room.guest.stop(null); room.host.update(.1f);
             check(live.size() == 1, "leave did not remove guest");
             room.rejoin(); room.pump(8); check(live.size() == 2, "reconnect did not restore guest");
             actor = room.guestTransport.myActor();
             room.host.update(13f); check(live.size() == 1, "silent guest was not removed");
-            room.host.onPayload(actor, new PacketBuf().u8(NetProto.X_PLAYER_STATE).f32(0).f32(80).f32(0)
-                    .f32(0).f32(0).u8(0).toBytes());
-            check(live.size() == 1, "timed-out identity revived without handshake");
-            room.host.stop(null); check(live.size() == 1, "offline local participant disappeared");
+            // The transport never reported a leave, so the handshake identity still
+            // stands: a guest whose game stalled (a slow load, a long hitch) must
+            // become a target again, and its checkpoints must keep being stored.
+            room.host.onPayload(actor, state());
+            check(live.size() == 2 && live.getById(actor) != null, "stalled guest was not readmitted");
+            room.host.onPayload(999, state());
+            check(live.getById(999) == null, "timeout readmitted an actor that never said hello");
+            room.host.stop(null); check(live.size() == 1 && live.get(0).local(), "offline local participant disappeared");
         }
+    }
+
+    private static byte[] state() {
+        return new PacketBuf().u8(NetProto.X_PLAYER_STATE).f32(0).f32(80).f32(0).f32(0).f32(0).u8(0).toBytes();
     }
 
     private static void authority() {
@@ -118,6 +180,19 @@ public final class ParticipantTests {
             room.pump(8);
             check(room.host.participants().size() == 1, "dedicated authority spawned a local avatar");
             check(room.guest.participants().size() == 0, "client acquired simulation participants");
+        }
+    }
+
+    private static void headless() throws Exception {
+        Path dir = Path.of("src/main/java/com/mineclone/sim");
+        check(Files.isDirectory(dir), "sim sources missing: " + dir.toAbsolutePath());
+        String[] forbidden = { "com.mineclone.render.", "com.mineclone.audio.", "com.mineclone.game.", "org.lwjgl." };
+        try (var files = Files.list(dir)) {
+            for (Path file : files.filter(p -> p.toString().endsWith(".java")).toList()) {
+                String text = Files.readString(file);
+                for (String bad : forbidden)
+                    check(!text.contains(bad), file.getFileName() + " references " + bad);
+            }
         }
     }
 

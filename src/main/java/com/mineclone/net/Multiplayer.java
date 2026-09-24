@@ -2,6 +2,8 @@ package com.mineclone.net;
 
 import com.mineclone.save.ChunkSnapshot;
 import com.mineclone.save.ItemStackCodec;
+import com.mineclone.sim.Participant;
+import com.mineclone.sim.Participants;
 import com.mineclone.world.BlockType;
 import com.mineclone.world.Chunk;
 import com.mineclone.world.Furnace;
@@ -118,6 +120,15 @@ public final class Multiplayer implements NetTransport.Listener {
 
     private final Map<Integer, RemotePlayer> players = new LinkedHashMap<>();
     private final Deque<String> chat = new ArrayDeque<>();
+
+    /**
+     * Who the world is simulated for; see {@link #participants()}. Rebuilt from
+     * the role, the handshake and the player map after every event that can
+     * change them, so it never drifts from what the session believes.
+     */
+    private final Participants participants = new Participants();
+    private Participant localParticipant;
+    private final Map<Integer, RemoteParticipant> remoteParticipants = new HashMap<>();
 
     private float tickTimer;
     private float timeSyncTimer;
@@ -244,6 +255,7 @@ public final class Multiplayer implements NetTransport.Listener {
             lastError = reason;
             status = reason;
         }
+        syncParticipants();
     }
 
     // ------------------------------------------------------------- сведения
@@ -299,6 +311,54 @@ public final class Multiplayer implements NetTransport.Listener {
         return players.values();
     }
 
+    /**
+     * Everyone the local simulation runs for, as a live list.
+     *
+     * <p>Host: its own player plus every guest that completed the handshake and
+     * has reported a position. Dedicated server: the guests only, because it
+     * never registers a local participant. Offline: the local player alone.
+     * Client: nobody — a guest mirrors the host's world and simulates nothing.
+     * A timed-out guest leaves the list and returns with its next state while
+     * its handshake identity is still valid; an actor that never said hello
+     * never enters, whatever packets it sends.
+     */
+    public Participants participants() {
+        return participants;
+    }
+
+    /** The player of this process; null for a dedicated server. */
+    public void setLocalParticipant(Participant local) {
+        localParticipant = local;
+        syncParticipants();
+    }
+
+    /** This process's actor number in the room, or 0 when not in one. */
+    public int localActor() {
+        return transport != null && joined ? transport.myActor() : 0;
+    }
+
+    private void syncParticipants() {
+        participants.clear();
+        if (localParticipant != null && role != Role.CLIENT)
+            participants.put(localParticipant);
+        if (role != Role.HOST) {
+            remoteParticipants.clear();
+            return;
+        }
+        remoteParticipants.keySet().retainAll(players.keySet());
+        for (RemotePlayer p : players.values()) {
+            if (!p.placed() || !inventorySync.identified(p.actor))
+                continue;
+            RemoteParticipant wrapper = remoteParticipants.get(p.actor);
+            // A guest that timed out comes back as a new RemotePlayer object.
+            if (wrapper == null || wrapper.player() != p) {
+                wrapper = new RemoteParticipant(p);
+                remoteParticipants.put(p.actor, wrapper);
+            }
+            participants.put(wrapper);
+        }
+    }
+
     public List<String> chatLog() {
         return new ArrayList<>(chat);
     }
@@ -318,6 +378,11 @@ public final class Multiplayer implements NetTransport.Listener {
 
     /** Один кадр сессии. Зовётся из игрового потока. */
     public void update(float dt) {
+        updateSession(dt);
+        syncParticipants();
+    }
+
+    private void updateSession(float dt) {
         if (resuming) {
             tryResume(dt);
             if (transport == null)
@@ -570,6 +635,7 @@ public final class Multiplayer implements NetTransport.Listener {
             default -> {
             }
         }
+        syncParticipants();
     }
 
     /**
@@ -694,6 +760,7 @@ public final class Multiplayer implements NetTransport.Listener {
                 requestLoadedChunks();
             }
         }
+        syncParticipants();
     }
 
     @Override
@@ -708,6 +775,7 @@ public final class Multiplayer implements NetTransport.Listener {
         if (joined && channel != null)
             // Keep the pre-handshake message readable by older builds so they can read S_REJECT.
             sendIdentity(actor);
+        syncParticipants();
     }
 
     @Override
@@ -722,6 +790,7 @@ public final class Multiplayer implements NetTransport.Listener {
             ctx.netStopped("хозяин мира вышел");
             stop("хозяин мира вышел");
         }
+        syncParticipants();
     }
 
     @Override
@@ -739,8 +808,9 @@ public final class Multiplayer implements NetTransport.Listener {
             // каша: длина пакета нигде не написана, и следующий байт уже не
             // код. Остаток выбрасывается целиком.
             if (!handle(from, code, in) || in.truncated())
-                return;
+                break;
         }
+        syncParticipants();
     }
 
     private boolean handle(int from, int code, PacketBuf in) {
