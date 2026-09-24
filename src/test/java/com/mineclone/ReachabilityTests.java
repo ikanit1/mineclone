@@ -47,10 +47,8 @@ final class ReachabilityTests {
     /** Recipe and smelting results with no survival source yet, and what closes each gap. */
     static final Set<String> KNOWN_DEAD_RESULTS = Set.of(
             // GEN-08: there is no copper ore, so no copper ingot.
-            "mineclone:copper_axe", "mineclone:copper_pickaxe", "mineclone:copper_shovel", "mineclone:copper_sword",
-            // Leaves drop nothing, and the bedroll's bedding is leaves (since 31afedb).
-            "mineclone:bedroll");
-    static final Set<String> KNOWN_DEAD_INPUTS = Set.of("mineclone:copper_ingot", "mineclone:leaves");
+            "mineclone:copper_axe", "mineclone:copper_pickaxe", "mineclone:copper_shovel", "mineclone:copper_sword");
+    static final Set<String> KNOWN_DEAD_INPUTS = Set.of("mineclone:copper_ingot");
 
     static void runAll(TestMain.Runner r) {
         r.run("every recipe and smelting result is obtainable in survival, except listed gaps", ReachabilityTests::recipes);
@@ -88,7 +86,7 @@ final class ReachabilityTests {
         check(deadInputs.equals(new TreeSet<>(KNOWN_DEAD_INPUTS)), "unobtainable ingredients " + deadInputs);
         // The core loop stays open end to end.
         for (String id : new String[] { "mineclone:diamond_pickaxe", "mineclone:iron_sword", "mineclone:furnace",
-                "mineclone:bow", "mineclone:cooked_beef", "mineclone:chest" })
+                "mineclone:bow", "mineclone:cooked_beef", "mineclone:chest", "mineclone:bedroll" })
             check(result.reachable(items.require(id)), id + " is not reachable in survival");
     }
 

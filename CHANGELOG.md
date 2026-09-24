@@ -5,6 +5,8 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 ## [Unreleased]
 
 ### Fixed
+- The bedroll can be crafted in survival: leaves now drop a leaves block one time in four. Before, leaves dropped nothing while the bedroll's recipe needs three of them, so sleeping and its respawn point were creative-only.
+- A guest's checkpoint over protocol v7 no longer resets what that protocol cannot carry (equipment, effects, personal spawn, sections of newer builds).
 - Guests breaking or replacing a chest or furnace now spill its complete contents on the authority before the container is removed.
 - Unreadable worlds refuse to open; damaged chunks are preserved in quarantine and newer mandatory formats stay read-only.
 - Saved chunks become visible only after terrain, containers, lighting and opaque data have been restored; late loads cannot replace live edits.
@@ -13,6 +15,9 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 - The crosshair keeps its two-pixel thickness with triangles; outlines use a portable line width so forward-compatible OpenGL contexts no longer report invalid values.
 
 ### Added
+- One player record (`PlayerRecord`) for the host's level, guests' `players/<uuid>.dat` (now version 2; version 1 files migrate behind a backup) and the network adapter, with sections for vitals, equipment, effects, personal spawn, advancements and recipes.
+- Block, mob and chest drops load from validated JSON loot tables with the M0 drops preserved; a reachability check reports recipes whose result cannot be obtained in survival.
+- The simulation knows its participants: the host's own player and every accepted guest, with allocation-free nearest/radius queries and a shared damage vocabulary (`DamageSource`, `DamageType`).
 - Session and manual world ZIP backups, protected migration backups, restore-as-copy UI, and dedicated-server `/backup`.
 - Level v11 and chunk v7 with minimum reader versions and bounded named sections. Unknown data survives rewriting; level writes queue immutable snapshots.
 - Shared double-precision world clock with saved simulation ticks, plus asynchronous GPU timing for rendering phases.

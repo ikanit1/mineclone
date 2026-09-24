@@ -1,3 +1,18 @@
 {
-  "pools": []
+  "pools": [
+    {
+      "rolls": 1,
+      "conditions": [
+        {
+          "random_chance": 0.25
+        }
+      ],
+      "entries": [
+        {
+          "item": "mineclone:leaves",
+          "count": 1
+        }
+      ]
+    }
+  ]
 }

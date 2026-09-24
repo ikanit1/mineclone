@@ -45,13 +45,19 @@ anything downstream. Chest loot passes no session RNG: its generator is seeded
 from the world seed, position and table id, so a chest is a pure function of
 where it stands and every build and every guest sees the same contents.
 
+**Deliberate departure from M0.** Leaves drop a leaves block one time in
+four. They used to drop nothing, while the bedroll's bedding has been leaves
+since its recipe was written (`31afedb`) — so the bed and its respawn point could
+not be made in survival. The reachability check found it. One tree now gives
+the three leaves the recipe needs; FARM-03 adds saplings from decaying leaves.
+
 **Mob kills** carry `killedByParticipant` — true when a player's hit (a guest's
 through `C_MOB_HIT`, an arrow) was fatal — and no tool: the host's held item
 says nothing about who killed. A mob eaten by a wolf still drops nothing.
 
 ## Verification
 
-`LootTableTests` compares every block and mob with the frozen M0 policy in
+`LootTableTests` compares every block (but the leaves above) and mob with the frozen M0 policy in
 `src/test/resources/loot/legacy-*.tsv`. Those rows were produced by the M0 build
 itself (`0b7a12a`): its private `Game.blockDrop` and `MobType.drop/dropCount`
 were invoked over every block and mob type. The suite also checks the harvest
@@ -67,8 +73,6 @@ smelting (once a furnace and a fuel are). Creative-only building blocks have no
 survival source by design, so the checked property is dead content: every
 recipe and smelting result must be reachable. The known gaps are listed in the
 test with the task that closes them — copper tools until copper ore exists
-(GEN-08), and the bedroll, whose bedding is leaves that have dropped nothing
-since the recipe was written — and a gap that closes fails the test until the
-list is updated. A
+(GEN-08) — and a gap that closes fails the test until the list is updated. A
 sampled generation over three seeds checks that the natural-block roots include
 everything the generator actually places.
