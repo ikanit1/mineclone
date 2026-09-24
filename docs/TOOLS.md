@@ -106,6 +106,9 @@ writer and its assets, as described in the [fixture reproduction guide](../src/t
 `run-net-test.ps1` starts two real LAN game processes;
 `run-server-test.ps1` starts a dedicated host plus game clients.
 Use `.\run.ps1 -CompileOnly` before the LAN/server scripts, which consume `out`.
+In a Linux container, `tools/linux/run-net-test.sh` and `tools/linux/run-server-test.sh`
+are the same two checks under Xvfb, with natives from `tools/linux/fetch-natives.sh`;
+they consume `out-test` and write to `out-test/net` and `out-test/server`.
 See [TESTING](TESTING.md) for passing markers, filters and artifact paths, and
 [benchmark methodology](perf/README.md) for suite options and provenance limits.
 

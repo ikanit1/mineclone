@@ -59,6 +59,28 @@ javac --release 17 -encoding UTF-8 -d out-test -cp 'out-test;libs/*' tools/Conta
 java '-Dmineclone.checkThreadOwnership=true' -cp 'out-test;libs/*' com.mineclone.ContainerBreakSmoke
 ```
 
+### In a Linux container
+
+`libs/` carries Windows natives only, but a Linux container with Xvfb and Mesa
+(software OpenGL, about ten frames a second) runs the same real-engine checks.
+`tools/linux/fetch-natives.sh` downloads the LWJGL natives for Linux into
+`out-test/linux-natives` once; compiled classes are expected in `out-test/`
+(`CLASSES=` overrides it). Sound stays off without an audio device, so the
+autopilot skips its music checks and says so.
+
+```bash
+tools/linux/fetch-natives.sh
+tools/linux/run-net-test.sh       # the LAN pair of run-net-test.ps1
+tools/linux/run-server-test.sh    # the server and two clients of run-server-test.ps1
+xvfb-run -a java -Dmineclone.autopilot=out-test/autopilot/shots \
+    -Dmineclone.savesDir=out-test/autopilot/saves -cp "out-test:libs/*:out-test/linux-natives/*" com.mineclone.Main
+```
+
+The autopilot's timeouts count game time, and the frame step is capped, so a
+slow software renderer stretches a run instead of failing it: the menu autopilot
+takes about 25 minutes, each network check about 15. Frame speed and the look of
+a real GPU are not measured this way.
+
 LAN evidence lives under `out-test/net`; package smoke extracts into a fresh
 `out-test/server-package-*` directory, checks TCP readiness, sends `/stop`, verifies
 exit 0 and saved `level.dat`, and retains stdout/stderr. No user world is touched.
