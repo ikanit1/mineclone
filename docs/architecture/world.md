@@ -60,6 +60,11 @@ After publication, container mutation belongs to the main simulation thread;
   нужна опора, в очередь `NeighbourUpdates` (BLK-03, [blocks](blocks.md#behaviours-blk-03)).
   И то и другое включается, только когда мир симулирует сессия
   (`World.simulate`): у зеркала гостя стока предметов и очереди нет.
+- `World.scheduleTick()` будит блок в клетке через N тиков мира; тики живут в
+  `ScheduledTicks` чанка, исполняет их `WorldSession.tickScheduled()` после
+  случайных тиков, сохраняет секция чанка `ticks` (BLK-04,
+  [blocks](blocks.md#scheduled-ticks-blk-04)). Восстановленный чанк отдаёт свои
+  тики симуляции при публикации (`World.tickArrivals`), не патчем после неё.
 - `World.setBlock()` пересчитывает свет и будит воду **только когда это нужно**:
   `WaterSimulator` будится при смене проходимости или когда в замене участвует
   вода (снятие источника проходимость не меняет, но бассейн обязан стечь).

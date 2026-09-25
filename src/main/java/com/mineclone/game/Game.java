@@ -1690,6 +1690,9 @@ public class Game {
             probeLavaTick = simulation.lavaNanos();
             probeFalling = simulation.fallingNanos();
         }
+        // Blocks that asked for a tick get it (BLK-04) — where the world is simulated.
+        if (session != null && simulate)
+            session.tickScheduled();
         if (session != null)
             session.adoptFallingDrops();
         else

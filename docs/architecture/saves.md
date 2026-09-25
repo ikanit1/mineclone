@@ -160,6 +160,18 @@ Chunk version 7 adds minimum reader 7, keeps RLE blocks/meta, then writes the
 same section envelope with `chests`, `furnaces`, `items`, and opaque extras.
 The extras travel through `ChunkSnapshot` and `Chunk` across load/unload cycles.
 
+`ticks` (BLK-04, optional — written only when a block asked for a tick) is
+`VarLong writtenAt, VarInt count`, then per tick `VarInt index, u8 kind,
+VarLong zigzag(due - writtenAt)`: dues relative to the world tick of the write,
+so a tick twenty ticks ahead costs two bytes in a world of any age. A chunk
+without it has no ticks, which is every chunk before BLK-04; no migration. The
+reader refuses (quarantine, as for any section) a count above 32768, a cell
+outside the chunk, a duplicate cell and kind, a due before tick zero or trailing
+bytes. A kind the build does not know is kept and written back. An incompatible
+layout would take a new section name; `ticks` is never reinterpreted. What the
+dues mean after a load — lateness, the two-day cap, a clock behind the save — is
+in [blocks](blocks.md#scheduled-ticks-blk-04).
+
 `chunks/ledger.dat` (GEN-02) records which generator made each chunk; its format
 and meaning are in [worldgen.md](worldgen.md#chunk-ledger-gen-02). For saving it
 behaves like a chunk: `saveLedgerAsync` queues the whole file behind the session

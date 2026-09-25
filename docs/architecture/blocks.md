@@ -86,7 +86,7 @@ doorway, a torch and snow.
 as `Shapes` says what it is made of: `canPlaceAt`, `placementMeta`, `onPlaced`,
 `interactive` and `use` (→ `UseResult`: pass, consumed, open a menu, sleep),
 `needsSupport`/`canSurvive`/`collapse`, `onRemoved`, and `scheduledTick`
-(reserved for BLK-04). The switch is exhaustive. Nothing in it knows the screen
+(see [scheduled ticks](#scheduled-ticks-blk-04)). The switch is exhaustive. Nothing in it knows the screen
 or the network; host, server and tests run the same code.
 
 | Behaviour | Blocks | Rules |
@@ -137,3 +137,48 @@ facings transcribed from the removed `Game` methods, the interactive set, and
 the acceptance scan. `NetworkTests`: a guest's `C_USE_BLOCK` opens the host's
 door whole; stone, a truncated packet and a guest out of reach change nothing.
 `ContainerBreakNetworkTests` (TD-05) is green without the old special case.
+
+## Scheduled ticks (BLK-04)
+
+Random ticks reach a cell about once in forty minutes; a block that needs its
+time — a crop's stage, a sapling — asks instead:
+`World.scheduleTick(x, y, z, kind, delay)` wakes the block `kind` in that cell
+`delay` world ticks later (at least one), through
+`BlockBehavior.scheduledTick(world, x, y, z, meta, lateBy)`. Asking again for
+the same block in the same cell moves its time rather than adding a tick. The
+tick comes only if that block still stands there: a crop dug up and replaced by
+dirt does not wake the dirt. No block asks yet; crops and saplings will.
+
+- **Storage.** Each chunk has a `ScheduledTicks`, created on the first ask: a
+  binary heap of `long`s — due world tick (40 bits), kind (8 bits, the block's
+  ordinal) and the cell's index (15 bits) — so ticks come by due time and,
+  among equal times, always in the same order. A chunk holds at most
+  `ScheduledTicks.MAX_ENTRIES` (32768).
+- **Running.** `WorldSession.tickScheduled()` runs after the random ticks each
+  frame, only where the world is simulated (the host, single player, the
+  dedicated server; a guest's mirror schedules nothing). It works every world
+  tick since the last run in turn — a block asking every N ticks ticks once per
+  N even when a frame spans several — `TICK_BUDGET` (512) per world tick, the
+  rest one tick late. A stall longer than `TickScheduler.MAX_STEPS` (40 world
+  ticks) runs the overdue ticks late instead of replaying the whole gap. A chunk
+  runs its ticks only while the four chunks beside it are loaded.
+- **Late ticks.** `lateBy` is how long past its time a tick runs — a frame's
+  stall, a chunk that was unloaded, a game left closed — capped at
+  `WorldSession.MAX_TICK_LATENESS`, two world days (≈ 50 266 ticks): a crop left
+  for a week catches up two days' worth.
+- **Saving.** The chunk section `ticks` ([saves](saves.md#section-formats-and-write-ordering))
+  keeps dues relative to the world tick they were written at. A restored chunk
+  hands its ticks to the simulation when it is published; the time since the
+  save counts (the ticks run late), unless the level's clock is behind the save
+  (a level restored from an older backup) — then the dues shift back, so a tick
+  never waits longer than it was asked to. A kind this build does not know is
+  held and written back untouched.
+
+`ScheduledTickTests` (10): heap order and ties, replacing an ask, the budget and
+a handler's new ask, the bound, held kinds and the clock-behind shift, the
+section's round trip and six malformed payloads, the world's per-tick run (a
+long frame, a stall, a replaced block, a missing neighbour, an ask for no delay),
+512 a world tick across chunks, and the acceptance: **a counter asking every 20
+ticks ticks exactly ten times in ten intervals across a save and a fresh game**,
+half an hour and three hours away (capped at two days), a clock behind the save,
+and an edit before the first run keeping the restored origin.

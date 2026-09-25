@@ -13,6 +13,10 @@ Moved from the pre-foundation CLAUDE.md on 2026-09-24; structure placement corre
 | `Shapes` | `define()` | Which shape each block has: what stops a body and what the aim hits |
 | `Behaviors` | `define()` | What each block does: placement, use, support, what it spills |
 | `NeighbourUpdates` | `BUDGET` | Support checks per world tick (256); the rest waits for the next |
+| `WorldSession` | `TICK_BUDGET` | Scheduled block ticks per world tick (512); the rest run a tick late |
+| `WorldSession` | `MAX_TICK_LATENESS` | The most a scheduled tick is told it is late: two world days (`2 * WorldClock.TICKS_PER_DAY`) |
+| `TickScheduler` | `MAX_STEPS` | World ticks one run works through (40); beyond a stall that long ticks run late, not replayed |
+| `ScheduledTicks` | `MAX_ENTRIES` | Scheduled ticks a chunk may hold (32768); the `ticks` section's bound |
 | `InteractionController` | `REACH` | How far the hand reaches (6 blocks) |
 | `Multiplayer` | `USE_REACH` | How far from a guest's eye a block it uses may be (8: reach plus a snapshot's lag) |
 | `Shapes` | `STAIR_SLAB / DOOR_THICKNESS / CROSS_HEIGHT / TORCH_HALF_WIDTH` | Stair slab height, door panel, cross and torch geometry — shared by collision, aim, outline and mesher |

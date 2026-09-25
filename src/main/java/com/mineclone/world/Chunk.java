@@ -789,6 +789,26 @@ public class Chunk {
         return furnaces;
     }
 
+    // ---- запланированные тики (BLK-04) -----------------------------------------
+
+    /** Created on the first ask: most chunks never hold one. */
+    private ScheduledTicks scheduledTicks;
+    /** In the world's list of chunks with ticks waiting ({@link TickScheduler}). */
+    boolean tickListed;
+
+    /** The ticks this chunk's blocks asked for; restored before publication, then the simulation's. */
+    public ScheduledTicks scheduledTicks() {
+        assertMainThread();
+        if (scheduledTicks == null)
+            scheduledTicks = new ScheduledTicks();
+        return scheduledTicks;
+    }
+
+    public boolean hasScheduledTicks() {
+        assertMainThread();
+        return scheduledTicks != null && !scheduledTicks.isEmpty();
+    }
+
     // ---- предметы на земле ---------------------------------------------------
 
     /**

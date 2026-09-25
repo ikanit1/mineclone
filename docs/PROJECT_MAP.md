@@ -383,11 +383,13 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [Recipes](../src/main/java/com/mineclone/world/Recipes.java) | Minecraft-подобные рецепты: форма лежит в настоящей сетке 2×2 или 3×3. |
 | [Rivers](../src/main/java/com/mineclone/world/Rivers.java) | Реки и озёра: размыв колонны рельефа до уровня воды. |
 | [RopeSimulation](../src/main/java/com/mineclone/world/RopeSimulation.java) | Lightweight Verlet rope used by hanging vines, chains and suspension spans. |
+| [ScheduledTicks](../src/main/java/com/mineclone/world/ScheduledTicks.java) | Ticks that blocks of one chunk asked for (BLK-04, AC-07): "wake me in N world ticks". |
 | [SleepRules](../src/main/java/com/mineclone/world/SleepRules.java) | Когда можно лечь спать и до какого момента это переводит время. |
 | [Smelting](../src/main/java/com/mineclone/world/Smelting.java) | Что во что переплавляется и что горит. |
 | [StructureStability](../src/main/java/com/mineclone/world/StructureStability.java) | Connectivity check for heavy player-built structures. |
 | [Structures](../src/main/java/com/mineclone/world/Structures.java) | Рукотворные постройки в мире: руины, хижина, обелиск. |
 | [TerrainDeformation](../src/main/java/com/mineclone/world/TerrainDeformation.java) | Persistent, voxel-native footprints: snow is compressed and wet dirt turns to mud. |
+| [TickScheduler](../src/main/java/com/mineclone/world/TickScheduler.java) | The world's side of scheduled ticks (BLK-04): which chunks have ticks waiting, the world tick asks count from, and the run of each world tick under a budget. |
 | [WaterSimulator](../src/main/java/com/mineclone/world/WaterSimulator.java) | Incremental water flow simulator. |
 | [Weather](../src/main/java/com/mineclone/world/Weather.java) | Погода: общий на весь мир график атмосферных фронтов. |
 | [World](../src/main/java/com/mineclone/world/World.java) | Javadoc summary not yet supplied. |
@@ -461,4 +463,4 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [BlockShape](../src/main/java/com/mineclone/world/shape/BlockShape.java) | What a block is made of, as boxes in its own cell (0..1 on each axis): what a body collides with, and what the aim and the outline see (AC-05). |
 | [Shapes](../src/main/java/com/mineclone/world/shape/Shapes.java) | The shape of every block (BLK-02): one registry that collision, the aim, the outline and the mesher read instead of five places that knew stairs apart. |
 
-Top-level declarations: 335.
+Top-level declarations: 337.

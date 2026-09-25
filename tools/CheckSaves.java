@@ -99,8 +99,8 @@ public class CheckSaves {
                     }
                     ChunkSnapshot c = chunkLoaded.snapshot();
                     chunks++;
-                    // Three decoded container/item sections plus opaque future data.
-                    sections += 3 + c.extra.size();
+                    // Three decoded container/item sections, scheduled ticks when any, opaque future data.
+                    sections += 3 + (c.ticks.length > 0 ? 1 : 0) + c.extra.size();
                     for (ItemStack[] chest : c.chests.values())
                         for (ItemStack s : chest) {
                             if (s == null)

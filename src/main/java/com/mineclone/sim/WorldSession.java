@@ -56,6 +56,13 @@ public final class WorldSession {
     /** How far a broken or placed block is heard by mobs, in blocks. */
     public static final float NOISE_BREAK = 16f, NOISE_PLACE = 10f;
     private static final java.util.function.Predicate<Participant> ANYONE = p -> true;
+    /** Scheduled block ticks run a world tick at most (BLK-04). */
+    public static final int TICK_BUDGET = 512;
+    /**
+     * The most a scheduled tick is told it is late: two world days. A crop
+     * left for a week catches up two days' worth, not seven.
+     */
+    public static final long MAX_TICK_LATENESS = 2 * WorldClock.TICKS_PER_DAY;
 
     /** What the session borrows from whoever runs it: the game's host or the dedicated server. */
     public interface Host {
@@ -149,7 +156,7 @@ public final class WorldSession {
         this.shots = entities.projectiles::add;
         // A session means this world is the real one: whatever takes a chest
         // away spills it here, and blocks that lose their support fall.
-        world.simulate(this::dropStack);
+        world.simulate(this::dropStack, clock.worldTicks());
     }
 
     public World world() { return world; }
@@ -407,6 +414,19 @@ public final class WorldSession {
         }
     }
 
+    // ------------------------------------------------------ scheduled ticks
+
+    /**
+     * Blocks that asked for a tick get it: every world tick since the last
+     * call, {@link #TICK_BUDGET} at most each (BLK-04). Only where the world
+     * is simulated — the host, a single-player game, the dedicated server.
+     *
+     * @return ticks run
+     */
+    public int tickScheduled() {
+        return world.runScheduledTicks(clock.worldTicks(), TICK_BUDGET, MAX_TICK_LATENESS);
+    }
+
     // ---------------------------------------------------------- projectiles
 
     /**
@@ -450,8 +470,16 @@ public final class WorldSession {
             return null;
         byte[] blocks = c.copyBlocks(), meta = c.copyMeta();
         world.falling.snapshot(c, blocks, meta, dropped);
+        long ticksAt = world.scheduledTickTime();
+        long[] ticks = new long[0];
+        if (c.hasScheduledTicks()) {
+            // Restored ticks the world has not adopted yet still count from their save.
+            long origin = c.scheduledTicks().origin();
+            ticksAt = origin == com.mineclone.world.ScheduledTicks.ADOPTED ? ticksAt : origin;
+            ticks = c.scheduledTicks().entries();
+        }
         ChunkSnapshot snapshot = new ChunkSnapshot(c.cx, c.cz, blocks, meta, c.copyChests(), c.copyFurnaces(),
-                dropped, c.copyExtraSections());
+                dropped, c.copyExtraSections(), ticksAt, ticks);
         c.savedItems = dropped.size();
         c.modified = false;
         return snapshot;

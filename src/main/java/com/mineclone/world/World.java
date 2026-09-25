@@ -33,6 +33,10 @@ public class World {
     private com.mineclone.world.behavior.DropSink drops = com.mineclone.world.behavior.DropSink.NONE;
     /** Cells whose support changed; null while nobody simulates this world. */
     private NeighbourUpdates neighbours;
+    /** Scheduled ticks (BLK-04); null while nobody simulates this world. */
+    private TickScheduler scheduled;
+    /** Restored chunks that brought scheduled ticks, from the publishing worker to the simulation. */
+    final java.util.concurrent.ConcurrentLinkedQueue<Chunk> tickArrivals = new java.util.concurrent.ConcurrentLinkedQueue<>();
 
     /** A world generated entirely by the 1.0 generator (V1). */
     public World(long seed) {
@@ -126,9 +130,15 @@ public class World {
      * ConcurrentHashMap establishes the happens-before edge for readers.
      */
     public Chunk publish(Chunk chunk) {
+        // Still detached: the publishing worker may look at its ticks.
+        boolean ticks = chunk.hasScheduledTicks();
         chunk.publishTo(mainThread);
         Chunk existing = chunks.putIfAbsent(key(chunk.cx, chunk.cz), chunk);
-        return existing != null ? existing : chunk;
+        if (existing != null)
+            return existing;
+        if (ticks)
+            tickArrivals.add(chunk);
+        return chunk;
     }
 
     void assertMainThread() {
@@ -860,9 +870,74 @@ public class World {
      * blocks that lose their support fall ({@link NeighbourUpdates}).
      */
     public void simulate(com.mineclone.world.behavior.DropSink sink) {
+        simulate(sink, 0);
+    }
+
+    /**
+     * {@link #simulate(com.mineclone.world.behavior.DropSink)} with the world
+     * clock's tick: scheduled ticks asked for before the first run count from it.
+     */
+    public void simulate(com.mineclone.world.behavior.DropSink sink, long worldTicks) {
         drops = java.util.Objects.requireNonNull(sink, "sink");
         if (neighbours == null)
             neighbours = new NeighbourUpdates();
+        if (scheduled == null)
+            scheduled = new TickScheduler(this, worldTicks);
+    }
+
+    /** What a scheduled tick does; the default asks the block's behaviour. */
+    @FunctionalInterface
+    public interface ScheduledTickHandler {
+        ScheduledTickHandler BEHAVIOURS = (world, x, y, z, block, meta, lateBy) ->
+                com.mineclone.world.behavior.Behaviors.of(block).scheduledTick(world, x, y, z, meta, lateBy);
+
+        void tick(World world, int x, int y, int z, BlockType block, byte meta, long lateBy);
+    }
+
+    /** Replaces what scheduled ticks call — for tests and tools; null restores the behaviours. */
+    public void setScheduledTickHandler(ScheduledTickHandler handler) {
+        if (scheduled != null)
+            scheduled.handler(handler);
+    }
+
+    /**
+     * Asks for a tick of the block {@code kind} at a cell in {@code delay}
+     * world ticks (at least one). Asking again for the same block in the same
+     * cell moves the time; the tick comes only if that block still stands
+     * there (BLK-04). Counted from the last run of scheduled ticks.
+     *
+     * @return false in a world nobody simulates here, an unloaded chunk or a full one
+     */
+    public boolean scheduleTick(int x, int y, int z, BlockType kind, long delay) {
+        if (scheduled == null || y < 0 || y >= Chunk.SIZE_Y)
+            return false;
+        Chunk c = getChunkIfExists(Math.floorDiv(x, Chunk.SIZE_X), Math.floorDiv(z, Chunk.SIZE_Z));
+        if (c == null)
+            return false;
+        return scheduled.schedule(c, Chunk.idx(Math.floorMod(x, Chunk.SIZE_X), y, Math.floorMod(z, Chunk.SIZE_Z)),
+                kind, delay);
+    }
+
+    /**
+     * Runs scheduled ticks up to world tick {@code now}: every world tick
+     * since the last run in turn, at most {@code budget} ticks each. A tick
+     * more than {@code maxLate} late (its chunk was unloaded, the game was
+     * closed) is told it is {@code maxLate} late.
+     *
+     * @return ticks run; zero in a world nobody simulates
+     */
+    public int runScheduledTicks(long now, int budget, long maxLate) {
+        return scheduled == null ? 0 : scheduled.run(now, budget, maxLate);
+    }
+
+    /** The world tick scheduled ticks last ran at — what {@link #scheduleTick} counts from. */
+    public long scheduledTickTime() {
+        return scheduled == null ? 0 : scheduled.now();
+    }
+
+    /** Scheduled ticks waiting in loaded chunks the simulation knows of. */
+    public int pendingScheduledTicks() {
+        return scheduled == null ? 0 : scheduled.pending();
     }
 
     /** Where this world's drops go; {@code NONE} unless it is simulated here. */

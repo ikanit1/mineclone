@@ -1,9 +1,12 @@
 package com.mineclone.save;
 
 import com.mineclone.data.SectionCodec;
+import com.mineclone.data.VarInt;
+import com.mineclone.data.VarLong;
 import com.mineclone.world.DroppedItem;
 import com.mineclone.world.Furnace;
 import com.mineclone.world.ItemStack;
+import com.mineclone.world.ScheduledTicks;
 import java.io.*;
 import java.util.*;
 
@@ -51,7 +54,57 @@ public final class ChunkSectionCodec {
                 data.writeFloat(item.x); data.writeFloat(item.y); data.writeFloat(item.z); data.writeFloat(item.age);
             }
         }));
+        if (snapshot.ticks.length > 0)
+            sections.put(TICKS, bytes(data -> writeTicks(data, snapshot)));
         SectionCodec.write(out, sections);
+    }
+
+    /**
+     * Scheduled ticks (BLK-04): {@code VarLong writtenAt, VarInt count}, then
+     * per tick {@code VarInt index, u8 kind, VarLong zigzag(due - writtenAt)}.
+     * Written only when a tick waits; a chunk without the section has none.
+     * An incompatible layout would take a new section name, so this one is
+     * never reinterpreted.
+     */
+    static final String TICKS = "ticks";
+
+    private static void writeTicks(DataOutputStream data, ChunkSnapshot snapshot) throws IOException {
+        long[] ticks = snapshot.ticks;
+        int count = ticks.length / 3;
+        if (count > ScheduledTicks.MAX_ENTRIES) throw new IOException("too many scheduled ticks");
+        VarLong.write(data, snapshot.ticksAt);
+        VarInt.write(data, count);
+        for (int i = 0; i < ticks.length; i += 3) {
+            if (ticks[i] < 0 || ticks[i] >= SaveFormat.CHUNK_VOLUME || ticks[i + 1] < 0 || ticks[i + 1] > 255
+                    || ticks[i + 2] < 0 || ticks[i + 2] > ScheduledTicks.MAX_DUE)
+                throw new IOException("invalid scheduled tick");
+            VarInt.write(data, (int) ticks[i]);
+            data.writeByte((int) ticks[i + 1]);
+            VarLong.write(data, VarLong.zigzag(ticks[i + 2] - snapshot.ticksAt));
+        }
+    }
+
+    private static long[] readTicks(byte[] payload, long[] writtenAt) throws IOException {
+        if (payload == null) return new long[0];
+        try (DataInputStream data = new DataInputStream(new ByteArrayInputStream(payload))) {
+            long at = VarLong.read(data);
+            if (at < 0 || at > ScheduledTicks.MAX_DUE) throw new IOException("invalid scheduled tick time");
+            int count = VarInt.read(data);
+            if (count < 0 || count > ScheduledTicks.MAX_ENTRIES) throw new IOException("invalid scheduled tick count " + count);
+            long[] ticks = new long[count * 3];
+            Set<Integer> seen = new HashSet<>();
+            for (int i = 0; i < ticks.length; i += 3) {
+                int index = position(VarInt.read(data));
+                int kind = data.readUnsignedByte();
+                long due = at + VarLong.unzigzag(VarLong.read(data));
+                if (due < 0 || due > ScheduledTicks.MAX_DUE) throw new IOException("scheduled tick out of range");
+                if (!seen.add(index << 8 | kind)) throw new IOException("duplicate scheduled tick");
+                ticks[i] = index; ticks[i + 1] = kind; ticks[i + 2] = due;
+            }
+            end(data);
+            writtenAt[0] = at;
+            return ticks;
+        }
     }
 
     public static ChunkSnapshot read(DataInputStream in, int cx, int cz) throws IOException {
@@ -98,7 +151,9 @@ public final class ChunkSectionCodec {
             }
             end(data);
         }
-        return new ChunkSnapshot(cx, cz, blocks, meta, chests, furnaces, items, sections);
+        long[] ticksAt = { 0 };
+        long[] ticks = readTicks(sections.remove(TICKS), ticksAt);
+        return new ChunkSnapshot(cx, cz, blocks, meta, chests, furnaces, items, sections, ticksAt[0], ticks);
     }
 
     private static byte[] bytes(Writer writer) throws IOException {

@@ -26,6 +26,7 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 - The crosshair keeps its two-pixel thickness with triangles; outlines use a portable line width so forward-compatible OpenGL contexts no longer report invalid values.
 
 ### Added
+- Blocks can ask to be woken after a set number of world ticks (scheduled ticks). The ticks are saved with their chunk and survive unloading; a world left closed catches up for at most two world days. No block uses them yet — crops and saplings will.
 - One player record (`PlayerRecord`) for the host's level, guests' `players/<uuid>.dat` (now version 2; version 1 files migrate behind a backup) and the network adapter, with sections for vitals, equipment, effects, personal spawn, advancements and recipes.
 - Block, mob and chest drops load from validated JSON loot tables with the M0 drops preserved; a reachability check reports recipes whose result cannot be obtained in survival.
 - World generation is versioned: V1 is the 1.0 generator, frozen by golden hashes of 120 chunks proven identical to the v1.0.0-alpha build; each world records its generator and the 1.1 generation changes it was created with, and a world needing a generator or change this build lacks is refused instead of having its unedited land regenerated differently.

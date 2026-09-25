@@ -25,6 +25,13 @@ public final class ChunkSnapshot {
     public final java.util.List<com.mineclone.world.DroppedItem> items;
     /** Unknown/future sections must survive every load-edit-save cycle. */
     public final Map<String, byte[]> extra;
+    /**
+     * Scheduled ticks (BLK-04) as {@code {index, kind, due}} triples, dues in
+     * world ticks counted from {@link #ticksAt}; empty for most chunks.
+     */
+    public final long[] ticks;
+    /** The world tick the dues in {@link #ticks} count from. */
+    public final long ticksAt;
 
     public ChunkSnapshot(int cx, int cz, byte[] blocks, byte[] meta) {
         this(cx, cz, blocks, meta, new HashMap<>(), new HashMap<>());
@@ -51,6 +58,17 @@ public final class ChunkSnapshot {
     public ChunkSnapshot(int cx, int cz, byte[] blocks, byte[] meta,
                          Map<Integer, ItemStack[]> chests, Map<Integer, Furnace> furnaces,
                          java.util.List<com.mineclone.world.DroppedItem> items, Map<String, byte[]> extra) {
+        this(cx, cz, blocks, meta, chests, furnaces, items, extra, 0, new long[0]);
+    }
+
+    public ChunkSnapshot(int cx, int cz, byte[] blocks, byte[] meta,
+                         Map<Integer, ItemStack[]> chests, Map<Integer, Furnace> furnaces,
+                         java.util.List<com.mineclone.world.DroppedItem> items, Map<String, byte[]> extra,
+                         long ticksAt, long[] ticks) {
+        if (ticks == null || ticks.length % 3 != 0 || ticksAt < 0)
+            throw new IllegalArgumentException("invalid scheduled ticks");
+        this.ticks = ticks;
+        this.ticksAt = ticksAt;
         this.cx = cx; this.cz = cz;
         this.blocks = blocks; this.meta = meta;
         this.chests = chests == null ? new HashMap<>() : chests;

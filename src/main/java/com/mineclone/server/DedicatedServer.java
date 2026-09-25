@@ -365,6 +365,7 @@ public final class DedicatedServer implements NetContext {
         // Around every guest, with the weather the game's players get: snow
         // settles on the server, rain puts its fires out.
         simulation.update(world, dt, session.centres(), precipitation(), true);
+        session.tickScheduled();
         session.adoptFallingDrops();
         session.tickMobs(dt);
         session.tickItems(dt);

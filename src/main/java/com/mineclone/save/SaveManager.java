@@ -842,7 +842,7 @@ public final class SaveManager {
         for (var item : source.items)
             items.add(new com.mineclone.world.DroppedItem(item.stack.copy(), item.x, item.y, item.z, item.age));
         return new ChunkSnapshot(source.cx, source.cz, source.blocks.clone(), source.meta.clone(),
-                chests, furnaces, items, source.extra);
+                chests, furnaces, items, source.extra, source.ticksAt, source.ticks.clone());
     }
 
     synchronized boolean saveChunkBlocking(String id, ChunkSnapshot s) {

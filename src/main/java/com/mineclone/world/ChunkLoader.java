@@ -312,6 +312,8 @@ public class ChunkLoader {
             c.restoreFurnaces(snap.furnaces);
             c.setPendingItems(snap.items);
             c.restoreExtraSections(snap.extra);
+            if (snap.ticks.length > 0)
+                c.scheduledTicks().restore(snap.ticksAt, snap.ticks, BlockType.VALUES.length);
             return true;
         }
         if (result instanceof ChunkLoad.TooNew) {

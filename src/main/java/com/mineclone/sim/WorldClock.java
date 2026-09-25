@@ -8,6 +8,8 @@ public final class WorldClock {
     /** Radians per real second: one day takes approximately 21 real minutes. */
     public static final double TIME_SCALE = 0.005;
     public static final int TICKS_PER_SECOND = 20;
+    /** World ticks in one day and night: {@code 2 pi / TIME_SCALE} seconds, about 25 133. */
+    public static final long TICKS_PER_DAY = Math.round(NightSky.CYCLE / TIME_SCALE * TICKS_PER_SECOND);
     public static final double DEFAULT_TIME = Math.PI / 6.0;
     public static final String SAVE_SECTION = "clock";
     private static final int SECTION_VERSION = 1;
