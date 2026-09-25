@@ -16,6 +16,7 @@ Moved from the pre-foundation CLAUDE.md on 2026-09-24; structure placement corre
 | `WorldSession` | `TICK_BUDGET` | Scheduled block ticks per world tick (512); the rest run a tick late |
 | `WorldSession` | `MAX_TICK_LATENESS` | The most a scheduled tick is told it is late: two world days (`2 * WorldClock.TICKS_PER_DAY`) |
 | `TickScheduler` | `MAX_STEPS` | World ticks one run works through (40); beyond a stall that long ticks run late, not replayed |
+| `StructureIndex` | `CACHE_SIZE` | Structure starts kept for the generation threads (512, LRU) |
 | `ScheduledTicks` | `MAX_ENTRIES` | Scheduled ticks a chunk may hold (32768); the `ticks` section's bound |
 | `InteractionController` | `REACH` | How far the hand reaches (6 blocks) |
 | `Multiplayer` | `USE_REACH` | How far from a guest's eye a block it uses may be (8: reach plus a snapshot's lag) |

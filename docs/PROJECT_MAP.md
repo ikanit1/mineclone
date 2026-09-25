@@ -468,4 +468,18 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [BlockShape](../src/main/java/com/mineclone/world/shape/BlockShape.java) | What a block is made of, as boxes in its own cell (0..1 on each axis): what a body collides with, and what the aim and the outline see (AC-05). |
 | [Shapes](../src/main/java/com/mineclone/world/shape/Shapes.java) | The shape of every block (BLK-02): one registry that collision, the aim, the outline and the mesher read instead of five places that knew stairs apart. |
 
-Top-level declarations: 342.
+## com.mineclone.world.structure
+
+| Type | Purpose |
+|---|---|
+| [BoundingBox](../src/main/java/com/mineclone/world/structure/BoundingBox.java) | A box of blocks, both corners inclusive, in world coordinates. |
+| [ChunkWriter](../src/main/java/com/mineclone/world/structure/ChunkWriter.java) | Writes into the one chunk being generated, in world coordinates. |
+| [StructureIndex](../src/main/java/com/mineclone/world/structure/StructureIndex.java) | Where a world's structures are (GEN-03): the start of each type in each region, computed on demand from the seed and kept in a bounded cache shared by the generation threads. |
+| [StructurePass](../src/main/java/com/mineclone/world/structure/StructurePass.java) | The fifth generation pass (GEN-03): every structure piece that reaches a chunk is written into it, cut to the chunk. |
+| [StructurePiece](../src/main/java/com/mineclone/world/structure/StructurePiece.java) | One part of a structure: a box it owns and how to fill it (GEN-03). |
+| [StructureStart](../src/main/java/com/mineclone/world/structure/StructureStart.java) | One structure in one region: where it starts and its pieces (GEN-03). |
+| [StructureType](../src/main/java/com/mineclone/world/structure/StructureType.java) | A kind of structure and where it may start (GEN-03, AC-11). |
+| [StructureTypes](../src/main/java/com/mineclone/world/structure/StructureTypes.java) | The structure types of the 1.1 generator (GEN-03). |
+| [StructureWriter](../src/main/java/com/mineclone/world/structure/StructureWriter.java) | Where a structure piece puts its blocks, in world coordinates: the chunk being generated (ChunkWriter) or, in tests, one large buffer. |
+
+Top-level declarations: 351.

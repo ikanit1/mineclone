@@ -64,6 +64,47 @@ public class World {
 
     public com.mineclone.world.gen.GenPolicy genPolicy() { return genPolicy; }
 
+    /** Multi-chunk structures (GEN-03); built on first use from {@link #structureTypes}. */
+    private volatile com.mineclone.world.structure.StructureIndex structureIndex;
+    private java.util.List<com.mineclone.world.structure.StructureType> structureTypes =
+            com.mineclone.world.structure.StructureTypes.V2;
+
+    /**
+     * Replaces the structure types a chunk with {@code structures2} gets — for
+     * tests and tools, before any chunk is generated.
+     */
+    public synchronized void setStructureTypes(java.util.List<com.mineclone.world.structure.StructureType> types) {
+        structureTypes = java.util.List.copyOf(types);
+        structureIndex = null;
+    }
+
+    /** Where this world's multi-chunk structures are; shared by the generation threads. */
+    public com.mineclone.world.structure.StructureIndex structures() {
+        var index = structureIndex;
+        if (index == null) {
+            synchronized (this) {
+                index = structureIndex;
+                if (index == null)
+                    structureIndex = index = new com.mineclone.world.structure.StructureIndex(seed, structureTypes,
+                            new com.mineclone.world.structure.StructureStart.Terrain() {
+                                @Override public int height(int x, int z) { return terrainHeight(x, z); }
+                                @Override public Biome biome(int x, int z) { return biomes.biomeAt(x, z); }
+                            });
+            }
+        }
+        return index;
+    }
+
+    /**
+     * The multi-chunk structure a block is part of, or null — only where the
+     * block's chunk was generated with them (GEN-03).
+     */
+    public com.mineclone.world.structure.StructureIndex.Hit structureAt(int x, int y, int z) {
+        if (!genPolicy.featuresAt(Math.floorDiv(x, Chunk.SIZE_X), Math.floorDiv(z, Chunk.SIZE_Z)).structures2())
+            return null;
+        return structures().at(x, y, z);
+    }
+
     /**
      * An empty world that generates exactly like this one: same seed, profile
      * and generator versions. A chunk delta compares against it, so it must not
@@ -374,6 +415,10 @@ public class World {
 
         // Pass 4: постройки — последними, на заранее зарезервированной площадке.
         Structures.place(c, site, seed);
+        // Pass 5 (GEN-03): multi-chunk structures, each chunk writing its own cut.
+        // Only where the chunk's generator has them: V1 comes out as 1.0 made it.
+        if (features.structures2())
+            com.mineclone.world.structure.StructurePass.place(structures(), c);
 
         c.computeSkyLight();
         // Проходы генерации пишут блоки и через set(), и массивами; список

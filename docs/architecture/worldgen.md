@@ -1,9 +1,9 @@
 # World generation
 
-Updated: 2026-09-24.
+Updated: 2026-09-25.
 
 `world/World.generateDetached()` generates terrain -> caves -> ores -> vegetation,
-then places structures; rivers shape the height field during terrain generation.
+then places the 1.0 structures and, where `structures2` is on, multi-chunk ones; rivers shape the height field during terrain generation.
 Saved modifications are applied before the chunk is published. See
 [world invariants](world.md) and [publication](chunk-publication.md).
 
@@ -132,6 +132,51 @@ that tag's build is byte-identical: the current generator is the 1.0 generator.
 `WorldGenGoldenTests` regenerates all 120 chunks on every run (~0.5 s); a one-line
 change to a gravel lens fails all of them. Never regenerate the file to make the
 test pass — put the change behind a feature flag instead.
+
+## Multi-chunk structures (GEN-03)
+
+`world/structure` builds structures of any size across chunks, deterministically,
+whatever order the chunks are generated in (AC-11). It is the fifth pass of
+`generateDetached`, after the 1.0 templates, and runs only in chunks whose
+features include `structures2`. That flag is off in V1 and in V2, and
+`StructureTypes.V2` is empty: the framework ships dormant until the first real
+type, so no world records a change it does not have and the V1 golden stands.
+The four 1.0 templates stay on their own path (`Structures`).
+
+- **`StructureType`**: an id, `spacing` and `separation` in chunks, a `salt`, a
+  biome predicate, a height mode (`SURFACE` — the terrain at the start's centre
+  — or an underground band) and `maxRadiusChunks`, how far its pieces may reach
+  from the start chunk (at most 16). Each `spacing` x `spacing` region holds at
+  most one start, at an offset below `spacing - separation`, so starts in
+  neighbouring regions are at least `separation` chunks apart.
+- **`StructureStart.create(type, seed, rx, rz, terrain)`** is a pure function: the
+  region's chunk, its height, then the type's `Assembler` with its own
+  `SplittableRandom(seed ^ salt ^ rx·A ^ rz·B)` and the terrain (`World.terrainHeight`,
+  the biome map — both pure). Pieces that overlap, or reach past the radius or out
+  of the world, are a bug in the type and throw; an empty assembly or a start in
+  the wrong biome means no start.
+- **`StructurePiece`**: a `BoundingBox` and `place(writer, clip)`. Every chunk it
+  crosses places it once, cut to that chunk, so it decides each block from its
+  position (`StructurePiece.noise`), never from a random stream that advances as
+  it writes.
+- **`StructureIndex`** caches starts (LRU, `CACHE_SIZE` 512) for all generation
+  threads, finds the starts reaching a box, and answers `at(x, y, z)` — type,
+  start and piece — for the spawner, advancements and F3 (`World.structureAt`,
+  which also checks the chunk's features).
+- **`StructurePass`** writes the pieces reaching a chunk through a `ChunkWriter`,
+  which refuses and counts any write outside that chunk.
+
+`StructureTests` (8): boxes; starts inside their regions and `separation` apart
+over 50 x 50 regions; starts equal from two indexes asked in opposite orders on
+four threads, the cache within its bound and evicted starts recomputed alike;
+overlapping, far-reaching and sky-high pieces refused, no start in the wrong
+biome or for an empty assembly; the writer's bounds; **a 40 x 40 x 20 hall over
+nine chunks, generated in row, reverse and shuffled order and on four threads,
+identical every time and equal block for block to one placement into a buffer**,
+with no write outside a chunk — once starting mid-region and once on a region's
+first chunk, so that it reaches chunks of the region before; the index inside, beside and above the hall and
+not in a chunk without the flag; the pass inactive without `structures2`, and
+the shipped registry empty.
 
 Checks: `run-tests.ps1 -Only worldgen,core,chunk`. `WorldGenerationTests` covers
 sparse structure spacing, biome textures, seams and falling-block conservation;
