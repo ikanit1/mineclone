@@ -184,7 +184,7 @@ Moved from the pre-foundation CLAUDE.md on 2026-09-24; structure placement corre
 | `GenBlockTextures` | `BAYER4` / `q()` | Сила и порядок дизеринга |
 | `Game.render()` | `uAmbient = 0.22f` | Shadow floor |
 | `WeatherDrift` | `MAX_STEP / SNOW_STORM_CARRY / *_STORM_FALL` | Предел шага сноса, во сколько метель несёт снег сильнее и насколько буря ускоряет падение |
-| `Game` | `THROW_CHARGE_TIME` | За сколько секунд бросок заряжается полностью |
+| `WeaponController` | `THROW_CHARGE_TIME` | За сколько секунд бросок заряжается полностью |
 | `Storm` | `FLASH_TIME / BOLT_TIME / SOUND_SPEED` | Длина вспышки, жизнь болта и скорость звука (42 блока/с) |
 | `Storm` | `RANGE / IGNITE_RANGE` | Дальше этого удар не ищется и в каком радиусе занимается огонь |
 | `Game` | `FLASH_LIGHT` | Насколько ярко разряд освещает мир в пике вспышки |
@@ -193,8 +193,8 @@ Moved from the pre-foundation CLAUDE.md on 2026-09-24; structure placement corre
 | `Game` | `THIRD_PERSON_DISTANCE` | Отход камеры в третьем лице (упирается в стену) |
 | `Game` | `DAMAGE_FLASH_TIME / DAMAGE_SHAKE_TIME` | Длительность красной виньетки и толчка камеры |
 | `Game` | `HEALTH_GHOST_DELAY` | Пауза перед тем, как «тень» потери на сердцах начнёт оседать |
-| `Game` | `FOOTPRINT_LIFE / FOOTPRINT_SPREAD` | Сколько держится след и насколько разнесены ноги |
-| `Game` | `holdsFootprint()` | На каком грунте след вообще остаётся |
+| `FootstepFeedback` | `FOOTPRINT_LIFE / FOOTPRINT_SPREAD` | Сколько держится след и насколько разнесены ноги |
+| `FootstepFeedback` | `holdsFootprint()` | На каком грунте след вообще остаётся |
 | `Hud` | `selectSpring()` | Пружина выделения слота в хотбаре |
 | `Hud` | `COMPASS_W / COMPASS_H / COMPASS_ARC` | Габариты ленты компаса и высота дуги светила |
 | `Hud` | `COMPASS_DEG_PX` | Масштаб ленты: сколько пикселей на градус курса |

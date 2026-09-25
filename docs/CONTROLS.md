@@ -38,7 +38,7 @@
 | `Chunk` | `CHEST_SLOTS` | Сколько стопок держит сундук |
 | `SleepRules` | `NIGHT_DAYLIGHT / MONSTER_RANGE` | Когда уже ночь и в каком радиусе монстры не дают уснуть |
 | `SleepRules` | `nextDawn()` | Куда переводится время; всегда вперёд, ровно на одни сутки |
-| `Game` | `BEDROLL_META` | Высота спальника в meta (3 → половина блока) |
+| `BedrollBehavior` | `META` | Высота спальника в meta (3 → половина блока) |
 | `Smelting` | `COOK_TIME` | Сколько секунд плавится одна единица |
 | `Smelting` | `result() / fuelSeconds()` | Что во что переплавляется и что сколько горит |
 | `Game` | `FURNACE_TICK / FURNACE_RADIUS` | Темп тиков печей и радиус, в котором они работают |
@@ -61,12 +61,13 @@
 | `Mob` | `SIGHT_HALF_ANGLE / SIGHT_CLOSE` | Конус зрения (±60°) и радиус, внутри которого угол не проверяется |
 | `Mob` | `DARK_SIGHT_FACTOR` | Во сколько раз падает дальность обнаружения в темноте (0.7) |
 | `Mob` | `INVESTIGATE_TIME / INVESTIGATE_REACH` | Сколько моб идёт на шум и когда считает, что дошёл |
-| `Game` | `NOISE_BREAK / LAND / SPRINT / PLACE / WALK` | Радиусы слышимости событий игрока |
+| `Game` | `NOISE_BREAK / LAND / PLACE` | Радиусы слышимости событий игрока: разлом, приземление, постановка |
+| `FootstepFeedback` | `NOISE_SPRINT / NOISE_WALK` | Радиусы слышимости шагов: бег и ходьба |
 | `AmbientSound` | `CAVE_MIN / CAVE_MAX` | Пауза между звуками пещеры (45–160 с) |
 | `AmbientSound` | `RAIN_THRESHOLD / THUNDER_THRESHOLD / THUNDER_CHANCE` | Пороги дождя и грома |
 | `AmbientSound` | `RAIN_SKY_SILENT / RAIN_SKY_FULL` | Небесный свет у головы, при котором дождя не слышно (3) и слышно полностью (12) |
 | `AcousticProbe` | `MAX_DISTANCE` | Дальше этого луч считается ушедшим в открытое пространство |
-| `Game` | `REVERB_INTERVAL / CAVE_SOUND_RADIUS` | Темп перезамера эха и радиус точки звука пещеры |
+| `AmbientEffects` | `REVERB_INTERVAL / CAVE_SOUND_RADIUS` | Темп перезамера эха и радиус точки звука пещеры |
 | `Mob` | `ATTACK_DAMAGE` | Урон зомби игроку (3 = 1.5 сердца) |
 | `Mob` | `STUCK_TIME / SIDESTEP_TIME` | Через сколько упора в стену идти вбок и как долго |
 | `Mob` | `SAFE_FALL / STEP_DISTANCE` | Безопасное падение (3 блока) и путь между шагами |

@@ -60,18 +60,22 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | Type | Purpose |
 |---|---|
 | [AdvancedFeedback](../src/main/java/com/mineclone/game/AdvancedFeedback.java) | Eye adaptation plus poison, stun and cold screen-state envelopes. |
+| [AmbientEffects](../src/main/java/com/mineclone/game/AmbientEffects.java) | What the world around the player sounds and looks like on its own: cave, rain, storm and underwater beds, the room's echo, a stream and lava nearby, fish, leaves and fireflies, torch smoke, breath in the cold. |
 | [Atmosphere](../src/main/java/com/mineclone/game/Atmosphere.java) | Погода и ночное небо там, где стоит игрок, — на этот кадр. |
 | [Autopilot](../src/main/java/com/mineclone/game/Autopilot.java) | Автопилот меню в настоящей игре: -Dmineclone.autopilot=. |
 | [BenchDirector](../src/main/java/com/mineclone/game/BenchDirector.java) | Reproducible workloads driven through the actual Game update/render/save/network paths. |
 | [BenchMetrics](../src/main/java/com/mineclone/game/BenchMetrics.java) | Pure benchmark statistics and strict JSON serialization, independent of rendering. |
 | [BenchPeers](../src/main/java/com/mineclone/game/BenchPeers.java) | Three real Multiplayer clients on Loopback; host remains the production Game session. |
 | [CameraMotion](../src/main/java/com/mineclone/game/CameraMotion.java) | Ощущение массы тела в камере от первого лица: крен в повороте и стрейфе, инерционный кивок при разгоне и торможении, проседание при посадке. |
+| [CommandProcessor](../src/main/java/com/mineclone/game/CommandProcessor.java) | The console line's commands: /time, /weather, /tp, /gamemode and the rest, moved out of Game whole (SIM-08). |
 | [ContextHint](../src/main/java/com/mineclone/game/ContextHint.java) | Всплывающая подсказка у прицела: что сделает клик по тому, на что смотришь. |
 | [DebugKeys](../src/main/java/com/mineclone/game/DebugKeys.java) | F3 и сочетания с ним. |
 | [EntityPresentation](../src/main/java/com/mineclone/game/EntityPresentation.java) | How the host shows what its mobs did: voices, splashes, footprints, fire, deaths and the sound cues at the screen edge. |
+| [FootstepFeedback](../src/main/java/com/mineclone/game/FootstepFeedback.java) | Steps, footprints, kicked snow and landings — the player's and the other participants' — moved out of Game whole (SIM-08). |
 | [FrameProfiler](../src/main/java/com/mineclone/game/FrameProfiler.java) | Разбивка времени кадра по фазам плюс худший кадр за скользящее окно. |
 | [Frost](../src/main/java/com/mineclone/game/Frost.java) | Сколько мороза набрал игрок: 0 — тепло, 1 — края экрана затянуло инеем. |
 | [Game](../src/main/java/com/mineclone/game/Game.java) | Javadoc summary not yet supplied. |
+| [GameNetContext](../src/main/java/com/mineclone/game/GameNetContext.java) | Всё, что сетевая сессия знает об игре. |
 | [Hud](../src/main/java/com/mineclone/game/Hud.java) | Игровой интерфейс поверх мира: F3, хотбар, сердца, сытость, компас, подсказки и консоль. |
 | [InteractionController](../src/main/java/com/mineclone/game/InteractionController.java) | What a click does to the block under the crosshair (BLK-03): breaking, placing, using, picking. |
 | [InteractionRepeat](../src/main/java/com/mineclone/game/InteractionRepeat.java) | Immediate press plus a bounded repeat cadence while a button stays held. |
@@ -88,6 +92,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [Storm](../src/main/java/com/mineclone/game/Storm.java) | Живая гроза: вспышки, болты на экране и раскаты, которые ещё летят. |
 | [StressFlight](../src/main/java/com/mineclone/game/StressFlight.java) | Замер рывков в живой игре: -Dmineclone.stress=. |
 | [SurvivalProgress](../src/main/java/com/mineclone/game/SurvivalProgress.java) | Короткая цепочка целей, которая знакомит игрока с основным циклом выживания. |
+| [WeaponController](../src/main/java/com/mineclone/game/WeaponController.java) | The bow and the charged throw, moved out of Game whole (SIM-08): how long the string is held, how far a throw is charged, and what leaves the hand. |
 | [WeatherDrift](../src/main/java/com/mineclone/game/WeatherDrift.java) | Сколько воздух уже унёс: интеграл ветра, а не «ветер × время». |
 
 ## com.mineclone.item
@@ -463,4 +468,4 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [BlockShape](../src/main/java/com/mineclone/world/shape/BlockShape.java) | What a block is made of, as boxes in its own cell (0..1 on each axis): what a body collides with, and what the aim and the outline see (AC-05). |
 | [Shapes](../src/main/java/com/mineclone/world/shape/Shapes.java) | The shape of every block (BLK-02): one registry that collision, the aim, the outline and the mesher read instead of five places that knew stairs apart. |
 
-Top-level declarations: 337.
+Top-level declarations: 342.

@@ -52,16 +52,16 @@ public class Game {
     /** Раскладка клавиш: один объект на игру, Input читает действия через него. */
     private final KeyBindings keys = new KeyBindings();
 
-    private enum State {
+    enum State {
         MENU, LOADING, PLAYING, PAUSED, WINDOW, DEAD
     }
 
     private final Window window;
-    private final Input input;
-    private World world;
+    final Input input;
+    World world;
     private ChunkMesher mesher;
     private ChunkLoader loader;
-    private final Player player = new Player();
+    final Player player = new Player();
     private final TextureAtlas atlas;
     private final Shader chunkShader;
     private final HeldItemRenderer heldItemRenderer;
@@ -98,13 +98,13 @@ public class Game {
     private com.mineclone.save.Options.Gameplay gameOpts = com.mineclone.save.Options.Gameplay.defaults();
     /** Разрешения монитора — читаются один раз: GLFW отдаёт их списком на каждый запрос. */
     private int[][] videoModes = new int[0][];
-    private final ParticleSystem particles = new ParticleSystem();
-    private final java.util.Random natureRandom = new java.util.Random();
+    final ParticleSystem particles = new ParticleSystem();
+    final java.util.Random natureRandom = new java.util.Random();
     private float natureTimer;
     /** Как часто на землю падают брызги дождя, секунды. */
     private float splashTimer;
     /** Погода и ночное небо в точке игрока — пересчитывается каждый кадр. */
-    private final Atmosphere atmosphere = new Atmosphere();
+    final Atmosphere atmosphere = new Atmosphere();
     private PrecipitationRenderer precipitation;
     /** Сколько мороза набрал игрок — иней по краям кадра. */
     private final Frost frost = new Frost();
@@ -127,33 +127,27 @@ public class Game {
     private com.mineclone.render.GpuTimers gpuTimers;
     private com.mineclone.render.MenuDissolve menuDissolve;
     /** 3D-обломки разбитых блоков. */
-    private final Debris debris = new Debris(0xDEB815L);
+    final Debris debris = new Debris(0xDEB815L);
     private DebrisRenderer debrisRenderer;
     /** Сущности открытого мира; у гостя — снимки хозяина. */
     private final com.mineclone.sim.EntityStore entities = new com.mineclone.sim.EntityStore();
     /** Предметы на земле. */
-    private final java.util.List<com.mineclone.world.entity.ItemEntity> items = entities.items;
+    final java.util.List<com.mineclone.world.entity.ItemEntity> items = entities.items;
     private ItemRenderer itemRenderer;
     private FallingBlockRenderer fallingRenderer;
-    private final java.util.Random itemRandom = new java.util.Random();
+    final java.util.Random itemRandom = new java.util.Random();
     private final Vector3f itemTarget = new Vector3f();
     /** Куда магнит тянет предмет: чуть ниже середины тела, чтобы лежащий у ног подбирался. */
     private static final float ITEM_TARGET_HEIGHT = 0.7f;
-    /** Скорость броска по Q и подброс вверх, блоки/с. */
-    private static final float THROW_SPEED = 5.5f, THROW_LIFT = 1.6f;
-    private static final float THROW_CHARGE_TIME = 1.15f;
-    private float throwCharge;
-    private boolean chargingThrow;
-    /** Сколько секунд удерживается натяжение лука; −1 — лук не натянут. */
-    private float bowHeld = -1f;
+    /** The bow and the charged throw (SIM-08). */
+    final WeaponController weapons = new WeaponController(this);
     /** Летящие и воткнувшиеся снаряды. Симулирует их хозяин, гость только видит. */
-    private final java.util.List<com.mineclone.world.entity.Projectile> projectiles = entities.projectiles;
+    final java.util.List<com.mineclone.world.entity.Projectile> projectiles = entities.projectiles;
     /** Игрок как мишень для чужих снарядов. */
-    private final PlayerTarget playerTarget = new PlayerTarget();
-    private boolean throwWholeStack;
+    final PlayerTarget playerTarget = new PlayerTarget();
     /** Дальше этого звук не даёт дуги — столько же, сколько слышит OpenAL. */
     private static final float SOUND_CUE_RANGE = 24f;
-    private final java.util.List<com.mineclone.world.entity.Mob> mobs = entities.mobs;
+    final java.util.List<com.mineclone.world.entity.Mob> mobs = entities.mobs;
     /** Списки под дальность сущностей — переиспользуются, чтобы не сорить каждый кадр. */
     private final java.util.List<com.mineclone.world.entity.Mob> nearMobs = new java.util.ArrayList<>();
     private final java.util.List<com.mineclone.world.entity.ItemEntity> nearItems = new java.util.ArrayList<>();
@@ -170,24 +164,24 @@ public class Game {
     private com.mineclone.audio.MusicDirector music;
     private com.mineclone.audio.MusicPlayer musicPlayer;
     private com.mineclone.render.MobRenderer mobRenderer;
-    private final SoundEngine sound = new SoundEngine();
-    private final Sounds sounds = new Sounds();
+    final SoundEngine sound = new SoundEngine();
+    final Sounds sounds = new Sounds();
     private Font font;
     private Font smallFont;
     private TextRenderer text;
     private UiRenderer ui;
     private Hud hud;
 
-    private State state = State.MENU;
+    State state = State.MENU;
     private boolean showDebug = false;
     private final DebugKeys debugKeys = new DebugKeys();
 
-    private com.mineclone.sim.WorldClock worldClock = new com.mineclone.sim.WorldClock();
+    com.mineclone.sim.WorldClock worldClock = new com.mineclone.sim.WorldClock();
     private record PendingWorldOpen(String id, com.mineclone.save.LevelData data,
             java.util.concurrent.CompletableFuture<com.mineclone.save.WorldBackups.Backup> backup,
             Runnable afterOpen) {}
     private PendingWorldOpen pendingWorldOpen;
-    private float daylight = 1.0f;
+    float daylight = 1.0f;
 
     private int fpsFrames;
     private int fpsCurrent;
@@ -199,10 +193,7 @@ public class Game {
      */
     private final FrameProfiler profiler = new FrameProfiler();
 
-    private float stepDistance = 0f;
-    /** Левая или правая нога игрока: следы идут в две дорожки, а не в колею. */
-    private boolean stepLeft;
-    private DecalRenderer decals;
+    DecalRenderer decals;
 
     /** Открытый сундук: его слоты и координаты блока. */
     private com.mineclone.world.ItemStack[] openChest;
@@ -216,27 +207,11 @@ public class Game {
     private static final float FURNACE_TICK = WorldSimulation.FURNACE_TICK;
     private static final int FURNACE_RADIUS = WorldSimulation.FURNACE_RADIUS;
 
-    /** Расписание фоновой атмосферы: пещера, дождь, гром, вода. */
-    private com.mineclone.audio.AmbientSound ambient;
-    private com.mineclone.audio.RainAmbience rainAmbience;
-    private com.mineclone.audio.StormAmbience stormAmbience;
-    /** В каком радиусе ищется точка, откуда «донёсся» звук пещеры. */
-    private static final int CAVE_SOUND_RADIUS = 14;
-    /** Как часто перезамеряется замкнутость для эха. */
-    private static final float REVERB_INTERVAL = 0.5f;
-    private float reverbTimer;
-    /** Сглаженная замкнутость: сколько звука возвращается. */
-    private float enclosure;
-    /** Сглаженный размер помещения в блоках: как долго звук затухает. */
-    private float roomSize;
+    /** Cave, rain, storm and water beds, echo, nature particles, breath (SIM-08). */
+    final AmbientEffects ambience = new AmbientEffects(this);
 
-    /** Тайл отпечатка в атласе. */
-    private static final int FOOTPRINT_TILE = 75;
-    /** Сколько секунд держится след игрока. */
-    private static final float FOOTPRINT_LIFE = 26f;
-    /** Насколько нога отстоит от оси движения. */
-    private static final float FOOTPRINT_SPREAD = 0.16f;
-    private float walkedDistance = 0f; // monotonic; drives view bob (never resets)
+    /** Steps, footprints, kicked snow and landings (SIM-08). */
+    final FootstepFeedback footsteps = new FootstepFeedback(this);
     private final com.mineclone.render.PlayerAnimation playerAnimation =
             new com.mineclone.render.PlayerAnimation();
     /**
@@ -268,11 +243,7 @@ public class Game {
     private float healthGhostDelay = 0f;
     /** Сколько прошло с переключения слота — на этом едет пружина хотбара. */
     private float slotAnim = 1f;
-    private final Vector3f lastPos = new Vector3f();
     private float torchParticleTimer = 0f;
-    /** Как часто идёт пар от дыхания на морозе, секунды. */
-    private static final float BREATH_MIN = 3f, BREATH_MAX = 5f;
-    private float breathTimer = BREATH_MIN;
     /** Урон в секунду от стояния в огне. */
     private static final float FIRE_DAMAGE_PER_SECOND = 2f;
 
@@ -280,10 +251,7 @@ public class Game {
     /** Ломающийся блок слышно дальше всего. */
     private static final float NOISE_BREAK = com.mineclone.sim.WorldSession.NOISE_BREAK;
     private static final float NOISE_PLACE = com.mineclone.sim.WorldSession.NOISE_PLACE;
-    private static final float NOISE_SPRINT = 11f;
-    private static final float NOISE_WALK = 4f;
     private static final float NOISE_LAND = 14f;
-    private static final float WATER_TICK_INTERVAL = WorldSimulation.WATER_TICK;
     /**
      * Мировой тик: вода, лава, обвалы, случайные тики блоков и печи.
      *
@@ -295,9 +263,6 @@ public class Game {
     private float totalTime = 0f;
     private boolean wasInWater = false;
     /** Nearby-water probe is throttled; the actual sound source is continuous. */
-    private float waterFlowProbeTimer = 0f;
-    private Vector3f waterFlowSoundPosition;
-    private float lavaEffectTimer;
     /** Expensive nearby-emitter search is cached between lighting probes. */
     private float voxelBounceProbeTimer;
     private final List<Long> visibleWaterKeys = new ArrayList<>(128);
@@ -316,7 +281,7 @@ public class Game {
      * со стороны, а не полёт. Иначе он подменял бы креатив-полёт и обходил
      * выживание.
      */
-    private boolean photoMode = false;
+    boolean photoMode = false;
     private final Vector3f photoPos = new Vector3f();
     private float photoYaw, photoPitch;
     /** Дистанция фокуса, блоки; колесо мыши двигает её. */
@@ -359,9 +324,9 @@ public class Game {
             });
     private final FrustumIntersection frustum = new FrustumIntersection();
     private final Matrix4f scratchModel = new Matrix4f();
-    private int selectedSlot = 0;
-    private com.mineclone.world.Inventory inventory = new com.mineclone.world.Inventory();
-    private com.mineclone.world.GameMode gameMode = com.mineclone.world.GameMode.SURVIVAL;
+    int selectedSlot = 0;
+    com.mineclone.world.Inventory inventory = new com.mineclone.world.Inventory();
+    com.mineclone.world.GameMode gameMode = com.mineclone.world.GameMode.SURVIVAL;
     /** Направляет игрока по основному циклу выживания и живёт вместе с миром. */
     private SurvivalProgress survivalProgress = new SurvivalProgress();
     /**
@@ -379,9 +344,9 @@ public class Game {
      */
     private final java.util.List<com.mineclone.world.ItemStack> pendingDrops =
             new java.util.ArrayList<>();
-    private final com.mineclone.save.SaveManager save = new com.mineclone.save.SaveManager();
-    private String worldId;
-    private String worldDisplayName = "";
+    final com.mineclone.save.SaveManager save = new com.mineclone.save.SaveManager();
+    String worldId;
+    String worldDisplayName = "";
     /** Экраны меню: титул, миры, настройки, загрузка, пауза, смерть. */
     private final ScreenStack menus = new ScreenStack();
     /**
@@ -391,7 +356,7 @@ public class Game {
      * {@code net.isClient()} можно спрашивать где угодно, не проверяя каждый
      * раз, есть ли сессия вообще.
      */
-    private final com.mineclone.net.Multiplayer net =
+    final com.mineclone.net.Multiplayer net =
             new com.mineclone.net.Multiplayer(netContext());
     private com.mineclone.net.NetSettings netSettings = com.mineclone.net.NetSettings.defaults();
     /**
@@ -416,9 +381,9 @@ public class Game {
     private com.mineclone.net.connect.RegionFinder regionFinder;
     private boolean regionAsked;
     /** Строки чата и служебных сообщений сети — их рисует HUD. */
-    private final java.util.ArrayDeque<String> netChat = new java.util.ArrayDeque<>();
+    final java.util.ArrayDeque<String> netChat = new java.util.ArrayDeque<>();
     /** Сколько ещё показывать последние строки чата, секунды. */
-    private float netChatTimer;
+    float netChatTimer;
     /** Участник: сколько уже ждём мир от хозяина. */
     private float netWaiting;
     /** Комната, в которую входим или которую открыли. */
@@ -431,7 +396,7 @@ public class Game {
      * размытого мира и ставит игру, окно стоит в игре, и время в нём идёт.
      */
     private final ScreenStack windows = new ScreenStack();
-    private com.mineclone.ui.container.ContainerScreen activeWindow;
+    com.mineclone.ui.container.ContainerScreen activeWindow;
     /** В кадре, где окно открылось, его ввод пустой — как и у меню. */
     private boolean windowInputBlocked;
 
@@ -461,7 +426,7 @@ public class Game {
 
         @Override
         public void throwStack(com.mineclone.world.ItemStack s) {
-            Game.this.throwStack(s);
+            weapons.throwStack(s);
         }
 
         @Override
@@ -470,7 +435,7 @@ public class Game {
                 return;
             int leftover = giveStack(s);
             if (leftover > 0)
-                Game.this.throwStack(s.copyWithCount(leftover));
+                weapons.throwStack(s.copyWithCount(leftover));
         }
 
         @Override
@@ -514,7 +479,7 @@ public class Game {
     private static final float AUTOSAVE_INTERVAL = 120f; // seconds
     private static final int RESPAWN_RADIUS = 10;
     private float autosaveTimer = AUTOSAVE_INTERVAL;
-    private final Vector3f worldSpawn = new Vector3f(8.5f, 80.0f, 8.5f);
+    final Vector3f worldSpawn = new Vector3f(8.5f, 80.0f, 8.5f);
     private final Random respawnRandom = new Random();
     private final MenuBackground menuBackground;
     private String commandToast = "";
@@ -694,7 +659,7 @@ public class Game {
     }
 
     /** Геометрия изменилась — ленивые каскады обязаны переснять её. */
-    private void invalidateShadows() {
+    void invalidateShadows() {
         if (shadowMap != null)
             shadowMap.invalidate();
     }
@@ -962,9 +927,7 @@ public class Game {
         debrisRenderer = new DebrisRenderer();
         itemRenderer = new ItemRenderer();
         fallingRenderer = new FallingBlockRenderer();
-        ambient = new com.mineclone.audio.AmbientSound(new java.util.Random());
-        rainAmbience = new com.mineclone.audio.RainAmbience(sound, sounds.ambientRain());
-        stormAmbience = new com.mineclone.audio.StormAmbience(sound, sounds.ambientWind());
+        ambience.start();
         sound.preload(sounds.ambientWind(), false);
         hud = new Hud(font, smallFont, text, ui, atlas);
         menuTheme = new MenuTheme(ui, text, font, smallFont, atlas);
@@ -1032,7 +995,7 @@ public class Game {
                 playerAnimation.update(dt, player.position, bodyRotation.bodyYaw,
                         player.onGround, player.inWater, player.flying, player.isSprinting);
             roomBrowser.update(dt);
-            playRemotePlayerFeedback();
+            footsteps.playRemotePlayers();
 
             audioEvents.flush(this::playOccludedNow);
             sound.updateListener(player.camera.position, player.camera.forward());
@@ -1343,10 +1306,7 @@ public class Game {
         ledger = null;
         debris.clear();
         sound.stopAllLoops();
-        if (rainAmbience != null) rainAmbience.reset();
-        if (stormAmbience != null) stormAmbience.reset();
-        waterFlowSoundPosition = null;
-        waterFlowProbeTimer = 0f;
+        ambience.reset();
         voxelBounceProbeTimer = 0f;
         soundCues.clear();
         items.clear();   // уже записаны в чанки через saveAll выше
@@ -1396,7 +1356,7 @@ public class Game {
         }
     }
 
-    private float computeDaylight() {
+    float computeDaylight() {
         return worldClock.daylight();
     }
 
@@ -1441,7 +1401,7 @@ public class Game {
             player.setGameMode(gameMode);
             player.update(dt, world, input, false);
             wasInWater = player.inWater;
-            updateFootsteps();
+            footsteps.update();
             updateActiveWorld(dt);
             updateMobs(dt);
             return; // keep the world ticking, but don't move the player while typing
@@ -1490,7 +1450,7 @@ public class Game {
         }
 
         handleHotbar();
-        updateWeapons(dt);
+        weapons.update(dt);
         updateHeldItem(dt);
         if (gameMode == com.mineclone.world.GameMode.SURVIVAL && player.flying)
             player.flying = false;
@@ -1509,13 +1469,13 @@ public class Game {
             if (!jumpSnd.isEmpty())
                 sound.playOneOfAt(jumpSnd, playerSoundPosition(), 0.35f, 1.05f + 0.1f * (float) Math.random());
             float hs = (float) Math.hypot(player.velocity.x, player.velocity.z);
-            kickSnow(player.position.x, player.position.y, player.position.z,
+            footsteps.kickSnow(player.position.x, player.position.y, player.position.z,
                     hs > 0.1f ? player.velocity.x / hs : 0f, hs > 0.1f ? player.velocity.z / hs : 0f, true);
         }
         float landingDistance = player.lastFallDistance;
         updateCameraMotion(dt, landingDistance);
         if (landingDistance > 0.05f && !player.inWater) {
-            playLandingStep(landingDistance);
+            footsteps.landing(landingDistance);
         }
         if (player.lastFallDamage > 0f) {
             sound.playOneOfAt(sounds.hurt(), playerSoundPosition(), 0.8f, 0.9f + 0.1f * (float) Math.random());
@@ -1536,7 +1496,7 @@ public class Game {
             BlockType cover = world.getBlock(bx, (int) Math.floor(player.position.y + 0.02f), bz);
             int tile = cover == BlockType.SNOW_LAYER ? BlockType.SNOW_LAYER.sideTile
                     : (ground != null && ground.solid) ? ground.sideTile : BlockType.DIRT.sideTile;
-            kickSnow(player.position.x, player.position.y, player.position.z, 0f, 0f, true);
+            footsteps.kickSnow(player.position.x, player.position.y, player.position.z, 0f, 0f, true);
             float skyF = world.getSkyLight(bx, by + 1, bz) / (float) Chunk.MAX_LIGHT;
             float blkF = world.getBlockLightWorld(bx, by + 1, bz) / (float) Chunk.MAX_LIGHT;
             int count = (int) Math.min(22, 5 + landingDistance * 1.4f);
@@ -1574,7 +1534,7 @@ public class Game {
             sound.playOneOfAt(sounds.waterSplash(), playerSoundPosition(), 0.5f, 0.9f + 0.1f * (float) Math.random());
         }
         wasInWater = player.inWater;
-        updateFootsteps();
+        footsteps.update();
         // Стриминга здесь нет намеренно: его делает updateActiveWorld ниже,
         // а два вызова за кадр удваивали бы бюджет загрузки мешей на GPU.
         interaction.update(dt);
@@ -1644,12 +1604,12 @@ public class Game {
         natureTimer -= dt;
         if (natureTimer <= 0f && state == State.PLAYING) {
             natureTimer = 0.18f;
-            emitNatureParticles();
+            ambience.emitNatureParticles();
         }
         torchParticleTimer -= dt;
         if (torchParticleTimer <= 0f) {
             torchParticleTimer = 0.07f;
-            emitTorchParticles();
+            ambience.emitTorchParticles();
         }
         particles.setWind(atmosphere.windX, atmosphere.windZ);
         particles.update(dt);
@@ -1658,13 +1618,13 @@ public class Game {
         updateProjectiles(dt);
         if (decals != null)
             decals.update(dt);
-        updateWaterFlowSound(dt);
-        updateLavaEffects(dt);
-        updateAmbient(dt);
+        ambience.updateWaterFlowSound(dt);
+        ambience.updateLavaEffects(dt);
+        ambience.updateAmbient(dt);
         totalTime += dt;
         applyFireDamage(dt);
         updateDamageFeedback(dt);
-        updateBreath(dt);
+        ambience.updateBreath(dt);
         updateFrost(dt);
         advancedFeedback.update(dt,
                 Math.max(0.03f, daylight * (1f - atmosphere.cloudiness * 0.55f)));
@@ -1732,68 +1692,6 @@ public class Game {
             float sky = world.getSkyLight(x, (int) top, z) / (float) Chunk.MAX_LIGHT;
             particles.emitRainSplash(x + natureRandom.nextFloat(), top + 0.02f,
                     z + natureRandom.nextFloat(), water, sky);
-        }
-    }
-
-    /**
-     * Пар от дыхания на морозе — у игрока и у мобов рядом.
-     *
-     * Самая дешёвая деталь, которая сообщает «здесь холодно»: текстура снега
-     * этого не говорит, её видно и на картинке без холода.
-     */
-    private void updateBreath(float dt) {
-        breathTimer -= dt;
-        if (breathTimer > 0f)
-            return;
-        breathTimer = BREATH_MIN + natureRandom.nextFloat() * (BREATH_MAX - BREATH_MIN);
-        if (world == null)
-            return;
-        Vector3f fwd = player.camera.forward();
-        if (coldAt(player.position.x, player.position.z))
-            particles.emitBreath(player.camera.position.x + fwd.x * 0.35f,
-                    player.camera.position.y - 0.12f,
-                    player.camera.position.z + fwd.z * 0.35f, fwd.x, fwd.z);
-        for (com.mineclone.world.entity.Mob m : mobs) {
-            if (m.dead || !coldAt(m.position.x, m.position.z))
-                continue;
-            if (m.position.distanceSquared(player.position) > 32f * 32f)
-                continue;
-            float mx = (float) -Math.sin(m.yaw), mz = (float) -Math.cos(m.yaw);
-            particles.emitBreath(m.position.x + mx * 0.4f,
-                    m.position.y + m.type.height * 0.85f,
-                    m.position.z + mz * 0.4f, mx, mz);
-        }
-    }
-
-    private boolean coldAt(float x, float z) {
-        return world.biomes.biomeAt((int) Math.floor(x), (int) Math.floor(z))
-                .isCold();
-    }
-
-    private void emitNatureParticles() {
-        for (int attempt = 0; attempt < 4; attempt++) {
-            int x = (int) Math.floor(player.position.x) + natureRandom.nextInt(25) - 12;
-            int z = (int) Math.floor(player.position.z) + natureRandom.nextInt(25) - 12;
-            int y = (int) Math.floor(player.position.y) + natureRandom.nextInt(10) - 2;
-            if (y < 1 || y >= Chunk.SIZE_Y - 1
-                    || world.getChunkIfExists(Math.floorDiv(x, Chunk.SIZE_X), Math.floorDiv(z, Chunk.SIZE_Z)) == null
-                    ) continue;
-            BlockType cell = world.getBlock(x, y, z);
-            float sky = world.getSkyLight(x, y, z) / (float) Chunk.MAX_LIGHT;
-            if (cell == BlockType.WATER || cell == BlockType.WATER_FLOW) {
-                float ax = x + 0.5f - player.position.x;
-                float az = z + 0.5f - player.position.z;
-                particles.emitFish(x + natureRandom.nextFloat(), y + 0.3f,
-                        z + natureRandom.nextFloat(), ax, az, sky);
-                continue;
-            }
-            if (cell != BlockType.AIR) continue;
-            boolean leaf = world.getBlock(x, y + 1, z) == BlockType.LEAVES;
-            boolean firefly = daylight < 0.25f && sky > 0.5f
-                    && world.getBlock(x, y - 1, z) == BlockType.GRASS;
-            if (leaf || firefly)
-                particles.emitNature(x + natureRandom.nextFloat(), y + 0.4f,
-                        z + natureRandom.nextFloat(), false, firefly, sky);
         }
     }
 
@@ -1983,12 +1881,12 @@ public class Game {
 
                 @Override
                 public void dropFootprint(float x, float y, float z, float yaw, float size, boolean left) {
-                    Game.this.dropFootprint(x, y, z, yaw, size, left);
+                    footsteps.dropFootprint(x, y, z, yaw, size, left);
                 }
 
                 @Override
                 public void kickSnow(float x, float y, float z, float dirX, float dirZ, boolean hard) {
-                    Game.this.kickSnow(x, y, z, dirX, dirZ, hard);
+                    footsteps.kickSnow(x, y, z, dirX, dirZ, hard);
                 }
 
                 @Override
@@ -2005,7 +1903,7 @@ public class Game {
     }
 
     /** Свой игрок отлетает от точки удара: у хозяина — от моба, у гостя — от присланной точки. */
-    private void applyKnockbackFrom(float fromX, float fromZ) {
+    void applyKnockbackFrom(float fromX, float fromZ) {
         float dx = player.position.x - fromX;
         float dz = player.position.z - fromZ;
         float len = (float) Math.sqrt(dx * dx + dz * dz);
@@ -2055,7 +1953,7 @@ public class Game {
         player.setGameMode(gameMode);
         player.update(dt, world, input, false);
         wasInWater = player.inWater;
-        updateFootsteps();
+        footsteps.update();
         updateActiveWorld(dt);
     }
 
@@ -2119,7 +2017,7 @@ public class Game {
                 .build();
     }
 
-    private void restorePlayer(com.mineclone.save.PlayerRecord record) {
+    void restorePlayer(com.mineclone.save.PlayerRecord record) {
         // A host checkpoint supersedes an old remote window; closing normally would return its items twice.
         discardRemoteWindow();
         playerRecordTemplate = record;
@@ -2154,7 +2052,7 @@ public class Game {
         finishCloseWindow();
     }
 
-    private void finishCloseWindow() {
+    void finishCloseWindow() {
         windows.clear();
         activeWindow = null;
         openChest = null;
@@ -2176,10 +2074,9 @@ public class Game {
         bodyRotation.snap(player.camera.yaw, player.camera.pitch);
         playerAnimation.reset(player.position, player.camera.yaw, player.onGround, player.inWater, player.flying);
         musicSense.reset();
-        lastPos.set(player.position);
+        footsteps.placed(player.position);
         wasInWater = false;
-        waterFlowProbeTimer = 0f;
-        waterFlowSoundPosition = null;
+        ambience.forgetStream();
         sound.stopLoop("water-flow");
         ensureChunksLoaded();
         updateDirtyMeshes();
@@ -2271,7 +2168,7 @@ public class Game {
             inspectSpin = 0.25f;     // каждый осмотр начинается с выгодного ракурса
     }
 
-    private void startHandSwing() {
+    void startHandSwing() {
         handSwing = 1f;
         playerAnimation.startSwing();
         net.noteSwing();
@@ -2590,7 +2487,7 @@ public class Game {
             sound.playOneOf(sounds.playerAttack("sweep"), 0.25f, 0.95f + 0.15f * (float) Math.random());
     }
 
-    private void emitPlacementParticles(int x, int y, int z, BlockType block) {
+    void emitPlacementParticles(int x, int y, int z, BlockType block) {
         if (block == null || block == BlockType.AIR)
             return;
         float sky = world.getSkyLight(x, y, z) / (float) Chunk.MAX_LIGHT;
@@ -2635,14 +2532,14 @@ public class Game {
         pendingDrops.clear();
     }
 
-    private void dropItem(com.mineclone.world.ItemStack stack, float x, float y, float z) {
+    void dropItem(com.mineclone.world.ItemStack stack, float x, float y, float z) {
         if (stack == null || stack.count <= 0)
             return;
         var item=com.mineclone.world.entity.ItemEntity.popped(stack,x,y,z,itemRandom);
         if(!net.requestDrop(item))addItemEntity(item);
     }
 
-    private void addItemEntity(com.mineclone.world.entity.ItemEntity e) {
+    void addItemEntity(com.mineclone.world.entity.ItemEntity e) {
         if (session != null)
             session.addItem(e);
     }
@@ -2687,120 +2584,6 @@ public class Game {
      */
     private boolean canTake(com.mineclone.world.ItemStack s) {
         return inventory.canAdd(s, 1);
-    }
-
-    /**
-     * Бросок предмета из руки по Q: один предмет, с Ctrl — вся стопка.
-     *
-     * Брошенный летит туда, куда смотрит игрок, и долго не даётся в руки —
-     * иначе магнит возвращал бы его обратно, не дав упасть.
-     */
-    private void throwHeldItem(boolean wholeStack) {
-        throwHeldItem(wholeStack, 0.45f);
-    }
-
-    private void throwHeldItem(boolean wholeStack, float charge) {
-        if(net.inventoryBusy())return;
-        com.mineclone.world.ItemStack held = inventory.get(selectedSlot);
-        if (held == null)
-            return;
-        com.mineclone.world.ItemStack thrown;
-        if (wholeStack || held.count <= 1) {
-            thrown = held;
-            inventory.set(selectedSlot, null);
-        } else {
-            thrown = held.copy();
-            thrown.count = 1;
-            held.count--;
-        }
-        throwStack(thrown, charge);
-        startHandSwing();
-    }
-
-    /** Натянут ли лук прямо сейчас и насколько: это же видит и рука, и прицел. */
-    float bowDraw() {
-        return bowHeld < 0f ? 0f : com.mineclone.item.Bow.draw(bowHeld);
-    }
-
-    /**
-     * Лук: правая кнопка тянет, отпускание стреляет.
-     *
-     * Натяжение сбрасывается и при смене слота, и при открытии окна — иначе
-     * лук «помнит» натяжение, которого игрок уже не держит.
-     */
-    private void updateBow(float dt) {
-        boolean holding = !photoMode && state == State.PLAYING
-                && heldItem() != null
-                && com.mineclone.item.Bow.ITEM.equals(heldItem().id.path());
-        if (!holding) {
-            bowHeld = -1f;
-            return;
-        }
-        if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT) && hasAmmo())
-            bowHeld = 0f;
-        else if (bowHeld >= 0f && input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_RIGHT))
-            bowHeld += dt;
-        else if (bowHeld >= 0f) {
-            releaseBow(com.mineclone.item.Bow.draw(bowHeld));
-            bowHeld = -1f;
-        }
-    }
-
-    /** Есть ли чем стрелять. В творческом режиме стрелы не кончаются. */
-    private boolean hasAmmo() {
-        if (gameMode == com.mineclone.world.GameMode.CREATIVE)
-            return true;
-        for (int i = 0; i < inventory.size(); i++) {
-            var s = inventory.get(i);
-            if (s != null && com.mineclone.item.Bow.AMMO.equals(s.item.id.path()))
-                return true;
-        }
-        return false;
-    }
-
-    /** Снимает одну стрелу; false — стрелять нечем. */
-    private boolean takeAmmo() {
-        if (gameMode == com.mineclone.world.GameMode.CREATIVE)
-            return true;
-        for (int i = 0; i < inventory.size(); i++) {
-            var s = inventory.get(i);
-            if (s == null || !com.mineclone.item.Bow.AMMO.equals(s.item.id.path()))
-                continue;
-            if (--s.count <= 0)
-                inventory.set(i, null);
-            return true;
-        }
-        return false;
-    }
-
-    private void releaseBow(float draw) {
-        if (!com.mineclone.item.Bow.canRelease(draw) || !takeAmmo())
-            return;
-        Vector3f eye = new Vector3f(player.camera.position);
-        Vector3f fwd = player.camera.forward();
-        float speed = com.mineclone.item.Bow.speed(draw);
-        var shot = new com.mineclone.world.entity.Projectile(com.mineclone.item.Bow.AMMO,
-                playerTarget, true, com.mineclone.item.Bow.damage(draw));
-        shot.position.set(eye).fma(0.6f, fwd).add(0f, -0.12f, 0f);
-        // Скорость игрока складывается с выстрелом: стрела, пущенная на бегу,
-        // летит дальше — как и брошенный предмет.
-        shot.velocity.set(fwd).mul(speed).add(player.velocity.x * 0.4f, 0f,
-                player.velocity.z * 0.4f);
-        shot.heading.set(fwd);
-        addProjectile(shot);
-        // У участника выстрел считает хозяин: местный снаряд нужен только
-        // ради отклика и будет заменён ближайшим снимком.
-        net.requestShot(shot);
-        wearBow();
-        sound.playOneOf(sounds.playerAttack("sweep"), 0.35f, 1.35f + 0.12f * (float) Math.random());
-        startHandSwing();
-    }
-
-    /** Лук тупится о тетиву: у него есть прочность, но нет инструментальной части. */
-    private void wearBow() {
-        var held = inventory.get(selectedSlot);
-        if (held != null && held.item.durability > 0 && held.wear())
-            inventory.set(selectedSlot, null);
     }
 
     void addProjectile(com.mineclone.world.entity.Projectile p) {
@@ -2864,71 +2647,13 @@ public class Game {
         }
     }
 
-    private void updateChargedThrow(float dt) {
-        if (photoMode) {
-            chargingThrow = false;
-            throwCharge = 0f;
-            return;
-        }
-        if (input.pressed(KeyBindings.Action.DROP)) {
-            chargingThrow = inventory.get(selectedSlot) != null;
-            throwCharge = 0f;
-            throwWholeStack = input.keyDown(GLFW.GLFW_KEY_LEFT_CONTROL)
-                    || input.keyDown(GLFW.GLFW_KEY_RIGHT_CONTROL);
-        }
-        if (chargingThrow && input.down(KeyBindings.Action.DROP))
-            throwCharge = Math.min(1f, throwCharge + dt / THROW_CHARGE_TIME);
-        if (chargingThrow && input.released(KeyBindings.Action.DROP)) {
-            throwHeldItem(throwWholeStack, throwCharge);
-            chargingThrow = false;
-            throwCharge = 0f;
-        }
-    }
-
-    private void updateWeapons(float dt) {
-        updateChargedThrow(dt);
-        updateBow(dt);
-    }
-
-    /**
-     * Бросает стопку перед игроком — туда, куда он смотрит. Так же уходит на
-     * землю то, что осталось на курсоре при закрытии окна и не влезло
-     * обратно: молча уничтожать предмет нельзя.
-     */
-    private void throwStack(com.mineclone.world.ItemStack thrown) {
-        throwStack(thrown, 0.45f);
-    }
-
-    private void throwStack(com.mineclone.world.ItemStack thrown, float charge) {
-        if (thrown == null || thrown.count <= 0 || world == null)
-            return;
-        Vector3f eye = player.camera.position;
-        Vector3f fwd = player.camera.forward();
-        float sx = eye.x + fwd.x * 0.45f, sy = eye.y - 0.3f + fwd.y * 0.45f, sz = eye.z + fwd.z * 0.45f;
-        // Лицом в стену точка вылета оказалась бы в блоке — тогда из глаз.
-        if (world.getBlock((int) Math.floor(sx), (int) Math.floor(sy), (int) Math.floor(sz)).solid) {
-            sx = eye.x;
-            sy = eye.y - 0.3f;
-            sz = eye.z;
-        }
-        com.mineclone.world.entity.ItemEntity e = new com.mineclone.world.entity.ItemEntity(thrown,
-                sx, sy, sz, com.mineclone.world.entity.ItemEntity.THROW_DELAY, itemRandom.nextFloat() * 6.28f);
-        float strength = Math.max(0f, Math.min(1f, charge));
-        float speed = THROW_SPEED * (0.45f + 1.15f * strength);
-        e.velocity.set(fwd.x * speed + player.velocity.x,
-                fwd.y * speed + THROW_LIFT * (0.65f + strength * 0.35f),
-                fwd.z * speed + player.velocity.z);
-        if(!net.requestDrop(e))addItemEntity(e);
-        sound.playOneOf(sounds.pickup(), 0.3f, 0.75f + 0.15f * itemRandom.nextFloat());
-    }
-
     /**
      * Кладёт произвольную стопку игроку; возвращает остаток, который не влез.
      *
      * Инструмент не стопкуется, поэтому ему нужен целый свободный слот —
      * попытка слить его в существующую стопку уничтожила бы износ.
      */
-    private int giveStack(com.mineclone.world.ItemStack s) {
+    int giveStack(com.mineclone.world.ItemStack s) {
         if (s == null || s.count <= 0)
             return 0;
         if (s.maxStack() <= 1) {
@@ -2973,7 +2698,6 @@ public class Game {
     }
 
     /** Высота спальника в meta: (3 + 1) / 8 — половина блока. */
-    private static final byte BEDROLL_META = 3;
 
     /**
      * Лечь в спальник под прицелом.
@@ -3134,101 +2858,6 @@ public class Game {
     }
 
     /**
-     * Фоновая атмосфера: пещера, дождь, гром, вода.
-     *
-     * Звук пещеры играется не в голове, а из случайной тёмной точки рядом —
-     * иначе он звучит как эффект интерфейса, а не как «что-то там, в
-     * темноте», ради чего он и нужен.
-     */
-    private void updateAmbient(float dt) {
-        if (ambient == null || sound == null || world == null)
-            return;
-        int ex = (int) Math.floor(player.camera.position.x);
-        int ey = (int) Math.floor(player.camera.position.y);
-        int ez = (int) Math.floor(player.camera.position.z);
-        int skyLight = world.getSkyLight(ex, ey, ez);
-        rainAmbience.update(dt, atmosphere.rain(), skyLight, player.eyeInWater);
-        boolean dark = skyLight <= 3
-                && world.getBlockLightWorld(ex, ey, ez) <= 7;
-        boolean outdoors = com.mineclone.audio.AcousticProbe.freeRun(
-                world, ex, ey, ez, 0, 1, 0) >= com.mineclone.audio.AcousticProbe.MAX_DISTANCE;
-        stormAmbience.update(dt, atmosphere.storm, atmosphere.dust, atmosphere.windSpeed(),
-                skyLight, outdoors, player.eyeInWater);
-        if (player.eyeInWater)
-            sound.updateLoopOneOf("underwater-ambient", sounds.ambientUnderwater(), 0.48f, 1f);
-        else
-            sound.stopLoop("underwater-ambient");
-        // Эхо подстраивается реже кадра: шесть лучей по двадцать четыре блока
-        // каждый — это не то, за что стоит платить шестьдесят раз в секунду,
-        // а пространство вокруг головы так быстро не меняется.
-        reverbTimer -= dt;
-        if (reverbTimer <= 0f) {
-            reverbTimer = REVERB_INTERVAL;
-            var probe = outdoors ? com.mineclone.audio.AcousticProbe.Room.OPEN
-                    : com.mineclone.audio.AcousticProbe.room(world, player.camera.position.x,
-                            player.camera.position.y, player.camera.position.z);
-            // На улице send выключаем сразу: иначе длинный пещерный хвост
-            // продолжает окрашивать шаги ещё несколько секунд после выхода.
-            // Внутри переход по-прежнему плавный, чтобы комнаты не щёлкали.
-            // Размер ведётся своим сглаживанием: выйдя из чулана в зал, игрок
-            // слышит, как хвост удлиняется, а не как он переключается.
-            if (outdoors) {
-                enclosure = 0f;
-                roomSize = probe.size();
-            } else {
-                enclosure += (probe.closed() - enclosure) * 0.5f;
-                roomSize += (probe.size() - roomSize) * 0.5f;
-            }
-            sound.setRoom(new com.mineclone.audio.AcousticProbe.Room(enclosure, roomSize));
-        }
-        // Гремит только гроза, а не метель: в снег грома не бывает.
-        float thunderStorm = atmosphere.thunderstorm();
-        var cue = ambient.tick(dt, dark, player.eyeInWater, atmosphere.rain(), thunderStorm,
-                atmosphere.windSpeed(), outdoors, skyLight);
-        switch (cue) {
-            case CAVE -> {
-                Vector3f spot = caveSoundSpot();
-                sound.playOneOfAt(sounds.ambientCave(), spot,
-                        0.75f, 0.92f + 0.16f * (float) Math.random());
-                cueSound(spot, 0.35f, false);
-            }
-            case RAIN -> { /* The continuous rain bed is maintained independently above. */ }
-            case WIND -> { if (atmosphere.storm < 0.05f) sound.playOneOf(sounds.ambientWind(),
-                    Math.min(0.55f, 0.12f + atmosphere.windSpeed() * 0.07f),
-                    0.85f + 0.2f * (float) Math.random()); }
-            case THUNDER -> sound.playOneOf(sounds.ambientThunder(), 0.9f,
-                    0.9f + 0.2f * (float) Math.random());
-            case UNDERWATER -> { /* continuous loop is maintained above */ }
-            case UNDERWATER_EXTRA -> sound.playOneOf(sounds.ambientUnderwaterExtra(),
-                    0.45f, 0.9f + 0.2f * (float) Math.random());
-            case WATER_ENTER -> sound.playOneOf(sounds.waterEnter(), 0.7f, 1f);
-            case WATER_EXIT -> sound.playOneOf(sounds.waterExit(), 0.7f, 1f);
-            default -> { }
-        }
-    }
-
-    /** Случайная тёмная точка рядом — оттуда и «донеслось». */
-    private Vector3f caveSoundSpot() {
-        Vector3f eye = player.camera.position;
-        for (int attempt = 0; attempt < 12; attempt++) {
-            int dx = natureRandom.nextInt(CAVE_SOUND_RADIUS * 2 + 1) - CAVE_SOUND_RADIUS;
-            int dy = natureRandom.nextInt(13) - 6;
-            int dz = natureRandom.nextInt(CAVE_SOUND_RADIUS * 2 + 1) - CAVE_SOUND_RADIUS;
-            int x = (int) Math.floor(eye.x) + dx;
-            int y = (int) Math.floor(eye.y) + dy;
-            int z = (int) Math.floor(eye.z) + dz;
-            if (y < 1 || y >= Chunk.SIZE_Y)
-                continue;
-            if (world.getBlock(x, y, z) != BlockType.AIR)
-                continue;
-            if (world.getSkyLight(x, y, z) > 3)
-                continue;
-            return new Vector3f(x + 0.5f, y + 0.5f, z + 0.5f);
-        }
-        return new Vector3f(eye);
-    }
-
-    /**
      * Съесть то, что в руке.
      *
      * @return true, если еда пошла в дело — тогда правый клик на этом и
@@ -3285,7 +2914,7 @@ public class Game {
      * и износ, и дроп — и все трое обязаны спрашивать одно и то же.
      */
     /** Предмет в руке, или null у пустой. Оружие спрашивает именно его. */
-    private com.mineclone.item.Item heldItem() {
+    com.mineclone.item.Item heldItem() {
         com.mineclone.world.ItemStack s = inventory.get(selectedSlot);
         return s == null ? null : s.item;
     }
@@ -3357,99 +2986,36 @@ public class Game {
     }
 
     private void executeCommand(String cmd) {
-        // В комнате строка без команды — это реплика, а не опечатка: чат и
-        // консоль делят одно поле, как в Minecraft.
-        if (net.active() && !cmd.isEmpty() && !cmd.startsWith("/")) {
-            net.sendChat(cmd);
-            return;
-        }
-        if (cmd.isEmpty())
-            return;
-        String[] parts = cmd.split("\\s+");
-        try {
-            switch (parts[0]) {
-                case "/time" -> executeTimeCommand(parts);
-                case "/weather" -> executeWeatherCommand(parts);
-                case "/help", "/commands" -> showCommandHelp();
-                case "/speed" -> {
-                    if (parts.length >= 2) {
-                        float s = Float.parseFloat(parts[1]);
-                        if (!Float.isFinite(s)) throw new NumberFormatException();
-                        s = Math.max(0.5f, Math.min(64f, s));
-                        player.flying = gameMode == com.mineclone.world.GameMode.CREATIVE;
-                        player.flySpeed = s;
-                        showCommandToast(String.format("Fly speed: %.1f", s));
-                    } else {
-                        showCommandToast("Usage: /speed <value>");
-                    }
-                }
-                case "/tp" -> {
-                    if (parts.length >= 4) {
-                        float tx = Float.parseFloat(parts[1]);
-                        float ty = Float.parseFloat(parts[2]);
-                        float tz = Float.parseFloat(parts[3]);
-                        player.position.set(tx, ty, tz);
-                        musicSense.reset();
-                    }
-                }
-                case "/music" -> {
-                    if (parts.length >= 2 && parts[1].equalsIgnoreCase("next")) {
-                        music.requestNext();
-                        showCommandToast("Music: next track");
-                    } else {
-                        showCommandToast("Music: " + music.status(musicPlayer.position()));
-                    }
-                }
-                case "/spawnpoint" -> executeSpawnPointCommand(parts);
-                case "/fly" -> {
-                    if (gameMode == com.mineclone.world.GameMode.CREATIVE)
-                        player.updateFlightControls(0f, true, false, true);
-                    else showCommandToast("Полёт доступен в творческом режиме: /gamemode creative");
-                }
-                case "/fill" -> {
-                    String blockName = parts.length >= 2 ? parts[1].toUpperCase() : "WATER";
-                    int radius = parts.length >= 3 ? Integer.parseInt(parts[2]) : 4;
-                    BlockType fill;
-                    try {
-                        fill = BlockType.valueOf(blockName);
-                    } catch (IllegalArgumentException e) {
-                        fill = BlockType.WATER;
-                    }
-                    int cx = (int) Math.floor(player.position.x);
-                    int cy = (int) Math.floor(player.position.y);
-                    int cz = (int) Math.floor(player.position.z);
-                    for (int dx = -radius; dx <= radius; dx++)
-                        for (int dz = -radius; dz <= radius; dz++)
-                            world.setBlock(cx + dx, cy, cz + dz, fill);
-                }
-                case "/debug" -> showDebug = !showDebug;
-                case "/instamine" -> {
-                    instantBreak = !instantBreak;
-                    interaction.resetBreak();
-                    showCommandToast(instantBreak ? "Instamine ON" : "Instamine OFF");
-                }
-                case "/gamemode", "/gm" -> {
-                    if (parts.length >= 2) {
-                        String m = parts[1].toLowerCase();
-                        if (m.equals("creative") || m.equals("c") || m.equals("1")) {
-                            setGameMode(com.mineclone.world.GameMode.CREATIVE);
-                            showCommandToast("Gamemode: Creative");
-                        } else if (m.equals("survival") || m.equals("s") || m.equals("0")) {
-                            setGameMode(com.mineclone.world.GameMode.SURVIVAL);
-                            player.flying = false;
-                            showCommandToast("Gamemode: Survival");
-                        } else {
-                            showCommandToast("Usage: /gamemode <creative|survival>");
-                        }
-                    } else {
-                        showCommandToast("Usage: /gamemode <creative|survival>");
-                    }
-                }
-            }
-        } catch (NumberFormatException e) {
-            showCommandToast("Invalid number");
-        }
+        commands.execute(cmd);
     }
+
+    /** The console's commands (SIM-08): {@link CommandProcessor} asks the game through this. */
+    private final CommandProcessor commands = new CommandProcessor(new CommandProcessor.CommandTarget() {
+        @Override public boolean inRoom() { return net.active(); }
+        @Override public void chat(String line) { net.sendChat(line); }
+        @Override public Player player() { return player; }
+        @Override public World world() { return world; }
+        @Override public com.mineclone.world.GameMode gameMode() { return gameMode; }
+        @Override public void setGameMode(com.mineclone.world.GameMode mode) { Game.this.setGameMode(mode); }
+        @Override public com.mineclone.sim.WorldClock clock() { return worldClock; }
+        @Override public void timeChanged() { daylight = computeDaylight(); }
+        @Override public com.mineclone.world.Weather.Kind weather() { return atmosphere.global.kind(); }
+        @Override public float windSpeed() { return atmosphere.windSpeed(); }
+        @Override public void forceWeather(com.mineclone.world.Weather.Kind kind, float seconds) { atmosphere.force(kind, seconds); }
+        @Override public Vector3f worldSpawn() { return worldSpawn; }
+        @Override public void saveAll() { Game.this.saveAll(); }
+        @Override public void teleported() { musicSense.reset(); }
+        @Override public String musicStatus() { return music.status(musicPlayer.position()); }
+        @Override public void nextTrack() { music.requestNext(); }
+        @Override public void toggleDebug() { showDebug = !showDebug; }
+        @Override public boolean toggleInstantBreak() {
+            instantBreak = !instantBreak;
+            interaction.resetBreak();
+            return instantBreak;
+        }
+        @Override public void toast(String message) { showCommandToast(message); }
+        @Override public void showHelp() { showCommandHelp(); }
+    });
 
     private void setGameMode(com.mineclone.world.GameMode mode) {
         gameMode = mode;
@@ -3462,125 +3028,7 @@ public class Game {
         }
     }
 
-    private void executeSpawnPointCommand(String[] parts) {
-        if (parts.length == 1) {
-            worldSpawn.set(player.position);
-        } else if (parts.length >= 4) {
-            float x = Float.parseFloat(parts[1]);
-            float y = Float.parseFloat(parts[2]);
-            float z = Float.parseFloat(parts[3]);
-            worldSpawn.set(x, y, z);
-        } else {
-            showCommandToast("Usage: /spawnpoint [x y z]");
-            return;
-        }
-        saveAll();
-        showCommandToast(String.format("Spawn point set: %.1f %.1f %.1f",
-                worldSpawn.x, worldSpawn.y, worldSpawn.z));
-    }
-
-    private void executeTimeCommand(String[] parts) {
-        if (parts.length == 1 || (parts.length == 2 && parts[1].equalsIgnoreCase("query"))) {
-            showCommandToast("Time: " + formatGameTime());
-            return;
-        }
-        if (parts.length < 3) {
-            showCommandToast("Usage: /time set <preset|0-24>");
-            return;
-        }
-
-        String op = parts[1].toLowerCase();
-        switch (op) {
-            case "set" -> {
-                Float preset = timePreset(parts[2].toLowerCase());
-                if (preset != null) {
-                    // Часы переводятся внутри текущих суток: номер суток
-                    // держит фазу луны и график погоды.
-                    worldClock.setTimeOfDay(preset);
-                    daylight = computeDaylight();
-                    showCommandToast("Time set to " + parts[2].toLowerCase());
-                    return;
-                }
-                try {
-                    float hours = Float.parseFloat(parts[2]);
-                    if (!Float.isFinite(hours) || hours < 0f || hours > 24f) {
-                        showCommandToast("Usage: /time set <preset|0-24>");
-                        return;
-                    }
-                    worldClock.setHours(hours);
-                    daylight = computeDaylight();
-                    showCommandToast("Time: " + formatGameTime());
-                } catch (NumberFormatException e) {
-                    showCommandToast("Unknown time preset");
-                }
-            }
-            case "add" -> {
-                try {
-                    float hours = Float.parseFloat(parts[2]);
-                    // Без нормализации: прибавленные сутки — это новая ночь и новая луна.
-                    if (!Float.isFinite(hours)) throw new NumberFormatException("non-finite hours");
-                    worldClock.addHours(hours);
-                    daylight = computeDaylight();
-                    showCommandToast("Added " + formatHours(hours) + " hours");
-                } catch (NumberFormatException e) {
-                    showCommandToast("Usage: /time add <hours>");
-                }
-            }
-            default -> showCommandToast("Usage: /time set <preset|0-24>");
-        }
-    }
-
-    /**
-     * {@code /weather clear|cloudy|light|heavy|storm} — погода на десять минут.
-     * Переход всё равно плавный: заказанная буря накатывает, а не включается.
-     */
-    private void executeWeatherCommand(String[] parts) {
-        if (parts.length < 2) {
-            com.mineclone.world.Weather.Kind k = atmosphere.global.kind();
-            showCommandToast("Weather: " + k.name().toLowerCase()
-                    + String.format("  wind %.1f", atmosphere.windSpeed()));
-            return;
-        }
-        com.mineclone.world.Weather.Kind kind = switch (parts[1].toLowerCase()) {
-            case "clear", "sun" -> com.mineclone.world.Weather.Kind.CLEAR;
-            case "cloudy", "clouds" -> com.mineclone.world.Weather.Kind.CLOUDY;
-            case "light", "drizzle" -> com.mineclone.world.Weather.Kind.LIGHT;
-            case "heavy", "rain", "snow" -> com.mineclone.world.Weather.Kind.HEAVY;
-            case "storm", "thunder", "blizzard", "sandstorm", "dust" -> com.mineclone.world.Weather.Kind.STORM;
-            default -> null;
-        };
-        if (kind == null) {
-            showCommandToast("Usage: /weather clear|cloudy|light|heavy|storm|sandstorm");
-            return;
-        }
-        atmosphere.force(kind, 600f);
-        showCommandToast("Weather set to " + kind.name().toLowerCase());
-    }
-
-    private Float timePreset(String name) {
-        return switch (name) {
-            case "day", "sunrise" -> (float) (Math.PI / 6.0);
-            case "noon" -> (float) (Math.PI / 2.0);
-            case "sunset" -> (float) (5.0 * Math.PI / 6.0);
-            case "night" -> (float) (7.0 * Math.PI / 6.0);
-            case "midnight" -> (float) (3.0 * Math.PI / 2.0);
-            default -> null;
-        };
-    }
-
-    private String formatGameTime() {
-        // Одна формула на консоль и компас: разъехавшись, они спорили бы
-        // о времени суток.
-        return Hud.clockText(worldClock.gameTimeFloat());
-    }
-
-    private static String formatHours(float hours) {
-        if (Math.abs(hours - Math.round(hours)) < 0.0001f)
-            return String.format("%.1f", hours);
-        return String.valueOf(hours);
-    }
-
-    private void showCommandToast(String message) {
+    void showCommandToast(String message) {
         commandToast = message;
         commandToastTimer = 2.0f;
     }
@@ -3616,54 +3064,10 @@ public class Game {
                 com.mineclone.audio.SoundOcclusion.muffle(walls));
     }
 
-    private void emitNoise(float x, float y, float z, float loudness) {
+    void emitNoise(float x, float y, float z, float loudness) {
         // Мобов слышит тот, у кого они живут: у гостя они — снимки хозяина.
         if (session != null)
             session.noise(x, y, z, loudness);
-    }
-
-    private void emitTorchParticles() {
-        int px = (int) Math.floor(player.position.x);
-        int py = (int) Math.floor(player.position.y);
-        int pz = (int) Math.floor(player.position.z);
-        for (int dx = -5; dx <= 5; dx++)
-            for (int dy = -3; dy <= 5; dy++)
-                for (int dz = -5; dz <= 5; dz++) {
-                    BlockType b = world.getBlock(px + dx, py + dy, pz + dz);
-                    if (b == BlockType.TORCH)
-                        particles.emitTorchEffects(px + dx, py + dy, pz + dz);
-                    else if (b == BlockType.FIRE)
-                        particles.emitFire(px + dx, py + dy, pz + dz);
-                }
-    }
-
-    /** Local, bounded surface probe; neither particles nor sound scale with render distance. */
-    private void updateLavaEffects(float dt) {
-        lavaEffectTimer -= dt;
-        if (lavaEffectTimer > 0f) return;
-        lavaEffectTimer = .25f;
-        int px=(int)Math.floor(player.position.x), py=(int)Math.floor(player.position.y),
-            pz=(int)Math.floor(player.position.z);
-        Vector3f nearest=null;
-        float nearestDist=Float.MAX_VALUE;
-        int emitted=0;
-        for(int dx=-8;dx<=8;dx++) for(int dz=-8;dz<=8;dz++) for(int dy=-4;dy<=4;dy++) {
-            int x=px+dx,y=py+dy,z=pz+dz;
-            if(world.getBlock(x,y,z)!=BlockType.LAVA || world.getBlock(x,y+1,z)!=BlockType.AIR) continue;
-            int level=world.getBlockMeta(x,y,z)&15;
-            float h=level==0||level>=8?1f:(8-level)/8f;
-            float dist=dx*dx+dy*dy+dz*dz;
-            if(dist<nearestDist) { nearestDist=dist; nearest=new Vector3f(x+.5f,y+h,z+.5f); }
-            if(emitted<3 && natureRandom.nextFloat()<.012f) {
-                particles.emitLavaPop(x+natureRandom.nextFloat(),y+h+.03f,z+natureRandom.nextFloat());
-                if(emitted==0) sound.playOneOfAt(sounds.lavaPop(),new Vector3f(x+.5f,y+h,z+.5f),.35f,.85f+natureRandom.nextFloat()*.3f);
-                emitted++;
-            }
-        }
-        if(nearest==null) sound.stopLoop("lava-ambient");
-        else sound.updateLoopOneOfAt("lava-ambient",sounds.lavaAmbient(),nearest,.45f,1f,
-                com.mineclone.audio.SoundOcclusion.muffle(
-                    com.mineclone.audio.SoundOcclusion.solidBetween(world,player.camera.position,nearest)));
     }
 
     /**
@@ -3717,229 +3121,12 @@ public class Game {
         slotAnim = Math.min(1f, slotAnim + dt * 2.6f);
     }
 
-    private void updateFootsteps() {
-        Vector3f cur = player.position;
-        if (lastPos.x == 0 && lastPos.y == 0 && lastPos.z == 0) {
-            lastPos.set(cur);
-            return;
-        }
-        // First-person bob and audible footsteps keep their own distance counter.
-        if (player.onGround && !player.inWater && !player.flying) {
-            float dx = cur.x - lastPos.x, dz = cur.z - lastPos.z;
-            float step = (float) Math.sqrt(dx * dx + dz * dz);
-            stepDistance += step;
-            walkedDistance += step;
-            if (stepDistance > 2.0f) {
-                stepDistance = 0f;
-                int bx = (int) Math.floor(cur.x);
-                int by = (int) Math.floor(cur.y - 0.1f);
-                int bz = (int) Math.floor(cur.z);
-                BlockType under = world.getBlock(bx, by, bz);
-                stepLeft = !stepLeft;
-                dropFootprint(cur.x, cur.y, cur.z, player.camera.yaw, 0.70f, stepLeft);
-                float len = Math.max(1e-4f, step);
-                kickSnow(cur.x, cur.y, cur.z, dx / len, dz / len, player.isSprinting);
-                emitNoise(cur.x, cur.y, cur.z,
-                        player.isSprinting ? NOISE_SPRINT : NOISE_WALK);
-                // Шаг звучит по поверхности: снег поверх дёрна, мокрая
-                // трава в дождь, лёд, раскисшая земля.
-                int feetY = (int) Math.floor(cur.y + 0.02f);
-                BlockType feet = world.getBlock(bx, feetY, bz);
-                int snowLevel = feet == BlockType.SNOW_LAYER ? world.getBlockMeta(bx, feetY, bz) & 0x7 : 0;
-                boolean wet = atmosphere.rain() > 0.3f && world.getSkyLight(bx, feetY, bz) >= 12;
-                // Геометрический след: покров действительно проминается, а
-                // мокрая голая земля становится вязкой грязью.
-                TerrainDeformation.footprint(world, bx, feetY, bz,
-                        player.isSprinting ? 1.4f : 1f, wet);
-                if (under == BlockType.THIN_ICE) {
-                    world.setBlock(bx, by, bz, BlockType.WATER);
-                    particles.emitWaterSplash(cur.x, cur.y, cur.z,
-                            world.getSkyLight(bx, feetY, bz) / (float) Chunk.MAX_LIGHT,
-                            world.getBlockLightWorld(bx, feetY, bz) / (float) Chunk.MAX_LIGHT);
-                }
-                com.mineclone.audio.Sounds.Material mat =
-                        com.mineclone.audio.Sounds.stepMaterial(under, feet, snowLevel, wet);
-                float vol = com.mineclone.audio.Sounds.stepVolume(mat) * (player.isSprinting ? 1.25f : 1f);
-                sound.playOneOfAt(sounds.step(mat), new Vector3f(cur.x, cur.y + 0.15f, cur.z),
-                        vol, com.mineclone.audio.Sounds.stepPitch(mat) * (0.95f + 0.1f * (float) Math.random()));
-            }
-        }
-        lastPos.set(cur);
-    }
-
-    /**
-     * Чужая модель считает шаги из тех же сетевых снимков, что и её анимация.
-     * Так хозяин и остальные участники слышат ходьбу без ещё одного потока
-     * пакетов, а звук всегда остаётся у фактического положения модели.
-     */
-    private void playRemotePlayerFeedback() {
-        if (world == null || !net.active())
-            return;
-        for (com.mineclone.net.RemotePlayer rp : net.players()) {
-            if (!rp.placed() || rp.isDead())
-                continue;
-            if (rp.consumeSwingStart()) {
-                sound.playOneOfAt(sounds.playerAttack("sweep"),
-                        new Vector3f(rp.position.x, rp.position.y + 0.9f, rp.position.z),
-                        0.18f, 0.9f + 0.15f * (float) Math.random());
-            }
-            while (rp.consumeFootstep()) {
-                Vector3f p = rp.position;
-                if ((rp.flags & com.mineclone.net.RemotePlayer.F_IN_WATER) != 0) {
-                    sound.playOneOfAt(sounds.waterSwim(),
-                            new Vector3f(p.x, p.y + 0.25f, p.z),
-                            0.32f, 0.9f + 0.2f * (float) Math.random());
-                    continue;
-                }
-                int bx = (int) Math.floor(p.x);
-                int by = (int) Math.floor(p.y - 0.05f);
-                int bz = (int) Math.floor(p.z);
-                BlockType under = world.getBlock(bx, by, bz);
-                sound.playOneOfAt(sounds.step(under), new Vector3f(p.x, p.y + 0.15f, p.z),
-                        0.34f, 0.94f + 0.12f * (float) Math.random());
-            }
-        }
-    }
-
-    /**
-     * Отпечаток под ногой, если грунт его держит.
-     *
-     * След остаётся только на снегу и песке — на камне и траве он выглядел бы
-     * грязью, а не следом. Ноги чередуются и разнесены в стороны: одна колея
-     * по центру читается волочением, а не шагами.
-     */
-    private void dropFootprint(float x, float y, float z, float yaw, float size,
-            boolean left) {
-        if (decals == null || world == null)
-            return;
-        int bx = (int) Math.floor(x);
-        int bz = (int) Math.floor(z);
-        // Ищем верх опоры чуть ниже ног: на снежном слое стопа стоит на его
-        // поверхности, а сам блок начинается ниже.
-        int by = (int) Math.floor(y - 0.1f);
-        BlockType under = world.getBlock(bx, by, bz);
-        float top = by + 1f;
-        if (under == BlockType.SNOW_LAYER) {
-            // Слой держит толщину в meta: след ложится на его верх.
-            top = by + snowSurface(bx, by, bz);
-        } else if (!holdsFootprint(under)) {
-            return;
-        }
-
-        float side = left ? FOOTPRINT_SPREAD : -FOOTPRINT_SPREAD;
-        float fx = x + (float) Math.cos(yaw) * side;
-        float fz = z - (float) Math.sin(yaw) * side;
-        decals.add(fx, top, fz, yaw, size, FOOTPRINT_LIFE, 0.85f, FOOTPRINT_TILE);
-    }
-
-    /**
-     * Снег из-под ноги — если под ногой снег. Покров не твёрдый и занимает
-     * клетку ног, а снежный дёрн лежит под ней, поэтому проверяются обе.
-     */
-    private void kickSnow(float x, float y, float z, float dirX, float dirZ, boolean hard) {
-        if (world == null)
-            return;
-        int bx = (int) Math.floor(x), bz = (int) Math.floor(z);
-        int feet = (int) Math.floor(y + 0.02f);
-        boolean snow = world.getBlock(bx, feet, bz) == BlockType.SNOW_LAYER
-                || world.getBlock(bx, feet - 1, bz) == BlockType.SNOWY_GRASS
-                || world.getBlock(bx, feet - 1, bz) == BlockType.SNOW_LAYER;
-        if (!snow)
-            return;
-        float sky = world.getSkyLight(bx, feet, bz) / (float) Chunk.MAX_LIGHT;
-        float blk = world.getBlockLightWorld(bx, feet, bz) / (float) Chunk.MAX_LIGHT;
-        particles.emitSnowKick(x, y, z, dirX, dirZ, hard, sky, blk);
-    }
-
-    /** Грунт, на котором след виден: рыхлый и светлый. */
-    private static boolean holdsFootprint(BlockType b) {
-        return b == BlockType.SNOW_LAYER || b == BlockType.SAND
-                || b == BlockType.SNOWY_GRASS;
-    }
-
-    /** Высота верхней грани снежного слоя в блоке, в долях блока. */
-    private float snowSurface(int x, int y, int z) {
-        // Та же формула, что в ChunkMesher.emitLayer: разойдись они — след
-        // повиснет в воздухе или утонет в снегу.
-        int level = world.getBlockMeta(x, y, z) & 0x7;
-        return (level + 1) / 8f;
-    }
-
-    private void playLandingStep(float fallDistance) {
-        int bx = (int) Math.floor(player.position.x);
-        int by = (int) Math.floor(player.position.y - 0.05f);
-        int bz = (int) Math.floor(player.position.z);
-        BlockType under = world.getBlock(bx, by, bz);
-        float volume = Math.min(0.65f, 0.32f + fallDistance * 0.08f);
-        sound.playOneOfAt(sounds.step(under), playerSoundPosition(), volume, 0.85f + 0.15f * (float) Math.random());
-    }
-
-    private Vector3f playerSoundPosition() {
+    Vector3f playerSoundPosition() {
         return new Vector3f(player.position.x, player.position.y + 0.7f, player.position.z);
     }
 
-    private static Vector3f blockSoundPosition(int x, int y, int z) {
+    static Vector3f blockSoundPosition(int x, int y, int z) {
         return new Vector3f(x + 0.5f, y + 0.5f, z + 0.5f);
-    }
-
-    private Vector3f findNearbyFlowingWater() {
-        int px = (int) Math.floor(player.position.x);
-        int py = (int) Math.floor(player.position.y);
-        int pz = (int) Math.floor(player.position.z);
-        // The source must be discovered before it becomes loud, otherwise it
-        // pops into existence only when the player is already beside it.
-        int R = (int) Math.ceil(SoundEngine.SPATIAL_MAX_DISTANCE);
-        int bestX = 0, bestY = 0, bestZ = 0;
-        int bestDist = Integer.MAX_VALUE;
-        int minX = px - R, maxX = px + R, minZ = pz - R, maxZ = pz + R;
-        int minY = Math.max(0, py - 2), maxY = Math.min(Chunk.SIZE_Y - 1, py + 4);
-        int radiusSq = R * R;
-        // Resolve each chunk once, then read its compact block array directly.
-        // world.getBlock() here used to repeat floorDiv + hash lookup ~17k times per probe.
-        for (int cx = Math.floorDiv(minX, Chunk.SIZE_X); cx <= Math.floorDiv(maxX, Chunk.SIZE_X); cx++)
-            for (int cz = Math.floorDiv(minZ, Chunk.SIZE_Z); cz <= Math.floorDiv(maxZ, Chunk.SIZE_Z); cz++) {
-                Chunk chunk = world.getChunkIfExists(cx, cz);
-                if (chunk == null) continue;
-                int baseX = cx * Chunk.SIZE_X, baseZ = cz * Chunk.SIZE_Z;
-                int lx0 = Math.max(0, minX - baseX), lx1 = Math.min(Chunk.SIZE_X - 1, maxX - baseX);
-                int lz0 = Math.max(0, minZ - baseZ), lz1 = Math.min(Chunk.SIZE_Z - 1, maxZ - baseZ);
-                for (int y = minY; y <= maxY; y++)
-                    for (int lx = lx0; lx <= lx1; lx++)
-                        for (int lz = lz0; lz <= lz1; lz++) {
-                            if (chunk.get(lx, y, lz) != BlockType.WATER_FLOW) continue;
-                            int x = baseX + lx, z = baseZ + lz;
-                            int dx = x - px, dy = y - py, dz = z - pz;
-                            int dist = dx * dx + dy * dy + dz * dz;
-                            if (dist <= radiusSq && dist < bestDist) {
-                                bestDist = dist;
-                                bestX = x;
-                                bestY = y;
-                                bestZ = z;
-                            }
-                        }
-            }
-        return bestDist == Integer.MAX_VALUE ? null : blockSoundPosition(bestX, bestY, bestZ);
-    }
-
-    /**
-     * A stream is ambience, not a sporadic event: keep one positional source
-     * alive and let OpenAL's distance curve make it fade in while approaching.
-     */
-    private void updateWaterFlowSound(float dt) {
-        waterFlowProbeTimer -= dt;
-        if (waterFlowProbeTimer > 0f)
-            return;
-        waterFlowProbeTimer = 0.25f;
-        waterFlowSoundPosition = findNearbyFlowingWater();
-        if (waterFlowSoundPosition == null) {
-            sound.stopLoop("water-flow");
-            return;
-        }
-        int walls = com.mineclone.audio.SoundOcclusion.solidBetween(
-                world, player.camera.position, waterFlowSoundPosition);
-        float gain = com.mineclone.audio.SoundOcclusion.gainFor(walls);
-        sound.updateLoopOneOfAt("water-flow", sounds.waterFlow(), waterFlowSoundPosition,
-                0.42f * gain, 0.94f, com.mineclone.audio.SoundOcclusion.muffle(walls));
     }
 
     private boolean playerOccupies(int bx, int by, int bz) {
@@ -4357,7 +3544,7 @@ public class Game {
                     atmosphere.windX, atmosphere.windZ, hdr ? 1f : 0f);
         // Натянутый лук показывает ту же дугу, что заряженный бросок: у них
         // одна баллистика, и рисовальщик для неё уже есть.
-        float draw = bowDraw();
+        float draw = weapons.bowDraw();
         if (draw > 0.02f) {
             Vector3f from = new Vector3f(player.camera.position).add(0f, -0.15f, 0f);
             Vector3f aim = new Vector3f(player.camera.forward())
@@ -4365,12 +3552,13 @@ public class Game {
                     .add(player.velocity.x * 0.4f, 0f, player.velocity.z * 0.4f);
             trajectoryRenderer.render(proj, view, from, aim, hdr ? 1f : 0f, draw);
         }
-        if (chargingThrow && throwCharge > 0.02f) {
+        float throwCharge = weapons.throwCharge();
+        if (throwCharge > 0.02f) {
             Vector3f start = new Vector3f(player.camera.position).add(0f, -0.3f, 0f);
             Vector3f fwd = player.camera.forward();
-            float speed = THROW_SPEED * (0.45f + 1.15f * throwCharge);
-            Vector3f launch = new Vector3f(fwd).mul(speed)
-                    .add(player.velocity.x, THROW_LIFT * (0.65f + throwCharge * 0.35f), player.velocity.z);
+            float speed = WeaponController.THROW_SPEED * (0.45f + 1.15f * throwCharge);
+            Vector3f launch = new Vector3f(fwd).mul(speed).add(player.velocity.x,
+                    WeaponController.THROW_LIFT * (0.65f + throwCharge * 0.35f), player.velocity.z);
             trajectoryRenderer.render(proj, view, start, launch, hdr ? 1f : 0f, throwCharge);
         }
         updateHint();
@@ -4413,10 +3601,10 @@ public class Game {
             // рука рисуется поверх чистого z-буфера и в третьем лице висела
             // бы отдельным куском мяса посреди экрана.
             if (viewMode == ViewMode.FIRST) {
-                heldItemRenderer.setBowDraw(bowDraw());
+                heldItemRenderer.setBowDraw(weapons.bowDraw());
                 heldItemRenderer.render(atlas, inventory.get(selectedSlot),
                         window.getAspect(), currentFov,
-                        equipProgress, handSwing, walkedDistance, player.eyeInWater, viewBobbing,
+                        equipProgress, handSwing, footsteps.walkedDistance(), player.eyeInWater, viewBobbing,
                         daylight, brightness, skyFrac, blockFrac, hdr ? 1f : 0f,
                         inspect, inspectSpin);
                 handDrawn = true;
@@ -4729,7 +3917,7 @@ public class Game {
      * расстояние и стены: зомби за тремя блоками камня не должен сигналить
      * так же, как зомби за спиной в открытом поле.
      */
-    private void cueSound(Vector3f at, float loudness, boolean danger) {
+    void cueSound(Vector3f at, float loudness, boolean danger) {
         if (world == null || at == null)
             return;
         Vector3f ear = player.camera.position;
@@ -5818,7 +5006,7 @@ public class Game {
     // ------------------------------------------------------------ игра по сети
 
     /** Сколько секунд держатся строки чата на экране. */
-    private static final float NET_CHAT_LINGER = 9f;
+    static final float NET_CHAT_LINGER = 9f;
     /** Сколько ждём мир от хозяина, прежде чем сдаться. */
     private static final float NET_JOIN_TIMEOUT = 25f;
 
@@ -5832,221 +5020,9 @@ public class Game {
         }, roomBrowser, lanBrowser);
     }
 
-    /**
-     * Всё, что сетевая сессия знает об игре.
-     *
-     * <p>Тот же приём, что у окон инвентаря: сессия видит не {@code Game}, а
-     * полтора десятка вопросов. Поэтому её проверяют парой в обычном тесте —
-     * без окна, GL и звука.
-     */
+    /** Всё, что сетевая сессия знает об игре: {@link GameNetContext}. */
     private com.mineclone.net.NetContext netContext() {
-        return new com.mineclone.net.NetContext() {
-            @Override public String playerId() { return save.playerId(); }
-            @Override public com.mineclone.net.PlayerData capturePlayerData() {
-                return new com.mineclone.net.PlayerData(capturePlayer());
-            }
-            @Override public void restorePlayerData(com.mineclone.net.PlayerData data) {
-                // v8: the host's whole record, so what this build does not model
-                // (equipment, effects, a spawn, newer sections) comes back with the
-                // guest's next checkpoint instead of being lost.
-                restorePlayer(data.record());
-            }
-            @Override public com.mineclone.net.PlayerData loadGuest(String id) {
-                return worldId==null?null:save.loadGuest(worldId,id);
-            }
-            @Override public void saveGuest(String id,com.mineclone.net.PlayerData data) {
-                if(worldId!=null)save.saveGuest(worldId,id,data);
-            }
-            @Override public void containerInventory(com.mineclone.world.ItemStack[] slots,
-                    com.mineclone.world.ItemStack cursor,boolean closed) {
-                for(int i=0;i<slots.length;i++)inventory.set(i,slots[i]);
-                if(activeWindow!=null)activeWindow.menu().setCursor(closed?null:cursor);
-                if(closed && activeWindow!=null)finishCloseWindow();
-            }
-            @Override
-            public World world() {
-                return world;
-            }
-
-            @Override
-            public long seed() {
-                return world == null ? 0L : world.seed;
-            }
-
-            @Override
-            public String worldName() {
-                return worldDisplayName;
-            }
-
-            @Override
-            public float timeOfDay() {
-                return worldClock.gameTimeFloat();
-            }
-
-            @Override public double preciseTime() { return worldClock.gameTime(); }
-            @Override public long worldTicks() { return worldClock.worldTicks(); }
-
-            @Override
-            public void setTimeOfDay(float t) {
-                worldClock.setGameTime(t);
-                daylight = computeDaylight();
-                invalidateShadows();
-            }
-
-            @Override
-            public int gameMode() {
-                return gameMode.ordinal();
-            }
-
-            @Override
-            public Vector3f spawn() {
-                return worldSpawn;
-            }
-
-            @Override
-            public void startRemoteWorld(com.mineclone.net.RemoteWorld remote) {
-                Game.this.startRemoteWorld(remote);
-            }
-
-            @Override
-            public void applyRemoteBlock(int x, int y, int z, byte id, byte meta, boolean broke) {
-                Game.this.applyRemoteBlock(x, y, z, id, meta, broke);
-            }
-
-            @Override
-            public void remoteBlockAction(int actor, int x, int y, int z, byte blockId,
-                    boolean broke) {
-                Game.this.playRemoteBlockAction(x, y, z, blockId, broke);
-                // Гостя мобы слышат так же, как своего игрока.
-                emitNoise(x + 0.5f, y + 0.5f, z + 0.5f, broke ? NOISE_BREAK : NOISE_PLACE);
-            }
-
-            @Override
-            public com.mineclone.save.ChunkSnapshot loadSavedChunk(int cx, int cz) {
-                return worldId == null ? null : save.loadChunk(worldId, cx, cz);
-            }
-
-            @Override
-            public Vector3f playerPosition() {
-                return world == null ? null : player.position;
-            }
-
-            @Override
-            public float playerYaw() {
-                return player.camera.yaw;
-            }
-
-            @Override
-            public float playerPitch() {
-                return player.camera.pitch;
-            }
-
-            @Override
-            public int playerFlags() {
-                int f = 0;
-                if (player.onGround)
-                    f |= com.mineclone.net.RemotePlayer.F_ON_GROUND;
-                if (player.isSprinting)
-                    f |= com.mineclone.net.RemotePlayer.F_SPRINT;
-                if (player.inWater)
-                    f |= com.mineclone.net.RemotePlayer.F_IN_WATER;
-                if (player.flying)
-                    f |= com.mineclone.net.RemotePlayer.F_FLYING;
-                if (player.isDead())
-                    f |= com.mineclone.net.RemotePlayer.F_DEAD;
-                return f;
-            }
-
-            @Override
-            public com.mineclone.world.ItemStack playerHeldItem() {
-                return inventory.get(selectedSlot);
-            }
-
-            @Override
-            public float playerHealth() {
-                return player.health;
-            }
-
-            @Override
-            public java.util.List<com.mineclone.world.entity.Mob> mobs() {
-                return world == null ? null : mobs;
-            }
-
-            @Override
-            public java.util.List<com.mineclone.world.entity.ItemEntity> groundItems() {
-                return world == null ? null : items;
-            }
-
-            @Override
-            public java.util.List<com.mineclone.world.entity.Projectile> projectiles() {
-                return world == null ? null : projectiles;
-            }
-
-            /** Выстрел участника: снаряд рождается у хозяина и летит у него же. */
-            @Override
-            public void shootFor(int actor, float x, float y, float z,
-                                 float vx, float vy, float vz, float damage) {
-                var shot = new com.mineclone.world.entity.Projectile(
-                        com.mineclone.item.Bow.AMMO, net.playerOf(actor), true, damage);
-                shot.position.set(x, y, z);
-                shot.velocity.set(vx, vy, vz);
-                if (shot.velocity.lengthSquared() > 1e-6f)
-                    shot.heading.set(shot.velocity).normalize();
-                addProjectile(shot);
-            }
-
-            @Override
-            public void hurtByHost(com.mineclone.world.damage.DamageSource source, float damage) {
-                // Обратную связь поднимет updateDamageFeedback по самой
-                // потере здоровья — ей всё равно, кто и чем ударил. Отброс и
-                // звук — как у своего игрока хозяина: от удара и от взрыва
-                // (participantStruck, blasted), стрела не отбрасывает.
-                if (!player.damage(source, damage) || !source.hasOrigin())
-                    return;
-                var kind = source.type();
-                if (kind == com.mineclone.world.damage.DamageType.MELEE
-                        || kind == com.mineclone.world.damage.DamageType.EXPLOSION)
-                    applyKnockbackFrom(source.originX(), source.originZ());
-                if (kind == com.mineclone.world.damage.DamageType.MELEE)
-                    sound.playOneOfAt(sounds.hurt(), playerSoundPosition(),
-                            0.8f, 0.9f + 0.1f * (float) Math.random());
-            }
-
-            @Override
-            public void chatLine(String line) {
-                netChat.addLast(line);
-                while (netChat.size() > 8)
-                    netChat.removeFirst();
-                netChatTimer = NET_CHAT_LINGER;
-            }
-
-            @Override
-            public void status(String line) {
-                showCommandToast(line);
-            }
-
-            @Override
-            public void give(com.mineclone.world.ItemStack stack) {
-                if (stack == null || stack.count <= 0)
-                    return;
-                int left = giveStack(stack);
-                if (left > 0)
-                    dropItem(stack.copyWithCount(left), player.position.x,
-                            player.position.y + 0.6f, player.position.z);
-            }
-
-            @Override
-            public void netStopped(String reason) {
-                Game.this.onNetStopped(reason);
-            }
-
-            @Override
-            public void containerFromHost(int x, int y, int z, int kind,
-                    com.mineclone.world.ItemStack[] slots,
-                    float burnLeft, float burnMax, float cook) {
-                Game.this.applyContainerFromHost(x, y, z, kind, slots, burnLeft, burnMax, cook);
-            }
-        };
+        return new GameNetContext(this);
     }
 
     /** Открыть свой мир для игры по сети. */
@@ -6156,7 +5132,7 @@ public class Game {
     }
 
     /** Сессия кончилась — сказать об этом и вернуться туда, где можно играть. */
-    private void onNetStopped(String reason) {
+    void onNetStopped(String reason) {
         showCommandToast("Сеть: " + reason);
         netChat.addLast("Сеть: " + reason);
         netChatTimer = NET_CHAT_LINGER;
@@ -6180,7 +5156,7 @@ public class Game {
      * {@code worldId} остаётся пустым, и {@link #saveAll()} по нему ничего не
      * пишет.
      */
-    private void startRemoteWorld(com.mineclone.net.RemoteWorld remote) {
+    void startRemoteWorld(com.mineclone.net.RemoteWorld remote) {
         if (world != null)
             unloadWorld();
         String name = remote.name();
@@ -6260,61 +5236,6 @@ public class Game {
             for(int i=0;i<group.size();i++)group.storage.set(i,null);
         windows.clear();activeWindow=null;openChest=null;openFurnace=null;
         if(state==State.WINDOW)state=State.PLAYING;
-    }
-
-    /** Правка блока, пришедшая по сети: та же, что своя, но без отправки обратно. */
-    private void applyRemoteBlock(int x, int y, int z, byte id, byte meta, boolean broke) {
-        if (world == null)
-            return;
-        BlockType now = BlockType.byId(id);
-        BlockType before = world.getBlock(x, y, z);
-        if (before == now && world.getBlockMeta(x, y, z) == meta)
-            return;
-        // A chest or furnace a guest removed spills inside setBlock, through
-        // its behaviour — on the host only: a guest's world has no drop sink.
-        world.setBlock(x, y, z, now, meta);
-        if (!broke || before == BlockType.AIR)
-            return;
-        float pSky = world.getSkyLight(x, y, z) / (float) Chunk.MAX_LIGHT;
-        float pBlk = world.getBlockLightWorld(x, y, z) / (float) Chunk.MAX_LIGHT;
-        if (before.isCross() || before == BlockType.SNOW_LAYER)
-            particles.emitBlockBreak(x, y, z, before.particleColor, before.sideTile, pSky, pBlk);
-        else
-            debris.spawn(x, y, z, before, pSky, pBlk);
-    }
-
-    /** Воспроизвести именно действие другого игрока, не тихий тик мира. */
-    private void playRemoteBlockAction(int x, int y, int z, byte blockId, boolean broke) {
-        if (world == null)
-            return;
-        BlockType block = BlockType.byId(blockId);
-        java.util.List<String> samples = broke ? sounds.breakBlock(block) : sounds.place(block);
-        sound.playOneOfAt(samples, blockSoundPosition(x, y, z), broke ? 0.72f : 0.68f,
-                0.9f + 0.2f * (float) Math.random());
-        if (!broke)
-            emitPlacementParticles(x, y, z, block);
-    }
-
-    /** Участник: хозяин прислал настоящее содержимое открытого контейнера. */
-    private void applyContainerFromHost(int x, int y, int z, int kind,
-            com.mineclone.world.ItemStack[] slots, float burnLeft, float burnMax, float cook) {
-        if (world == null)
-            return;
-        if (kind == com.mineclone.net.Multiplayer.CONTAINER_CHEST
-                && world.getBlock(x, y, z) == BlockType.CHEST) {
-            com.mineclone.world.ItemStack[] live = world.createChest(x, y, z);
-            for (int i = 0; i < live.length; i++)
-                live[i] = i < slots.length ? slots[i] : null;
-        } else if (kind == com.mineclone.net.Multiplayer.CONTAINER_FURNACE
-                && world.getBlock(x, y, z) == BlockType.FURNACE) {
-            com.mineclone.world.Furnace f = world.createFurnace(x, y, z);
-            f.input = slots.length > 0 ? slots[0] : null;
-            f.fuel = slots.length > 1 ? slots[1] : null;
-            f.output = slots.length > 2 ? slots[2] : null;
-            f.burnLeft = burnLeft;
-            f.burnMax = burnMax;
-            f.cook = cook;
-        }
     }
 
     /**
@@ -6434,23 +5355,7 @@ public class Game {
     }
 
     private void drawCommandHelp(int w, int h) {
-        String[] lines = {
-                "Commands",
-                "/help  - show this list",
-                "/time [query]",
-                "/time set day|sunrise|noon|sunset|night|midnight|0-24",
-                "/time add <hours>",
-                "/weather clear|cloudy|light|heavy|storm|sandstorm",
-                "/tp <x> <y> <z>",
-                "/spawnpoint [x y z]",
-                "/fly",
-                "/speed <value>",
-                "/fill <block> [radius]",
-                "/instamine",
-                "/music [next] - what plays, or a fitting track now",
-                "/debug",
-                "/gamemode <creative|survival> - Switch game mode"
-        };
+        String[] lines = CommandProcessor.HELP;
         float lineH = font.getPixelHeight() + 5f;
         float panelW = 0f;
         for (String line : lines)

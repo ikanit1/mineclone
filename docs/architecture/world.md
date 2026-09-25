@@ -1,6 +1,6 @@
 # World, chunks and block changes
 
-Updated: 2026-09-24. Paths in backticks are relative to the repository root.
+Updated: 2026-09-25. Paths in backticks are relative to the repository root.
 
 `world/World.java` owns loaded chunks; `world/Chunk.java` owns block data, light,
 metadata, containers and meshes. Read [chunk publication](chunk-publication.md)
@@ -128,6 +128,30 @@ After publication, container mutation belongs to the main simulation thread;
   пара стопок, а не сотня сущностей. В сейв чанка едет как `DroppedItem`:
   выпавшее из разбитого сундука не имеет права исчезнуть оттого, что игрок
   вышел из игры.
+
+## The game package: what `Game` hands out (SIM-08)
+
+`game/Game.java` runs the frame: window and state machine, world lifecycle,
+rendering passes and the HUD. What does not need the frame lives beside it, in
+the same package, so two people can change the bow and the chat without
+editing one file:
+
+| Class | What it owns | How it reaches the game |
+|---|---|---|
+| `InteractionController` (BLK-03) | dig, place, use, pipette | `InteractionController.Host` |
+| `CommandProcessor` | `/time`, `/weather`, `/tp`, `/gamemode`, `/fill` and the rest; the help lines | `CommandProcessor.CommandTarget` — `CommandProcessorTests` runs every command against a fake, without a window |
+| `GameNetContext` | the `NetContext` a `Multiplayer` session sees: the player's pose and record, remote block edits and actions, containers from the host, chat, knockback | package-private members of `Game`, read on every call |
+| `WeaponController` | the bow's draw, the charged throw, what leaves the hand | package-private members of `Game`; `Game` draws the arc from `bowDraw()` and `throwCharge()` |
+| `FootstepFeedback` | steps, footprints, kicked snow, landings, other players' steps; the walked distance the view bob runs on | package-private members of `Game` |
+| `AmbientEffects` | cave, rain, storm and underwater beds, the room's echo, stream and lava loops, fish, leaves, fireflies, torch smoke, breath in the cold | package-private members of `Game` |
+
+The last four were moved whole — the method bodies are the ones `Game` had —
+and read `Game`'s current world, player and clock through fields that are now
+package-private instead of private. They hold only their own timers and
+counters. A test or tool that used to reflect on a moved method goes through the
+helper: `InventorySafetySmoke` throws through `weapons`, `CreativeGameSmoke`
+still calls `executeCommand`, which `Game` keeps as a one-line forward.
+`Game.java` is 5456 lines after this pass (6850 before BLK-03).
 
 ## Checks and tuning
 

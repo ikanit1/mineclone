@@ -71,7 +71,7 @@ public class InventorySafetySmoke {
 
             for(int i=0;i<inv.size();i++)inv.set(i,null);
             inv.set(0,ItemStack.of("diamond",7));
-            call(g,"throwHeldItem",new Class<?>[]{boolean.class},true);
+            call(get(g,"weapons"),"throwHeldItem",new Class<?>[]{boolean.class},true);
             List<?> ground=(List<?>)get(g,"items");
             pump(hn,gn,12);
             check(ground.size()==1 && count(inv)==0 && hc.groundItems().size()==1,"Guest thrown item must reach host and come back in snapshot");
