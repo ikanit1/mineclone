@@ -1,7 +1,8 @@
 # Working in Mineclone
 
 Read the subsystem document below before editing it. The current plan is
-[docs/ROADMAP_1_1.md](docs/ROADMAP_1_1.md); historical design files are background,
+[docs/ROADMAP_1_1.md](docs/ROADMAP_1_1.md), what remains of it is summarized in
+[docs/REMAINING_1_1.md](docs/REMAINING_1_1.md); historical design files are background,
 not evidence that a feature works today. Java 17, LWJGL 3.3.6, JOML and JLayer.
 
 ## Build and run
