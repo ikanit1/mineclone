@@ -105,6 +105,9 @@ final class NetworkTests {
                 NetworkTests::testPlayerState);
         r.run("mobs stream to the guest and the guest's hit lands on the host",
                 NetworkTests::testMobs);
+        r.run("ID-5 a guest keeps the same mob across the host's unload and reload",
+                NetworkTests::testMobIdAcrossReload);
+        r.run("ID-6 a guest's hit names the mob by its world id", NetworkTests::testMobHitById);
         r.run("v8: a guest generates with the host's generator, pinned chunks included",
                 NetworkTests::testHostGenerator);
         r.run("v8: a delta taken against another version pins and rebases the guest's chunk",
@@ -760,6 +763,52 @@ final class NetworkTests {
         p.close();
     }
 
+    /**
+     * A chunk the host unloads and loads again brings its cow back as a new object
+     * with the same world id (MOB-02). The guest must see the same mob, not a new one.
+     */
+    private static void testMobIdAcrossReload() {
+        Pair p = Pair.open(4242L, "World", 0.5f);
+        try {
+            Mob cow = new Mob(com.mineclone.world.entity.MobType.COW, 10f, 70f, 10f, new java.util.Random(1));
+            cow.id = 31;
+            p.host.mobs.add(cow);
+            p.pump(3);
+            assertEq("the cow is visible", 1, p.guest.mobs.size());
+            Mob seen = p.guest.mobs.get(0);
+
+            Mob reloaded = new Mob(com.mineclone.world.entity.MobType.COW, 10.5f, 70f, 10f, new java.util.Random(2));
+            reloaded.id = 31;
+            p.host.mobs.clear();
+            p.host.mobs.add(reloaded);
+            p.pump(3);
+            assertEq("still one cow", 1, p.guest.mobs.size());
+            assertTrue("the guest kept its cow across the reload", p.guest.mobs.get(0) == seen);
+            assertTrue("and follows the reloaded one", Math.abs(seen.position.x - 10.5f) < 0.01f);
+        } finally { p.close(); }
+    }
+
+    /** Two mobs with world ids 5 and 9: a hit on the second reaches the second. */
+    private static void testMobHitById() {
+        Pair p = Pair.open(4242L, "World", 0.5f);
+        try {
+            Mob five = new Mob(com.mineclone.world.entity.MobType.CHICKEN, 10f, 70f, 10f, new java.util.Random(1));
+            Mob nine = new Mob(com.mineclone.world.entity.MobType.CHICKEN, 14f, 70f, 10f, new java.util.Random(2));
+            five.id = 5;
+            nine.id = 9;
+            p.host.mobs.add(five);
+            p.host.mobs.add(nine);
+            p.pump(3);
+            assertEq("both visible", 2, p.guest.mobs.size());
+            Mob target = p.guest.mobs.get(0).position.x > 12f ? p.guest.mobs.get(0) : p.guest.mobs.get(1);
+            float full = nine.health;
+            p.guestNet.requestMobHit(target, 3f, 1f, 13f, 9f);
+            p.pump(3);
+            assertTrue("the hit reached id 9", nine.health < full);
+            assertTrue("and only id 9", five.health == five.type.maxHealth);
+        } finally { p.close(); }
+    }
+
     /** An upgraded host world: V2, with the land around the origin pinned to V1. */
     private static World upgradedWorld(long seed) {
         var v2 = new com.mineclone.world.gen.WorldGenSettings(com.mineclone.world.gen.WorldGenVersion.V2,
@@ -1336,6 +1385,12 @@ final class NetworkTests {
         ItemStack held;
         @Override public ItemStack playerHeldItem() { return held; }
         final List<Mob> mobs = new ArrayList<>();
+        /** A host's world ids (MOB-02); a test that sets one keeps it. */
+        private long nextMobId = 1;
+        @Override public void assignMobIds() {
+            for (Mob m : mobs)
+                if (m.id == 0) m.id = nextMobId++;
+        }
         final List<ItemEntity> items = new ArrayList<>();
         final List<String> chat = new ArrayList<>();
         final List<ItemStack> given = new ArrayList<>();

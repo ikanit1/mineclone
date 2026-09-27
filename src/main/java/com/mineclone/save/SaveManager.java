@@ -841,8 +841,9 @@ public final class SaveManager {
         var items = new java.util.ArrayList<com.mineclone.world.DroppedItem>();
         for (var item : source.items)
             items.add(new com.mineclone.world.DroppedItem(item.stack.copy(), item.x, item.y, item.z, item.age));
+        // Mob records are immutable; the list is copied by the constructor.
         return new ChunkSnapshot(source.cx, source.cz, source.blocks.clone(), source.meta.clone(),
-                chests, furnaces, items, source.extra, source.ticksAt, source.ticks.clone());
+                chests, furnaces, items, source.extra, source.ticksAt, source.ticks.clone(), source.mobs);
     }
 
     synchronized boolean saveChunkBlocking(String id, ChunkSnapshot s) {

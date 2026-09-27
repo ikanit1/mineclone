@@ -269,6 +269,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [RunLengthCodec](../src/main/java/com/mineclone/save/RunLengthCodec.java) | Bounded byte runs; the enclosing save stream also applies GZIP. |
 | [SaveFormat](../src/main/java/com/mineclone/save/SaveFormat.java) | Single source of truth for the on-disk save format. |
 | [SaveManager](../src/main/java/com/mineclone/save/SaveManager.java) | All save-file I/O. |
+| [SavedMob](../src/main/java/com/mineclone/save/SavedMob.java) | A persistent mob as its chunk's entities section holds it (MOB-01). |
 | [WorldBackups](../src/main/java/com/mineclone/save/WorldBackups.java) | ZIP snapshots and restore-to-copy; callers serialize this with world writes. |
 | [WorldOpenPolicy](../src/main/java/com/mineclone/save/WorldOpenPolicy.java) | Shared, side-effect-free opening policy for the game and dedicated server. |
 | [WorldWarning](../src/main/java/com/mineclone/save/WorldWarning.java) | Delivered from generation workers to the main-thread toast/log consumer. |
@@ -483,4 +484,4 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [StructureTypes](../src/main/java/com/mineclone/world/structure/StructureTypes.java) | The structure types of the 1.1 generator (GEN-03). |
 | [StructureWriter](../src/main/java/com/mineclone/world/structure/StructureWriter.java) | Where a structure piece puts its blocks, in world coordinates: the chunk being generated (ChunkWriter) or, in tests, one large buffer. |
 
-Top-level declarations: 352.
+Top-level declarations: 353.

@@ -94,7 +94,8 @@ public class MobSpawner {
         Iterator<Mob> it = mobs.iterator();
         while (it.hasNext()) {
             Mob m = it.next();
-            if (nearestSq(m, centres) > maxSq)
+            // Animals stay where they were (MOB-01): they leave with their chunk.
+            if (!m.persistent() && nearestSq(m, centres) > maxSq)
                 it.remove();
         }
     }

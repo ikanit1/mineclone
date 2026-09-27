@@ -32,6 +32,8 @@ public final class ChunkSnapshot {
     public final long[] ticks;
     /** The world tick the dues in {@link #ticks} count from. */
     public final long ticksAt;
+    /** Persistent mobs standing in this chunk (MOB-01); empty for most chunks. */
+    public final java.util.List<SavedMob> mobs;
 
     public ChunkSnapshot(int cx, int cz, byte[] blocks, byte[] meta) {
         this(cx, cz, blocks, meta, new HashMap<>(), new HashMap<>());
@@ -65,8 +67,16 @@ public final class ChunkSnapshot {
                          Map<Integer, ItemStack[]> chests, Map<Integer, Furnace> furnaces,
                          java.util.List<com.mineclone.world.DroppedItem> items, Map<String, byte[]> extra,
                          long ticksAt, long[] ticks) {
+        this(cx, cz, blocks, meta, chests, furnaces, items, extra, ticksAt, ticks, java.util.List.of());
+    }
+
+    public ChunkSnapshot(int cx, int cz, byte[] blocks, byte[] meta,
+                         Map<Integer, ItemStack[]> chests, Map<Integer, Furnace> furnaces,
+                         java.util.List<com.mineclone.world.DroppedItem> items, Map<String, byte[]> extra,
+                         long ticksAt, long[] ticks, java.util.List<SavedMob> mobs) {
         if (ticks == null || ticks.length % 3 != 0 || ticksAt < 0)
             throw new IllegalArgumentException("invalid scheduled ticks");
+        this.mobs = mobs == null ? java.util.List.of() : java.util.List.copyOf(mobs);
         this.ticks = ticks;
         this.ticksAt = ticksAt;
         this.cx = cx; this.cz = cz;

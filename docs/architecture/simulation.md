@@ -153,9 +153,41 @@ exposes them. The session ticks both for the host and the server:
   guest's `C_MOB_HIT` (`Mob.hurtBy`) and an arrow's owner
   (`Hittable.participantId`) pass it. A guest reads as creative until it
   announces its mode, so its kills in the first two seconds drop nothing.
-- **Saving** (`snapshotChunk`): blocks, containers and the items lying in the
-  chunk — live ones and restored ones not yet adopted — in one snapshot, or null
-  when nothing changed. The game and the server call the same method.
+- **Saving** (`snapshotChunk`): blocks, containers, the items lying in the
+  chunk and the animals standing in it — live ones and restored ones not yet
+  adopted — in one snapshot, or null when nothing changed. The game and the
+  server call the same method.
+
+## Mobs stay where they were (MOB-01, MOB-02)
+
+A mob whose temper is not `HOSTILE` is persistent (`Mob.persistent()`): it is
+written with the chunk it stands in (chunk section `entities`, see
+[saves](saves.md)), `MobSpawner.despawnFar` never removes it, and it leaves the
+world only with its chunk. The game's `evictDistantChunks` writes the doomed
+chunks and then calls `WorldSession.releaseEntitiesIn`, which drops their items
+and mobs in one pass — animals are in the write, hostiles simply go. A loaded
+chunk keeps its mob records as pending; `adoptChunkItems` — already the door for
+restored items — brings them into the world when the chunk is live. The
+dedicated server never evicts, so its animals stay while their chunks do;
+LW-03 will fold distant animals back into regional counts.
+
+Every mob carries a world id (`Mob.id`): `EntityStore.assignIds` gives one to
+every mob that has none, from a counter saved in the level section
+`entity_ids`. The session calls it at the start of its mob tick and before a
+chunk snapshot, and the host's network context before `S_MOBS`, so no path
+that adds a mob (spawner, command, autopilot, test) needs to know about ids.
+`EntityStore.adopt` lets a saved mob in with its id and moves the counter past
+it; a record whose id is already live — one mob written into two chunks by a
+crash between their writes — stays out. `S_MOBS` carries the world id in its
+existing `VarInt`, so ids stay positive `int`s (the counter wraps and skips
+live ids past `Integer.MAX_VALUE`) and the protocol is unchanged; a guest keeps
+the same mob across the host's unload and reload, and `C_MOB_HIT` names the mob
+by it.
+
+`MobPersistenceTests` (MP-1…MP-9, ID-1…ID-4) and `NetworkTests` (ID-5, ID-6)
+trace the scenarios of `docs/changes/mob-persistence`; the single-player
+autopilot walks 600 blocks away and back and reopens the world, and checks the
+herd by the spawn comes back with the same ids both times.
 
 `ServerSimulationTests` drives the real server tick: an item on the ground
 (which used to throw out of the tick), items saved in a chunk surviving a server
