@@ -1,0 +1,5 @@
+- [ ] Implement the change described by these files:
+  - [proposal.md](proposal.md)
+  - [specs/mob-persistence/spec.md](specs/mob-persistence/spec.md)
+  - [specs/stable-entity-ids/spec.md](specs/stable-entity-ids/spec.md)
+  - [design.md](design.md)
