@@ -40,6 +40,15 @@ and the boundaries of their measurements.
 Build outputs, logs and scratch artifacts belong under ignored `out*`/`build/`
 folders; check `.gitignore` before creating a new top-level output directory.
 
+## Codagent skills and Agent Validator
+
+Work goes through the `codagent` and `agent-validator` Claude Code plugins. Change
+artifacts (proposal, specs, design, test plan, tasks) live in `docs/changes/<slug>/`;
+the roadmap task card names its slug. `agent-validate run` (from Git Bash, where the
+`claude` review CLI resolves) runs `run-tests.ps1`, `tools/TestRunnerCli.ps1` and a
+Claude review, per `.validator/config.yml`. It does not replace the real render, input
+and network checks the rules below require.
+
 ## Rules that protect worlds and multiplayer
 
 - `BlockType` ordinals are persisted IDs. Append new constants; never reorder,
