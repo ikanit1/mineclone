@@ -2,9 +2,17 @@ package com.mineclone.audio;
 
 import java.util.List;
 
-/** Continuous gusting wind, with shelter/underwater fades and one persistent OpenAL source. */
+/**
+ * Continuous gusting wind, with shelter/underwater fades and one persistent OpenAL source.
+ *
+ * <p>Each wind recording is one gust that rises out of silence and dies back
+ * into it; one of them looped fell into a two-to-three-second lull every turn.
+ * The bed is all of them stitched into one seamless stereo loop ({@link SeamlessLoop}).
+ */
 public final class StormAmbience {
     public static final String LOOP_KEY = "storm-wind";
+    /** Wind is a slow rumble: a short seam would be heard as a change of timbre, so it blends over half a second. */
+    public static final float CROSSFADE_SECONDS = 0.5f;
     private final SoundEngine sound;
     private final List<String> samples;
     private float gain, pitch = 0.85f;
@@ -34,7 +42,7 @@ public final class StormAmbience {
             gain = 0;
             sound.stopLoop(LOOP_KEY);
         } else if (gain > 0) {
-            sound.updateLoopOneOf(LOOP_KEY, samples, gain, pitch);
+            sound.updateLoopAllOf(LOOP_KEY, samples, CROSSFADE_SECONDS, gain, pitch);
         }
     }
 

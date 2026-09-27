@@ -70,11 +70,16 @@ public final class StormWeatherTests {
         check(a.dust == 0 && a.visibility == 1, "world reset has no residual dust");
     }
 
+    private static final List<String> WIND = List.of("wind1.ogg", "wind2.ogg", "wind3.ogg");
+
     private static final class Audio extends SoundEngine {
         boolean playing;
         int updates;
-        @Override public void updateLoopOneOf(String key, List<String> paths, float gain, float pitch) {
+        @Override public void updateLoopAllOf(String key, List<String> paths, float crossfade, float gain, float pitch) {
             check(key.equals(StormAmbience.LOOP_KEY) && gain > 0 && gain <= .65f, "bounded storm source");
+            // Each recording is one gust from silence to silence: looped alone it fell into a lull every turn.
+            check(paths.equals(WIND), "storm wind is stitched from every gust, not one of them");
+            check(crossfade == StormAmbience.CROSSFADE_SECONDS, "wind seams use the wind crossfade");
             playing = true; updates++;
         }
         @Override public void stopLoop(String key) { playing = false; }
@@ -83,7 +88,7 @@ public final class StormWeatherTests {
     private static void audio() {
         for (int state = 0; state < 4; state++) {
             var sound = new Audio();
-            var wind = new StormAmbience(sound, List.of("wind.ogg"));
+            var wind = new StormAmbience(sound, WIND);
             for (int i = 0; i < 600; i++) wind.update(1f / 60, 1, 1, 6, 15, true, false);
             check(sound.updates == 600 && sound.playing, "continuous bed without timer gaps");
             float loud = wind.gain();

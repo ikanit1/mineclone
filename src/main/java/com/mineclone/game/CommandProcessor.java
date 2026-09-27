@@ -7,6 +7,8 @@ import com.mineclone.world.Weather;
 import com.mineclone.world.World;
 import org.joml.Vector3f;
 
+import java.util.Locale;
+
 /**
  * The console line's commands: {@code /time}, {@code /weather}, {@code /tp},
  * {@code /gamemode} and the rest, moved out of {@code Game} whole (SIM-08).
@@ -275,8 +277,9 @@ final class CommandProcessor {
     }
 
     static String formatHours(float hours) {
+        // Locale.ROOT: иначе в ru-RU целые часы выходят «24,0», а дробные — «1.5».
         if (Math.abs(hours - Math.round(hours)) < 0.0001f)
-            return String.format("%.1f", hours);
+            return String.format(Locale.ROOT, "%.1f", hours);
         return String.valueOf(hours);
     }
 }

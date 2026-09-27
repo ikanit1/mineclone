@@ -103,6 +103,8 @@ Moved from the pre-foundation CLAUDE.md on 2026-09-24; structure placement corre
 | Location | Constant | Effect |
 |---|---|---|
 | `AmbientSound` | `WIND_THRESHOLD / WIND_MIN / WIND_MAX` | С какого ветра слышны порывы и как часто |
+| `RainAmbience` / `StormAmbience` | `CROSSFADE_SECONDS` | Длина швов сшитой петли: дождь 0,1 с, ветер 0,5 с |
+| `SeamlessLoop` | `BODY_THRESHOLD_DB` | Где у записи кончается вход из тишины и начинается выход в неё |
 | `RoomAcoustics` | `DECAY_MIN / DECAY_SPAN` | Хвост в закутке и насколько он удлиняется к пещере |
 | `RoomAcoustics` | `SEND_MAX / WET_MIN / WET_SPAN / DAMP_*` | Влажность эха по замкнутости и глушение верха по размеру |
 | `AcousticProbe` | `Room(closed, size)` | Замкнутость ведёт влажность, размер — время затухания |

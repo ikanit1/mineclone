@@ -28,6 +28,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [MusicTrack](../src/main/java/com/mineclone/audio/MusicTrack.java) | Трек каталога: где лежит, на что откликается и насколько его приглушить. |
 | [RainAmbience](../src/main/java/com/mineclone/audio/RainAmbience.java) | Continuous rain bed, independent of the timers for thunder and other ambient cues. |
 | [RoomAcoustics](../src/main/java/com/mineclone/audio/RoomAcoustics.java) | Во что превращается замеренное пространство: влажность, хвост, глухота. |
+| [SeamlessLoop](../src/main/java/com/mineclone/audio/SeamlessLoop.java) | Склеивает короткие записи в одну петлю без провала громкости на стыках. |
 | [SoundEngine](../src/main/java/com/mineclone/audio/SoundEngine.java) | Minimal OpenAL wrapper: load OGG via stb_vorbis, fire one-shots, GC finished sources. |
 | [SoundOcclusion](../src/main/java/com/mineclone/audio/SoundOcclusion.java) | Насколько геометрия глушит звук по пути от источника к уху. |
 | [Sounds](../src/main/java/com/mineclone/audio/Sounds.java) | Maps BlockType -> material -> list of file paths under assets/sounds. |
@@ -482,4 +483,4 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [StructureTypes](../src/main/java/com/mineclone/world/structure/StructureTypes.java) | The structure types of the 1.1 generator (GEN-03). |
 | [StructureWriter](../src/main/java/com/mineclone/world/structure/StructureWriter.java) | Where a structure piece puts its blocks, in world coordinates: the chunk being generated (ChunkWriter) or, in tests, one large buffer. |
 
-Top-level declarations: 351.
+Top-level declarations: 352.

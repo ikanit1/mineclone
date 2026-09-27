@@ -7,8 +7,14 @@ $cp = "$(Join-Path $root 'out-test');$(Join-Path $root 'libs')\*"
 function Invoke-Runner {
     param([string]$Name, [string[]]$Arguments, [int]$Expected = 0, [string]$Classpath = $cp)
     $report = Join-Path $work "$Name-report.txt"
-    $output = @(& java "-Dmineclone.testReport=$report" -cp $Classpath com.mineclone.TestMain @Arguments 2>&1)
-    $code = $LASTEXITCODE
+    # Windows PowerShell 5.1 wraps every stderr line of a native command under 2>&1 in an
+    # error record, and 'Stop' would abort on the refusals the save tests log on purpose.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = @(& java "-Dmineclone.testReport=$report" -cp $Classpath com.mineclone.TestMain @Arguments 2>&1)
+        $code = $LASTEXITCODE
+    } finally { $ErrorActionPreference = $previous }
     $text = $output -join "`n"
     [IO.File]::WriteAllText((Join-Path $work "$Name.log"), $text)
     if ($code -ne $Expected) { throw "$Name expected exit $Expected, got ${code}: $text" }

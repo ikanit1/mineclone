@@ -68,8 +68,8 @@ public class SoundEngine {
     private final Map<String, Integer> buffers = new HashMap<>();
 
     // ---- фоновое декодирование ----------------------------------------
-    /** Что раскодировать. */
-    private record DecodeJob(String path, boolean positional, String key) { }
+    /** Что раскодировать: один файл или, если задан {@code stitch}, петлю из всех этих файлов. */
+    private record DecodeJob(String path, boolean positional, String key, List<String> stitch, float crossfade) { }
     /** Что уже раскодировано и ждёт загрузки в OpenAL. */
     private record Decoded(String key, ShortBuffer pcm, int format, int rate) { }
 
@@ -255,8 +255,53 @@ public class SoundEngine {
             pending.remove(key);
             return;
         }
-        decodeQueue.add(new DecodeJob(path, positional, key));
+        decodeQueue.add(new DecodeJob(path, positional, key, null, 0));
         startDecoder();
+    }
+
+    /** Буфер петли, сшитой из всех записей, или −1, пока она собирается в фоне. */
+    private int loadStitched(List<String> paths, float crossfadeSeconds) {
+        String key = "stitched:" + crossfadeSeconds + ":" + String.join("|", paths);
+        Integer cached = buffers.get(key);
+        if (cached != null)
+            return cached;
+        if (pending.add(key)) {
+            decodeQueue.add(new DecodeJob(null, false, key, List.copyOf(paths), crossfadeSeconds));
+            startDecoder();
+        }
+        return -1;
+    }
+
+    /**
+     * Раскодирует записи и сшивает их в одну петлю — только в фоновом потоке.
+     * Каналы сохраняются: дождь остаётся моно, ветер — стерео. Записи с другой
+     * частотой или другим числом каналов, чем у первой, пропускаются.
+     */
+    private Decoded stitch(List<String> paths, String key, float crossfadeSeconds) {
+        List<short[]> clips = new ArrayList<>();
+        int rate = 0, format = 0;
+        for (String path : paths) {
+            Decoded d = decode(path, false, key);
+            if (d == null)
+                continue;
+            if (rate == 0) {
+                rate = d.rate();
+                format = d.format();
+            }
+            if (d.rate() == rate && d.format() == format) {
+                short[] pcm = new short[d.pcm().remaining()];
+                d.pcm().get(pcm);
+                clips.add(pcm);
+            }
+            MemoryUtil.memFree(d.pcm());
+        }
+        int channels = format == AL10.AL_FORMAT_MONO16 ? 1 : 2;
+        short[] loop = SeamlessLoop.stitch(clips, channels, rate, crossfadeSeconds);
+        if (loop.length == 0)
+            return null;
+        ShortBuffer upload = MemoryUtil.memAllocShort(loop.length);
+        upload.put(loop).flip();
+        return new Decoded(key, upload, format, rate);
     }
 
     /** Синхронное декодирование — только в фоновом потоке. */
@@ -407,17 +452,43 @@ public class SoundEngine {
         if (!ok || key == null || paths == null || paths.isEmpty())
             return;
         LoopingSource loop = loopingSources.get(key);
-        if (loop == null) {
-            String chosen = paths.get(rng.nextInt(paths.size()));
-            int buffer = loadBuffer(chosen);
-            if (buffer == -1)
-                return;
-            int src = acquireSource();
-            AL10.alSourcei(src, AL10.AL_BUFFER, buffer);
-            AL10.alSourcei(src, AL10.AL_LOOPING, AL10.AL_TRUE);
-            loop = new LoopingSource(src);
-            loopingSources.put(key, loop);
-        }
+        if (loop == null)
+            loop = startLoop(key, loadBuffer(paths.get(rng.nextInt(paths.size()))));
+        if (loop != null)
+            holdRelativeLoop(loop, volume, pitch);
+    }
+
+    /**
+     * Как {@link #updateLoopOneOf}, но петля сшита из всех записей сразу
+     * ({@link SeamlessLoop}) швами длиной {@code crossfadeSeconds}. Разовая
+     * реплика, которая входит из тишины и уходит в тишину (двухсекундная запись
+     * дождя, порыв ветра), закольцованная сама по себе, проваливается на каждом
+     * круге. Пока петля собирается в фоновом потоке, звука нет и запрос
+     * повторяется со следующего кадра — как при обычной загрузке.
+     */
+    public void updateLoopAllOf(String key, List<String> paths, float crossfadeSeconds, float volume, float pitch) {
+        if (!ok || key == null || paths == null || paths.isEmpty())
+            return;
+        LoopingSource loop = loopingSources.get(key);
+        if (loop == null)
+            loop = startLoop(key, loadStitched(paths, crossfadeSeconds));
+        if (loop != null)
+            holdRelativeLoop(loop, volume, pitch);
+    }
+
+    /** Заводит закольцованный источник под ключ; null, пока буфер не готов. */
+    private LoopingSource startLoop(String key, int buffer) {
+        if (buffer == -1)
+            return null;
+        int src = acquireSource();
+        AL10.alSourcei(src, AL10.AL_BUFFER, buffer);
+        AL10.alSourcei(src, AL10.AL_LOOPING, AL10.AL_TRUE);
+        LoopingSource loop = new LoopingSource(src);
+        loopingSources.put(key, loop);
+        return loop;
+    }
+
+    private void holdRelativeLoop(LoopingSource loop, float volume, float pitch) {
         loop.volume = volume;
         int src = loop.source;
         sourceMuffle.remove(src);
@@ -544,7 +615,9 @@ public class SoundEngine {
             while (true) {
                 try {
                     DecodeJob job = decodeQueue.take();
-                    Decoded d = decode(job.path(), job.positional(), job.key());
+                    Decoded d = job.stitch() != null
+                            ? stitch(job.stitch(), job.key(), job.crossfade())
+                            : decode(job.path(), job.positional(), job.key());
                     if (d == null)
                         pending.remove(job.key());
                     else

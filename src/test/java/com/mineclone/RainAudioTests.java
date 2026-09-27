@@ -9,17 +9,21 @@ final class RainAudioTests {
         r.run("rain fades under cover underwater and after clearing then releases its source", RainAudioTests::fades);
         r.run("rain fades consistently across frame rates and resets between worlds", RainAudioTests::timing);
     }
+    private static final List<String> SAMPLES=List.of("rain1.ogg","rain2.ogg","rain3.ogg");
     private static final class Audio extends SoundEngine {
         int updates;
         boolean playing;
-        @Override public void updateLoopOneOf(String key,List<String> paths,float volume,float pitch) {
+        @Override public void updateLoopAllOf(String key,List<String> paths,float crossfade,float volume,float pitch) {
             check(key.equals(RainAmbience.LOOP_KEY),"dedicated rain source");
+            // One two-second recording looped dipped audibly every turn.
+            check(paths.equals(SAMPLES),"the bed is stitched from every recording, not one of them");
+            check(crossfade==RainAmbience.CROSSFADE_SECONDS,"rain seams use the rain crossfade");
             check(volume>0 && volume<=.55f,"bounded gain");
             playing=true;updates++;
         }
         @Override public void stopLoop(String key) { playing=false; }
     }
-    private static RainAmbience rain(Audio audio) { return new RainAmbience(audio,List.of("rain.ogg")); }
+    private static RainAmbience rain(Audio audio) { return new RainAmbience(audio,SAMPLES); }
     private static void check(boolean value,String message) { if(!value)throw new AssertionError(message); }
     private static void continuous() {
         Audio audio=new Audio();var rain=rain(audio);

@@ -1,0 +1,41 @@
+# Agent Validator for Mineclone (Codagent skills). Checks mirror CI; reviews stay
+# with Claude, the same provider the development agents use.
+cli:
+  default_preference:
+    - claude
+  adapters:
+    claude:
+      allow_tool_use: false
+      thinking_budget: high
+
+# The repository's default branch is master, not main.
+base_branch: origin/master
+
+entry_points:
+  - path: .
+    exclude:
+      - validator_logs
+      - .validator
+      - out
+      - out-test
+      - out-net
+      - build
+      - libs
+      - saves
+      - graphify-out
+    checks:
+      # Compiles main + test sources into out-test/ and runs every headless check.
+      # It never touches out/, which a running game may be using.
+      - tests:
+          command: powershell -NoProfile -ExecutionPolicy Bypass -File run-tests.ps1
+      # Same as the CI step: filters, listing, environment precedence, failure exit.
+      - runner-cli:
+          command: powershell -NoProfile -ExecutionPolicy Bypass -File tools/TestRunnerCli.ps1
+    reviews:
+      # Disabled until the standalone `claude` CLI is logged in on this machine
+      # (run `claude`, then `/login`, in a terminal): without it the review gate
+      # errors and blocks every run. Until then, reviews happen in the agent session.
+      - all-reviewers:
+          builtin: all-reviewers
+          num_reviews: 1
+          enabled: false
