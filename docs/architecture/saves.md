@@ -172,6 +172,25 @@ layout would take a new section name; `ticks` is never reinterpreted. What the
 dues mean after a load — lateness, the two-day cap, a clock behind the save — is
 in [blocks](blocks.md#scheduled-ticks-blk-04).
 
+`entities` (MOB-01, optional — written only when an animal stands in the chunk)
+is `VarInt count` (≤ 256), then per mob `VarInt length` (≤ 1024) and that many
+bytes: `UTF type, VarLong id, f32 x, y, z, yaw, health`, followed by whatever a
+newer build appended. The tail is kept on the mob and written back; a record of
+a type this build does not know stays with its chunk as a pending record, never
+enters the world and is written back unchanged. The reader refuses (quarantine)
+more than 256 records, a record over 1024 bytes or shorter than its fields, a
+non-finite number, an id or health that is not positive, and trailing bytes. A
+chunk without the section has no mobs, which is every chunk before MOB-01; no
+migration. Only persistent mobs are written (every temper but `HOSTILE`); a
+chunk that held mobs at its last write is written again, so a herd that walked
+away leaves no copy behind, and every chunk with animals is rewritten at each
+save, as chunks with lying items already were.
+
+The level section `entity_ids` (MOB-02) holds the next mob id as one `VarLong`.
+A world without it starts at 1; an unreadable one starts at 1 too, and every
+adopted mob moves the counter past its id. Ids stay positive `int`s because
+`S_MOBS` writes them as a `VarInt`. Details: [simulation](simulation.md#mobs-stay-where-they-were-mob-01-mob-02).
+
 `chunks/ledger.dat` (GEN-02) records which generator made each chunk; its format
 and meaning are in [worldgen.md](worldgen.md#chunk-ledger-gen-02). For saving it
 behaves like a chunk: `saveLedgerAsync` queues the whole file behind the session

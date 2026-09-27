@@ -106,6 +106,18 @@ final class Autopilot {
 
         void spawnAnimationMobs();
 
+        /** Скот — коровы, свиньи, овцы — в ряд рядом с точкой появления; ни хищников, ни добычи. */
+        void spawnAnimals();
+
+        /** Id живых животных в радиусе от точки по горизонтали, по возрастанию (MOB-01, MOB-02). */
+        long[] animalIdsNear(float x, float z, float radius);
+
+        /** Творческий режим с полётом: дальний телепорт не кончится падением. */
+        void flyInCreative();
+
+        /** Обратно в выживание, на ноги. */
+        void walkInSurvival();
+
         int mobTypeMask();
 
         void equipItem(String id);
@@ -335,6 +347,27 @@ final class Autopilot {
 
     /** Высота игрока перед тем, как он пошёл в стену. */
     private static float wallStartY;
+
+    /** Where the herd stands and which ids it had before the long walk (MOB-01, MOB-02). */
+    private static final float HERD_RADIUS = 24f;
+    private static float[] herdAt;
+    private static long[] herdIds;
+
+    private static boolean herdHere(Driver d) {
+        long[] here = d.animalIdsNear(herdAt[0], herdAt[1], HERD_RADIUS);
+        for (long id : herdIds)
+            if (java.util.Arrays.binarySearch(here, id) < 0)
+                return false;
+        return true;
+    }
+
+    private static boolean herdGone(Driver d) {
+        long[] here = d.animalIdsNear(herdAt[0], herdAt[1], HERD_RADIUS);
+        for (long id : herdIds)
+            if (java.util.Arrays.binarySearch(here, id) >= 0)
+                return false;
+        return true;
+    }
 
     /**
      * Площадка со стеной в два блока прямо по курсу.
@@ -593,6 +626,32 @@ final class Autopilot {
                             "walking into a wall lifted the player by " + rose + " blocks");
                 ok("a wall stops the player instead of lifting them");
             }),
+            // Животные остаются на месте (MOB-01) и остаются собой (MOB-02): стадо
+            // у точки появления переживает уход за 600 блоков — выгрузку своих
+            // чанков — и возвращение, с теми же id. Путь настоящий: выгрузка игры,
+            // запись, загрузчик и приём ожившего чанка.
+            step("place a herd by the spawn", 0.3f, Driver::spawnAnimals),
+            step("remember the herd", 1.5f, d -> {
+                int[] home = d.spawnBlock();
+                herdAt = new float[] { home[0] + 0.5f, home[2] - 7.5f };   // x, z of the row's middle
+                herdIds = d.animalIdsNear(herdAt[0], herdAt[1], 12f);
+                if (herdIds.length < 4)
+                    throw new IllegalStateException("only " + herdIds.length + " animals stood by the spawn");
+                ok("a herd of " + herdIds.length + " animals by the spawn");
+            }),
+            step("walk 600 blocks away", 0.2f, d -> {
+                d.flyInCreative();
+                d.teleport(herdAt[0] + 600f, d.spawnBlock()[1] + 31f, herdAt[1]);
+            }),
+            when("the herd leaves the world with its chunks", 0.5f, Autopilot::herdGone,
+                    d -> ok("the herd left the world with its chunks")),
+            step("come back", 0.5f, d -> {
+                int[] home = d.spawnBlock();
+                d.teleport(home[0] + 0.5f, home[1] + 1f, home[2] + 0.5f);
+                d.walkInSurvival();
+            }),
+            when("the herd comes back", 0.5f, Autopilot::herdHere,
+                    d -> ok("the herd came back after a 600-block walk with the same " + herdIds.length + " ids")),
             step("Esc", 0.2f, d -> d.pressKey(GLFW_KEY_ESCAPE)),
             expect("Esc opens the pause and it stays open", 0.6f, "PAUSED"),
             step("Esc", 0.1f, d -> d.pressKey(GLFW_KEY_ESCAPE)),
@@ -625,6 +684,8 @@ final class Autopilot {
             when("the same world loads a second time", 8f,
                     d -> in(d, "PLAYING"),
                     d -> System.out.println("autopilot: ok - same world loaded a second time")),
+            when("the herd survived leaving and reopening the world", 0.5f, Autopilot::herdHere,
+                    d -> ok("the herd survived leaving and reopening the world with its ids")),
             step("pause after re-entry", 0.2f, d -> d.pressKey(GLFW_KEY_ESCAPE)),
             expect("pause opens after re-entry", 0.6f, "PAUSED"),
             step("return to menu again", 0.2f,

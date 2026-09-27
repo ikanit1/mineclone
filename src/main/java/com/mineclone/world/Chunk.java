@@ -860,6 +860,46 @@ public class Chunk {
         return out;
     }
 
+    // ---- мобы из сейва (MOB-01) ----------------------------------------------
+
+    /**
+     * Мобы, прочитанные из сейва и ещё не вошедшие в мир, и записи видов, которых
+     * эта сборка не знает: такие не входят никогда и пишутся обратно как пришли.
+     */
+    private java.util.List<com.mineclone.save.SavedMob> pendingMobs = java.util.List.of();
+    /** Сколько мобов ушло в последнюю запись: был хоть один — запись обязательна. */
+    public int savedMobs;
+
+    public synchronized void setPendingMobs(java.util.List<com.mineclone.save.SavedMob> mobs) {
+        assertMainThread();
+        pendingMobs = mobs == null ? java.util.List.of() : new java.util.ArrayList<>(mobs);
+        savedMobs = pendingMobs.size();
+    }
+
+    /** Отдаёт мобов из сейва ровно один раз. */
+    public synchronized java.util.List<com.mineclone.save.SavedMob> takePendingMobs() {
+        assertMainThread();
+        java.util.List<com.mineclone.save.SavedMob> out = pendingMobs;
+        pendingMobs = java.util.List.of();
+        return out;
+    }
+
+    /**
+     * Возвращает записи, которые не вошли в мир (неизвестный вид). В отличие от
+     * {@link #setPendingMobs}, не трогает {@link #savedMobs}: в файле по-прежнему
+     * лежат и вошедшие мобы, и чанк обязан переписаться, когда они уйдут.
+     */
+    public synchronized void returnPendingMobs(java.util.List<com.mineclone.save.SavedMob> mobs) {
+        assertMainThread();
+        pendingMobs = mobs == null || mobs.isEmpty() ? java.util.List.of() : new java.util.ArrayList<>(mobs);
+    }
+
+    /** Копия ещё не вошедших мобов — для записи, как у предметов. */
+    public synchronized java.util.List<com.mineclone.save.SavedMob> copyPendingMobs() {
+        assertMainThread();
+        return new java.util.ArrayList<>(pendingMobs);
+    }
+
     /** Заменяет набор печей целиком — при восстановлении из сейва. */
     public void restoreFurnaces(java.util.Map<Integer, Furnace> src) {
         assertMainThread();

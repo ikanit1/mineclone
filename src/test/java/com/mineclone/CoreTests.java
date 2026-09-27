@@ -2756,10 +2756,11 @@ final class CoreTests {
     private static void testMobSpawnerDespawn() {
         com.mineclone.world.entity.MobSpawner sp = new com.mineclone.world.entity.MobSpawner(3L);
         java.util.List<com.mineclone.world.entity.Mob> mobs = new java.util.ArrayList<>();
+        // Hostile: animals are not despawned by distance since MOB-01 (MobPersistenceTests MP-5).
         com.mineclone.world.entity.Mob near =
-                spawnAt(com.mineclone.world.entity.MobType.COW, 8.5f, 11f, 8.5f, 1L);
+                spawnAt(com.mineclone.world.entity.MobType.ZOMBIE, 8.5f, 11f, 8.5f, 1L);
         com.mineclone.world.entity.Mob far =
-                spawnAt(com.mineclone.world.entity.MobType.COW, 8.5f, 11f, 900f, 2L);
+                spawnAt(com.mineclone.world.entity.MobType.ZOMBIE, 8.5f, 11f, 900f, 2L);
         mobs.add(near);
         mobs.add(far);
         sp.despawnFar(mobs, new org.joml.Vector3f(8.5f, 11f, 8.5f));

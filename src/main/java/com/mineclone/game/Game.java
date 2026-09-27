@@ -862,6 +862,7 @@ public class Game {
         java.util.LinkedHashMap<String, byte[]> savedSections =
                 new java.util.LinkedHashMap<>(levelExtraSections);
         savedSections.put(com.mineclone.sim.WorldClock.SAVE_SECTION, worldClock.encode());
+        savedSections.put(com.mineclone.sim.EntityStore.IDS_SECTION, entities.encodeIds());
         var loaded = loadedLevelTemplate;
         com.mineclone.save.LevelData d = new com.mineclone.save.LevelData(
                 worldDisplayName,
@@ -881,6 +882,12 @@ public class Game {
     }
 
     /** Чанк и лежащие в нём предметы — той же записью, что у выделенного сервера. */
+    /** The host gives new mobs their world ids before it sends them (MOB-02); a guest has none to give. */
+    void assignMobIds() {
+        if (session != null)
+            entities.assignIds();
+    }
+
     private void saveChunkIfModified(Chunk c) {
         if (session == null) return;
         var snapshot = session.snapshotChunk(c);
@@ -1235,6 +1242,8 @@ public class Game {
         setGameMode(gameMode);
 
         mobs.clear();
+        // Before any chunk loads: mobs restored with their chunks keep their ids (MOB-02).
+        entities.restoreIds(levelExtraSections.get(com.mineclone.sim.EntityStore.IDS_SECTION));
         playerStructures.clear();
         ropeRenderer.clear();
         items.clear();
@@ -2315,12 +2324,15 @@ public class Game {
             doomedKeys.add(World.key(c.cx, c.cz));
             saveChunkIfModified(c);
         }
-        // Один проход по предметам на всю выгрузку. Прежний removeIf стоял
-        // внутри цикла по чанкам, то есть список предметов перебирался столько
-        // раз, сколько чанков выгружается за раз.
-        items.removeIf(e -> doomedKeys.contains(World.key(
-                Math.floorDiv((int) Math.floor(e.position.x), Chunk.SIZE_X),
-                Math.floorDiv((int) Math.floor(e.position.z), Chunk.SIZE_Z))));
+        // Один проход по предметам и мобам на всю выгрузку, уже после записи:
+        // животные ушли в неё (MOB-01). Прежний removeIf стоял внутри цикла по
+        // чанкам, то есть список перебирался столько раз, сколько чанков уходит.
+        if (session != null)
+            session.releaseEntitiesIn(doomedKeys);
+        else
+            items.removeIf(e -> doomedKeys.contains(World.key(
+                    Math.floorDiv((int) Math.floor(e.position.x), Chunk.SIZE_X),
+                    Math.floorDiv((int) Math.floor(e.position.z), Chunk.SIZE_Z))));
 
         for (Chunk c : doomed) {
             long key = World.key(c.cx, c.cz);
@@ -4912,6 +4924,45 @@ public class Game {
                 mobs.add(new com.mineclone.world.entity.Mob(type, x, y + 0.05f, z,
                         new java.util.Random(type.ordinal())));
             }
+        }
+
+        @Override
+        public void spawnAnimals() {
+            com.mineclone.world.entity.MobType[] herd = {
+                    com.mineclone.world.entity.MobType.COW, com.mineclone.world.entity.MobType.PIG,
+                    com.mineclone.world.entity.MobType.SHEEP };
+            for (int i = 0; i < 6; i++) {
+                float x = worldSpawn.x + (i - 2.5f) * 3f;
+                float z = worldSpawn.z - 8;
+                int y = Chunk.SIZE_Y - 2;
+                while (y > 1 && !world.getBlock((int) Math.floor(x), y - 1, (int) Math.floor(z)).solid) y--;
+                mobs.add(new com.mineclone.world.entity.Mob(herd[i % 3], x, y + 0.05f, z,
+                        new java.util.Random(100 + i)));
+            }
+        }
+
+        @Override
+        public long[] animalIdsNear(float x, float z, float radius) {
+            float r2 = radius * radius;
+            return mobs.stream()
+                    .filter(m -> m.persistent() && !m.dead && m.id > 0)
+                    .filter(m -> {
+                        float dx = m.position.x - x, dz = m.position.z - z;
+                        return dx * dx + dz * dz <= r2;
+                    })
+                    .mapToLong(m -> m.id).sorted().toArray();
+        }
+
+        @Override
+        public void flyInCreative() {
+            gameMode = com.mineclone.world.GameMode.CREATIVE;
+            player.flying = true;
+        }
+
+        @Override
+        public void walkInSurvival() {
+            gameMode = com.mineclone.world.GameMode.SURVIVAL;
+            player.flying = false;
         }
 
         @Override

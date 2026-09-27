@@ -91,9 +91,9 @@ reserved and are never reused.
 | 22 | `C_CHUNK_REQUEST` | guest → host | reliable | a chunk's delta, please |
 | 23 | `S_CHUNK_DELTA` | host → guest | reliable | **v8**: `i32 cx, cz, u8 generator version, bytes cells` differing from fresh generation |
 | 24 | `S_TIME` | host → guests | reliable, every 5 s | time of day |
-| 30 | `S_MOBS` | host → guests | unreliable, 12 Hz | every mob, `MobSnapshot`: 85 bytes a mob |
+| 30 | `S_MOBS` | host → guests | unreliable, 12 Hz | every mob, `MobSnapshot`: 85 bytes a mob; the `varInt` id is the mob's world id (MOB-02), stable across the host's unload and reload — same format, no version change |
 | 32 | `S_ITEMS` | host → guests | reliable, 4 Hz | every item on the ground |
-| 34 | `C_MOB_HIT` | guest → host | reliable | `varInt mob, f32 damage, knockback, from x, z` |
+| 34 | `C_MOB_HIT` | guest → host | reliable | `varInt mob` (its world id), `f32 damage, knockback, from x, z` |
 | 35 | `S_PROJECTILES` | host → guests | unreliable, 12 Hz | arrows in flight and stuck |
 | 36 | `C_SHOOT` | guest → host | reliable | a shot for the host to fire |
 | 37 | `S_PLAYER_HURT` | host → guest | reliable | **v8**: `PlayerHurt`, see above |

@@ -155,6 +155,8 @@ public final class DedicatedServer implements NetContext {
         if (lvl != null)
             worldClock = com.mineclone.sim.WorldClock.fromSaved(lvl.timeOfDay,
                     lvl.extraSections.get(com.mineclone.sim.WorldClock.SAVE_SECTION));
+        // Before any chunk loads: mobs restored with their chunks keep their ids (MOB-02).
+        entities.restoreIds(lvl != null ? lvl.extraSections.get(EntityStore.IDS_SECTION) : null);
         session = new WorldSession(world, worldClock, new MobSpawner(seed ^ 0x51E7B0BL), entities,
                 net.participants(), sessionHost, WorldEvents.NONE);
         loader.setChunkLiveListener(session::adoptChunkItems);
@@ -475,6 +477,7 @@ public final class DedicatedServer implements NetContext {
     private void saveLevel() {
         var sections = new java.util.LinkedHashMap<>(levelExtraSections);
         sections.put(com.mineclone.sim.WorldClock.SAVE_SECTION, worldClock.encode());
+        sections.put(EntityStore.IDS_SECTION, entities.encodeIds());
         // A server has no local owner to recapture. Preserve the checkpoint from
         // the loaded single-player world instead of replacing its inventory,
         // pending cursor stacks and vitals with a fresh empty player.
@@ -646,6 +649,11 @@ public final class DedicatedServer implements NetContext {
     @Override
     public List<Mob> mobs() {
         return entities.mobs;
+    }
+
+    @Override
+    public void assignMobIds() {
+        entities.assignIds();
     }
 
     @Override

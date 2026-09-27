@@ -157,8 +157,9 @@ public final class Multiplayer implements NetTransport.Listener {
     private final Set<Long> requestedChunks = new HashSet<>();
     private final Deque<Long> chunkQueue = new ArrayDeque<>();
 
-    // ---- хозяин: нумерация существ и фоновой расчёт дельт ----
-    private final Map<Mob, Integer> mobIds = new IdentityHashMap<>();
+    // ---- хозяин: нумерация предметов и фоновой расчёт дельт ----
+    // Мобы идут под своими мировыми id (MOB-02): корова, которую хозяин выгрузил
+    // и загрузил снова, остаётся для участника той же коровой.
     private final Map<ItemEntity, Integer> itemIds = new IdentityHashMap<>();
     private int nextEntityId = 1;
     private ExecutorService deltaWorker;
@@ -289,7 +290,6 @@ public final class Multiplayer implements NetTransport.Listener {
         players.clear();
         requestedChunks.clear();
         chunkQueue.clear();
-        mobIds.clear();
         itemIds.clear();
         shownMobs.clear();
         mobPoses.clear();
@@ -1346,11 +1346,20 @@ public final class Multiplayer implements NetTransport.Listener {
     private void sendMobs() {
         List<Mob> mobs = ctx.mobs();
         if (mobs == null) return;
-        PacketBuf b = channel.packet(NetProto.S_MOBS, false, NetChannel.ALL);
-        b.i64(++mobSequence).varInt(mobs.size());
+        ctx.assignMobIds();
+        int sendable = 0;
         for (Mob m : mobs)
-            MobSnapshot.capture(mobIds.computeIfAbsent(m, k -> nextEntityId++), m).write(b);
-        mobIds.keySet().retainAll(new HashSet<>(mobs));
+            if (wireId(m) > 0) sendable++;
+        PacketBuf b = channel.packet(NetProto.S_MOBS, false, NetChannel.ALL);
+        b.i64(++mobSequence).varInt(sendable);
+        for (Mob m : mobs)
+            if (wireId(m) > 0)
+                MobSnapshot.capture(wireId(m), m).write(b);
+    }
+
+    /** A mob's world id as {@code S_MOBS} carries it; 0 when it has none yet (MOB-02). */
+    private static int wireId(Mob m) {
+        return m.id > 0 && m.id <= Integer.MAX_VALUE ? (int) m.id : 0;
     }
 
     private void onMobs(int from, PacketBuf in) {
@@ -1525,10 +1534,12 @@ public final class Multiplayer implements NetTransport.Listener {
         // knocks nothing back, and a broken knockback is none.
         float push = Float.isFinite(knockback) ? Math.max(0f, Math.min(4f, knockback)) : 0f;
         boolean placed = Float.isFinite(fromX) && Float.isFinite(fromZ);
-        for (Map.Entry<Mob, Integer> e : mobIds.entrySet()) {
-            if (e.getValue() != id)
+        List<Mob> mobs = ctx.mobs();
+        if (mobs == null || id <= 0)
+            return;
+        for (Mob m : mobs) {
+            if (wireId(m) != id)
                 continue;
-            Mob m = e.getKey();
             if (!m.dead)
                 m.damage(com.mineclone.world.damage.DamageSource.byPlayer(com.mineclone.world.damage.DamageType.MELEE,
                         from, placed ? fromX : Float.NaN, placed ? m.position.y : Float.NaN,

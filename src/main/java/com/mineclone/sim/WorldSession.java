@@ -2,7 +2,9 @@ package com.mineclone.sim;
 
 import com.mineclone.item.Items;
 import com.mineclone.item.loot.LootContext;
+import com.mineclone.save.ChunkSectionCodec;
 import com.mineclone.save.ChunkSnapshot;
+import com.mineclone.save.SavedMob;
 import com.mineclone.world.BlockType;
 import com.mineclone.world.Chunk;
 import com.mineclone.world.DroppedItem;
@@ -171,6 +173,8 @@ public final class WorldSession {
      */
     public void tickMobs(float dt) {
         List<Mob> mobs = entities.mobs;
+        // Whoever added a mob (spawner, command, autopilot) left its id to us (MOB-02).
+        entities.assignIds();
         Vector3f focus = host.mobFocus();
         float daylight = clock.daylight();
 
@@ -361,10 +365,50 @@ public final class WorldSession {
         addItem(ItemEntity.popped(stack, x, y, z, random));
     }
 
-    /** Items restored with a chunk enter the world once the chunk is live. */
+    /**
+     * The items and mobs standing in these chunks leave the world — after the chunks
+     * were written: animals are in the write (MOB-01), hostile mobs simply go, as
+     * distance would have taken them anyway. One pass for the whole eviction.
+     */
+    public void releaseEntitiesIn(java.util.Set<Long> chunkKeys) {
+        if (chunkKeys.isEmpty())
+            return;
+        entities.items.removeIf(e -> chunkKeys.contains(chunkKey(e.position)));
+        entities.mobs.removeIf(m -> chunkKeys.contains(chunkKey(m.position)));
+    }
+
+    private static long chunkKey(Vector3f p) {
+        return World.key(Math.floorDiv((int) Math.floor(p.x), Chunk.SIZE_X),
+                Math.floorDiv((int) Math.floor(p.z), Chunk.SIZE_Z));
+    }
+
+    /**
+     * Items and mobs restored with a chunk enter the world once the chunk is live. A
+     * mob of a type this build does not know stays with the chunk and is written back;
+     * a mob whose id is already live does not enter twice (MOB-02).
+     */
     public void adoptChunkItems(Chunk chunk) {
         for (DroppedItem d : chunk.takePendingItems())
             entities.items.add(ItemEntity.restored(d, random));
+        List<SavedMob> unknown = null;
+        for (SavedMob saved : chunk.takePendingMobs()) {
+            MobType type = MobType.byName(saved.type());
+            if (type == null) {
+                if (unknown == null)
+                    unknown = new ArrayList<>();
+                unknown.add(saved);
+                continue;
+            }
+            Mob m = new Mob(type, saved.x(), saved.y(), saved.z(), random);
+            m.id = saved.id();
+            m.yaw = saved.yaw();
+            m.health = Math.min(saved.health(), type.maxHealth);
+            byte[] tail = saved.tail();
+            m.savedTail = tail.length == 0 ? null : tail;
+            entities.adopt(m);
+        }
+        if (unknown != null)
+            chunk.returnPendingMobs(unknown);
     }
 
     /** What falling blocks broke on landing: a torch under sand drops as an item. */
@@ -466,7 +510,8 @@ public final class WorldSession {
         if (c.isReadOnly())
             return null;
         List<DroppedItem> dropped = itemsInChunk(c);
-        if (!c.modified && dropped.isEmpty() && c.savedItems == 0)
+        List<SavedMob> animals = mobsInChunk(c);
+        if (!c.modified && dropped.isEmpty() && c.savedItems == 0 && animals.isEmpty() && c.savedMobs == 0)
             return null;
         byte[] blocks = c.copyBlocks(), meta = c.copyMeta();
         world.falling.snapshot(c, blocks, meta, dropped);
@@ -479,10 +524,34 @@ public final class WorldSession {
             ticks = c.scheduledTicks().entries();
         }
         ChunkSnapshot snapshot = new ChunkSnapshot(c.cx, c.cz, blocks, meta, c.copyChests(), c.copyFurnaces(),
-                dropped, c.copyExtraSections(), ticksAt, ticks);
+                dropped, c.copyExtraSections(), ticksAt, ticks, animals);
         c.savedItems = dropped.size();
+        c.savedMobs = animals.size();
         c.modified = false;
         return snapshot;
+    }
+
+    /**
+     * The persistent mobs standing in a chunk — restored ones not yet adopted and
+     * records of unknown types first — as records for a write on another thread. The
+     * section holds at most {@link ChunkSectionCodec#MAX_MOB_RECORDS}; beyond that the
+     * rest are not written rather than failing the whole chunk.
+     */
+    private List<SavedMob> mobsInChunk(Chunk c) {
+        List<SavedMob> out = c.copyPendingMobs();
+        entities.assignIds();
+        for (Mob m : entities.mobs) {
+            if (out.size() >= ChunkSectionCodec.MAX_MOB_RECORDS)
+                break;
+            if (!m.persistent() || m.dead || !(m.health > 0f) || m.id <= 0)
+                continue;
+            if (Math.floorDiv((int) Math.floor(m.position.x), Chunk.SIZE_X) != c.cx
+                    || Math.floorDiv((int) Math.floor(m.position.z), Chunk.SIZE_Z) != c.cz)
+                continue;
+            out.add(new SavedMob(m.type.name(), m.id, m.position.x, m.position.y, m.position.z, m.yaw, m.health,
+                    m.savedTail));
+        }
+        return out;
     }
 
     /** Copies of the items lying in a chunk, for a write on another thread. */

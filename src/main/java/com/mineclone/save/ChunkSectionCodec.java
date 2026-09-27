@@ -56,7 +56,68 @@ public final class ChunkSectionCodec {
         }));
         if (snapshot.ticks.length > 0)
             sections.put(TICKS, bytes(data -> writeTicks(data, snapshot)));
+        if (!snapshot.mobs.isEmpty())
+            sections.put(ENTITIES, bytes(data -> writeMobs(data, snapshot.mobs)));
         SectionCodec.write(out, sections);
+    }
+
+    /**
+     * Persistent mobs (MOB-01): {@code VarInt count}, then per mob {@code VarInt length}
+     * and that many bytes — {@code UTF type, VarLong id, f32 x, y, z, yaw, health} and
+     * whatever a newer build appended, kept as the record's tail. Written only when a mob
+     * stands in the chunk; a chunk without the section has none. A layout that cannot
+     * be read by appending would take a new section name.
+     */
+    static final String ENTITIES = "entities";
+    public static final int MAX_MOB_RECORDS = 256;
+    static final int MAX_MOB_RECORD_BYTES = 1024;
+
+    private static void writeMobs(DataOutputStream data, List<SavedMob> mobs) throws IOException {
+        if (mobs.size() > MAX_MOB_RECORDS) throw new IOException("too many mobs in a chunk");
+        VarInt.write(data, mobs.size());
+        for (SavedMob mob : mobs) {
+            byte[] record = bytes(out -> {
+                if (mob.type() == null || mob.type().isEmpty()) throw new IOException("mob without a type");
+                if (mob.id() <= 0) throw new IOException("mob without an id");
+                if (!(mob.health() > 0f)) throw new IOException("dead mob in a chunk write");
+                out.writeUTF(mob.type());
+                VarLong.write(out, mob.id());
+                finite(mob.x()); finite(mob.y()); finite(mob.z()); finite(mob.yaw());
+                out.writeFloat(mob.x()); out.writeFloat(mob.y()); out.writeFloat(mob.z());
+                out.writeFloat(mob.yaw()); out.writeFloat(finite(mob.health()));
+                out.write(mob.tail());
+            });
+            if (record.length > MAX_MOB_RECORD_BYTES) throw new IOException("mob record too long");
+            VarInt.write(data, record.length);
+            data.write(record);
+        }
+    }
+
+    private static List<SavedMob> readMobs(byte[] payload) throws IOException {
+        if (payload == null) return List.of();
+        try (DataInputStream data = new DataInputStream(new ByteArrayInputStream(payload))) {
+            int count = VarInt.read(data);
+            if (count < 0 || count > MAX_MOB_RECORDS) throw new IOException("invalid mob count " + count);
+            List<SavedMob> mobs = new ArrayList<>(count);
+            for (int i = 0; i < count; i++) {
+                int length = VarInt.read(data);
+                if (length <= 0 || length > MAX_MOB_RECORD_BYTES) throw new IOException("invalid mob record length " + length);
+                byte[] record = new byte[length];
+                data.readFully(record);
+                try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(record))) {
+                    String type = in.readUTF();
+                    long id = VarLong.read(in);
+                    float x = finite(in.readFloat()), y = finite(in.readFloat()), z = finite(in.readFloat());
+                    float yaw = finite(in.readFloat()), health = finite(in.readFloat());
+                    if (type.isEmpty()) throw new IOException("mob without a type");
+                    if (id <= 0) throw new IOException("mob without an id");
+                    if (!(health > 0f)) throw new IOException("dead mob in a chunk");
+                    mobs.add(new SavedMob(type, id, x, y, z, yaw, health, in.readAllBytes()));
+                }
+            }
+            end(data);
+            return mobs;
+        }
     }
 
     /**
@@ -153,7 +214,8 @@ public final class ChunkSectionCodec {
         }
         long[] ticksAt = { 0 };
         long[] ticks = readTicks(sections.remove(TICKS), ticksAt);
-        return new ChunkSnapshot(cx, cz, blocks, meta, chests, furnaces, items, sections, ticksAt[0], ticks);
+        List<SavedMob> mobs = readMobs(sections.remove(ENTITIES));
+        return new ChunkSnapshot(cx, cz, blocks, meta, chests, furnaces, items, sections, ticksAt[0], ticks, mobs);
     }
 
     private static byte[] bytes(Writer writer) throws IOException {
