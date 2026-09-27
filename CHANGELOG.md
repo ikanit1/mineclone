@@ -5,6 +5,8 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 ## [Unreleased]
 
 ### Fixed
+- Rain is one steady sound. It used to loop a single two-second recording that fades in and out, so the rain dipped by about 30 dB and restarted the same pattern every two seconds; now all eight recordings are stitched into one seamless 12-second loop with crossfades.
+- Storm wind no longer dies away every few seconds. It looped one gust that rises out of silence and falls back into it, so a third of every turn was a lull; now all four gusts are stitched into one 22-second stereo loop that keeps its swells.
 - `/time add` reports whole hours with a dot on every system locale (`Added 24.0 hours`, not `24,0` on a Russian Windows), matching its fractional form and the number it accepts.
 - A chest or furnace spills its contents whatever removes it — a creeper's blast and a `/fill` included — instead of only when broken by hand or by a guest; an open chest window can no longer hand out what already spilled.
 - A guest sleeping in a bedroll no longer jumps its own clock to dawn only to be snapped back: the bedroll sets the guest's respawn point, and the night passes when the host sleeps.
