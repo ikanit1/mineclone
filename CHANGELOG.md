@@ -5,6 +5,7 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 ## [Unreleased]
 
 ### Fixed
+- `/time add` reports whole hours with a dot on every system locale (`Added 24.0 hours`, not `24,0` on a Russian Windows), matching its fractional form and the number it accepts.
 - A chest or furnace spills its contents whatever removes it — a creeper's blast and a `/fill` included — instead of only when broken by hand or by a guest; an open chest window can no longer hand out what already spilled.
 - A guest sleeping in a bedroll no longer jumps its own clock to dawn only to be snapped back: the bedroll sets the guest's respawn point, and the night passes when the host sleeps.
 - Lava is no longer a target: the crosshair passes through it to the block beneath, as it does through water, so lava cannot be "broken" by clicking it.
