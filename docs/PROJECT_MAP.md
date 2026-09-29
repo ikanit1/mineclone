@@ -249,6 +249,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [TextureAtlas](../src/main/java/com/mineclone/render/TextureAtlas.java) | Texture atlas assembled purely from PNG sprites on disk. |
 | [ThirdPersonItemRenderer](../src/main/java/com/mineclone/render/ThirdPersonItemRenderer.java) | World-space held items: shared tool silhouettes, real depth, lighting and shadows. |
 | [Thumbnail](../src/main/java/com/mineclone/render/Thumbnail.java) | Превью мира для списка миров: уменьшенный кадр без интерфейса. |
+| [TrailRenderer](../src/main/java/com/mineclone/render/TrailRenderer.java) | One instanced draw of persistent, pixel-edged soil wear above exposed grass. |
 | [TrajectoryRenderer](../src/main/java/com/mineclone/render/TrajectoryRenderer.java) | Пунктирный предпросмотр баллистической дуги заряжаемого броска. |
 | [UiRenderer](../src/main/java/com/mineclone/render/UiRenderer.java) | Пакетный рисовальщик интерфейса в экранных пикселях (начало — левый верх). |
 
@@ -294,6 +295,12 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [WorldClock](../src/main/java/com/mineclone/sim/WorldClock.java) | World time and a monotonic 20 Hz simulation clock, independent of rendering. |
 | [WorldEvents](../src/main/java/com/mineclone/sim/WorldEvents.java) | What the simulation tells whoever shows it: sounds, particles, footprints, sound cues. |
 | [WorldSession](../src/main/java/com/mineclone/sim/WorldSession.java) | The simulation of one open world, run by the game's host and the dedicated server alike, so neither keeps its own copy of the rules. |
+
+## com.mineclone.sim.ecology
+
+| Type | Purpose |
+|---|---|
+| [Trample](../src/main/java/com/mineclone/sim/ecology/Trample.java) | Bounded, saved pressure on ground cells; an absent section means untouched land. |
 
 ## com.mineclone.ui
 
@@ -484,4 +491,4 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [StructureTypes](../src/main/java/com/mineclone/world/structure/StructureTypes.java) | The structure types of the 1.1 generator (GEN-03). |
 | [StructureWriter](../src/main/java/com/mineclone/world/structure/StructureWriter.java) | Where a structure piece puts its blocks, in world coordinates: the chunk being generated (ChunkWriter) or, in tests, one large buffer. |
 
-Top-level declarations: 353.
+Top-level declarations: 355.

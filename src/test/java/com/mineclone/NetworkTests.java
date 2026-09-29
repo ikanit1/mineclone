@@ -33,6 +33,7 @@ import com.mineclone.world.BlockType;
 import com.mineclone.world.Chunk;
 import com.mineclone.world.ItemStack;
 import com.mineclone.world.World;
+import com.mineclone.sim.ecology.Trample;
 import com.mineclone.world.entity.ItemEntity;
 import com.mineclone.world.entity.Mob;
 import org.joml.Vector3f;
@@ -93,6 +94,7 @@ final class NetworkTests {
         r.run("joining a room brings the host's seed, name and clock",
                 NetworkTests::testHandshake);
         r.run("host block edits reach the guest", NetworkTests::testHostEditReachesGuest);
+        r.run("surface trail stages reach a guest live, on join, and on fade", NetworkTests::testTrailStagesReachGuest);
         r.run("guest block edits go through the host and come back",
                 NetworkTests::testGuestEditGoesThroughHost);
         r.run("remote block actions reach every listener", NetworkTests::testRemoteBlockAction);
@@ -580,6 +582,40 @@ final class NetworkTests {
         p.pump(3);
         assertEq("снос доехал", BlockType.AIR, p.guest.world.getBlock(3, 70, 4));
         p.close();
+    }
+
+    private static void testTrailStagesReachGuest() {
+        Pair p = Pair.open(7L, "Тропы", 0.5f);
+        try {
+            int x = 4, y = 70, z = 4;
+            p.host.world.getChunk(0, 0);
+            p.guest.world.getChunk(0, 0);
+            p.host.world.setBlock(x, y, z, BlockType.GRASS);
+            p.pump(3);
+            for (int i = 0; i < 6; i++)
+                Trample.step(p.host.world, x + 0.5f, y + 1f, z + 0.5f, 0);
+            p.pump(3);
+            assertEq("хозяин оставил траву", BlockType.GRASS, p.host.world.getBlock(x, y, z));
+            assertEq("стадия дошла в живую комнату", (byte) 3, p.guest.world.getBlockMeta(x, y, z));
+            assertTrue("гость рисует тропу", p.guest.world.getChunkIfExists(0, 0)
+                    .trailVisuals().containsKey(Chunk.idx(x, y, z)));
+
+            World fresh = new World(7L);
+            p.guest.world = fresh;
+            fresh.setBlockObserver(p.guestNet::onWorldBlockChanged);
+            fresh.getChunk(0, 0);
+            p.guestNet.noteChunkLoaded(0, 0);
+            p.await(() -> fresh.getBlockMeta(x, y, z) == 3);
+            assertTrue("новый гость рисует уже проложенную тропу", fresh.getChunkIfExists(0, 0)
+                    .trailVisuals().containsKey(Chunk.idx(x, y, z)));
+
+            p.host.world.setTrampleDay(3);
+            Trample.advanceChunk(p.host.world, p.host.world.getChunkIfExists(0, 0), 3);
+            p.pump(3);
+            assertEq("затухание дошло до гостя", (byte) 0, fresh.getBlockMeta(x, y, z));
+            assertTrue("затухшая тропа больше не рисуется", fresh.getChunkIfExists(0, 0)
+                    .trailVisuals().isEmpty());
+        } finally { p.close(); }
     }
 
     private static void testGuestEditGoesThroughHost() {

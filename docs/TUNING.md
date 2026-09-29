@@ -60,6 +60,8 @@ Moved from the pre-foundation CLAUDE.md on 2026-09-24; structure placement corre
 | `Structures` | `REGION_CHUNKS / MIN_CHUNK_GAP / candidateKind()` | Один кандидат на регион 10x10 с шансом 3/4, минимум 7 чанков между кандидатами |
 | `BlockTicker` | `TICK_INTERVAL / SAMPLES_PER_CHUNK / RADIUS_CHUNKS` | Темп жизни мира (0.25 с, 3 позиции, 4 чанка) |
 | `BlockTicker` | `GRASS_LIGHT_MIN` | Свет, при котором трава живёт и расползается |
+| `Trample` | `PATH_THRESHOLD / DAILY_FADE / MAX_ENTRIES / visualStage()` | Six crossings reach visible stage 3 without replacing grass; pressure fades by two per game day; at most 4096 tracked cells per chunk |
+| `TrailRenderer` | `RADIUS / MAX_VISIBLE` | Draw persistent surface wear within 28 blocks in one batch, capped at 4096 visible cells |
 | `BlockTicker` | `LEAF_SUPPORT_RANGE` | На каком расстоянии листва держится за ствол |
 | `BlockTicker` | `RAIN_EXTINGUISH / SNOWFALL_MIN` | Пороги осадков для тушения огня и снегопада |
 | `BlockTicker` | `SNOW_MAX_LEVEL` | Предельная толщина покрова (7 = почти полный блок) |

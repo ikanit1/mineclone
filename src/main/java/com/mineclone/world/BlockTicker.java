@@ -70,6 +70,7 @@ public final class BlockTicker {
                     Chunk c = world.getChunkIfExists(cx, cz);
                     if (c == null)
                         continue;
+                    com.mineclone.sim.ecology.Trample.advanceChunk(world, c, world.trampleDay());
                     for (int i = 0; i < SAMPLES_PER_CHUNK; i++) {
                         int x = rnd.nextInt(Chunk.SIZE_X);
                         int y = rnd.nextInt(Chunk.SIZE_Y);
@@ -192,6 +193,8 @@ public final class BlockTicker {
     private void fallSnow(World world, int wx, int wy, int wz, boolean snowfall) {
         if (!snowfall)
             return;
+        if (com.mineclone.sim.ecology.Trample.pressureAt(world, wx, wy - 1, wz) > 0)
+            return;
         if (!world.getBlock(wx, wy - 1, wz).solid)
             return;
         if (!openToSky(world, wx, wy, wz))
@@ -210,7 +213,8 @@ public final class BlockTicker {
         boolean snowing = snowingAt(world, wx, wz, snowfall);
         boolean lit = world.getBlockLightWorld(wx, wy, wz) >= GRASS_LIGHT_MIN;
 
-        if (snowing && level < SNOW_MAX_LEVEL && openToSky(world, wx, wy, wz)) {
+        if (snowing && level < SNOW_MAX_LEVEL && openToSky(world, wx, wy, wz)
+                && com.mineclone.sim.ecology.Trample.pressureAt(world, wx, wy - 1, wz) == 0) {
             world.setSnowLevel(wx, wy, wz, level + 1);
             return;
         }
@@ -345,7 +349,18 @@ public final class BlockTicker {
      * так снежный дёрн расползается снегом, а обычный — травой, и правило не
      * знает про биомы вообще.
      */
-    private void spreadGrass(World world, int wx, int wy, int wz) {
+    /** A retired trail gets one immediate chance to regrow; ordinary dirt keeps random ticks. */
+    public static void regrowFootpath(World world, int wx, int wy, int wz) {
+        if (world.getBlock(wx, wy, wz) == BlockType.DIRT)
+            spreadGrass(world, wx, wy, wz);
+    }
+
+    private static void spreadGrass(World world, int wx, int wy, int wz) {
+        Chunk chunk = world.getChunkIfExists(Math.floorDiv(wx, Chunk.SIZE_X), Math.floorDiv(wz, Chunk.SIZE_Z));
+        if (chunk != null)
+            com.mineclone.sim.ecology.Trample.advanceChunk(world, chunk, world.trampleDay());
+        if (com.mineclone.sim.ecology.Trample.pressureAt(world, wx, wy, wz) > 0)
+            return;
         if (!openToLight(world, wx, wy, wz))
             return;
         if (lightAt(world, wx, wy + 1, wz) < GRASS_LIGHT_MIN)
