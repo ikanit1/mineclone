@@ -37,23 +37,42 @@ public final class Trample {
     public long lastDay() { return lastDay; }
     public int size() { return pressure.size(); }
     public int count(int index) { return pressure.getOrDefault(index, 0); }
+    public void forEach(java.util.function.BiConsumer<Integer, Integer> action) {
+        pressure.forEach(action);
+    }
+
+    /** Five visible stages keep the surface gradual without a mesh rebuild on every footfall. */
+    public static int visualStage(int count) {
+        if (count <= 0) return 0;
+        if (count < 3) return 1;
+        if (count < PATH_THRESHOLD) return 2;
+        if (count < 10) return 3;
+        if (count < 16) return 4;
+        return 5;
+    }
+
+    public record CellChange(int index, int pressure) {}
 
     /** Fades once per elapsed day, including days while this chunk was unloaded. */
-    public List<Integer> advance(long day) {
+    public List<CellChange> advance(long day) {
         if (day <= lastDay) return List.of();
         long elapsed = day - lastDay;
         lastDay = day;
         int fade = elapsed >= 128 ? 255 : (int) elapsed * DAILY_FADE;
-        List<Integer> expired = new ArrayList<>();
+        List<CellChange> changed = new ArrayList<>();
         for (var it = pressure.entrySet().iterator(); it.hasNext();) {
             Map.Entry<Integer, Integer> entry = it.next();
             int next = entry.getValue() - fade;
             if (next <= 0) {
-                expired.add(entry.getKey());
+                changed.add(new CellChange(entry.getKey(), 0));
                 it.remove();
-            } else entry.setValue(next);
+            } else {
+                if (visualStage(next) != visualStage(entry.getValue()))
+                    changed.add(new CellChange(entry.getKey(), next));
+                entry.setValue(next);
+            }
         }
-        return expired;
+        return changed;
     }
 
     /** @return pressure after the step, or zero when the bounded section is full. */
@@ -111,13 +130,19 @@ public final class Trample {
         Trample tracks = chunk.trampleOrNull();
         if (tracks == null || day <= tracks.lastDay() || chunk.isReadOnly()) return;
         boolean hadTracks = tracks.size() > 0;
-        List<Integer> expired = tracks.advance(day);
+        List<CellChange> changed = tracks.advance(day);
         if (hadTracks) chunk.modified = true;
-        for (int index : expired) {
+        for (CellChange cell : changed) {
+            int index = cell.index();
             int x = chunk.cx * Chunk.SIZE_X + index % Chunk.SIZE_X;
             int y = index / (Chunk.SIZE_X * Chunk.SIZE_Z);
             int z = chunk.cz * Chunk.SIZE_Z + index / Chunk.SIZE_X % Chunk.SIZE_Z;
-            BlockTicker.regrowFootpath(world, x, y, z);
+            BlockType ground = world.getBlock(x, y, z);
+            if ((ground == BlockType.GRASS || ground == BlockType.SNOWY_GRASS)
+                    && world.getBlockMeta(x, y, z) != (byte) visualStage(cell.pressure()))
+                world.setBlock(x, y, z, ground, (byte) visualStage(cell.pressure()));
+            if (cell.pressure() == 0)
+                BlockTicker.regrowFootpath(world, x, y, z);
         }
     }
 
@@ -156,7 +181,8 @@ public final class Trample {
             if (level == 0) world.setBlock(x, supportY, z, BlockType.AIR);
             else world.setSnowLevel(x, supportY, z, level - 1);
         }
-        if (count >= PATH_THRESHOLD && (ground == BlockType.GRASS || ground == BlockType.SNOWY_GRASS))
-            world.setBlock(x, groundY, z, BlockType.DIRT);
+        if ((ground == BlockType.GRASS || ground == BlockType.SNOWY_GRASS)
+                && world.getBlockMeta(x, groundY, z) != (byte) visualStage(count))
+            world.setBlock(x, groundY, z, ground, (byte) visualStage(count));
     }
 }

@@ -38,9 +38,10 @@ import org.joml.Vector3fc;
 /** LW-07: walking makes durable trails in the authoritative world. */
 final class TrailTests {
     static void runAll(TestMain.Runner r) {
-        r.run("twenty walks make a path and ten quiet days regrow it", TrailTests::walkAndRegrow);
+        r.run("twenty walks deepen a surface trail and ten quiet days erase it", TrailTests::walkAndRegrow);
         r.run("trails survive a real chunk save, unload and restore", TrailTests::saveAndRestore);
         r.run("a moving cow presses the same path as a participant", TrailTests::animal);
+        r.run("visual trail stages avoid terrain remeshing on each step", TrailTests::visualStages);
         r.run("steps clear snow; snowfall returns after pressure fades", TrailTests::snow);
         r.run("trail section bounds and damaged bytes are rejected", TrailTests::bounds);
         r.run("a newer trail section leaves its saved chunk untouched", TrailTests::futureSectionProtected);
@@ -94,16 +95,19 @@ final class TrailTests {
                 session.tickMobs(0.05f);
             }
         }
-        for (int x = 3; x <= 9; x++)
-            check(world.getBlock(x, 65, 8) == BlockType.DIRT, "walking did not make a continuous path at " + x);
-        check(world.getBlock(5, 65, 7) == BlockType.GRASS, "a neighbouring cell was trampled");
+        for (int x = 3; x <= 9; x++) {
+            check(world.getBlock(x, 65, 8) == BlockType.GRASS, "walking replaced the ground block at " + x);
+            check(world.getBlockMeta(x, 65, 8) == 5, "walking did not deepen the surface at " + x);
+        }
+        check(world.getBlockMeta(5, 65, 7) == 0, "a neighbouring cell was trampled");
         BlockTicker ticker = new BlockTicker(1L);
         ticker.apply(world, 5, 65, 8);
-        check(world.getBlock(5, 65, 8) == BlockType.DIRT, "fresh path regrew immediately");
+        check(world.getBlockMeta(5, 65, 8) == 5, "fresh path faded immediately");
         world.setTrampleDay(10);
         Trample.advanceChunk(world, world.getChunkIfExists(0, 0), 10);
         for (int x = 3; x <= 9; x++)
-            check(world.getBlock(x, 65, 8) == BlockType.GRASS, "quiet path did not regrow at " + x);
+            check(world.getBlock(x, 65, 8) == BlockType.GRASS && world.getBlockMeta(x, 65, 8) == 0,
+                    "quiet path did not disappear at " + x);
     }
 
     private static void saveAndRestore() throws Exception {
@@ -113,7 +117,8 @@ final class TrailTests {
             World world = grassWorld();
             for (int i = 0; i < 9; i++) Trample.step(world, 8.5f, 66f, 8.5f, 2);
             Chunk c = world.getChunkIfExists(0, 0);
-            check(world.getBlock(8, 65, 8) == BlockType.DIRT, "test trail did not form");
+            check(world.getBlock(8, 65, 8) == BlockType.GRASS && world.getBlockMeta(8, 65, 8) == 3,
+                    "test trail did not form on grass");
             WorldSession session = new WorldSession(world, new WorldClock(0.5), new MobSpawner(1),
                     new EntityStore(), new Participants(), () -> new Vector3f(), WorldEvents.NONE);
             var snapshot = session.snapshotChunk(c);
@@ -125,11 +130,13 @@ final class TrailTests {
             loader = new ChunkLoader(reopened, null, save, "trail");
             loader.setMeshing(false);
             Chunk loaded = loader.loadNow(0, 0);
-            check(loaded.get(8, 65, 8) == BlockType.DIRT, "saved path block vanished");
+            check(loaded.get(8, 65, 8) == BlockType.GRASS && loaded.getMeta(8, 65, 8) == 3,
+                    "saved path stage vanished");
             check(Trample.pressureAt(reopened, 8, 65, 8) == 9, "trail count vanished on load");
             reopened.setTrampleDay(12);
             Trample.advanceChunk(reopened, loaded, 12);
-            check(loaded.get(8, 65, 8) == BlockType.GRASS, "unloaded days did not regrow the path");
+            check(loaded.get(8, 65, 8) == BlockType.GRASS && loaded.getMeta(8, 65, 8) == 0,
+                    "unloaded days did not erase the path");
         } finally {
             if (loader != null) loader.shutdown();
             try (var files = Files.walk(root)) {
@@ -159,7 +166,24 @@ final class TrailTests {
                 session.tickMobs(0.05f);
             }
         }
-        check(world.getBlock(5, 65, 8) == BlockType.DIRT, "the cow did not leave a path");
+        check(world.getBlock(5, 65, 8) == BlockType.GRASS && world.getBlockMeta(5, 65, 8) >= 3,
+                "the cow did not leave a surface path");
+    }
+
+    private static void visualStages() {
+        World world = grassWorld();
+        Chunk chunk = world.getChunkIfExists(0, 0);
+        check(chunk.clearDirtyIfCurrent(chunk.contentVersion()), "test chunk was not prepared");
+        int[] packets = { 0 };
+        world.setBlockObserver((x, y, z, old, now, meta) -> packets[0]++);
+        for (int i = 0; i < 5; i++)
+            Trample.step(world, 5.5f, 66f, 8.5f, 0);
+        check(world.getBlock(5, 65, 8) == BlockType.GRASS, "visual wear replaced grass");
+        check(world.getBlockMeta(5, 65, 8) == 2, "five steps did not reach stage two");
+        check(chunk.trailVisuals().get(Chunk.idx(5, 65, 8)) == 2, "renderer lost the visual cell");
+        check(packets[0] == 2, "every footfall sent a network update: " + packets[0]);
+        check(!chunk.isDirty(), "visual wear rebuilt the whole terrain mesh");
+        check(chunk.modified, "pressure-only changes were omitted from saves");
     }
 
     private static void snow() {

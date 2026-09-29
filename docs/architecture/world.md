@@ -66,9 +66,10 @@ After publication, container mutation belongs to the main simulation thread;
   [blocks](blocks.md#scheduled-ticks-blk-04)). Восстановленный чанк отдаёт свои
   тики симуляции при публикации (`World.tickArrivals`), не патчем после неё.
 - `sim.ecology.Trample` (LW-07) keeps foot traffic in an optional, bounded chunk
-  section. The server or host presses grass into dirt and thins snow as players
-  and animals cross cells; `BlockTicker` fades the pressure by game day and
-  allows abandoned paths to regrow. No new block id or network packet is used.
+  section. The server or host deepens a five-stage soil-wear overlay above
+  unchanged grass and thins snow as players and animals cross cells;
+  `BlockTicker` fades the pressure by game day. No new block id or network
+  packet is used.
 - `World.setBlock()` пересчитывает свет и будит воду **только когда это нужно**:
   `WaterSimulator` будится при смене проходимости или когда в замене участвует
   вода (снятие источника проходимость не меняет, но бассейн обязан стечь).

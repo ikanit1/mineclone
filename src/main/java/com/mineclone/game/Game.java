@@ -194,6 +194,7 @@ public class Game {
     private final FrameProfiler profiler = new FrameProfiler();
 
     DecalRenderer decals;
+    private TrailRenderer trails;
 
     /** Открытый сундук: его слоты и координаты блока. */
     private com.mineclone.world.ItemStack[] openChest;
@@ -928,6 +929,7 @@ public class Game {
         ui.setAtlas(atlas.getTextureId());
         ui.registerFonts(font, smallFont);
         decals = new DecalRenderer();
+        trails = new TrailRenderer();
         precipitation = new PrecipitationRenderer();
         backdrop = new Backdrop();
         menuDissolve = new com.mineclone.render.MenuDissolve();
@@ -3586,6 +3588,8 @@ public class Game {
         if (!projectiles.isEmpty())
             projectileRenderer.render(proj, view, projectiles, world, atlas, lighting, daylight);
 
+        if (trails != null)
+            trails.render(proj, view, world, player.camera.position, atlas, lighting);
         if (decals != null)
             decals.render(proj, view, atlas.getTextureId(), hdr);
 
@@ -5006,6 +5010,11 @@ public class Game {
         }
 
         @Override
+        public int blockMetaAt(int x, int y, int z) {
+            return world == null ? 0 : Byte.toUnsignedInt(world.getBlockMeta(x, y, z));
+        }
+
+        @Override
         public void setBlockAt(int x, int y, int z, String block) {
             if (world == null)
                 return;
@@ -5498,6 +5507,8 @@ public class Game {
                 smallFont.destroy();
             if (decals != null)
                 decals.destroy();
+            if (trails != null)
+                trails.destroy();
             if (precipitation != null)
                 precipitation.destroy();
             if (backdrop != null)

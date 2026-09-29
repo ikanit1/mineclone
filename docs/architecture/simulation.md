@@ -53,16 +53,19 @@ ticks, furnaces, spawning and despawning run around every participant (SIM-05).
 The host's `WorldSession` samples a participant or persistent animal only when it
 enters a new ground cell. A jump over the ground or a teleport longer than three
 blocks does not stamp all intervening cells. After repeated crossings, `Trample`
-turns grass into dirt and presses snow. Guests receive the resulting ordinary
-block changes; the guest's simulation does not create trails. The same session
+deepens a five-stage soil-wear pattern on grass without changing its block type;
+snow layers are physically pressed down. Guests receive the quantized stage in
+ordinary block-metadata updates; the guest's simulation does not create trails. The same session
 runs on the dedicated server. The position bookkeeping is transient; the pressure
 belongs to the chunk and is saved there.
 
 `BlockTicker` asks loaded chunks to fade pressure once per elapsed absolute game
-day, including days while they were unloaded. While pressure remains, grass
-cannot reclaim dirt and snowfall cannot cover the path. On expiration, the
-existing grass-spread rule gets an immediate chance to restore exposed dirt;
-snowfall can cover it again. The world clock's absolute day includes sleep, while
+day, including days while they were unloaded. The rendered stage recedes only
+when it crosses a visual threshold, so most footsteps and day ticks avoid a
+network update and never rebuild the terrain mesh. While pressure remains,
+snowfall cannot cover the path. On expiration, legacy dirt paths get an
+immediate chance at the existing grass-spread rule; snowfall can cover it again.
+The world clock's absolute day includes sleep, while
 setting time backwards never reverses a fade.
 
 ## World session: mobs (SIM-03)

@@ -249,6 +249,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [TextureAtlas](../src/main/java/com/mineclone/render/TextureAtlas.java) | Texture atlas assembled purely from PNG sprites on disk. |
 | [ThirdPersonItemRenderer](../src/main/java/com/mineclone/render/ThirdPersonItemRenderer.java) | World-space held items: shared tool silhouettes, real depth, lighting and shadows. |
 | [Thumbnail](../src/main/java/com/mineclone/render/Thumbnail.java) | Превью мира для списка миров: уменьшенный кадр без интерфейса. |
+| [TrailRenderer](../src/main/java/com/mineclone/render/TrailRenderer.java) | One instanced draw of persistent, pixel-edged soil wear above exposed grass. |
 | [TrajectoryRenderer](../src/main/java/com/mineclone/render/TrajectoryRenderer.java) | Пунктирный предпросмотр баллистической дуги заряжаемого броска. |
 | [UiRenderer](../src/main/java/com/mineclone/render/UiRenderer.java) | Пакетный рисовальщик интерфейса в экранных пикселях (начало — левый верх). |
 
@@ -490,4 +491,4 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [StructureTypes](../src/main/java/com/mineclone/world/structure/StructureTypes.java) | The structure types of the 1.1 generator (GEN-03). |
 | [StructureWriter](../src/main/java/com/mineclone/world/structure/StructureWriter.java) | Where a structure piece puts its blocks, in world coordinates: the chunk being generated (ChunkWriter) or, in tests, one large buffer. |
 
-Top-level declarations: 354.
+Top-level declarations: 355.

@@ -133,6 +133,9 @@ final class Autopilot {
         /** Имя блока в мире или пусто, если мира нет. */
         String blockAt(int x, int y, int z);
 
+        /** Visible wear stage stored in the ground metadata. */
+        int blockMetaAt(int x, int y, int z);
+
         /** Поставить блок напрямую — как это сделал бы игрок. */
         void setBlockAt(int x, int y, int z, String block);
 
@@ -807,19 +810,32 @@ final class Autopilot {
                 int[] end = floorAt(d, 9, 0);
                 d.lookAt(end[0] + 2.5f, end[1] + 2.62f, end[2] + 0.5f);
             }));
+            if (pass == 1) {
+                route.add(step("verify the growing trail", 0.3f, d -> {
+                    int[] at = floorAt(d, 5, 0);
+                    int stage = d.blockMetaAt(at[0], at[1], at[2]);
+                    if (!"GRASS".equals(d.blockAt(at[0], at[1], at[2])) || stage < 1 || stage >= 5)
+                        throw new IllegalStateException("the early trail did not gradually mark grass: " + stage);
+                    ok("native walking began a surface trail without replacing grass");
+                }));
+                route.add(step("capture the growing trail", 0.5f, d -> d.shot("trail-growing")));
+            }
         }
         route.add(step("verify the walked trail", 0.3f, d -> {
             int[] at = floorAt(d, 5, 0);
-            if (!"DIRT".equals(d.blockAt(at[0], at[1], at[2])))
-                throw new IllegalStateException("native walking did not press the grass into a path");
-            ok("native walking formed a dirt path");
+            if (!"GRASS".equals(d.blockAt(at[0], at[1], at[2]))
+                    || d.blockMetaAt(at[0], at[1], at[2]) != 5)
+                throw new IllegalStateException("native walking did not deepen the surface trail");
+            ok("native walking formed a full surface trail");
         }));
         route.add(step("capture the used trail", 0.5f, d -> d.shot("trail-used")));
         route.add(step("leave the trail for ten days", 0.5f, d -> d.advanceDays(10)));
         route.add(when("the abandoned trail regrows", 0.5f, d -> {
             int[] at = floorAt(d, 5, 0);
-            return "GRASS".equals(d.blockAt(at[0], at[1], at[2]));
+            return "GRASS".equals(d.blockAt(at[0], at[1], at[2]))
+                    && d.blockMetaAt(at[0], at[1], at[2]) == 0;
         }, d -> ok("the abandoned native trail regrew")));
+        route.add(step("let passing particles clear", 3.0f, d -> {}));
         route.add(step("capture the regrown trail", 0.5f, d -> d.shot("trail-regrown")));
         return route;
     }

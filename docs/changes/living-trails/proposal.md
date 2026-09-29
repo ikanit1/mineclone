@@ -13,9 +13,11 @@ restart and then recover when that route is abandoned.
 ## What changes
 
 Players and persistent animals crossing a ground cell add bounded pressure to
-its chunk. Six crossings turn exposed grass into dirt. Snow thins and is kept
-off a used trail. Pressure fades by two each elapsed game day; at zero, exposed
-dirt can regrow and snowfall can cover the route. The host and dedicated server
-own these changes, which use existing block sync.
+its chunk. Grass remains grass: five visible wear stages gradually reveal an
+irregular soil trail over the surface. Connected footprints join into a path
+without full-block edges. Snow still thins and stays off a used trail. Pressure
+fades by two each elapsed game day; the visible path recedes and snowfall can
+cover the route again. The host and dedicated server own these changes. Existing
+block metadata updates carry the visual stages to guests.
 
 No new block id, item, generator version or network message is introduced.
