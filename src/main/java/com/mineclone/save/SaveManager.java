@@ -1034,6 +1034,9 @@ public final class SaveManager {
             }
             requireEnd(in);
             return new ChunkLoad.Loaded(new ChunkSnapshot(cx, cz, blocks, meta, chests, furnaces, items));
+        } catch (com.mineclone.sim.ecology.Trample.UnsupportedVersion newer) {
+            // This build cannot simulate the newer track layout. Keep the source read-only.
+            return new ChunkLoad.TooNew(SaveFormat.CHUNK_VERSION + 1, SaveFormat.CHUNK_VERSION);
         } catch (IOException | IllegalArgumentException | SecurityException e) {
             return new ChunkLoad.Unreadable(readReason(e));
         }

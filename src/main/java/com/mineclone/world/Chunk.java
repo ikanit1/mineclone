@@ -818,17 +818,37 @@ public class Chunk {
      */
     private java.util.List<DroppedItem> pendingItems = java.util.List.of();
     private final java.util.Map<String, byte[]> extraSections = new java.util.LinkedHashMap<>();
+    private com.mineclone.sim.ecology.Trample trample;
+
+    public com.mineclone.sim.ecology.Trample trampleOrNull() {
+        assertMainThread();
+        return trample;
+    }
+
+    public com.mineclone.sim.ecology.Trample trample(long day) {
+        assertMainThread();
+        if (trample == null) trample = new com.mineclone.sim.ecology.Trample(day);
+        return trample;
+    }
 
     public void restoreExtraSections(java.util.Map<String, byte[]> sections) {
         assertMainThread();
         extraSections.clear();
         sections.forEach((key, value) -> extraSections.put(key, value.clone()));
+        byte[] saved = extraSections.remove(com.mineclone.sim.ecology.Trample.SECTION);
+        try {
+            trample = saved == null ? null : com.mineclone.sim.ecology.Trample.decode(saved);
+        } catch (java.io.IOException invalid) {
+            throw new IllegalArgumentException("invalid validated trample section", invalid);
+        }
     }
 
     public java.util.Map<String, byte[]> copyExtraSections() {
         assertMainThread();
         java.util.Map<String, byte[]> copy = new java.util.LinkedHashMap<>();
         extraSections.forEach((key, value) -> copy.put(key, value.clone()));
+        if (trample != null && trample.size() > 0)
+            copy.put(com.mineclone.sim.ecology.Trample.SECTION, trample.encode());
         return copy;
     }
     /** Сколько предметов ушло в последнюю запись: был хоть один — запись обязательна. */

@@ -93,6 +93,9 @@ final class Autopilot {
         /** Поставить игрока в точку мира. */
         void teleport(float x, float y, float z);
 
+        /** Skip whole days through the live world clock for a terrain recovery check. */
+        void advanceDays(int days);
+
         /** Повернуть взгляд на точку мира. */
         void lookAt(float x, float y, float z);
 
@@ -231,6 +234,7 @@ final class Autopilot {
      * применяет чужую правку.
      */
     private static final String NET_MODE = System.getProperty("mineclone.autopilot.net", "");
+    private static final boolean TRAIL_MODE = Boolean.getBoolean("mineclone.autopilot.trail");
     private static final int NET_PORT =
             Integer.getInteger("mineclone.autopilot.netPort", com.mineclone.net.LanTransport.DEFAULT_PORT);
     /**
@@ -767,6 +771,59 @@ final class Autopilot {
             step("Esc closes creative", 0.3f, d -> d.pressKey(GLFW_KEY_ESCAPE)),
             expect("Esc leaves the creative window", 0.6f, "PLAYING")));
 
+    /** Native movement and rendered before/after frames for the Living World trail. */
+    private List<Step> trailSteps() {
+        List<Step> route = new java.util.ArrayList<>();
+        route.add(step("create a trail test world", 0.2f, d -> d.act(MenuAction.create(
+                new WorldSettings("Trail smoke", 20260930L, GameMode.SURVIVAL)))));
+        route.add(when("trail world loaded", 0.5f, d -> in(d, "PLAYING"), d -> ok("trail world loaded")));
+        route.add(step("prepare a lit grass lane", 0.3f, d -> {
+            for (int dx = -1; dx <= 10; dx++)
+                for (int dz = -1; dz <= 1; dz++) {
+                    int[] at = floorAt(d, dx, dz);
+                    d.setBlockAt(at[0], at[1], at[2], "GRASS");
+                    for (int y = at[1] + 1; y < 128; y++) d.setBlockAt(at[0], y, at[2], "AIR");
+                    if (dx == -1 || dx == 10) {
+                        d.setBlockAt(at[0], at[1] + 1, at[2], "STONE");
+                        d.setBlockAt(at[0], at[1] + 2, at[2], "STONE");
+                    }
+                }
+            int[] start = floorAt(d, 0, 0), end = floorAt(d, 9, 0);
+            d.teleport(start[0] + 0.5f, start[1] + 1.001f, start[2] + 0.5f);
+            d.lookAt(end[0] + 0.5f, end[1] + 2.62f, end[2] + 0.5f);
+            if (!"GRASS".equals(d.blockAt(start[0] + 5, start[1], start[2])))
+                throw new IllegalStateException("grass lane was not placed in the loaded world");
+        }));
+        for (int pass = 0; pass < 10; pass++) {
+            route.add(step("walk trail outward " + pass, 0.1f, d -> d.holdKey(GLFW_KEY_W, true)));
+            route.add(step("turn back on trail " + pass, 2.3f, d -> {
+                d.holdKey(GLFW_KEY_W, false);
+                int[] start = floorAt(d, 0, 0);
+                d.lookAt(start[0] - 2.5f, start[1] + 2.62f, start[2] + 0.5f);
+            }));
+            route.add(step("walk trail home " + pass, 0.1f, d -> d.holdKey(GLFW_KEY_W, true)));
+            route.add(step("turn toward trail " + pass, 2.3f, d -> {
+                d.holdKey(GLFW_KEY_W, false);
+                int[] end = floorAt(d, 9, 0);
+                d.lookAt(end[0] + 2.5f, end[1] + 2.62f, end[2] + 0.5f);
+            }));
+        }
+        route.add(step("verify the walked trail", 0.3f, d -> {
+            int[] at = floorAt(d, 5, 0);
+            if (!"DIRT".equals(d.blockAt(at[0], at[1], at[2])))
+                throw new IllegalStateException("native walking did not press the grass into a path");
+            ok("native walking formed a dirt path");
+        }));
+        route.add(step("capture the used trail", 0.5f, d -> d.shot("trail-used")));
+        route.add(step("leave the trail for ten days", 0.5f, d -> d.advanceDays(10)));
+        route.add(when("the abandoned trail regrows", 0.5f, d -> {
+            int[] at = floorAt(d, 5, 0);
+            return "GRASS".equals(d.blockAt(at[0], at[1], at[2]));
+        }, d -> ok("the abandoned native trail regrew")));
+        route.add(step("capture the regrown trail", 0.5f, d -> d.shot("trail-regrown")));
+        return route;
+    }
+
     private final Driver d;
     private final List<Step> steps;
     private float clock;
@@ -776,7 +833,7 @@ final class Autopilot {
 
     Autopilot(Driver driver) {
         this.d = driver;
-        this.steps = switch (NET_MODE) {
+        this.steps = TRAIL_MODE ? trailSteps() : switch (NET_MODE) {
             case "host" -> hostSteps;
             case "join" -> guestSteps;
             case "server" -> serverGuestSteps;

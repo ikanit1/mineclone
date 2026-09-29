@@ -4884,6 +4884,11 @@ public class Game {
         }
 
         @Override
+        public void advanceDays(int days) {
+            worldClock.addHours(days * 24.0);
+        }
+
+        @Override
         public void lookAt(float x, float y, float z) {
             float dx = x - player.camera.position.x;
             float dy = y - player.camera.position.y;
