@@ -77,7 +77,7 @@ writer and its assets, as described in the [fixture reproduction guide](../src/t
 | [MakeWorldGenGolden.java](../tools/MakeWorldGenGolden.java) | J | `fixtures/worldgen-v1.txt`: V1 generation hashes of 120 chunks; runs against current classes or the v1.0.0-alpha tag with identical output | `writes only the given file; never regenerate to pass a test` |
 | [MakeTrailer.java](../tools/MakeTrailer.java) | J | Compose before/after image sequence from existing captures | `out-test/trailer` |
 | [PhotonSmoke.java](../tools/PhotonSmoke.java) | J | Opt-in external Photon connection test; consumes cloud slots | `console; network traffic` |
-| [PlayerCollisionSmoke.java](../tools/PlayerCollisionSmoke.java) | J | Native held-key player movement/collision | `console` |
+| [PlayerCollisionSmoke.java](../tools/PlayerCollisionSmoke.java) | J | Native held-key wall movement and enclosed player/mob collision recovery | `console` |
 | [RainAudioSmoke.java](../tools/RainAudioSmoke.java) | J | Real Vorbis/OpenAL rain loop | `console; audible playback` |
 | [RenderAtmospherePreview.java](../tools/RenderAtmospherePreview.java) | J | Real weather/aurora/moon GL captures | `out-test/previews/atmo-*.png` |
 | [RenderBiomePreview.java](../tools/RenderBiomePreview.java) | J | Generated biome terrain/falling-block captures | `out-test/previews/biome-*.png` |

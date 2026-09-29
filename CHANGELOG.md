@@ -5,6 +5,7 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 ## [Unreleased]
 
 ### Fixed
+- Bodies clipped into a room wall by crowd pressure or a changed block recover into nearby free space instead of remaining embedded. Mob collisions no longer mistake an old side overlap for landing on top of a wall and launch the mob through a roof; a fully sealed body stays below the roof until space is opened.
 - Rain is one steady sound. It used to loop a single two-second recording that fades in and out, so the rain dipped by about 30 dB and restarted the same pattern every two seconds; now all eight recordings are stitched into one seamless 12-second loop with crossfades.
 - Storm wind no longer dies away every few seconds. It looped one gust that rises out of silence and falls back into it, so a third of every turn was a lull; now all four gusts are stitched into one 22-second stereo loop that keeps its swells.
 - `/time add` reports whole hours with a dot on every system locale (`Added 24.0 hours`, not `24,0` on a Russian Windows), matching its fractional form and the number it accepts.

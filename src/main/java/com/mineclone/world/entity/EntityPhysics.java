@@ -3,6 +3,7 @@ package com.mineclone.world.entity;
 import com.mineclone.world.BlockType;
 import com.mineclone.world.World;
 import com.mineclone.world.shape.BlockShape;
+import com.mineclone.world.shape.BodyCollision;
 import com.mineclone.world.shape.Shapes;
 import org.joml.Vector3f;
 
@@ -48,6 +49,7 @@ public final class EntityPhysics {
             }
             return new Contact(last.onGround(), wall, last.inWater());
         }
+        BodyCollision.recoverHorizontal(world, pos, width, height);
         boolean inWater = touchingWater(world, pos, width, height);
         if (inWater) {
             // Ослабленная гравитация + подъём: сущность выныривает и качается
@@ -65,19 +67,23 @@ public final class EntityPhysics {
         boolean hitWall = false;
         boolean onGround = false;
 
+        float oldX = pos.x;
         pos.x += vel.x * dt;
-        if (resolve(world, pos, width, height, 0, vel.x)) {
+        if (resolve(world, pos, width, height, 0, vel.x, oldX) != 0) {
             vel.x = 0f;
             hitWall = true;
         }
+        float oldZ = pos.z;
         pos.z += vel.z * dt;
-        if (resolve(world, pos, width, height, 2, vel.z)) {
+        if (resolve(world, pos, width, height, 2, vel.z, oldZ) != 0) {
             vel.z = 0f;
             hitWall = true;
         }
+        float oldY = pos.y;
         pos.y += vel.y * dt;
-        if (resolve(world, pos, width, height, 1, vel.y)) {
-            if (vel.y < 0f)
+        int verticalContact = resolve(world, pos, width, height, 1, vel.y, oldY);
+        if (verticalContact != 0) {
+            if (vel.y < 0f && verticalContact == 1)
                 onGround = true;
             vel.y = 0f;
         }
@@ -99,17 +105,17 @@ public final class EntityPhysics {
      * моб встаёт на плиту ступени, а не на воображаемый куб над ней.
      *
      * @param dir знак движения по оси
-     * @return true, если было пересечение
+     * @return 0 without contact, 1 for a newly crossed face, 2 for an old overlap
      */
-    private static boolean resolve(World world, Vector3f pos, float width, float height,
-                                   int axis, float dir) {
+    private static int resolve(World world, Vector3f pos, float width, float height,
+                               int axis, float dir, float previous) {
         if (dir == 0f)
-            return false;
+            return 0;
         float hw = width / 2f;
         int x0 = (int) Math.floor(pos.x - hw), x1 = (int) Math.floor(pos.x + hw);
         int y0 = (int) Math.floor(pos.y),      y1 = (int) Math.floor(pos.y + height);
         int z0 = (int) Math.floor(pos.z - hw), z1 = (int) Math.floor(pos.z + hw);
-        boolean hit = false;
+        boolean crossedFace = false, oldOverlap = false;
         for (int x = x0; x <= x1; x++)
             for (int y = y0; y <= y1; y++)
                 for (int z = z0; z <= z1; z++) {
@@ -118,11 +124,24 @@ public final class EntityPhysics {
                     BlockShape shape = Shapes.of(world.getBlock(x, y, z));
                     byte meta = Shapes.meta(world, shape, x, y, z);
                     if (shape.fullCube(meta)) {
-                        hit = true;
+                        if (pos.x + hw <= x || pos.x - hw >= x + 1
+                                || pos.y + height <= y || pos.y >= y + 1
+                                || pos.z + hw <= z || pos.z - hw >= z + 1)
+                            continue;
+                        boolean crossed = switch (axis) {
+                            case 0, 2 -> crossed(previous, hw, hw, axis == 0 ? x : z,
+                                    axis == 0 ? x + 1 : z + 1, dir);
+                            default -> crossed(previous, 0f, height, y, y + 1, dir);
+                        };
+                        crossedFace |= crossed;
+                        oldOverlap |= !crossed;
                         switch (axis) {
-                            case 0 -> pos.x = dir > 0 ? x - hw - EPS : x + 1 + hw + EPS;
-                            case 1 -> pos.y = dir > 0 ? y - height - EPS : y + 1 + EPS;
-                            default -> pos.z = dir > 0 ? z - hw - EPS : z + 1 + hw + EPS;
+                            case 0 -> pos.x = crossed
+                                    ? (dir > 0 ? x - hw - EPS : x + 1 + hw + EPS) : previous;
+                            case 1 -> pos.y = crossed
+                                    ? (dir > 0 ? y - height - EPS : y + 1 + EPS) : previous;
+                            default -> pos.z = crossed
+                                    ? (dir > 0 ? z - hw - EPS : z + 1 + hw + EPS) : previous;
                         }
                         continue;
                     }
@@ -135,15 +154,31 @@ public final class EntityPhysics {
                         if (pos.x + hw <= bx0 || pos.x - hw >= bx1 || pos.y + height <= by0 || pos.y >= by1
                                 || pos.z + hw <= bz0 || pos.z - hw >= bz1)
                             continue;
-                        hit = true;
+                        boolean crossed = switch (axis) {
+                            case 0 -> crossed(previous, hw, hw, bx0, bx1, dir);
+                            case 1 -> crossed(previous, 0f, height, by0, by1, dir);
+                            default -> crossed(previous, hw, hw, bz0, bz1, dir);
+                        };
+                        crossedFace |= crossed;
+                        oldOverlap |= !crossed;
                         switch (axis) {
-                            case 0 -> pos.x = dir > 0 ? bx0 - hw - EPS : bx1 + hw + EPS;
-                            case 1 -> pos.y = dir > 0 ? by0 - height - EPS : by1 + EPS;
-                            default -> pos.z = dir > 0 ? bz0 - hw - EPS : bz1 + hw + EPS;
+                            case 0 -> pos.x = crossed
+                                    ? (dir > 0 ? bx0 - hw - EPS : bx1 + hw + EPS) : previous;
+                            case 1 -> pos.y = crossed
+                                    ? (dir > 0 ? by0 - height - EPS : by1 + EPS) : previous;
+                            default -> pos.z = crossed
+                                    ? (dir > 0 ? bz0 - hw - EPS : bz1 + hw + EPS) : previous;
                         }
                     }
                 }
-        return hit;
+        return crossedFace ? 1 : oldOverlap ? 2 : 0;
+    }
+
+    /** A contact can resolve only the face crossed this step, never an old side overlap. */
+    private static boolean crossed(float previous, float lowerExtent, float upperExtent,
+                                   float lo, float hi, float dir) {
+        return dir > 0 ? previous + upperExtent <= lo + EPS
+                : previous - lowerExtent >= hi - EPS;
     }
 
     private static boolean groundBelow(World world, Vector3f pos, float width) {
@@ -240,14 +275,31 @@ public final class EntityPhysics {
         if (d < 1e-4f) {   // центры совпали — разводим по произвольной оси
             dx = 1f;
             dz = 0f;
-            d = 1f;
+            d = 0f;
         }
         float overlap = minDist - d;
-        float nx = dx / d, nz = dz / d;
+        float nx = d == 0f ? 1f : dx / d, nz = d == 0f ? 0f : dz / d;
         a.x -= nx * overlap * shareA;
         a.z -= nz * overlap * shareA;
         b.x += nx * overlap * shareB;
         b.z += nz * overlap * shareB;
+        return true;
+    }
+
+    /** Crowd pressure may not place either mob inside terrain; blocked bodies keep their pose. */
+    public static boolean separate(World world, Vector3f a, float widthA, float heightA, float shareA,
+                                   Vector3f b, float widthB, float heightB, float shareB) {
+        float ax = a.x, az = a.z, bx = b.x, bz = b.z;
+        if (!separate(a, widthA, heightA, shareA, b, widthB, heightB, shareB))
+            return false;
+        if (shareA > 0f && BodyCollision.overlaps(world, a.x, a.y, a.z, widthA, heightA)) {
+            a.x = ax;
+            a.z = az;
+        }
+        if (shareB > 0f && BodyCollision.overlaps(world, b.x, b.y, b.z, widthB, heightB)) {
+            b.x = bx;
+            b.z = bz;
+        }
         return true;
     }
 

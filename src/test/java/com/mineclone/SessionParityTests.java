@@ -28,7 +28,7 @@ import org.joml.Vector3f;
 import org.joml.Vector3fc;
 
 /**
- * SIM-03/SIM-04: the mob loop keeps behaving exactly as it did in {@code Game}.
+ * SIM-03/SIM-04: a fixed mob-loop scenario stays deterministic across runs.
  *
  * <p>One scenario — seed 20260922 at night, nine placed mobs of every temper and
  * attack style, some standing in each other and in the way, a participant
@@ -37,25 +37,26 @@ import org.joml.Vector3fc;
  * arrow and blast, and every block the run changes. The loop was recorded
  * before it moved (79318ba) by a transcription of {@code Game.updateMobs} at
  * a8ec5d1 with only the sound and particle calls taken out;
- * {@link WorldSession} reproduced it. The hash was recorded again, before
- * explosions and drops moved, with {@link Scenario#exploded} transcribing
- * {@code Game.detonate} at 701706f.
+ * {@link WorldSession} reproduced it. The current hash also includes the
+ * collision recovery that keeps crowded mobs inside a roofed room rather
+ * than moving through its blocks.
  */
 final class SessionParityTests {
     static void runAll(TestMain.Runner r) {
-        r.run("the session reproduces the hash recorded from Game.updateMobs", SessionParityTests::etalon);
+        r.run("the session repeats the post-collision-fix mob trajectory", SessionParityTests::etalon);
         r.run("the parity scenario exercises blows, arrows, explosions, drops and spawning", SessionParityTests::coverage);
         r.run("what the game shows does not change what the server simulates", SessionParityTests::presentation);
         r.run("the dedicated server has no mob loop of its own", SessionParityTests::serverUsesSession);
     }
 
     /**
-     * Recorded before the move; see the class comment. The run holds two blows,
+     * The scenario was originally recorded before the move; see the class comment.
+     * Collision recovery intentionally changed the old fcc8d937... path. The run holds two blows,
      * one explosion with its crater, two deaths with drops, 22 spawns (29 mobs at
      * the peak), two arrows and six strikes by the participant. Pushing each pair
      * twice, or never out of the participant, changes it.
      */
-    static final String ETALON = "fcc8d937381db87b2cfde58a2b0d766324ba9511cc78d87187252339dc5f2a91";
+    static final String ETALON = "38b11012d2c2f16392a40250d41671e35e8bc2e1a91b767e8f81810276278c19";
 
     static final long SEED = 20260922L;
     static final int TICKS = 600;

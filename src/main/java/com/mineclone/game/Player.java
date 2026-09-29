@@ -9,6 +9,7 @@ import com.mineclone.world.damage.DamageSource;
 import com.mineclone.world.damage.DamageType;
 import com.mineclone.world.damage.Damageable;
 import com.mineclone.world.shape.BlockShape;
+import com.mineclone.world.shape.BodyCollision;
 import com.mineclone.world.shape.Shapes;
 import org.joml.Vector3f;
 
@@ -497,6 +498,8 @@ public class Player implements Damageable {
      * ({@code PlayerPhysicsTests}): ступень берётся прыжком.
      */
     void moveAxis(World world, float dx, float dy, float dz) {
+        BodyCollision.recoverHorizontal(world, position, WIDTH, HEIGHT);
+        float previousX = position.x, previousZ = position.z;
         float previousBottom = position.y;
         float previousTop = previousBottom + HEIGHT;
         position.x += dx;
@@ -526,7 +529,8 @@ public class Player implements Damageable {
                     BlockShape shape = Shapes.of(b);
                     byte meta = Shapes.meta(world, shape, x, y, z);
                     if (shape.fullCube(meta)) {
-                        pushOut(x, y, z, x + 1, y + 1, z + 1, dx, dy, dz, previousBottom, previousTop, hw);
+                        pushOut(x, y, z, x + 1, y + 1, z + 1, dx, dy, dz,
+                                previousX, previousBottom, previousZ, previousTop, hw);
                     } else {
                         int n = shape.collision(meta, shapeBoxes);
                         for (int i = 0; i < n; i++) {
@@ -538,7 +542,8 @@ public class Player implements Damageable {
                                     || position.y + HEIGHT <= by0 || position.y >= by1
                                     || position.z + hw <= bz0 || position.z - hw >= bz1)
                                 continue;
-                            pushOut(bx0, by0, bz0, bx1, by1, bz1, dx, dy, dz, previousBottom, previousTop, hw);
+                            pushOut(bx0, by0, bz0, bx1, by1, bz1, dx, dy, dz,
+                                    previousX, previousBottom, previousZ, previousTop, hw);
                         }
                     }
                     // recompute bounds (single resolution is enough for small dt)
@@ -581,13 +586,15 @@ public class Player implements Damageable {
      * never eject a falling player upward.
      */
     private void pushOut(float bx0, float by0, float bz0, float bx1, float by1, float bz1,
-            float dx, float dy, float dz, float previousBottom, float previousTop, float hw) {
-        if (dx > 0) {
-            position.x = bx0 - hw - 1e-4f;
-            velocity.x = 0;
-            isSprinting = false;
-        } else if (dx < 0) {
-            position.x = bx1 + hw + 1e-4f;
+            float dx, float dy, float dz, float previousX, float previousBottom,
+            float previousZ, float previousTop, float hw) {
+        if (dx != 0f) {
+            if (dx > 0 && previousX + hw <= bx0 + 1e-4f)
+                position.x = bx0 - hw - 1e-4f;
+            else if (dx < 0 && previousX - hw >= bx1 - 1e-4f)
+                position.x = bx1 + hw + 1e-4f;
+            else
+                position.x = previousX;
             velocity.x = 0;
             isSprinting = false;
         }
@@ -599,12 +606,13 @@ public class Player implements Damageable {
             velocity.y = 0;
             onGround = true;
         }
-        if (dz > 0) {
-            position.z = bz0 - hw - 1e-4f;
-            velocity.z = 0;
-            isSprinting = false;
-        } else if (dz < 0) {
-            position.z = bz1 + hw + 1e-4f;
+        if (dz != 0f) {
+            if (dz > 0 && previousZ + hw <= bz0 + 1e-4f)
+                position.z = bz0 - hw - 1e-4f;
+            else if (dz < 0 && previousZ - hw >= bz1 - 1e-4f)
+                position.z = bz1 + hw + 1e-4f;
+            else
+                position.z = previousZ;
             velocity.z = 0;
             isSprinting = false;
         }

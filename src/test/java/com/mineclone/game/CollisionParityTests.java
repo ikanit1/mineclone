@@ -5,6 +5,7 @@ import com.mineclone.world.Chunk;
 import com.mineclone.world.World;
 import com.mineclone.world.entity.EntityPhysics;
 import com.mineclone.world.shape.BlockShape;
+import com.mineclone.world.shape.BodyCollision;
 import com.mineclone.world.shape.Shapes;
 import java.util.Random;
 import org.joml.Vector3f;
@@ -266,21 +267,27 @@ public final class CollisionParityTests {
                     for (int y = 41; y <= 45; y++)
                         if (rnd.nextFloat() < 0.22f)
                             w.setBlock(x, y, z, cubes[rnd.nextInt(cubes.length)], (byte) rnd.nextInt(16));
-            for (int i = 0; i < 100; i++) {
+            int attempts = 0;
+            for (int i = 0; i < 100;) {
+                check(++attempts < 5000, "could not draw 100 free-body cube moves");
                 Player now = new Player();
                 Legacy old = new Legacy();
                 start(rnd, now, old, 4 + rnd.nextFloat() * 8, 41.0001f + rnd.nextFloat() * 3, 4 + rnd.nextFloat() * 8,
                         true);
+                if (BodyCollision.overlaps(w, now.position.x, now.position.y, now.position.z,
+                        Player.WIDTH, Player.HEIGHT))
+                    continue; // overlap recovery intentionally differs from the old collision solver
                 float[] d = move(rnd);
                 float wantedX = now.position.x + d[0], wantedY = now.position.y + d[1], wantedZ = now.position.z + d[2];
                 now.moveAxis(w, d[0], d[1], d[2]);
                 old.moveAxis(w, d[0], d[1], d[2]);
                 moves++;
+                i++;
                 if (now.position.x != wantedX || now.position.y != wantedY || now.position.z != wantedZ) blocked++;
                 check(same(now, old, 0f), "move " + moves + " " + java.util.Arrays.toString(d) + ": " + state(now, old));
             }
         }
-        check(moves == 1000 && blocked > 150, "the moves must run into blocks often enough: " + blocked);
+        check(moves == 1000 && blocked > 50, "the free-body moves must run into blocks often enough: " + blocked);
     }
 
     /** Along the stair's split axis: where the old centre rule and the boxes disagree about the half underfoot. */
@@ -574,16 +581,21 @@ public final class CollisionParityTests {
                     for (int y = 41; y <= 44; y++)
                         if (rnd.nextFloat() < 0.2f)
                             w.setBlock(x, y, z, cubes[rnd.nextInt(cubes.length)]);
-            for (int i = 0; i < 100; i++) {
+            int attempts = 0;
+            for (int i = 0; i < 100;) {
+                check(++attempts < 5000, "could not draw 100 free-body mob steps");
                 float[] body = bodies[rnd.nextInt(bodies.length)];
                 float dt = dts[rnd.nextInt(dts.length)];
                 Vector3f pos = new Vector3f(4 + rnd.nextFloat() * 8, 41.0001f + rnd.nextFloat() * 3,
                         4 + rnd.nextFloat() * 8);
+                if (BodyCollision.overlaps(w, pos.x, pos.y, pos.z, body[0], body[1]))
+                    continue;
                 Vector3f vel = new Vector3f(rnd.nextFloat() * 12 - 6, rnd.nextFloat() * 28 - 20, rnd.nextFloat() * 12 - 6);
                 Vector3f oldPos = new Vector3f(pos), oldVel = new Vector3f(vel);
                 EntityPhysics.Contact now = EntityPhysics.step(w, pos, vel, body[0], body[1], dt, -40f);
                 EntityPhysics.Contact old = legacyStep(w, oldPos, oldVel, body[0], body[1], dt, -40f);
                 steps++;
+                i++;
                 if (old.hitWall()) walls++;
                 check(now.equals(old) && Float.floatToIntBits(pos.x) == Float.floatToIntBits(oldPos.x)
                                 && Float.floatToIntBits(pos.y) == Float.floatToIntBits(oldPos.y)

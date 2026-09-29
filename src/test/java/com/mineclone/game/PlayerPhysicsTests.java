@@ -3,6 +3,8 @@ package com.mineclone.game;
 import com.mineclone.world.BlockType;
 import com.mineclone.world.Chunk;
 import com.mineclone.world.World;
+import com.mineclone.world.entity.EntityPhysics;
+import org.joml.Vector3f;
 
 /**
  * Ходьба не должна поднимать игрока — ни на блок, ни на ступень.
@@ -29,6 +31,14 @@ public final class PlayerPhysicsTests {
         r.run("grazing a wall while falling never teleports onto it", PlayerPhysicsTests::grazingWall);
         r.run("a floor collision invalidates the remaining vertical candidates", PlayerPhysicsTests::floorCandidates);
         r.run("falling lands and jumping still stops at ceilings", PlayerPhysicsTests::verticalContacts);
+        r.run("a player clipped into a sealed room wall moves into the room, not upward",
+                PlayerPhysicsTests::playerWallRecovery);
+        r.run("a mob clipped into a sealed room wall stays below its roof",
+                PlayerPhysicsTests::mobWallRecovery);
+        r.run("crowd pressure cannot force a mob into the sealed room wall",
+                PlayerPhysicsTests::crowdAgainstWall);
+        r.run("a fully sealed body waits for space instead of crossing the roof",
+                PlayerPhysicsTests::noRoofEscape);
     }
 
     private static void check(boolean value, String message) {
@@ -142,5 +152,78 @@ public final class PlayerPhysicsTests {
         p.moveAxis(w, 0, -0.4f, 0);
         check(Math.abs(p.position.y - 44.0001f) < 0.001f && p.onGround && p.velocity.y == 0,
                 "a real downward crossing still lands on top: " + p.position);
+    }
+
+    private static World sealedRoom() {
+        World w = ground(40);
+        for (int y = 41; y <= 43; y++)
+            for (int i = 0; i <= 2; i++) {
+                w.setBlock(0, y, i, BlockType.STONE);
+                w.setBlock(2, y, i, BlockType.STONE);
+                w.setBlock(i, y, 0, BlockType.STONE);
+                w.setBlock(i, y, 2, BlockType.STONE);
+            }
+        w.setBlock(1, 43, 1, BlockType.STONE);
+        return w;
+    }
+
+    private static void playerWallRecovery() {
+        World w = sealedRoom();
+        Player p = new Player();
+        p.position.set(1.2f, 41.0001f, 1.5f); // body overlaps the west wall by 0.1 block
+        for (int i = 0; i < 20; i++)
+            p.moveAxis(w, 0f, -0.01f, 0f);
+        check(p.position.x >= 1.3f && p.position.x < 1.7f,
+                "player stayed embedded in the wall: " + p.position);
+        check(p.position.y >= 41f && p.position.y < 41.01f,
+                "player escaped through the roof: " + p.position);
+    }
+
+    private static void mobWallRecovery() {
+        World w = sealedRoom();
+        Vector3f pos = new Vector3f(1.8f, 41.0001f, 1.5f); // east wall is visited after the floor
+        Vector3f vel = new Vector3f();
+        for (int i = 0; i < 20; i++)
+            EntityPhysics.step(w, pos, vel, 0.6f, 1.8f, 1f / 60f, -30f);
+        check(pos.x > 1.3f && pos.x <= 1.7f,
+                "mob stayed embedded in the wall: " + pos);
+        check(pos.y >= 41f && pos.y < 41.01f,
+                "mob escaped through the roof: " + pos);
+    }
+
+    private static void crowdAgainstWall() {
+        World w = sealedRoom();
+        Vector3f left = new Vector3f(1.35f, 41.0001f, 1.5f);
+        Vector3f right = new Vector3f(1.5f, 41.0001f, 1.5f);
+        EntityPhysics.separate(w, left, 0.6f, 1.8f, 0.5f,
+                right, 0.6f, 1.8f, 0.5f);
+        check(left.x >= 1.3f && !com.mineclone.world.shape.BodyCollision.overlaps(w,
+                left.x, left.y, left.z, 0.6f, 1.8f),
+                "crowd pushed the left mob through the wall: " + left);
+        check(!com.mineclone.world.shape.BodyCollision.overlaps(w,
+                right.x, right.y, right.z, 0.6f, 1.8f),
+                "crowd pushed the right mob through the wall: " + right);
+    }
+
+    private static void noRoofEscape() {
+        World w = sealedRoom();
+        w.setBlock(1, 41, 1, BlockType.STONE); // no horizontal body-sized opening exists
+        Player player = new Player();
+        player.position.set(1.5f, 41.0001f, 1.5f);
+        Vector3f mob = new Vector3f(1.5f, 41.0001f, 1.5f);
+        Vector3f velocity = new Vector3f();
+        for (int i = 0; i < 60; i++) {
+            player.moveAxis(w, 0.04f, 0f, 0f);
+            player.moveAxis(w, 0f, -0.01f, 0f);
+            velocity.x = 2f;
+            EntityPhysics.step(w, mob, velocity, 0.6f, 1.8f, 1f / 60f, -30f);
+            check(player.position.y < 43f && mob.y < 43f && player.position.x < 1.7f && mob.x < 1.7f,
+                    "a sealed body crossed terrain: player=" + player.position + ", mob=" + mob);
+        }
+        w.setBlock(1, 40, 1, BlockType.AIR);
+        Vector3f unsupported = new Vector3f(1.5f, 41.0001f, 1.5f);
+        EntityPhysics.Contact contact = EntityPhysics.step(w, unsupported, new Vector3f(),
+                0.6f, 1.8f, 1f / 60f, -30f);
+        check(!contact.onGround(), "an old wall overlap was mistaken for ground");
     }
 }
