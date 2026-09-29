@@ -278,11 +278,11 @@ public final class WorldSession {
                 Mob b = near.get(k);
                 if (b == a || MobSpatialGrid.order(b) <= i)
                     continue;
-                EntityPhysics.separate(a.position, a.type.width, a.type.height, 0.25f,
+                EntityPhysics.separate(world, a.position, a.type.width, a.type.height, 0.25f,
                         b.position, b.type.width, b.type.height, 0.25f);
             }
             if (body)
-                EntityPhysics.separate(focus, Participant.BODY_WIDTH, Participant.BODY_HEIGHT, 0f,
+                EntityPhysics.separate(world, focus, Participant.BODY_WIDTH, Participant.BODY_HEIGHT, 0f,
                         a.position, a.type.width, a.type.height, 0.5f);
         }
     }

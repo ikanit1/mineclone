@@ -468,6 +468,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | Type | Purpose |
 |---|---|
 | [BlockShape](../src/main/java/com/mineclone/world/shape/BlockShape.java) | What a block is made of, as boxes in its own cell (0..1 on each axis): what a body collides with, and what the aim and the outline see (AC-05). |
+| [BodyCollision](../src/main/java/com/mineclone/world/shape/BodyCollision.java) | Finds a nearby horizontal, collision-free pose for a body clipped by a block edit or crowd. |
 | [Shapes](../src/main/java/com/mineclone/world/shape/Shapes.java) | The shape of every block (BLK-02): one registry that collision, the aim, the outline and the mesher read instead of five places that knew stairs apart. |
 
 ## com.mineclone.world.structure
@@ -484,4 +485,4 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [StructureTypes](../src/main/java/com/mineclone/world/structure/StructureTypes.java) | The structure types of the 1.1 generator (GEN-03). |
 | [StructureWriter](../src/main/java/com/mineclone/world/structure/StructureWriter.java) | Where a structure piece puts its blocks, in world coordinates: the chunk being generated (ChunkWriter) or, in tests, one large buffer. |
 
-Top-level declarations: 353.
+Top-level declarations: 354.

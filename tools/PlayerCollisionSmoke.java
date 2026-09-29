@@ -3,6 +3,8 @@ import com.mineclone.game.Player;
 import com.mineclone.world.BlockType;
 import com.mineclone.world.Chunk;
 import com.mineclone.world.World;
+import com.mineclone.world.entity.EntityPhysics;
+import org.joml.Vector3f;
 import static org.lwjgl.glfw.GLFW.*;
 
 /** Native held-key input through Player.update, including acceleration, gravity and axis substeps. */
@@ -50,7 +52,35 @@ public final class PlayerCollisionSmoke {
                     input.update();
                 }
             }
-            System.out.println("PASS: real held-key walking along and into walls, four directions at 20/30/60/144 FPS; no upward teleport");
+            World room = platform();
+            Chunk roomChunk = room.getChunk(0, 0);
+            for (int y = 11; y <= 13; y++) for (int n = 6; n <= 8; n++) {
+                roomChunk.set(6, y, n, BlockType.STONE);
+                roomChunk.set(8, y, n, BlockType.STONE);
+                roomChunk.set(n, y, 6, BlockType.STONE);
+                roomChunk.set(n, y, 8, BlockType.STONE);
+            }
+            roomChunk.set(7, 13, 7, BlockType.STONE);
+            Player clipped = new Player();
+            clipped.respawn(7.2f, 11.0001f, 7.5f);
+            clipped.camera.yaw = (float) Math.PI / 2f;
+            input.holdKey(GLFW_KEY_W, true);
+            for (int i = 0; i < 60; i++) {
+                input.update();
+                clipped.update(1f / 60f, room, input);
+                check(clipped.position.y < 11.01f, "held-key player escaped through the room roof: " + clipped.position);
+            }
+            input.holdKey(GLFW_KEY_W, false);
+            check(clipped.position.x >= 7.3f && clipped.position.x <= 7.7f,
+                    "held-key player remained inside the wall: " + clipped.position);
+            Vector3f mob = new Vector3f(7.8f, 11.0001f, 7.5f);
+            Vector3f mobVelocity = new Vector3f();
+            for (int i = 0; i < 60; i++) {
+                EntityPhysics.step(room, mob, mobVelocity, 0.6f, 1.8f, 1f / 60f, -30f);
+                check(mob.y < 11.01f, "mob escaped through the room roof: " + mob);
+            }
+            check(mob.x >= 7.3f && mob.x <= 7.7f, "mob remained inside the wall: " + mob);
+            System.out.println("PASS: held-key walls at 20/30/60/144 FPS and enclosed player/mob recovery without roof escape");
         } finally {
             glfwDestroyWindow(window); glfwTerminate();
         }

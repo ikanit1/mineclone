@@ -180,6 +180,12 @@ and `Hittable` (what an arrow can hit) extends it.
 разных сторон (`flankSide`), так что стая берёт в кольцо, а не встаёт в
 колонну.
 
+`WorldSession.separate` checks each crowd displacement against terrain shapes.
+If a wall blocks the push, that mob keeps its previous pose. On the next
+physics step `BodyCollision` can resolve a small existing overlap horizontally;
+`EntityPhysics` never treats a pre-existing side overlap as a vertical contact.
+This prevents a packed room from ejecting a mob through its roof.
+
 **Замер маршрутов:** `java -cp "out;libs/*" tools\BenchPathfinder.java` — A* по
 настоящей сгенерированной местности. На машине разработки: среднее 0.20 мс,
 худший случай 1.9 мс, стая из восьми — 2.6 мс/с. ADR:
