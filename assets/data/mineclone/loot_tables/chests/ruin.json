@@ -1,1 +1,6 @@
-{"pools":[]}
+{"pools":[{"rolls":[2,4],"entries":[
+  {"item":"coal","weight":6,"count":[2,6]},
+  {"item":"iron_ingot","weight":3,"count":[1,3]},
+  {"item":"torch","weight":5,"count":[3,8]},
+  {"item":"stone_pickaxe","weight":1,"functions":[{"set_damage":[0.2,0.6]}]}
+]}]}

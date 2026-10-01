@@ -25,7 +25,7 @@ public record BlockProps(boolean cross, boolean layered, boolean gravity, boolea
                     p(0, 1f, 1f, null, 0);
             case GRASS, DIRT, SNOWY_GRASS, PODZOL, DRY_GRASS ->
                     p(SOIL, 1f, 1f, ToolClass.SHOVEL, 0);
-            case STONE, COBBLE, MOSSY_COBBLE, COAL_ORE, TERRACOTTA, LIMESTONE, BASALT ->
+            case STONE, COBBLE, MOSSY_COBBLE, COAL_ORE, COPPER_ORE, TERRACOTTA, LIMESTONE, BASALT ->
                     p(0, 1f, 1f, ToolClass.PICKAXE, 1);
             case IRON_ORE -> p(0, 1f, 1f, ToolClass.PICKAXE, 2);
             case GOLD_ORE, DIAMOND_ORE, OBSIDIAN -> p(0, 1f, 1f, ToolClass.PICKAXE, 3);

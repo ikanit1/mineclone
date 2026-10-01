@@ -1,1 +1,5 @@
-{"pools":[]}
+{"pools":[{"rolls":[2,3],"entries":[
+  {"item":"coal","weight":5,"count":[2,5]},
+  {"item":"iron_ingot","weight":3,"count":[1,3]},
+  {"item":"gold_ingot","weight":1,"count":[1,2]}
+]}]}

@@ -1,5 +1,14 @@
 # Rendering
 
+RND-09 asset update (2026-10-01): tile 139 is obtainable copper ore. Tiles
+140–173 prepare 16 armor icons, six hoes and twelve crop stages; their gameplay
+and armor model textures are still future work. The offline importer verifies
+source digests and produces hard-alpha 32px PNGs, with clear tile margins and a
+shared hoe silhouette. `EquipmentTextureTests` and
+`tools/RenderRoadmapTexturePreview.java` check the sprites through the native
+atlas/UI path. `tools/ExportTextureCatalog.java` exports the actual PNGs into
+`docs/textures.html`; it does not regenerate or overwrite their source sheets.
+
 Updated: 2026-09-24. Paths in backticks are relative to the repository root.
 
 `core/Window.java` requests OpenGL 4.4 with a 3.3 fallback. Shader families include

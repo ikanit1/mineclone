@@ -70,6 +70,10 @@ writer and its assets, as described in the [fixture reproduction guide](../src/t
 | [ImportPlayerSkin.java](../tools/ImportPlayerSkin.java) | J | Import reviewed player sheet; optional source argument | `assets/mobs/player.png; pre-import backup` |
 | [ImportTerrainAtlas.java](../tools/ImportTerrainAtlas.java) | J | Import terrain sheet with old-tile backup | `assets/textures/blocks; assets/textures/pre-higgsfield; assets/atlas.png` |
 | [ImportToolTextures.java](../tools/ImportToolTextures.java) | J | Import tool sheet into native atlas sprites | `assets/textures/blocks` |
+| [ImportCopperOreTexture.java](../tools/ImportCopperOreTexture.java) | J | Copper ore flecks over the exact shipped stone base (GEN-08) | `assets/textures/blocks/copper_ore.png` |
+| [ImportRoadmapTextures.java](../tools/ImportRoadmapTextures.java) | J | Digest-checked import of armor, hoes and crop stages; binary alpha, 32px sprites (RND-09 part 2) | `optional output directory; default assets/textures/blocks` |
+| [ExportTextureCatalog.java](../tools/ExportTextureCatalog.java) | J | Self-contained catalog of actual runtime PNGs and atlas indices | `optional output HTML; default docs/textures.html` |
+| [RenderRoadmapTexturePreview.java](../tools/RenderRoadmapTexturePreview.java) | J + GL | Native atlas/UI preview of the 35 new tiles; checks GL errors and nonempty capture | `optional output PNG; default out-test/roadmap-textures/native.png` |
 | [InventorySafetySmoke.java](../tools/InventorySafetySmoke.java) | J | Inventory/conservation gameplay smoke | `out-test/inventory-safety` |
 | [make_trailer.py](../tools/make_trailer.py) | PY | Compose rendered frames with ffmpeg/Pillow | `out-test/trailer-clean.mp4; out-test/trailer-ru.mp4` |
 | [MakeSaveFixtures.java](../tools/MakeSaveFixtures.java) | [old-writer recipe](../src/test/resources/fixtures/saves/README.md) | Authenticated alpha writer and explicitly synthetic historical save corpus; refuses current format writers | `required new/empty output directory; never replace the golden corpus` |

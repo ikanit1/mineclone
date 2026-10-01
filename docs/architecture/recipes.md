@@ -62,7 +62,10 @@ and output capacity use the matched data recipe. Fuel duration remains an item
 property. Unknown fields are rejected.
 
 The original 35 crafting recipes live in `basic.json`, `tools.json` and
-`building.json`; all nine smelting mappings live in `food.json` and `ores.json`.
+`building.json`; all nine legacy smelting mappings live in `food.json` and `ores.json`.
+GEN-08 appends copper ore → copper ingot in eight seconds, after all legacy
+orders; the original smelting fixture stays unchanged and copper has its own
+furnace/crafting acceptance test (`CopperOreTests`).
 Their orders, shapes, reflection flags, outputs and durations are checked against
 the independently captured pre-migration tables in
 `src/test/resources/recipes/legacy-{crafting,smelting}.tsv`. Capture happened before

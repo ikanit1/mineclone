@@ -38,17 +38,15 @@ final class ReachabilityTests {
             // Vegetation.
             WOOD, LEAVES, CACTUS,
             // Ores (OreGenerator.VEINS).
-            COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE,
+            COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE, COPPER_ORE,
             // Structure templates (Structures.block): ruins, huts, obelisks, dungeons.
             COBBLE, PLANKS, GLASS, TORCH, MOSSY_COBBLE, WEB, JOURNAL,
             // Made by the running world: flow, freezing, snowfall, lightning.
             WATER_FLOW, THIN_ICE, SNOW_LAYER, FIRE);
 
     /** Recipe and smelting results with no survival source yet, and what closes each gap. */
-    static final Set<String> KNOWN_DEAD_RESULTS = Set.of(
-            // GEN-08: there is no copper ore, so no copper ingot.
-            "mineclone:copper_axe", "mineclone:copper_pickaxe", "mineclone:copper_shovel", "mineclone:copper_sword");
-    static final Set<String> KNOWN_DEAD_INPUTS = Set.of("mineclone:copper_ingot");
+    static final Set<String> KNOWN_DEAD_RESULTS = Set.of();
+    static final Set<String> KNOWN_DEAD_INPUTS = Set.of();
 
     static void runAll(TestMain.Runner r) {
         r.run("every recipe and smelting result is obtainable in survival, except listed gaps", ReachabilityTests::recipes);

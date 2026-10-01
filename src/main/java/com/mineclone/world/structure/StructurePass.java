@@ -16,7 +16,7 @@ public final class StructurePass {
     public static int place(StructureIndex index, Chunk chunk) {
         if (index.types().isEmpty())
             return 0;
-        ChunkWriter out = new ChunkWriter(chunk);
+        ChunkWriter out = new ChunkWriter(chunk, index.seed());
         BoundingBox area = out.box();
         List<StructureStart> starts = index.reaching(area);
         for (StructureStart s : starts)

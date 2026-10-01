@@ -17,6 +17,13 @@ public interface StructurePiece {
     /** Writes the part of this piece inside {@code clip} (a part of {@link #box()}). */
     void place(StructureWriter out, BoundingBox clip);
 
+    /** Places a loot chest only in the owning chunk's cut of this piece. */
+    default void chest(StructureWriter out, BoundingBox clip, int x, int y, int z, String tableId) {
+        if (!box().contains(x, y, z))
+            throw new IllegalArgumentException("chest outside structure piece");
+        if (clip.contains(x, y, z)) out.chest(x, y, z, tableId);
+    }
+
     /** A well-mixed hash of a position and a salt, for per-block choices. */
     static long noise(int x, int y, int z, long salt) {
         long v = x * 341873128712L + y * 2654435761L + z * 132897987541L + salt;

@@ -26,6 +26,7 @@
   "iron_ore":          { "name": "Железная руда",      "category": "building",  "mass": 2.5, "block": "iron_ore" },
   "gold_ore":          { "name": "Золотая руда",       "category": "building",  "mass": 2.5, "block": "gold_ore" },
   "diamond_ore":       { "name": "Алмазная руда",      "category": "building",  "mass": 2.5, "block": "diamond_ore" },
+  "copper_ore":        { "name": "Медная руда",        "category": "building",  "mass": 2.5, "block": "copper_ore" },
   "fire":              { "name": "Огонь",              "category": "misc",      "mass": 1.0, "block": "fire" },
   "snow":              { "name": "Снег",               "category": "decor",     "mass": 0.2, "block": "snow_layer" },
   "chest":             { "name": "Сундук",             "category": "mechanics", "mass": 4.0, "block": "chest" },

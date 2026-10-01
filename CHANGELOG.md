@@ -26,6 +26,9 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 - The crosshair keeps its two-pixel thickness with triangles; outlines use a portable line width so forward-compatible OpenGL contexts no longer report invalid values.
 
 ### Added
+- New worlds use generator V2 with copper ore at y20–70. Copper ore smelts into copper ingots, making all four existing copper tool recipes obtainable in survival. Existing worlds retain their stored generator and the V1 terrain hashes.
+- Structure pieces can place deterministically filled loot chests, clipped to their own chunk. Player changes, empty contents and broken chests survive saving and loading; the first natural structures using this path arrive with GEN-05.
+- Imported 16 armor icons, six hoe icons and twelve crop-stage textures into the runtime atlas; their source sheets remain unchanged. These are prepared assets for upcoming equipment and farming gameplay. The texture catalog now shows the actual runtime PNGs.
 - Blocks can ask to be woken after a set number of world ticks (scheduled ticks). The ticks are saved with their chunk and survive unloading; a world left closed catches up for at most two world days. No block uses them yet — crops and saplings will.
 - One player record (`PlayerRecord`) for the host's level, guests' `players/<uuid>.dat` (now version 2; version 1 files migrate behind a backup) and the network adapter, with sections for vitals, equipment, effects, personal spawn, advancements and recipes.
 - Block, mob and chest drops load from validated JSON loot tables with the M0 drops preserved; a reachability check reports recipes whose result cannot be obtained in survival.

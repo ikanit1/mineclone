@@ -1,6 +1,6 @@
 # World generation
 
-Updated: 2026-09-25.
+Updated: 2026-10-01.
 
 `world/World.generateDetached()` generates terrain -> caves -> ores -> vegetation,
 then places the 1.0 structures and, where `structures2` is on, multi-chunk ones; rivers shape the height field during terrain generation.
@@ -26,15 +26,15 @@ of every old world, and a guest generating with another version receives wrong
 deltas. Generation is therefore versioned (`world/gen`):
 
 - `WorldGenVersion` — V1 is the 1.0 generator; V2 collects what 1.1 adds. The
-  number, not the ordinal, is persisted. `LATEST` stays V1 until V2 has something
-  to generate — a test fails if it moves first. Guests build the host's world
+  number, not the ordinal, is persisted. `LATEST` is V2 with copper ore (GEN-08).
+  Existing worlds retain their recorded generator/features. Guests build the host's world
   with the host's generator (protocol v8, below).
 - `GenFeatures` — one flag per 1.1 generation change (`copperOre`, `vegetation2`,
   `structures2`, `caves2`, `livestockAtGen`), each with a bit that never moves.
   A change reads its own flag inside `World.generateDetached(cx, cz, features)`;
   never branch on anything else, or V1 chunks drift. V1 has none; `GenFeatures.V2`
   is what this build implements — switch a flag on there in the commit that
-  implements it, never earlier. Today it is empty.
+  implements it, never earlier. Today only `copperOre` is enabled.
 - `GenPolicy` — which version and features a chunk is generated with; a `World`
   asks it per chunk from worker threads. The game and the dedicated server use
   the ledger-backed policy (below); guests, the menu and tests use fixed ones.
@@ -177,6 +177,39 @@ with no write outside a chunk — once starting mid-region and once on a region'
 first chunk, so that it reaches chunks of the region before; the index inside, beside and above the hall and
 not in a chunk without the flag; the pass inactive without `structures2`, and
 the shipped registry empty.
+
+## Generated loot chests (GEN-04)
+
+`StructurePiece.chest(writer, clip, x, y, z, tableId)` checks ownership by the
+piece and writes only when the position lies inside its current cut.
+`StructurePass` supplies the index's world seed to `ChunkWriter`; chest contents
+come from `LootRegistry.fillChest`. Generation creates the CHEST block and its
+27 slots on the detached chunk, without setting `modified`. Repeated placement
+does not refill an existing chest, including one with empty contents.
+
+Untouched loot is regenerated; a player's container edit marks the chunk
+modified through the existing authoritative container path. `ChunkLoader`
+restores the saved chest map after generation and before publication, replacing
+generated contents even when the saved chest is empty or destroyed. No save
+format or protocol change is required. `StructureLootTests` covers independent
+generation on four workers, negative chunk borders, the pass's seed propagation,
+overflow without partial writes, and actual save/load for changed, empty and
+destroyed chests. Natural placement remains dormant until GEN-05 enables
+`structures2`; the V1 templates are unchanged.
+
+## Copper ore (GEN-08)
+
+V2 appends six copper vein attempts per chunk, sizes 6–10, at y20–70, replacing
+stone only. The random stream of all four V1 ores stays unchanged. Existing
+gravel lenses take priority over copper, so this feature does not suppress
+gravel or alter the V1 pass's output elsewhere. Block ID 48 and atlas tile 139
+are appended; hardness is 10 and required pickaxe level is 1, following the
+numeric requirement in the roadmap (the current data calls wooden level 1 and
+stone level 2). Copper ore belongs to `ores` and smelts into a copper ingot in
+eight seconds. `CopperOreTests` covers bands, determinism, unchanged non-copper
+cells, block/item save round trips, the shared stone texture base and the
+generated ore → mining → furnace → copper pickaxe crafting chain. All 120 V1
+golden hashes still match.
 
 Checks: `run-tests.ps1 -Only worldgen,core,chunk`. `WorldGenerationTests` covers
 sparse structure spacing, biome textures, seams and falling-block conservation;

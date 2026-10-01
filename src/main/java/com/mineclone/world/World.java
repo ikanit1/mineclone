@@ -360,13 +360,14 @@ public class World {
         // Pass 2: caves — режем до растительности, иначе деревья повиснут над
         // собственной пещерой. Руда ставится после выреза: в пустоте её нет.
         caves.carve(c, heights, SEA_LEVEL);
-        OreGenerator.place(c, seed);
+        OreGenerator.place(c, seed, features);
         // Gravel lenses in exposed underground stone; no free-floating loose ceilings.
         for (int x = 0; x < Chunk.SIZE_X; x++) for (int z = 0; z < Chunk.SIZE_Z; z++) {
             long rock = mix(cx * 16 + x, cz * 16 + z, seed ^ 0x674B4CL);
             if ((rock & 15) == 0) {
                 int y = 5 + (int) ((rock >>> 8) % 32);
-                if (c.get(x, y, z) == BlockType.STONE && c.get(x, y - 1, z).solid)
+                if ((c.get(x, y, z) == BlockType.STONE || c.get(x, y, z) == BlockType.COPPER_ORE)
+                        && c.get(x, y - 1, z).solid)
                     c.set(x, y, z, BlockType.GRAVEL);
             }
         }

@@ -88,7 +88,8 @@ public enum BlockType {
     TERRACOTTA  (true, false, false, 110, 110, 110, 0.62f, 0.31f, 0.21f, 0, 6f),
     LIMESTONE   (true, false, false, 111, 111, 111, 0.77f, 0.75f, 0.65f, 0, 5f),
     BASALT      (true, false, false, 112, 112, 112, 0.25f, 0.27f, 0.29f, 0, 9f),
-    GRAVEL      (true, false, false, 113, 113, 113, 0.48f, 0.46f, 0.42f, 0, 0.6f);
+    GRAVEL      (true, false, false, 113, 113, 113, 0.48f, 0.46f, 0.42f, 0, 0.6f),
+    COPPER_ORE  (true, false, false, 139, 139, 139, 0.75f, 0.34f, 0.17f, 0, 10f);
 
     public final boolean solid;
     public final boolean transparent;

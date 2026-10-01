@@ -39,6 +39,13 @@
     },
     "time": 8.0
   },
+  "smelt_copper_ore": {
+    "type": "smelting",
+    "order": 9,
+    "input": "mineclone:copper_ore",
+    "result": { "item": "mineclone:copper_ingot", "count": 1 },
+    "time": 8.0
+  },
   "smelt_gold_ore": {
     "type": "smelting",
     "order": 8,

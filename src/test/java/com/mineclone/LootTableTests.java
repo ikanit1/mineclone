@@ -66,7 +66,7 @@ final class LootTableTests {
         LootRegistry loot = Items.get().loot();
         ItemStack best = ItemStack.of("diamond_pickaxe");
         List<String> expected = Files.readAllLines(Path.of("src/test/resources/loot/legacy-block-drops.tsv"));
-        check(expected.size() == BlockType.values().length, "golden does not cover every block");
+        check(expected.size() == BlockType.COPPER_ORE.ordinal(), "golden does not cover the frozen M0 prefix");
         for (String row : expected) {
             String[] cells = row.split("\\|");
             BlockType block = BlockType.valueOf(cells[0]);

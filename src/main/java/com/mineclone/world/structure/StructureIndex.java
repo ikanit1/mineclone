@@ -44,6 +44,8 @@ public final class StructureIndex {
         return types;
     }
 
+    public long seed() { return seed; }
+
     /** The start of type number {@code t} in a region, or null. */
     public StructureStart start(int t, int rx, int rz) {
         long key = (long) t << 56 | (rx & 0xFFFFFFFL) << 28 | (rz & 0xFFFFFFFL);

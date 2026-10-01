@@ -1,1 +1,6 @@
-{"pools":[]}
+{"pools":[{"rolls":[2,4],"entries":[
+  {"item":"planks","weight":5,"count":[3,8]},
+  {"item":"stick","weight":5,"count":[2,6]},
+  {"item":"cooked_porkchop","weight":3,"count":[1,3]},
+  {"item":"wooden_axe","weight":1,"functions":[{"set_damage":[0.1,0.5]}]}
+]}]}
