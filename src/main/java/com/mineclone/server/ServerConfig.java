@@ -53,6 +53,8 @@ public final class ServerConfig {
     public final long seed;
     /** Творческий режим вместо выживания. */
     public final boolean creative;
+    /** Explicitly upgrade generation in new land of existing worlds; default false. */
+    public final boolean upgradeWorldgen;
 
     /** Сколько участников впускаем. */
     public final int maxPlayers;
@@ -78,6 +80,7 @@ public final class ServerConfig {
         worldName = strOf(p, "world-name", "Сервер");
         seed = longOf(p, "seed", 0L);
         creative = "creative".equalsIgnoreCase(strOf(p, "mode", "survival"));
+        upgradeWorldgen = boolOf(p, "upgrade-worldgen", false);
         maxPlayers = Math.max(1, Math.min(LanTransport.MAX_PLAYERS,
                 intOf(p, "max-players", LanTransport.MAX_PLAYERS)));
         viewDistance = Math.max(2, Math.min(16, intOf(p, "view-distance", 6)));
@@ -174,6 +177,8 @@ public final class ServerConfig {
                 "seed for a new world; 0 = random" });
         rows.put("mode", new String[] { creative ? "creative" : "survival",
                 "survival or creative" });
+        rows.put("upgrade-worldgen", new String[] { String.valueOf(upgradeWorldgen),
+                "upgrade existing worlds for new land only, after a backup; false keeps their generator" });
         rows.put("max-players", new String[] { String.valueOf(maxPlayers), "" });
         rows.put("view-distance", new String[] { String.valueOf(viewDistance),
                 "chunks kept alive around each player" });

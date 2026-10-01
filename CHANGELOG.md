@@ -26,6 +26,7 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 - The crosshair keeps its two-pixel thickness with triangles; outlines use a portable line width so forward-compatible OpenGL contexts no longer report invalid values.
 
 ### Added
+- Old worlds offer an explicit generator upgrade before opening from the world list, Continue or hosting menus; dedicated servers opt in with `upgrade-worldgen=true` (default false). An original-byte backup and durable old-terrain pins precede the new level settings, including saved guest positions and personal spawns. Failed upgrades preserve the old generator and report an error.
 - New worlds use generator V2 with copper ore at y20–70. Copper ore smelts into copper ingots, making all four existing copper tool recipes obtainable in survival. Existing worlds retain their stored generator and the V1 terrain hashes.
 - Structure pieces can place deterministically filled loot chests, clipped to their own chunk. Player changes, empty contents and broken chests survive saving and loading; the first natural structures using this path arrive with GEN-05.
 - Imported 16 armor icons, six hoe icons and twelve crop-stage textures into the runtime atlas; their source sheets remain unchanged. These are prepared assets for upcoming equipment and farming gameplay. The texture catalog now shows the actual runtime PNGs.

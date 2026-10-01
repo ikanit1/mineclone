@@ -20,7 +20,14 @@ seed=20260922
 mode=creative
 autosave-seconds=15
 view-distance=4
+upgrade-worldgen=${UPGRADE_WORLDGEN:-false}
 PROPERTIES
+# Optional old-world fixture: copy into this disposable test root, never run
+# against the supplied source. Exercises S_GEN_MAP with a mixed V1/V2 server.
+if [ -n "${WORLD_SOURCE:-}" ]; then
+    mkdir -p "$WORK/saves/test"
+    cp -a "$WORLD_SOURCE/." "$WORK/saves/test/" || exit 2
+fi
 mkfifo "$WORK/console"
 java -cp "$SERVER_CP" com.mineclone.server.ServerMain "$WORK/server.properties" \
     < "$WORK/console" > "$WORK/server.out" 2> "$WORK/server.err" &

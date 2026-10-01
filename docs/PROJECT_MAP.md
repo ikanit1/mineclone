@@ -317,6 +317,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [WorldBackupProgressScreen](../src/main/java/com/mineclone/ui/WorldBackupProgressScreen.java) | The render loop remains responsive while the save writer snapshots the world. |
 | [WorldBackupsScreen](../src/main/java/com/mineclone/ui/WorldBackupsScreen.java) | Restores into a new world and opens that copy; the selected source stays untouched. |
 | [WorldCreateScreen](../src/main/java/com/mineclone/ui/WorldCreateScreen.java) | Создание мира: имя, сид, режим, дальность прорисовки. |
+| [WorldGenUpgradeScreen](../src/main/java/com/mineclone/ui/WorldGenUpgradeScreen.java) | Explicit generation choice before opening an old world, including Continue and LAN hosting. |
 | [WorldIconCache](../src/main/java/com/mineclone/ui/WorldIconCache.java) | Текстуры превью миров для списка. |
 | [WorldLoadErrorScreen](../src/main/java/com/mineclone/ui/WorldLoadErrorScreen.java) | Read failures stay in the menu, with no world construction or disk writes. |
 | [WorldSelectScreen](../src/main/java/com/mineclone/ui/WorldSelectScreen.java) | Список миров: превью, режим, сутки, размер, последний вход. |
@@ -482,4 +483,4 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [StructureTypes](../src/main/java/com/mineclone/world/structure/StructureTypes.java) | The structure types of the 1.1 generator (GEN-03). |
 | [StructureWriter](../src/main/java/com/mineclone/world/structure/StructureWriter.java) | Where a structure piece puts its blocks, in world coordinates: the chunk being generated (ChunkWriter) or, in tests, one large buffer. |
 
-Top-level declarations: 351.
+Top-level declarations: 352.

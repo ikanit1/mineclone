@@ -124,6 +124,18 @@ public final class DedicatedServer implements NetContext {
             return false;
         }
         LevelData lvl = decision.data();
+        if (lvl != null && config.upgradeWorldgen && com.mineclone.world.gen.WorldGenSettings.decode(
+                lvl.extraSections.get(com.mineclone.world.gen.WorldGenSettings.SAVE_SECTION)).version().id()
+                < com.mineclone.world.gen.WorldGenVersion.LATEST.id()) {
+            try {
+                save.upgradeWorldGen(config.worldId).join();
+                lvl = ((com.mineclone.save.LevelLoad.Loaded) save.readLevel(config.worldId)).data();
+                log("world generation upgraded; recorded and conservatively pinned land keeps its original version");
+            } catch (java.util.concurrent.CompletionException failure) {
+                log("world generation upgrade failed; refusing to open: " + failure.getCause());
+                return false;
+            }
+        }
         ownerTemplate = lvl;
         try {
             save.beginWorldSession(config.worldId).join();

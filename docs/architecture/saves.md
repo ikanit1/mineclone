@@ -96,6 +96,13 @@ chunk/player/ledger bytes match the archive. The level retains gameplay data
 and receives a display name with the backup date. The world selector's
 “Бэкапы…” screen lists copies and opens the restored world after completion.
 
+Explicit generator upgrades use the same ordered writer and a fresh pre-upgrade
+snapshot. `upgradeWorldGen` is for closed worlds: it reads all stored player
+anchors, writes the pinned ledger atomically, then writes the level with new
+generator settings. Errors complete the returned future exceptionally; they
+never publish new settings to the caller. The level remains on V1 after a failed
+commit, and any already-written V1 pins remain safe. See [worldgen](worldgen.md).
+
 `tools/WorldBackupBenchmark.java` measured 200 MiB of deterministic, incompressible
 temporary input at **5.428 seconds**, with a 209,804,472-byte ZIP on this machine.
 The game therefore renders a progress screen while the session backup future is

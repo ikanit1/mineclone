@@ -72,9 +72,19 @@ autopilot skips its music checks and says so.
 tools/linux/fetch-natives.sh
 tools/linux/run-net-test.sh       # the LAN pair of run-net-test.ps1
 tools/linux/run-server-test.sh    # the server and two clients of run-server-test.ps1
+# Same server gate with an old fixture, copied into the disposable test root:
+WORLD_SOURCE="$PWD/src/test/resources/fixtures/saves/alpha-small" UPGRADE_WORLDGEN=true \
+    tools/linux/run-server-test.sh
 xvfb-run -a java -Dmineclone.autopilot=out-test/autopilot/shots \
     -Dmineclone.savesDir=out-test/autopilot/saves -cp "out-test:libs/*:out-test/linux-natives/*" com.mineclone.Main
 ```
+
+Generator opening checks: `TestMain --only worldgen,net,save,menu`;
+`tools/WorldGenOpeningSmoke.java` renders and clicks the new dialog (three
+resolutions, failure recovery), and `tools/WorldGenGameSmoke.java` drives the
+actual Game through decline, mouse upgrade, save and reopen. Run Java source
+tools with the compiled game plus libraries/natives on the classpath and Xvfb
+on Linux. They copy the fixture to ignored `out-test/worldgen-*` directories.
 
 The autopilot's timeouts count game time, and the frame step is capped, so a
 slow software renderer stretches a run instead of failing it: the menu autopilot

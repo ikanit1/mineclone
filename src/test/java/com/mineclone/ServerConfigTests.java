@@ -6,6 +6,19 @@ import java.nio.file.Files;
 
 final class ServerConfigTests {
     static void runAll(TestMain.Runner r) {
+        r.run("server generator upgrades default to false and round-trip explicit opt-in", () -> {
+            var path = Files.createTempFile("mineclone-upgrade-config-", ".properties");
+            try {
+                if (ServerConfig.defaults().upgradeWorldgen) throw new AssertionError("unsafe default");
+                Files.writeString(path, "upgrade-worldgen=true\n");
+                ServerConfig read = ServerConfig.load(path.toFile());
+                if (!read.upgradeWorldgen) throw new AssertionError("opt-in not read");
+                read.write(path.toFile());
+                if (!ServerConfig.load(path.toFile()).upgradeWorldgen) throw new AssertionError("opt-in not written");
+                Files.writeString(path, "upgrade-worldgen=false\n");
+                if (ServerConfig.load(path.toFile()).upgradeWorldgen) throw new AssertionError("opt-out not read");
+            } finally { Files.delete(path); }
+        });
         r.run("server saves-dir preserves pasted Windows separators when joining world path", () -> {
             var config = Files.createTempFile("mineclone-path-", ".properties");
             try {

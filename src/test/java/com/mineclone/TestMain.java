@@ -66,6 +66,7 @@ public final class TestMain {
         suite("worldgen", "WorldGenerationTests", r -> r.run("biome assets, sparse structures, seams and falling-block conservation", WorldGenerationTests::run));
         suite("worldgen", "WorldGenGoldenTests", WorldGenGoldenTests::runAll);
         suite("worldgen", "ChunkLedgerTests", ChunkLedgerTests::runAll);
+        suite("worldgen", "WorldGenOpeningTests", WorldGenOpeningTests::runAll);
         suite("worldgen", "StructureTests", StructureTests::runAll);
         suite("worldgen", "StructureLootTests", StructureLootTests::runAll);
         suite("worldgen", "CopperOreTests", CopperOreTests::runAll);

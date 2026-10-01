@@ -89,8 +89,10 @@ entries for the land it made before the ledger existed: all of it is V1.
 - **Rebuild.** A missing or damaged ledger of a world that was ever upgraded
   (`upgradedAt > 0`) is rebuilt conservatively by `WorldGenUpgrade.pinSeen`: every
   saved chunk and `SEEN_RADIUS` (12) chunks around it, and as much around spawn
-  and the player (the owner's checkpoint on a server), count as V1. A world that
-  was never upgraded rebuilds empty.
+  and the player, including readable guests' checkpoints and personal spawn
+  points, count as V1. A world that was never upgraded rebuilds empty. An
+  unreadable guest retains its existing connection refusal and is reported;
+  it does not prevent other players from opening the world during recovery.
 - **Upgrade.** `WorldGenUpgrade.upgrade(from, target, ledger, saved chunks, anchors,
   now)` pins the same seen land to the old version and returns the new settings.
   `ChunkLedgerTests` upgrades the 1.0 fixture `alpha-small` and compares chunks 0
@@ -116,12 +118,38 @@ entries for the land it made before the ledger existed: all of it is V1.
   generation before the delta. `NetworkTests` runs an upgraded host with pinned
   land and a host whose map forgets a chunk.
 
-**Not yet** — each waits for V2 to change land, when it would do more than
-record a version:
+**Explicit opening choice (GEN-02, completed 2026-10-01).**
+`WorldGenUpgradeScreen` offers an upgrade before opening a closed V1 world from
+the world list, Continue or the multiplayer host selector. “Без обновления”
+opens with the recorded generator; Esc returns to the menu without writing.
+An old world may be offered the choice again on a later opening; it never
+upgrades automatically. Starting a host from an already live world preserves
+its generator: return to menus before upgrading it.
 
-- the world-list dialog "update generation for new land?" and `upgrade-worldgen`
-  in `server.properties`;
-- guests' checkpoints (`players/`) as anchors of a server's upgrade.
+On the dedicated server, `upgrade-worldgen=false` is the default.
+Setting it to `true` upgrades an existing older world before chunks or network
+doors open. New worlds already use V2; a V2 world is never downgraded or
+re-upgraded when this setting changes.
+
+Both routes use `SaveManager.upgradeWorldGen` on the ordered background writer:
+fresh original-byte backup → read all stored player anchors → pin old land →
+atomic ledger write → atomic level write. Every recorded version survives;
+the 12-chunk approximation also protects saved chunks, world spawn, the owner's
+pose/personal spawn and every guest's pose/personal spawn. Pre-ledger travel
+beyond those rings cannot be reconstructed. An unreadable guest or inaccessible
+chunk directory refuses the upgrade, rather than treating unknown land as new.
+Any backup/ledger/level error refuses the upgrade; the server exits with code 2,
+and the menu reports the error. A failed level commit can leave extra V1 pins,
+which are safe with the unchanged V1 level. It can never leave a V2 level
+without its durable pins. Unknown level/player sections survive unchanged.
+
+`WorldGenOpeningTests` upgrades the 1.0 fixture, compares seen terrain hashes,
+checks remote guests, original backup bytes, server opt-in/autosave/reopen,
+missing-ledger recovery, failed backup/ledger and (on POSIX) failed level
+commit. `WorldGenOpeningSmoke` renders/clicks the production menu at three
+resolutions; `WorldGenGameSmoke` runs the real Game through decline, mouse
+upgrade and save/reopen. The Linux server check can use a disposable copied old
+world to exercise mixed V1/V2 generation with two real clients.
 
 **The V1 golden.** `src/test/resources/fixtures/worldgen-v1.txt` holds SHA-1 of
 blocks and meta for 120 chunks — seeds 0, 20260922 and −77231; negative, far

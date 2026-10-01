@@ -103,6 +103,8 @@ writer and its assets, as described in the [fixture reproduction guide](../src/t
 | [TestRunnerCli.ps1](../tools/TestRunnerCli.ps1) | P | Filter/list/env/invalid-input/failure-exit acceptance | `out-test/runner-cli` |
 | [TestServerPackage.ps1](../tools/TestServerPackage.ps1) | P | Extract serverZip; launch .bat, TCP ready, /stop and saved level | `out-test/server-package-*` |
 | [WorldBackupBenchmark.java](../tools/WorldBackupBenchmark.java) | J | 200 MiB backup measurement on disposable generated data | `temporary directory + console` |
+| [WorldGenOpeningSmoke.java](../tools/WorldGenOpeningSmoke.java) | J | Production menu rendering/input at three sizes; decline, upgrade, error recovery | `out-test/worldgen-opening` |
+| [WorldGenGameSmoke.java](../tools/WorldGenGameSmoke.java) | J | Real Game loop: decline V1, mouse upgrade, V1/V2 save/reopen | `out-test/worldgen-game` |
 
 ## Root entry scripts
 

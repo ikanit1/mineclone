@@ -4668,6 +4668,13 @@ public class Game {
 
     /** Действие экрана меню, дошедшее до игры. */
     private void handleMenuAction(MenuAction a) {
+        // Upgrades operate on closed worlds. Hosting the currently live world
+        // preserves its generator; it can be upgraded after returning to menus.
+        MenuAction offered = world == null ? com.mineclone.ui.WorldGenUpgradeScreen.offer(save, a) : a;
+        if (offered != a) {
+            menus.push(offered.screen);
+            return;
+        }
         switch (a.kind) {
             case PLAY_WORLD -> startWorld(a.worldId);
             case CREATE_WORLD -> createWorld(a.world);
