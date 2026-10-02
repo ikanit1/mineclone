@@ -191,6 +191,7 @@ public final class WorldSession {
      */
     public void tickMobs(float dt) {
         ecology.tick();
+        ecology.tickBurnScars(dt);
         updateAnimalResidency(dt);
         ecology.tickLairs(dt, host.spawnMobs());
         List<Mob> mobs = entities.mobs;

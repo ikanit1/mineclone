@@ -46,6 +46,20 @@ public final class WorldClock {
     /** Float view for the existing rendering/network APIs; accumulation stays double. */
     public float gameTimeFloat() { return (float) gameTime; }
     public long worldTicks() { return worldTicks; }
+    /**
+     * Tick at the same phase on a logical replay day. Keep the integer counter
+     * intact and use the fractional remainder to undo exact (unrounded) days.
+     * A past day before this clock's origin clamps to zero; a future day uses now.
+     */
+    public long logicalDayTicks(long logicalDay) {
+        if (logicalDay < 0) throw new IllegalArgumentException("negative logical world day");
+        long currentDay = Math.max(0, (long) Math.floor(gameTime / NightSky.CYCLE));
+        long daysBack = Math.max(0, currentDay - logicalDay);
+        if (daysBack == 0) return worldTicks;
+        double rewind = daysBack * (NightSky.CYCLE / TIME_SCALE * TICKS_PER_SECOND) - fractionalTick;
+        if (rewind >= worldTicks) return 0;
+        return Math.max(0, worldTicks - (long) Math.ceil(rewind - 1e-9));
+    }
     public float daylight() { return daylightAt(gameTime); }
     /** Seconds of game time as weather fronts count them ({@code Weather.sample}). */
     public float frontSeconds() { return (float) (gameTime / TIME_SCALE); }

@@ -132,9 +132,7 @@ public final class LairRuntime {
     private void scheduleFirstWeb(int x, int y, int z, long day) {
         // Replay can found a heart before the target clock day, while the block
         // dispatcher still points at the pre-replay tick. Anchor silk to birth.
-        long daysBack = Math.max(0, Ecology.day(clock.gameTime()) - day);
-        long ticks = clock.worldTicks(), interval = SpiderNestBehavior.INTERVAL;
-        long born = daysBack > ticks / interval ? 0 : ticks - daysBack * interval;
+        long born = clock.logicalDayTicks(day), interval = SpiderNestBehavior.INTERVAL;
         long due = born > ScheduledTicks.MAX_DUE - interval ? ScheduledTicks.MAX_DUE : born + interval;
         world.scheduleTickAt(x, y, z, BlockType.SPIDER_NEST, due);
     }

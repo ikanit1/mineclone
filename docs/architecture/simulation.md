@@ -77,7 +77,7 @@ Read-only or full chunks keep the body live. With the rule off, the legacy spawn
 path and recorded simulation trajectory remain unchanged.
 
 Owners use `/ecology on|off|info|lair|advance <1–60>`; F3+G selects diagnostics.
-Burn-scar behaviour and the LW-12 performance budget remain later work.
+Burn-scar recovery is described below; the LW-12 performance budget remains open.
 See [population evidence](../changes/living-populations/validation.md).
 
 ## Finite spider lairs and founding (LW-04/05)
@@ -364,3 +364,39 @@ mob brains and appended births cannot invalidate iteration. Peaceful removes
 hostiles immediately. Lightning is a typed radius event from the game's Storm.
 DedicatedServer uses the same lifecycle without importing client/render/audio
 classes. `EntityLifecycleTests` includes server stop/reopen with the same herd ID.
+
+## Burn scars and forest recovery (LW-08)
+
+With supported Living World enabled, actual `BlockTicker.consumeFuel` reports the
+consumed fuel through World to Ecology. It searches at most 16 cells down its
+loaded writable column, stops at player obstacles and fields, and registers
+eligible grass ground before turning it to DIRT. An unsuccessful bounded record
+claim leaves that ground alone. Reburning a known site resets its recovery age.
+
+`BurnScars` replays at most 60 days in stable chunk/site order, both on daily
+advancement and when a saved chunk arrives. Ground recovers after two days;
+from day three a deterministic 1/8 daily opportunity plants a natural sapling
+on its own recovered grass. Light, clear crown, live trample pressure and
+participants/animal bodies constrain planting and growth. Seven-cell Chebyshev
+spacing reserves future crowns, including nearby roots/trunks within 12 vertical
+cells, so ordinary growth between days agrees with advancement before growth.
+The exact first due tick comes from `WorldClock.logicalDayTicks`; it retains the
+integer clock cursor and fractional tick rather than rounding every day to an
+integer interval. Player-planted saplings retain their existing growth policy.
+
+Scar age bounds each observed chunk's greenery before regional capacity and
+daily births/migration. Every half second, nearby persistent passive animals
+receive ordinary navigation goals on clear undamaged support at bounded radii
+12, 24 or 48. A valid refuge stays selected while crossing clear gaps between
+scars, until reached, invalidated or the nearby history ages beyond three days.
+Goals are transient, disappear when disabled and never teleport
+or remove a body. Materialization keeps the existing distance/view/body caps
+and also refuses ground damaged within three days. Recovered habitat can draw
+new finite bodies from the regional pool; this is separate from the original
+animals physically returning. New scar state uses existing optional slots and
+does not change network messages. Guests see normal block and mob snapshots.
+
+Acceptance uses real fire callbacks and native input, day-seven trees, physical
+flight, fresh finite animal IDs and real save/reopening. Scheduled/random fire
+callbacks are explicitly accelerated in fixtures; no normal-time fire-rate or
+LW-12 frame-budget claim follows. See [validation](../changes/burn-scars/validation.md).

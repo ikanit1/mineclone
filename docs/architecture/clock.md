@@ -26,3 +26,10 @@ Clock section version 2 appends the world-owned `long` entity counter (36-byte
 payload). Version 1's 28-byte clock remains readable. Restored entities advance
 the counter through `observeEntityId`; a birth reserves one ID and network varlong
 encoding preserves it. Time commands never rewind this counter.
+
+`logicalDayTicks(day)` anchors replay-created natural saplings and nest silk to
+their logical calendar day at the current phase. It subtracts the exact cycle
+duration and fractional cursor from the integer tick counter, preserving large
+long values without conversion to double. Current/future days use the current
+cursor; days before the simulation origin clamp to zero. Existing relative
+scheduling, stored clock version and time-command semantics are unchanged.

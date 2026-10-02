@@ -53,6 +53,30 @@ ID set links those bodies to their finite population; no extra mob-record field
 is needed. Dawn returns release a body ID without a loss, while deaths remove
 one member once. Destroying the heart preserves surviving body reservations.
 
+### Typed burn scars (LW-08)
+
+Existing region scar slots now recognize BURN magic (`0x4255524e`), schema 1.
+A record stores signed chunk X/Z, a nonnegative absolute last-processed day,
+one byte site count, then each ground index as u16 (bit 15 means planted once)
+and its nonnegative i64 burn day. The 22-byte header and ten bytes per site
+allow at most 64 unique ground cells and a retained unknown suffix within
+1024 bytes; at most 16 records share a region's existing scar slots. Ground
+Y must be 0..126, leaving room above it. Chunk ownership and coordinate bounds
+are validated before simulation. Unknown magic remains byte-exact and ordered.
+A known future schema preserves the whole original ecology and disables the
+feature; corrupt known data uses durable evidence before rebuilding, just like
+lairs. Existing outer level/chunk formats stay 11/9 and protocol stays 13.
+
+Only loaded writable records advance; unloaded histories retain their cursor
+for arrival replay. Saving flushes detached records, including while disabled.
+A site seeds at most once between actual fires, surviving cutting and reopening.
+When all 16 slots are full, a record without an unknown suffix may be retired
+only after every site is at least seven days old and visibly healed on loaded
+writable grass with empty or natural vegetation above. Unhealed/player-blocked,
+unknown and suffixed histories cannot be sacrificed to admit a new event.
+Natural saplings use meta bit 2; species remain in bits 0..1. Real prior-reader
+9 codec and save rewriting are tested to preserve these optional bytes.
+
 `ecology_fields` (LW-06) is an additional optional level section: FHLD magic,
 version 1, region count, then signed region coordinates and sparse per-chunk
 crop counts. There are at most 4096 regions and 256 chunk cells per region;

@@ -4826,6 +4826,148 @@ public class Game {
     /** Мост автопилота к игре: только то, что нужно прогону. */
     private final class PilotDriver implements Autopilot.Driver {
         private int[] lairFixtureAnchor;
+        private int[] burnFixtureAnchor;
+        @Override public int[] burnAnchor() {
+            if (burnFixtureAnchor == null) burnFixtureAnchor = new int[]{
+                    Math.floorDiv((int) Math.floor(worldSpawn.x), 256) * 256 + 70,
+                    Math.min(86, (int) Math.floor(worldSpawn.y) + 20),
+                    Math.floorDiv((int) Math.floor(worldSpawn.z), 256) * 256 + 70};
+            return burnFixtureAnchor.clone();
+        }
+        @Override public void prepareBurnArena() {
+            if (net.isClient() || !"burn".equals(System.getProperty("mineclone.autopilot.netScenario", "")))
+                throw new IllegalStateException("Burn preparation belongs only to the disposable owner scenario");
+            if (session.ecology().enabled()) throw new IllegalStateException("Initial burn authoring must precede Ecology adoption");
+            int[] p = burnAnchor(); int x = p[0], y = p[1], z = p[2];
+            if (!com.mineclone.world.Weather.precipitates(world.biomes.biomeAt(x, z))
+                    || com.mineclone.world.Weather.snowsAt(world.biomes.biomeAt(x, z), y + 2))
+                throw new IllegalStateException("Burn fixture needs a warm rainy biome");
+            int margin = renderRadius + 1;
+            for (int cx = Math.min(Math.floorDiv((int) worldSpawn.x, 16), Math.floorDiv(x, 16)) - margin;
+                    cx <= Math.max(Math.floorDiv((int) worldSpawn.x, 16), Math.floorDiv(x + 29, 16)) + margin; cx++)
+                for (int cz = Math.min(Math.floorDiv((int) worldSpawn.z, 16), Math.floorDiv(z, 16)) - margin;
+                        cz <= Math.max(Math.floorDiv((int) worldSpawn.z, 16), Math.floorDiv(z + 44, 16)) + margin; cz++) loader.loadNow(cx, cz);
+            // Author the disposable initial cast before any finite reservation exists.
+            // Empty-body save receipts keep later camera streaming from adding generated herds above normal caps.
+            mobs.clear(); items.clear();
+            for (Chunk c : world.getLoadedChunks()) { c.setPendingMobs(java.util.List.of()); c.modified = true; }
+            world.batchBlocks(() -> {
+                for (int dx = -40; dx <= 40; dx++) for (int dz = -40; dz <= 40; dz++) {
+                    world.setBlock(x + dx, y - 1, z + dz, BlockType.DIRT);
+                    world.setBlock(x + dx, y, z + dz, BlockType.GRASS);
+                    for (int by = y + 1; by < 128; by++) world.setBlock(x + dx, by, z + dz, BlockType.AIR);
+                    if (Math.abs(dx) <= 24 && Math.abs(dz) <= 24 && Math.floorMod(dx, 4) != 0 && Math.floorMod(dz, 4) != 0)
+                        world.setBlock(x + dx, y + 1, z + dz, BlockType.TALL_GRASS);
+                }
+                for (int[] tree : new int[][]{{-16,-12},{-8,8},{0,-8},{8,12},{16,-12},{16,8}})
+                    for (var c : com.mineclone.world.gen.TreeShapes.cells(0, x + tree[0], y, z + tree[1],
+                            world.seed ^ ((long) (x + tree[0]) << 32) ^ ((z + tree[1]) & 0xffff_ffffL)))
+                        world.setBlock(c.x(), c.y(), c.z(), c.block());
+            });
+            for (Chunk c : world.getLoadedChunks()) if (c.cx >= Math.floorDiv(x - 40, 16) && c.cx <= Math.floorDiv(x + 40, 16)
+                    && c.cz >= Math.floorDiv(z - 40, 16) && c.cz <= Math.floorDiv(z + 40, 16)) c.computeSkyLight();
+            executeCommand("/ecology on");
+            holdBurnMaterialization(true);
+            var cow = new com.mineclone.world.entity.Mob(com.mineclone.world.entity.MobType.COW,
+                    x - 14.5f, y + 1.001f, z - 10.5f, new java.util.Random(world.seed));
+            cow.onGround = true; cow.persistent = true;
+            if (!session.ecology().claim(cow)) throw new IllegalStateException("Burn fixture cow cannot reserve finite wildlife");
+            mobs.add(cow);
+            var ticker = new com.mineclone.world.BlockTicker(world.seed ^ 0x4255524eL);
+            int callbacks = 0, ignitions = 0;
+            for (int round = 0; round < 3000; round++) {
+                int fireCount = burnCount(BlockType.FIRE, y + 1, y + 12);
+                if (fireCount == 0) {
+                    if (burnTerrainStats()[0] >= 192 && burnOldRoots() == 0) break;
+                    int[] fire = burnIgnitionSite();
+                    if (fire == null) throw new IllegalStateException("Real remaining grove fuel has no ignition site");
+                    world.setBlock(fire[0], fire[1], fire[2], BlockType.FIRE, (byte) 0); ignitions++;
+                }
+                callbacks += burnPump(ticker, false, 3);
+            }
+            if (burnTerrainStats()[0] < 192) throw new IllegalStateException("Production fire did not scorch the grove: ground="
+                    + java.util.Arrays.toString(p) + " dirt=" + burnTerrainStats()[0] + " roots=" + burnOldRoots()
+                    + " fire=" + burnCount(BlockType.FIRE, y + 1, y + 12) + " ash=" + burnCount(BlockType.ASH, y + 1, y + 12)
+                    + " callbacks=" + callbacks + " ignitions=" + ignitions + " day=" + com.mineclone.sim.ecology.Ecology.day(worldClock.gameTime()));
+            if (burnOldRoots() != 0) throw new IllegalStateException("Production fire did not consume all original mature roots");
+            for (int n = 0; n < 300 && burnCount(BlockType.FIRE, y + 1, y + 12) > 0; n++) callbacks += burnPump(ticker, false, 3);
+            boolean rain = false;
+            for (int front = 1; front < 4; front++) {
+                double time = (front * com.mineclone.world.Weather.FRONT_LENGTH + com.mineclone.world.Weather.TRANSITION + 1)
+                        * com.mineclone.sim.WorldClock.TIME_SCALE;
+                if (com.mineclone.sim.ecology.Ecology.day(time) != 0) continue;
+                if (com.mineclone.world.Weather.sample(world.seed, (float) (time / com.mineclone.sim.WorldClock.TIME_SCALE)).precipitation()
+                        >= com.mineclone.world.BlockTicker.RAIN_EXTINGUISH) { worldClock.setGameTime(time); rain = true; break; }
+            }
+            if (!rain) throw new IllegalStateException("Disposable grove seed needs natural first-day rain");
+            for (int n = 0; n < 4; n++) callbacks += burnPump(ticker, true, 1);
+            worldClock.setHours(6); session.ecology().tickBurnScars(.5f);
+            System.out.println("autopilot: burn owner prepared actual fuel consumption callbacks=" + callbacks
+                    + " seededFireIgnitions=" + ignitions + " originalCowID=" + cow.id + " naturalRain=true");
+        }
+        @Override public void holdBurnMaterialization(boolean hold) {
+            if (!"burn".equals(System.getProperty("mineclone.autopilot.netScenario", "")))
+                throw new IllegalStateException("Spawn timing hook belongs only to the disposable burn scenario");
+            if (!net.isClient()) try {
+                var timer = com.mineclone.sim.WorldSession.class.getDeclaredField("spawnTimer");
+                timer.setAccessible(true); timer.setFloat(session, hold ? 3600f : 0f);
+            } catch (ReflectiveOperationException failed) { throw new IllegalStateException("Burn timer hook unavailable", failed); }
+        }
+        private int[] burnIgnitionSite() {
+            int[] p = burnAnchor();
+            for (int[] t : new int[][]{{-16,-12},{-8,8},{0,-8},{8,12},{16,-12},{16,8}}) {
+                int x = p[0] + t[0], z = p[2] + t[1];
+                if (world.getBlock(x, p[1] + 1, z) != BlockType.WOOD) continue;
+                for (int[] o : new int[][]{{1,0},{-1,0},{0,1},{0,-1}})
+                    if (world.getBlock(x + o[0], p[1] + 1, z + o[1]) == BlockType.AIR) return new int[]{x + o[0], p[1] + 1, z + o[1]};
+            }
+            for (int r = 0; r <= 24; r++) for (int dx = -r; dx <= r; dx++) for (int dz = -r; dz <= r; dz++) {
+                if (Math.max(Math.abs(dx), Math.abs(dz)) != r) continue;
+                int x = p[0] + dx, z = p[2] + dz;
+                if (world.getBlock(x, p[1] + 1, z) != BlockType.AIR || world.getBlock(x, p[1], z) != BlockType.GRASS) continue;
+                for (int[] o : new int[][]{{1,0},{-1,0},{0,1},{0,-1}})
+                    if (world.getBlock(x + o[0], p[1] + 1, z + o[1]).isFlammable()) return new int[]{x, p[1] + 1, z};
+            }
+            return null;
+        }
+        private int burnOldRoots() {
+            int[] p = burnAnchor(); int n = 0;
+            for (int[] t : new int[][]{{-16,-12},{-8,8},{0,-8},{8,12},{16,-12},{16,8}})
+                if (world.getBlock(p[0] + t[0], p[1] + 1, p[2] + t[1]) == BlockType.WOOD) n++;
+            return n;
+        }
+        private int burnPump(com.mineclone.world.BlockTicker ticker, boolean rain, int passes) {
+            int[] p = burnAnchor(); int callbacks = 0;
+            for (int pass = 0; pass < passes; pass++) for (int y = p[1] + 1; y <= p[1] + 12; y++)
+                for (int x = p[0] - 25; x <= p[0] + 25; x++) for (int z = p[2] - 25; z <= p[2] + 25; z++) {
+                    BlockType b = world.getBlock(x, y, z);
+                    if (b == BlockType.FIRE || rain && b == BlockType.ASH) { ticker.apply(world, x, y, z, rain); callbacks++; }
+                }
+            return callbacks;
+        }
+        private int burnCount(BlockType kind, int low, int high) {
+            int[] p = burnAnchor(); int count = 0;
+            for (int x = p[0] - 24; x <= p[0] + 24; x++) for (int z = p[2] - 24; z <= p[2] + 24; z++)
+                for (int y = low; y <= high; y++) if (world.getBlock(x, y, z) == kind) count++;
+            return count;
+        }
+        @Override public int[] burnTerrainStats() {
+            int[] p = burnAnchor(); int trees = 0;
+            for (int dx = -24; dx <= 24; dx++) for (int dz = -24; dz <= 24; dz++) {
+                boolean oldRoot = false;
+                for (int[] t : new int[][]{{-16,-12},{-8,8},{0,-8},{8,12},{16,-12},{16,8}}) if (t[0] == dx && t[1] == dz) oldRoot = true;
+                if (!oldRoot && world.getBlock(p[0] + dx, p[1] + 1, p[2] + dz) == BlockType.WOOD) trees++;
+            }
+            return new int[]{burnCount(BlockType.DIRT, p[1], p[1]), burnCount(BlockType.GRASS, p[1], p[1]), trees};
+        }
+        @Override public long[] burnAnimalIds() {
+            int[] p = burnAnchor();
+            return mobs.stream().filter(m -> m.id > 0 && !m.dead && m.persistent()
+                    && m.type.temper == com.mineclone.world.entity.MobType.Temper.PASSIVE)
+                    .filter(m -> Math.abs(m.position.x - p[0]) <= 24 && Math.abs(m.position.z - p[2]) <= 24
+                            && Math.abs(m.position.y - (p[1] + 1)) < 3)
+                    .mapToLong(m -> m.id).sorted().toArray();
+        }
         @Override public int[] lairAnchor() {
             if (lairFixtureAnchor == null) lairFixtureAnchor = new int[]{
                     Math.floorDiv((int) Math.floor(worldSpawn.x), 256) * 256 + 70,

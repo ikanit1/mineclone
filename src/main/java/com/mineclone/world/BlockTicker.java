@@ -239,6 +239,8 @@ public final class BlockTicker {
      * постепенно съедает само топливо, перебираясь на его место.
      */
     private void tickFire(World world, int wx, int wy, int wz, boolean raining) {
+        Chunk burningChunk = world.getChunkIfExists(Math.floorDiv(wx, 16), Math.floorDiv(wz, 16));
+        if (burningChunk == null || burningChunk.isReadOnly()) return;
         if (touchesWater(world, wx, wy, wz) || (raining && openToSky(world, wx, wy, wz))) {
             world.setBlock(wx, wy, wz, BlockType.AIR);
             return;
@@ -270,6 +272,8 @@ public final class BlockTicker {
         if (dx == 0 && dy == 0 && dz == 0)
             return;
         int x = wx + dx, y = wy + dy, z = wz + dz;
+        Chunk chunk = world.getChunkIfExists(Math.floorDiv(x, 16), Math.floorDiv(z, 16));
+        if (chunk == null || chunk.isReadOnly() || y < 0 || y >= Chunk.SIZE_Y) return;
         if (world.getBlock(x, y, z) != BlockType.AIR)
             return;
         if (!flammableAround(world, x, y, z))
@@ -288,12 +292,16 @@ public final class BlockTicker {
             if (dx == 0 && dy == 0 && dz == 0)
                 continue;
             int x = wx + dx, y = wy + dy, z = wz + dz;
+            Chunk chunk = world.getChunkIfExists(Math.floorDiv(x, Chunk.SIZE_X), Math.floorDiv(z, Chunk.SIZE_Z));
+            if (chunk == null || chunk.isReadOnly() || y < 0 || y >= Chunk.SIZE_Y)
+                continue;
             if (!world.getBlock(x, y, z).isFlammable())
                 continue;
             BlockType fuel = world.getBlock(x, y, z);
             BlockType residue = fuel == BlockType.LEAVES || fuel == BlockType.ROPE
                     ? BlockType.AIR : BlockType.ASH;
             world.setBlock(x, y, z, rnd.nextInt(3) == 0 ? BlockType.FIRE : residue, (byte) 0);
+            world.fuelConsumedByFire(x, y, z, fuel);
             return;
         }
     }
@@ -356,6 +364,8 @@ public final class BlockTicker {
     }
 
     private static void spreadGrass(World world, int wx, int wy, int wz) {
+        // Scar succession owns this young bare phase in both real and replayed days.
+        if (world.burnDamaged(wx, wy, wz)) return;
         Chunk chunk = world.getChunkIfExists(Math.floorDiv(wx, Chunk.SIZE_X), Math.floorDiv(wz, Chunk.SIZE_Z));
         if (chunk != null)
             com.mineclone.sim.ecology.Trample.advanceChunk(world, chunk, world.trampleDay());

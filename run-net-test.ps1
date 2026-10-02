@@ -11,15 +11,18 @@
 #        .\run-net-test.ps1 -Farm       - farm actions and growth through the host
 #        .\run-net-test.ps1 -Farm -LivingWorld - both scenarios together
 #        .\run-net-test.ps1 -Lairs     - finite nests, normal combat and recolonization
+#        .\run-net-test.ps1 -BurnScars - burned grove, seven days, finite animal return
 #
 # Photon costs two of the free concurrent slots and needs the internet, so it
 # is opt-in; the socket run is the one that gates every change.
 # Exits non-zero if either side failed.
 
-param([switch]$Photon, [switch]$LivingWorld, [switch]$Farm, [switch]$Lairs)
+param([switch]$Photon, [switch]$LivingWorld, [switch]$Farm, [switch]$Lairs, [switch]$BurnScars)
 
 if ($Farm -and $Lairs) { throw 'Farm and Lairs are separate acceptance scenarios' }
 if ($Lairs) { $LivingWorld = $true }
+if ($BurnScars -and ($Farm -or $Lairs)) { throw 'BurnScars is a separate acceptance scenario' }
+if ($BurnScars) { $LivingWorld = $true }
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -35,8 +38,9 @@ $probe.Start()
 $port = $probe.LocalEndpoint.Port
 $probe.Stop()
 
-$work = Join-Path $root 'out-test\net'
-if ([IO.Path]::GetFullPath($work) -ne [IO.Path]::Combine([IO.Path]::GetFullPath($root), 'out-test', 'net')) {
+$scenarioOutput = if ($BurnScars) { 'burn-net' } else { 'net' }
+$work = Join-Path (Join-Path $root 'out-test') $scenarioOutput
+if ([IO.Path]::GetFullPath($work) -ne [IO.Path]::Combine([IO.Path]::GetFullPath($root), 'out-test', $scenarioOutput)) {
     throw "Unexpected test output path: $work"
 }
 if (Test-Path $work) { Remove-Item -Recurse -Force $work }
@@ -55,7 +59,7 @@ function Start-Side {
         "-Dmineclone.autopilot=$dir\shots",
         "-Dmineclone.savesDir=$dir\saves",
         "-Dmineclone.autopilot.net=$mode",
-        "-Dmineclone.autopilot.netScenario=$(if ($Lairs) { 'lair' } elseif ($Farm) { 'farm' } else { '' })",
+        "-Dmineclone.autopilot.netScenario=$(if ($BurnScars) { 'burn' } elseif ($Lairs) { 'lair' } elseif ($Farm) { 'farm' } else { '' })",
         "-Dmineclone.autopilot.netPort=$port",
         "-Dmineclone.autopilot.netVia=$via",
         "-Dmineclone.autopilot.netRoom=$room"
@@ -130,7 +134,21 @@ if ($LivingWorld) {
         }
     }
     $guestMarkers = @('living world guest command refused', 'all checks passed')
-    if (-not $Farm -and -not $Lairs) { $guestMarkers += 'all mob species replicated with valid poses' }
+    if (-not $Farm -and -not $Lairs -and -not $BurnScars) { $guestMarkers += 'all mob species replicated with valid poses' }
+    if ($BurnScars) {
+        foreach ($marker in @('burn owner prepared actual fuel consumption callbacks=',
+                'burn host saw actual scorched ground and finite original animal', 'burn owner actual seven-day command',
+                'burn host day7 grass and scheduled young trees', 'burn host ordinary finite animal returned to recovered grove',
+                'burn finite return proof complete')) {
+            if ($hostLog -notmatch [regex]::Escape($marker)) { Write-Host "net test: missing burn owner proof: $marker"; $code = 1 }
+        }
+        $guestMarkers += @('burn guest saw actual scorched ground and original S_MOBS animal with ecology absent',
+                'burn guest day7 grass and scheduled young trees mirrored',
+                'burn guest same returned finite animal mirrored with ecology absent', 'burn finite return proof complete')
+        $hostIds = [regex]::Match($hostLog, 'burn returned IDs=([0-9,]+)').Groups[1].Value
+        $guestIds = [regex]::Match($guestLog, 'burn returned IDs=([0-9,]+)').Groups[1].Value
+        if (-not $hostIds -or $hostIds -ne $guestIds) { Write-Host 'net test: returned animal IDs differ between authority and S_MOBS guest'; $code = 1 }
+    }
     if ($Lairs) {
         $lairCommon = @('lair initial IDs=', 'lair dead pose observed id=', 'lair original wanderer died through ordinary combat and mirrored',
                 'lair old territory stayed closed next night',
@@ -165,6 +183,7 @@ if ($LivingWorld) {
     if ($code -eq 0) { Write-Host 'net test: Living World owner, guest authority and S_MOBS checks passed' }
     if ($code -eq 0 -and $Farm) { Write-Host 'net test: natural host rabbit raid, guest crop replication and protected field passed' }
     if ($code -eq 0 -and $Lairs) { Write-Host 'net test: finite lair IDs, ordinary guest heart/combat, later-night closure and other-cave colony passed' }
+    if ($code -eq 0 -and $BurnScars) { Write-Host 'net test: real scorched terrain, day7 recovery and same finite returned animal passed' }
 }
 if ($code -eq 0) { Write-Host ""; Write-Host "net test: both sides passed" }
 exit $code

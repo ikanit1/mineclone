@@ -229,5 +229,9 @@ Moved from the pre-foundation CLAUDE.md on 2026-09-24; structure placement corre
 | `LairSpots` / `Colonizer` | MAX_SPOTS / MAX_TRAILS / TRAIL_DAYS | До 16 тёмных полостей на чанк; 256 образцов пути на 3 суток. Базы и участники защищают 32 блока; новое место минимум в 48 блоках от разрушенного сердца, задержка 3–10 суток |
 | `SpiderNestBehavior` | INTERVAL / RADIUS / WEBS_PER_DAY / MAX_WEBS | Раз в игровые сутки до 2 новых WEB, радиус 8, до 32 связанных паутин; только доступная полость, без прохода через стены |
 | `Materializer` | MIN_DISTANCE / VIEW_HALF_ANGLE / ATTEMPTS | Не ближе 32 блоков к каждому живому участнику, вне его взгляда, ограниченный поиск только загруженных чанков |
+| `BurnScars` | MAX_RECORDS / MAX_SITES / MAX_RECORD_BYTES | 16 записей на регион, 64 клетки на запись, 1024 байта вместе с неизвестным хвостом |
+| `BurnScars` | GRASS_DAY / SAPLING_DAY / RECOVERY_DAYS | Дерн после 2 суток; с 3 суток шанс саженца 1/8 за день; штраф зелени исчезает за 7 суток |
+| `BurnScars` | TREE_SPACING / MAX_CATCHUP_DAYS | Будущие кроны разделены минимум 7 клетками по Чебышеву; корни/стволы проверяются в пределах ±12 по высоте; повтор ограничен 60 сутками |
+| `Ecology` | scar interval / flee radii | Раз в 0,5 с, цели обычной ходьбы на 12/24/48 блоках; материализация запрещена на шраме моложе 3 суток |
 | `WorldSession` | living residency interval / distance | Раз в 2 секунды сохраняет далёкие тела (>128 блоков) в загруженные чанки; лимиты и закрытые чанки не теряют животных |
 | `Game` | `LOADING_TAIL_ALLOWANCE / loadingRadius()` | Сколько чанков достраивается уже в игре и какой радиус загрузка закрывает |
