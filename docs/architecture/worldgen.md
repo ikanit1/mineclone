@@ -1,6 +1,6 @@
 # World generation
 
-Updated: 2026-09-25.
+Updated: 2026-10-01.
 
 `world/World.generateDetached()` generates terrain -> caves -> ores -> vegetation,
 then places the 1.0 structures and, where `structures2` is on, multi-chunk ones; rivers shape the height field during terrain generation.
@@ -26,15 +26,15 @@ of every old world, and a guest generating with another version receives wrong
 deltas. Generation is therefore versioned (`world/gen`):
 
 - `WorldGenVersion` — V1 is the 1.0 generator; V2 collects what 1.1 adds. The
-  number, not the ordinal, is persisted. `LATEST` stays V1 until V2 has something
-  to generate — a test fails if it moves first. Guests build the host's world
+  number, not the ordinal, is persisted. `LATEST` is V2 with copper ore (GEN-08).
+  Existing worlds retain their recorded generator/features. Guests build the host's world
   with the host's generator (protocol v8, below).
 - `GenFeatures` — one flag per 1.1 generation change (`copperOre`, `vegetation2`,
   `structures2`, `caves2`, `livestockAtGen`), each with a bit that never moves.
   A change reads its own flag inside `World.generateDetached(cx, cz, features)`;
   never branch on anything else, or V1 chunks drift. V1 has none; `GenFeatures.V2`
   is what this build implements — switch a flag on there in the commit that
-  implements it, never earlier. Today it is empty.
+  implements it, never earlier. Today only `copperOre` is enabled.
 - `GenPolicy` — which version and features a chunk is generated with; a `World`
   asks it per chunk from worker threads. The game and the dedicated server use
   the ledger-backed policy (below); guests, the menu and tests use fixed ones.
@@ -89,8 +89,10 @@ entries for the land it made before the ledger existed: all of it is V1.
 - **Rebuild.** A missing or damaged ledger of a world that was ever upgraded
   (`upgradedAt > 0`) is rebuilt conservatively by `WorldGenUpgrade.pinSeen`: every
   saved chunk and `SEEN_RADIUS` (12) chunks around it, and as much around spawn
-  and the player (the owner's checkpoint on a server), count as V1. A world that
-  was never upgraded rebuilds empty.
+  and the player, including readable guests' checkpoints and personal spawn
+  points, count as V1. A world that was never upgraded rebuilds empty. An
+  unreadable guest retains its existing connection refusal and is reported;
+  it does not prevent other players from opening the world during recovery.
 - **Upgrade.** `WorldGenUpgrade.upgrade(from, target, ledger, saved chunks, anchors,
   now)` pins the same seen land to the old version and returns the new settings.
   `ChunkLedgerTests` upgrades the 1.0 fixture `alpha-small` and compares chunks 0
@@ -116,12 +118,38 @@ entries for the land it made before the ledger existed: all of it is V1.
   generation before the delta. `NetworkTests` runs an upgraded host with pinned
   land and a host whose map forgets a chunk.
 
-**Not yet** — each waits for V2 to change land, when it would do more than
-record a version:
+**Explicit opening choice (GEN-02, completed 2026-10-01).**
+`WorldGenUpgradeScreen` offers an upgrade before opening a closed V1 world from
+the world list, Continue or the multiplayer host selector. “Без обновления”
+opens with the recorded generator; Esc returns to the menu without writing.
+An old world may be offered the choice again on a later opening; it never
+upgrades automatically. Starting a host from an already live world preserves
+its generator: return to menus before upgrading it.
 
-- the world-list dialog "update generation for new land?" and `upgrade-worldgen`
-  in `server.properties`;
-- guests' checkpoints (`players/`) as anchors of a server's upgrade.
+On the dedicated server, `upgrade-worldgen=false` is the default.
+Setting it to `true` upgrades an existing older world before chunks or network
+doors open. New worlds already use V2; a V2 world is never downgraded or
+re-upgraded when this setting changes.
+
+Both routes use `SaveManager.upgradeWorldGen` on the ordered background writer:
+fresh original-byte backup → read all stored player anchors → pin old land →
+atomic ledger write → atomic level write. Every recorded version survives;
+the 12-chunk approximation also protects saved chunks, world spawn, the owner's
+pose/personal spawn and every guest's pose/personal spawn. Pre-ledger travel
+beyond those rings cannot be reconstructed. An unreadable guest or inaccessible
+chunk directory refuses the upgrade, rather than treating unknown land as new.
+Any backup/ledger/level error refuses the upgrade; the server exits with code 2,
+and the menu reports the error. A failed level commit can leave extra V1 pins,
+which are safe with the unchanged V1 level. It can never leave a V2 level
+without its durable pins. Unknown level/player sections survive unchanged.
+
+`WorldGenOpeningTests` upgrades the 1.0 fixture, compares seen terrain hashes,
+checks remote guests, original backup bytes, server opt-in/autosave/reopen,
+missing-ledger recovery, failed backup/ledger and (on POSIX) failed level
+commit. `WorldGenOpeningSmoke` renders/clicks the production menu at three
+resolutions; `WorldGenGameSmoke` runs the real Game through decline, mouse
+upgrade and save/reopen. The Linux server check can use a disposable copied old
+world to exercise mixed V1/V2 generation with two real clients.
 
 **The V1 golden.** `src/test/resources/fixtures/worldgen-v1.txt` holds SHA-1 of
 blocks and meta for 120 chunks — seeds 0, 20260922 and −77231; negative, far
@@ -178,8 +206,52 @@ first chunk, so that it reaches chunks of the region before; the index inside, b
 not in a chunk without the flag; the pass inactive without `structures2`, and
 the shipped registry empty.
 
+## Generated loot chests (GEN-04)
+
+`StructurePiece.chest(writer, clip, x, y, z, tableId)` checks ownership by the
+piece and writes only when the position lies inside its current cut.
+`StructurePass` supplies the index's world seed to `ChunkWriter`; chest contents
+come from `LootRegistry.fillChest`. Generation creates the CHEST block and its
+27 slots on the detached chunk, without setting `modified`. Repeated placement
+does not refill an existing chest, including one with empty contents.
+
+Untouched loot is regenerated; a player's container edit marks the chunk
+modified through the existing authoritative container path. `ChunkLoader`
+restores the saved chest map after generation and before publication, replacing
+generated contents even when the saved chest is empty or destroyed. No save
+format or protocol change is required. `StructureLootTests` covers independent
+generation on four workers, negative chunk borders, the pass's seed propagation,
+overflow without partial writes, and actual save/load for changed, empty and
+destroyed chests. Natural placement remains dormant until GEN-05 enables
+`structures2`; the V1 templates are unchanged.
+
+## Copper ore (GEN-08)
+
+V2 appends six copper vein attempts per chunk, sizes 6–10, at y20–70, replacing
+stone only. The random stream of all four V1 ores stays unchanged. Existing
+gravel lenses take priority over copper, so this feature does not suppress
+gravel or alter the V1 pass's output elsewhere. Block ID 48 and atlas tile 139
+are appended; hardness is 10 and required pickaxe level is 1, following the
+numeric requirement in the roadmap (the current data calls wooden level 1 and
+stone level 2). Copper ore belongs to `ores` and smelts into a copper ingot in
+eight seconds. `CopperOreTests` covers bands, determinism, unchanged non-copper
+cells, block/item save round trips, the shared stone texture base and the
+generated ore → mining → furnace → copper pickaxe crafting chain. All 120 V1
+golden hashes still match.
+
 Checks: `run-tests.ps1 -Only worldgen,core,chunk`. `WorldGenerationTests` covers
 sparse structure spacing, biome textures, seams and falling-block conservation;
 CoreTests retains deterministic generation, caves, ores and river invariants.
 Knobs: [TUNING.md](../TUNING.md), `Biome`, `BiomeProvider`, `Caves`, `Rivers`,
 `Structures.REGION_CHUNKS`, `Structures.MIN_CHUNK_GAP`.
+
+## Vegetation and initial herds (2 October 2026)
+
+New V2 worlds enable `vegetation2` and `livestockAtGen` as well as copper. Features
+are stored per world, so older V2/V1 chunks keep their recorded flags. Terrain,
+ore and V1 tree goldens remain unchanged across 120 fixture chunks. `TreeShapes`
+shares the exact old tree placements with sapling growth; species metadata is set
+only with the new vegetation flag. Vegetation is deterministic, biome-specific,
+soil-supported and added after trees. Grass drops wheat seeds with 12.5% probability;
+cold snowfall can replace vegetation with a layer. Herd persistence is in the
+session/chunk section, separate from terrain generation.

@@ -1,6 +1,7 @@
 package com.mineclone.sim.ecology;
 
 import com.mineclone.data.ResourceId;
+import com.mineclone.save.SavedMob;
 import com.mineclone.sim.EntityStore;
 import com.mineclone.sim.Participants;
 import com.mineclone.sim.WorldClock;
@@ -37,6 +38,7 @@ public final class Ecology implements Materializer.Populations {
 
     public Ecology(World world, WorldClock clock, EntityStore entities, Participants participants) {
         this.world = world; this.clock = clock; this.entities = entities; this.participants = participants;
+        entities.bindClock(clock);
         materializer = new Materializer(world.seed ^ 0x4C5745434FL);
     }
 
@@ -93,7 +95,10 @@ public final class Ecology implements Materializer.Populations {
     public void setEnabled(boolean value) {
         requireSupported();
         enabled = value; ruleWritten = true;
-        if (value) { seedAroundParticipants(); registerLivingBodies(); catchUp(day(clock.gameTime())); }
+        if (value) {
+            seedAroundParticipants(); registerLivingBodies(); registerPendingBodies();
+            catchUp(day(clock.gameTime()));
+        }
     }
 
     /** One same day sequence for ordinary play, return after absence, and the owner command. */
@@ -180,18 +185,52 @@ public final class Ecology implements Materializer.Populations {
         for (Mob mob : entities.mobs) if (mob.persistent() && !mob.dead) adopted(mob);
     }
 
+    /** Enabling in an already open world also accounts for bodies still parked in loaded chunks. */
+    private void registerPendingBodies() {
+        for (Chunk chunk : world.getLoadedChunks())
+            for (SavedMob saved : chunk.copyPendingMobs()) {
+                entities.reserveId(saved.id());
+                adopted(saved);
+            }
+    }
+
     /** A restored body keeps its original reservation even if it walked across a region boundary. */
     public void adopted(Mob mob) {
-        if (!enabled() || mob.id <= 0 || reservations.containsKey(mob.id) || reservations.size() >= MAX_RESERVATIONS) return;
-        var definition = table().byType(mob.type);
+        if (mob.dead || !mob.persistent()) return;
+        adopted(mob.id, mob.type, mob.position.x, mob.position.z);
+    }
+
+    /** A saved animal already belongs to the total even while its body is too far to activate. */
+    public void adopted(SavedMob saved) {
+        if (!saved.persistent() || !(saved.health() > 0)) return;
+        MobType type = MobType.byName(saved.type());
+        if (type != null) adopted(saved.id(), type, saved.x(), saved.z());
+    }
+
+    private void adopted(long id, MobType type, float x, float z) {
+        if (!enabled() || id <= 0 || reservations.containsKey(id) || reservations.size() >= MAX_RESERVATIONS) return;
+        var definition = table().byType(type);
         if (definition == null) return;
-        EcologyRegion region = regionAt(mob.position.x, mob.position.z);
+        EcologyRegion region = regionAt(x, z);
         if (region == null) return;
         int represented = represented(region.x(), region.z(), definition.id());
         // Old worlds already contain animals: adopt those bodies rather than deleting them during migration.
         region.population(definition.id(), Math.max(region.population(definition.id()), represented + 1));
-        reservations.put(mob.id, new EcologyCodec.Reservation(mob.id, region.x(), region.z(), definition.id()));
+        entities.reserveId(id);
+        reservations.put(id, new EcologyCodec.Reservation(id, region.x(), region.z(), definition.id()));
         region.protectedCount(definition.id(), represented + 1);
+    }
+
+    /** A genuine breeding birth adds an animal; materialization only reserves one. */
+    public void born(Mob child) {
+        if (!enabled() || child.dead || reservations.containsKey(child.id)) return;
+        var definition = table().byType(child.type);
+        if (definition == null) return;
+        EcologyRegion region = regionAt(child.position.x, child.position.z);
+        if (region == null) return;
+        region.population(definition.id(), Math.min(SpeciesTable.MAX_POPULATION, region.population(definition.id()) + 1));
+        entities.assignId(child);
+        adopted(child);
     }
 
     /** Exactly once at death, including a predator bite, player attack, fire or fall. */
@@ -251,6 +290,10 @@ public final class Ecology implements Materializer.Populations {
 
     /** Capture detached bytes on the simulation thread, before the save queue takes ownership. */
     public void writeSections(Map<String, byte[]> into) {
+        // A close/save may run after damage but before the next mob tick. The
+        // corpse is not saved, so release its count now; presentation still runs
+        // normally at deathEffectsDone and the later died call is idempotent.
+        for (Mob mob : entities.mobs) if (mob.dead) died(mob);
         if (enabled()) registerLivingBodies();
         if (opaqueSection != null) into.put(SAVE_SECTION, opaqueSection.clone());
         else if (!regions.isEmpty()) {

@@ -123,6 +123,21 @@ public class TextureAtlas {
             "iron_sword", "gold_sword", "diamond_sword",                          // 131..133
             "bow", "bow_pull_1", "bow_pull_2", "arrow",                            // 134..137
             "copper_shovel",                                                       // 138 (append only)
+            "copper_ore",                                                          // 139
+            "leather_helmet", "leather_chestplate", "leather_leggings", "leather_boots", // 140..143
+            "iron_helmet", "iron_chestplate", "iron_leggings", "iron_boots",       // 144..147
+            "gold_helmet", "gold_chestplate", "gold_leggings", "gold_boots",       // 148..151
+            "diamond_helmet", "diamond_chestplate", "diamond_leggings", "diamond_boots", // 152..155
+            "wood_hoe", "stone_hoe", "copper_hoe", "iron_hoe", "gold_hoe", "diamond_hoe", // 156..161
+            "wheat_stage_0", "wheat_stage_1", "wheat_stage_2", "wheat_stage_3",    // 162..165
+            "carrot_stage_0", "carrot_stage_1", "carrot_stage_2", "carrot_stage_3", // 166..169
+            "potato_stage_0", "potato_stage_1", "potato_stage_2", "potato_stage_3", // 170..173
+            "ladder", "trapdoor", "fence_gate", "farmland_dry", "farmland_wet", // 174..178
+            "oak_sapling", "spruce_sapling", "acacia_sapling", // 179..181
+            "wheat", "wheat_seeds", "bread", "carrot", "potato", "baked_potato", // 182..187
+            "apple", "golden_apple", "rotten_flesh", "bone", "gunpowder", "string", // 188..193
+            "slimeball", "leather", "feather", "egg", // 194..197
+            "tall_grass", "flower_yellow", "flower_red", "copper_helmet", "copper_chestplate", "copper_leggings", "copper_boots", // 198..200
     };
 
     /** First tile index of the water_flow animation strip (16 frames). */

@@ -203,3 +203,33 @@ and distant herd residency.
 `run-tests.ps1 -Only combat,physics,animation,core,net` covers hit windows, projectile walls, explosions, mob behavior and remote state. Relevant visual reviews are under `docs/rendering/`.
 
 Knobs: [TUNING.md](../TUNING.md). Entry points: [PROJECT_MAP.md](../PROJECT_MAP.md).
+
+## Armor, finite herds and breeding (2 October 2026)
+
+`Equipment` stores four armor pieces and an independent offhand without changing
+the 36 inventory slots. Armor definitions and 16 recipes are JSON; totals are
+7/10/15/20 for leather/copper/iron/diamond. `ArmorMath` follows the roadmap's
+formula, including toughness. Thus a raw three-point hit against iron 15 is
+**1.38**, rather than the contradictory 1.2 example originally in CMB-02.
+Accepted, non-bypassing damage wears each equipped piece once; refused hits do
+not wear it. Knockback resistance scales horizontal and vertical impulse.
+
+`Breeding` applies food, love (30 seconds), five-minute cooldown and 20-minute
+child age. Both partners receive a path target; births are appended after pair
+iteration and reserve exactly one world ID. Children start with half-sized bodies
+and three-quarter-sized heads, grow continuously, follow adults, have higher
+voice pitch and never drop loot. Host-earned breeding achievements survive a
+stale client checkpoint.
+
+`SpawnTable` strictly loads biome weights/group limits from `spawns/overworld.json`.
+Initial V2 herds are deterministic and persistent, written even when empty so
+killed herds do not respawn on reload. Existing saved chunks do not acquire a
+herd. Rare replenishment attempts run once per 400 seconds per participant only
+below four nearby livestock. Wildlife and hostiles remain transient. Difficulty
+scales elite probability and peaceful removes hostiles before their tick.
+
+Mob IDs are `long`, saved with health, age and breeding clocks in `entities`.
+Unknown type/schema refuses the whole section and preserves its bytes with the
+existing backup path. Adoption is once per loaded chunk object; save precedes
+forgetting a chunk. Tests: `EntityLifecycleTests`, `ArmorTests`, guest feeding and
+shared-calf scenarios in `InventoryNetworkTests`.

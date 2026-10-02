@@ -28,6 +28,99 @@ final class InventoryNetworkTests {
         r.run("container transfers and guest drops work over actual TCP sockets",InventoryNetworkTests::sockets);
         r.run("old whole-container commits cannot replace authoritative contents",InventoryNetworkTests::oldCommit);
         r.run("v8: the whole record travels; the guest's own fields come back, the host keeps its own",InventoryNetworkTests::recordThroughWire);
+        r.run("host effects expire through checkpoints and pause while their guest is disconnected",InventoryNetworkTests::effectsOverLoopback);
+        r.run("host achievements survive a stale guest checkpoint",InventoryNetworkTests::awardsOverLoopback);
+        r.run("two guests breed one shared calf with a stable identity",InventoryNetworkTests::breedOverLoopback);
+        r.run("guest feeding consumes once on the host and denied reach consumes nothing",InventoryNetworkTests::feedOverLoopback);
+        r.run("dying with a full inventory and an open chest cursor drops every stack once",InventoryNetworkTests::deathWithCursor);
+        r.run("guest death drops inventory equipment and cursor exactly once across reconnect",InventoryNetworkTests::deathOverLoopback);
+        r.run("host rules and individual game mode reach the intended guest",InventoryNetworkTests::rulesOverLoopback);
+        r.run("host rejects distant melee and throttles repeated melee and bow intents",InventoryNetworkTests::combatIntents);
+        r.run("equipment is routed and saved by the host and survives reconnect",InventoryNetworkTests::equipmentMenu);
+        r.run("farm over loopback: host tills, guest seeds, clock ripens and inventory is acknowledged",InventoryNetworkTests::farmOverLoopback);
+    }
+
+
+    private static void effectsOverLoopback(){try(Room r=new Room()){
+        r.hostNet.sendEffect(r.aActor(),com.mineclone.world.effect.StatusEffect.POISON,4);r.pump(8);
+        var before=r.host.saved.get(r.a.id).record().effects();check(before.size()==1&&before.get(0).remainingTicks()<80,"host effect timer");
+        r.aNet.stop(null);r.hostNet.update(.1f);long paused=r.host.saved.get(r.a.id).record().effects().get(0).remainingTicks();r.pump(10);check(r.host.saved.get(r.a.id).record().effects().get(0).remainingTicks()==paused,"offline effect ticked");
+        r.aNet.start(new LoopbackTransport(r.aNet),"inv",false,"a");r.pump(10);check(r.a.template.effects().size()==1,"effect lost on reconnect");r.pump(60);check(r.host.saved.get(r.a.id).record().effects().isEmpty(),"stale checkpoint revived expired poison");
+    }}
+    private static void awardsOverLoopback(){try(Room r=new Room()){r.hostNet.award(r.aActor(),"mineclone:breed_animals","Разведите животных");r.pump(8);check(r.host.saved.get(r.a.id).record().advancements().contains("mineclone:breed_animals"),"checkpoint erased host award");}}
+    private static void breedOverLoopback(){try(Room r=new Room()){
+        r.a.mode=r.b.mode=GameMode.SURVIVAL.ordinal();r.a.position.set(8,80,8);r.b.position.set(8,80,9);r.a.inv.set(0,ItemStack.of("wheat"));r.b.inv.set(0,ItemStack.of("wheat"));
+        var first=new com.mineclone.world.entity.Mob(com.mineclone.world.entity.MobType.COW,9,80,8,new Random(1));first.id=901;var second=new com.mineclone.world.entity.Mob(com.mineclone.world.entity.MobType.COW,9,80,9,new Random(2));second.id=902;r.host.mobs.add(first);r.host.mobs.add(second);r.pump(8);
+        r.aNet.requestFeed(r.a.mobs.stream().filter(m->m.id==901).findFirst().orElseThrow(),"mineclone:wheat");r.bNet.requestFeed(r.b.mobs.stream().filter(m->m.id==902).findFirst().orElseThrow(),"mineclone:wheat");r.pump(5);check(r.a.inv.get(0)==null&&r.b.inv.get(0)==null,"pair feeding conservation");
+        var breeding=new com.mineclone.world.entity.Breeding();for(int i=0;i<70;i++)breeding.tick(r.host.world,r.host.mobs,new com.mineclone.sim.Participants(),.05f,()->903);r.pump(8);
+        check(r.host.mobs.size()==3&&r.a.mobs.stream().filter(m->m.id==903&&m.baby()).count()==1&&r.b.mobs.stream().filter(m->m.id==903&&m.baby()).count()==1,"calf differs among guests");
+    }}
+    private static void feedOverLoopback(){try(Room r=new Room()){
+        r.a.mode=GameMode.SURVIVAL.ordinal();r.a.inv.set(0,ItemStack.of("wheat",3));r.a.position.set(8,80,8);
+        var cow=new com.mineclone.world.entity.Mob(com.mineclone.world.entity.MobType.COW,9,80,8,new Random(1));cow.id=777;r.host.mobs.add(cow);r.pump(30);
+        var mirror=r.a.mobs.stream().filter(m->m.id==777).findFirst().orElseThrow();r.aNet.requestFeed(mirror,"mineclone:wheat");r.pump(5);
+        check(cow.love==30&&r.a.inv.get(0).count==2&&!r.aNet.inventoryBusy(),"feed ack conservation");r.aNet.requestFeed(mirror,"mineclone:wheat");r.pump(5);check(r.a.inv.get(0).count==2,"duplicate love consumed");
+        cow.love=0;r.a.position.set(40,80,40);r.pump(4);r.aNet.requestFeed(mirror,"mineclone:wheat");r.pump(5);check(cow.love==0&&r.a.inv.get(0).count==2&&!r.aNet.inventoryBusy(),"distant feed");
+    }}
+    private static void deathWithCursor(){try(Room r=new Room()){
+        r.host.world.rules=r.host.world.rules.set("keepInventory",false);for(int i=0;i<Inventory.SIZE;i++)r.a.inv.set(i,ItemStack.of("stone",64));
+        r.chest(16);r.open(r.a,r.aNet,8,BlockType.CHEST);r.a.menu.leftClick(ref(r.a,"chest",0));r.pump(4);
+        check(r.a.menu.cursor()!=null&&r.a.menu.cursor().count==16,"missing death cursor fixture");r.a.health=0;r.aNet.requestDeathDrop();r.pump(5);
+        check(ground(r.host)==Inventory.SIZE*64+16&&count(r.a.inv)==0,"death cursor duplicated or lost");check(r.host.items.stream().allMatch(e->e.lifetime==600),"menu spilled a short-lived copy before death");
+    }}
+    private static void deathOverLoopback(){try(Room r=new Room()){
+        r.host.world.rules=r.host.world.rules.set("keepInventory",false);r.a.inv.set(0,ItemStack.of("bread",19));r.a.eq.set(0,ItemStack.of("iron_helmet"));r.a.eq.set(4,ItemStack.of("torch",12));r.a.health=0;r.aNet.requestDeathDrop();r.pump(5);
+        check(ground(r.host)==32&&count(r.a.inv)==0&&r.a.eq.get(0)==null,"death conserved/clear");check(r.host.items.stream().allMatch(e->e.lifetime==600),"death lifetime");
+        r.aNet.requestDeathDrop();r.pump(5);check(ground(r.host)==32,"repeat death duplication");r.aNet.stop(null);r.hostNet.update(.1f);r.aNet.start(new LoopbackTransport(r.aNet),"inv",false,"returned");r.pump(10);check(count(r.a.inv)==0&&r.a.eq.get(4)==null&&ground(r.host)==32,"death reconnect duplication");
+    }}
+    private static void rulesOverLoopback(){try(Room r=new Room()){
+        r.a.mode=r.b.mode=GameMode.SURVIVAL.ordinal();r.pump(4);
+        r.host.world.rules=new WorldRules(Difficulty.HARD,false,false,false,false);r.hostNet.sendRules();r.pump(4);check(r.a.world.rules.equals(r.host.world.rules)&&r.b.world.rules.equals(r.host.world.rules),"live rules");
+        check(r.hostNet.sendGameMode("a",GameMode.CREATIVE),"guest lookup");r.pump(4);check(r.a.mode==GameMode.CREATIVE.ordinal()&&r.b.mode!=GameMode.CREATIVE.ordinal(),"individual mode");
+        r.host.world.setBlock(8,79,8,BlockType.BEDROLL);r.a.position.set(8.5f,80,8.5f);r.pump(3);r.aNet.requestPersonalSpawn(8,79,8);r.pump(3);check(r.host.saved.get(r.a.id).record().spawn()!=null,"guest personal bed");
+    }}
+    private static com.mineclone.world.entity.Projectile shotAt(float x,float y,float z){var shot=new com.mineclone.world.entity.Projectile("arrow",null,true,1000);shot.position.set(x,y,z);shot.heading.set(1,0,0);return shot;}
+    private static void combatIntents(){try(Room r=new Room()){
+        var cow=new com.mineclone.world.entity.Mob(com.mineclone.world.entity.MobType.COW,9,80,8,new Random(1));cow.id=888;cow.health=100;r.host.mobs.add(cow);r.a.position.set(40,80,40);r.a.inv.set(0,ItemStack.of("iron_sword"));r.pump(4);var mirror=r.a.mobs.stream().filter(m->m.id==888).findFirst().orElseThrow();
+        r.aNet.requestMobHit(mirror,com.mineclone.world.entity.LimbDamage.Limb.TORSO,1,false,false);r.pump(2);check(cow.health==100,"distant melee");
+        r.a.position.set(8,80,8);r.pump(4);for(int i=0;i<20;i++)r.aNet.requestMobHit(mirror,com.mineclone.world.entity.LimbDamage.Limb.TORSO,1,true,true);r.pump(2);check(cow.health<100&&cow.health>80,"melee rate or grounded critical");
+        r.a.inv.set(0,ItemStack.of("bow"));r.pump(4);for(int i=0;i<20;i++)r.aNet.requestShot(shotAt(8,81.6f,8),1);r.pump(2);check(r.host.shots.size()==1,"bow burst unbounded");
+        r.aNet.requestShot(shotAt(100,100,100),1);r.pump(10);check(r.host.shots.size()==1,"forged shot origin");
+    }}
+    private static void equipmentMenu(){
+        try(Room r=new Room()){
+            r.a.inv.set(10,ItemStack.of("iron_helmet"));r.aNet.openInventory();
+            r.a.menu=ContainerMenus.inventory(r.a.inv,r.a.eq,new CraftingGrid(2).storage());r.aNet.bindContainer(r.a.menu);r.pump(5);
+            r.a.menu.shiftClick(new SlotRef(r.a.menu.group("main"),1));r.pump(4);
+            check(r.a.eq.get(0)!=null&&r.a.inv.get(10)==null,"host equipment route");
+            check(r.host.saved.get(r.a.id).record().equipment()[0]!=null,"host saved equipment");
+            r.aNet.closeContainer();r.pump(4);r.aNet.stop(null);r.hostNet.update(.1f);
+            r.aNet.start(new LoopbackTransport(r.aNet),"inv",false,"changed");r.pump(10);
+            check(r.a.eq.get(0)!=null,"equipment reconnect");
+        }
+    }
+
+    private static void farmOverLoopback(){
+        try(Room r=new Room()){
+            World world=r.host.world;world.setBlockObserver(r.hostNet::onWorldBlockChanged);r.a.mode=GameMode.SURVIVAL.ordinal();r.b.mode=GameMode.SURVIVAL.ordinal();r.pump(30);
+            for(int cx=-1;cx<=1;cx++)for(int cz=-1;cz<=1;cz++)world.getChunk(cx,cz);
+            world.simulate((s,x,y,z)->r.host.items.add(new ItemEntity(s,x,y,z,0,0)),0);
+            world.setBlock(8,79,8,BlockType.DIRT);for(int y=80;y<128;y++)world.setBlock(8,y,8,BlockType.AIR);
+            r.a.position.set(8.5f,80,6.5f);r.a.inv.set(0,ItemStack.of("iron_hoe",1));r.pump(4);
+            r.aNet.beginItemUse();r.aNet.requestFarm(8,79,8,0,1,0,.5f,1,.5f);r.pump(6);
+            check(world.getBlock(8,79,8)==BlockType.FARMLAND,"guest till not authoritative");
+            check(r.a.inv.get(0).damage()==1&&!r.aNet.inventoryBusy(),"hoe wear acknowledgement");
+            world.setBlock(8,79,8,BlockType.FARMLAND,(byte)7);world.getChunk(0,0).computeSkyLight();
+            r.a.inv.set(0,ItemStack.of("wheat_seeds",3));r.aNet.beginItemUse();r.aNet.requestFarm(8,79,8,0,1,0,.5f,1,.5f);r.pump(6);
+            check(world.getBlock(8,80,8)==BlockType.WHEAT&&r.a.inv.get(0).count==2,"one seed not conserved");
+            world.runScheduledTicks(216000,512,48000);r.pump(6);
+            check(world.getBlockMeta(8,80,8)==7&&r.a.world.getBlockMeta(8,80,8)==7&&r.b.world.getBlockMeta(8,80,8)==7,"ripening not replicated: host="+world.getBlockMeta(8,80,8)+" a="+r.a.world.getBlockMeta(8,80,8)+" b="+r.b.world.getBlockMeta(8,80,8)+" sky="+world.getSkyLight(8,80,8)+" ticks="+world.pendingScheduledTicks());
+            r.aNet.beginItemUse();r.aNet.requestFarm(8,79,8,0,1,0,.5f,1,.5f);r.pump(6);
+            check(r.a.inv.get(0).count==2&&!r.aNet.inventoryBusy(),"occupied use ate seed or froze client");
+            r.a.position.set(60,80,60);r.pump(4);world.setBlock(8,80,8,BlockType.AIR);
+            r.aNet.beginItemUse();r.aNet.requestFarm(8,79,8,0,1,0,.5f,1,.5f);r.pump(6);
+            check(world.getBlock(8,80,8)==BlockType.AIR&&!r.aNet.inventoryBusy(),"distant request changed farm or hung");
+        }
     }
 
     /**
@@ -60,7 +153,7 @@ final class InventoryNetworkTests {
             check(stored.inventory()[5]!=null && stored.inventory()[5].count==9,"carried inventory was not stored");
             PlayerRecordTests.same(seeded.toBuilder().inventory(stored.inventory()).pending(stored.pending())
                     .pose(stored.pose().x(),stored.pose().y(),stored.pose().z(),stored.pose().yaw(),stored.pose().pitch(),stored.pose().selected())
-                    .vitals(stored.vitals()).build(),stored,"the rest of the record after a checkpoint");
+                    .vitals(stored.vitals()).effects(stored.effects()).build(),stored,"the rest of the record after a checkpoint");
             // A build that knows nothing of effects, spawns or the section: the host keeps them;
             // advancements are the guest's own.
             guest.template=PlayerRecord.builder().pose(1,70,1,0,0,0).advancements(List.of("mineclone:first_steps")).build();
@@ -68,7 +161,7 @@ final class InventoryNetworkTests {
             for(int i=0;i<3;i++){hostNet.update(.1f);guestNet.update(.1f);}
             disk.flushAndAwait();
             PlayerRecord kept=new SaveManager(root.toFile()).loadGuestRecord("test",guest.id);
-            check(kept.effects().equals(seeded.effects()) && seeded.spawn().equals(kept.spawn())
+            check(kept.effects().stream().allMatch(e->seeded.effects().stream().anyMatch(old->old.id().equals(e.id())&&old.amplifier()==e.amplifier()&&e.remainingTicks()<=old.remainingTicks())) && seeded.spawn().equals(kept.spawn())
                     && Arrays.equals(seeded.extraSections().get("future:mood"),kept.extraSections().get("future:mood")),
                     "a guest's checkpoint erased what the host owns");
             check(kept.advancements().equals(List.of("mineclone:first_steps")),"the guest's advancements were not taken");
@@ -287,28 +380,32 @@ final class InventoryNetworkTests {
 
     private static final class C extends NetworkTests.TestContext {
         final String id;
-        final Inventory inv=new Inventory();ContainerMenu menu;
+        final Inventory inv=new Inventory();final Equipment eq=new Equipment();ContainerMenu menu;
         final Map<String,PlayerData> saved=new HashMap<>();
         SaveManager persistence;
         C(World w,String name){this(w,name,UUID.randomUUID().toString());}
         C(World w,String name,String id){super(w,name);this.id=id;if(w!=null)w.getChunk(0,0);}
+        @Override public Equipment playerEquipment(){return eq;}
+        @Override public ItemStack playerHeldItem(){return inv.get(0);}
+        @Override public void modeFromHost(GameMode mode){this.mode=mode.ordinal();}
         @Override public String playerId(){return id;}
         /** The record the host restored, carried forward like Game's template (v8). */
         PlayerRecord template=PlayerRecord.builder().build();
         @Override public PlayerData capturePlayerData(){
             var v=template.vitals();
-            return new PlayerData(template.toBuilder().inventory(slots(inv))
+            return new PlayerData(template.toBuilder().inventory(slots(inv)).equipment(eq.snapshot())
                     .pending(menu==null?null:menu.pendingItems().toArray(ItemStack[]::new))
                     .pose(position.x,position.y,position.z,yaw,pitch,0)
                     .vitals(new PlayerRecord.Vitals(health,20,v.saturation(),v.exhaustion(),v.air())).build());
         }
-        @Override public void restorePlayerData(PlayerData data){template=data.record();menu=null;for(int i=0;i<inv.size();i++)inv.set(i,data.inventory[i]);for(var s:data.pending)inv.add(s);}
+        @Override public void restorePlayerData(PlayerData data){template=data.record();eq.restore(data.record().equipment());menu=null;for(int i=0;i<inv.size();i++)inv.set(i,data.inventory[i]);for(var s:data.pending)inv.add(s);}
         @Override public PlayerData loadGuest(String id){return persistence==null?saved.get(id):persistence.loadGuest("test",id);}
         @Override public void saveGuest(String id,PlayerData data){saved.put(id,data);if(persistence!=null)persistence.saveGuest("test",id,data);}
         @Override public void containerInventory(ItemStack[] slots,ItemStack cursor,boolean closed){for(int i=0;i<inv.size();i++)inv.set(i,slots[i]);if(closed)menu=null;else if(menu!=null)menu.setCursor(cursor);}
         @Override public void startRemoteWorld(com.mineclone.net.RemoteWorld remote){super.startRemoteWorld(remote);world.getChunk(0,0);for(int i=0;i<inv.size();i++)inv.set(i,null);menu=null;}
         @Override public void containerFromHost(int x,int y,int z,int kind,ItemStack[] slots,float left,float max,float cook){
-            if(kind==Multiplayer.CONTAINER_CHEST){ItemStack[] a=world.createChest(x,y,z);if(a!=null)for(int i=0;i<a.length;i++)a[i]=i<slots.length?slots[i]:null;}
+            if(kind==Multiplayer.CONTAINER_INVENTORY){eq.restore(java.util.Arrays.copyOf(slots,5));if(menu!=null&&menu.group("craft")!=null)for(int i=0;i<4;i++)menu.group("craft").storage.set(i,slots[5+i]);}
+            else if(kind==Multiplayer.CONTAINER_CHEST){ItemStack[] a=world.createChest(x,y,z);if(a!=null)for(int i=0;i<a.length;i++)a[i]=i<slots.length?slots[i]:null;}
             else{Furnace f=world.createFurnace(x,y,z);if(f!=null){f.input=slots[0];f.fuel=slots[1];f.output=slots[2];f.burnLeft=left;f.burnMax=max;f.cook=cook;}}
         }
     }

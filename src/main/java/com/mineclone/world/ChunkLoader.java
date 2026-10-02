@@ -307,6 +307,7 @@ public class ChunkLoader {
         ChunkLoad result = save.readChunk(worldId, c.cx, c.cz);
         if (result instanceof ChunkLoad.Loaded loaded) {
             ChunkSnapshot snap = loaded.snapshot();
+            c.restoredFromSave=true;
             c.restore(snap.blocks, snap.meta);
             c.restoreChests(snap.chests);
             c.restoreFurnaces(snap.furnaces);

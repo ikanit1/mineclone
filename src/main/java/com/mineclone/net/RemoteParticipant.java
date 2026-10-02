@@ -51,7 +51,8 @@ public final class RemoteParticipant implements Participant {
         return !player.isDead() && Float.isFinite(player.health) && player.health > 0f;
     }
 
-    @Override public ArmorView armor() { return ArmorView.NONE; }
+    @Override public ArmorView armor() { return player.equipment.armor(); }
+    @Override public com.mineclone.world.ItemStack heldItem(){return player.heldItem;}
     @Override public boolean local() { return false; }
 
     /** @return true when the hit was sent; the guest may still refuse it inside its window */

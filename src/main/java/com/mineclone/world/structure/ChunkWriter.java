@@ -2,6 +2,8 @@ package com.mineclone.world.structure;
 
 import com.mineclone.world.BlockType;
 import com.mineclone.world.Chunk;
+import com.mineclone.item.Items;
+import com.mineclone.world.ItemStack;
 
 /**
  * Writes into the one chunk being generated, in world coordinates. Generation
@@ -15,9 +17,15 @@ public final class ChunkWriter implements StructureWriter {
     private final int x0, z0;
     private final BoundingBox box;
     private int refused;
+    private final long seed;
 
     public ChunkWriter(Chunk chunk) {
+        this(chunk, 0);
+    }
+
+    public ChunkWriter(Chunk chunk, long seed) {
         this.chunk = chunk;
+        this.seed = seed;
         this.x0 = chunk.cx * Chunk.SIZE_X;
         this.z0 = chunk.cz * Chunk.SIZE_Z;
         this.box = BoundingBox.chunk(chunk.cx, chunk.cz);
@@ -41,6 +49,21 @@ public final class ChunkWriter implements StructureWriter {
     @Override
     public BlockType get(int x, int y, int z) {
         return box.contains(x, y, z) ? chunk.get(x - x0, y, z - z0) : BlockType.AIR;
+    }
+
+    @Override
+    public void chest(int x, int y, int z, String tableId) {
+        if (!box.contains(x, y, z)) {
+            refused++;
+            return;
+        }
+        int lx = x - x0, lz = z - z0;
+        // Repeated placement never replenishes an existing (even empty) chest.
+        if (chunk.get(lx, y, lz) == BlockType.CHEST && chunk.getChest(lx, y, lz) != null) return;
+        ItemStack[] loot = new ItemStack[Chunk.CHEST_SLOTS];
+        Items.get().loot().fillChest(loot, tableId, seed, x, y, z);
+        set(x, y, z, BlockType.CHEST);
+        System.arraycopy(loot, 0, chunk.createChest(lx, y, lz), 0, loot.length);
     }
 
     /** Writes that fell outside the chunk. */

@@ -109,6 +109,10 @@ public class Game {
     /** Сколько мороза набрал игрок — иней по краям кадра. */
     private final Frost frost = new Frost();
     /** Яд, оглушение, заморозка и плавная адаптация экспозиции. */
+    private final EnvironmentalHazards hazards=new EnvironmentalHazards();
+    private final HurtIndicator hurtIndicator=new HurtIndicator();
+    private final Eating eating=new Eating();
+    private float eatFrameDt;
     private final AdvancedFeedback advancedFeedback = new AdvancedFeedback();
     /** Крен, кивок и проседание камеры от первого лица. */
     private final CameraMotion cameraMotion = new CameraMotion();
@@ -417,6 +421,9 @@ public class Game {
         }
 
         @Override
+        public com.mineclone.world.Equipment equipment(){return player.equipment;}
+
+        @Override
         public int selectedSlot() {
             return selectedSlot;
         }
@@ -495,6 +502,7 @@ public class Game {
      */
     private boolean swallowMouseUntilUp = false;
     private float handSwing = 0f;
+    private float critHitStop;
     private float equipProgress = 1f;
     private BlockType lastHeldBlock = BlockType.AIR;
     /** 0..1 — игрок разглядывает предмет в руке (зажата R). */
@@ -513,7 +521,7 @@ public class Game {
         this.window = window;
         this.input = new Input(window.getHandle());
         this.interaction = new InteractionController(interactionHost, input, net);
-        net.setLocalParticipant(new LocalParticipant(player, net::localActor));
+        var localParticipant=new LocalParticipant(player,net::localActor);localParticipant.held=()->inventory.get(selectedSlot);net.setLocalParticipant(localParticipant);
         com.mineclone.save.Options opts = save.loadOptions();
         this.renderRadius    = opts.renderRadius;
         this.fovDegrees      = opts.fovDegrees;
@@ -862,11 +870,14 @@ public class Game {
         // worldId у него пустой именно поэтому.
         if (world == null || worldId == null)
             return;
+        // Chunk snapshots must never allocate identities beyond the level checkpoint.
+        entities.assignIds();
         java.util.LinkedHashMap<String, byte[]> savedSections =
                 new java.util.LinkedHashMap<>(levelExtraSections);
-        savedSections.put(com.mineclone.sim.WorldClock.SAVE_SECTION, worldClock.encode());
         if (session != null) session.ecology().writeSections(savedSections);
         savedSections.put(com.mineclone.sim.EntityStore.IDS_SECTION, entities.encodeIds());
+        savedSections.put(com.mineclone.sim.WorldClock.SAVE_SECTION, worldClock.encode());
+        savedSections.put(com.mineclone.world.WorldRules.SAVE_SECTION, world.rules.encode());
         var loaded = loadedLevelTemplate;
         com.mineclone.save.LevelData d = new com.mineclone.save.LevelData(
                 worldDisplayName,
@@ -1006,11 +1017,15 @@ public class Game {
             if (world != null && (state == State.PLAYING || state == State.WINDOW) && !photoMode)
                 playerAnimation.update(dt, player.position, bodyRotation.bodyYaw,
                         player.onGround, player.inWater, player.flying, player.isSprinting);
+            playerAnimation.setEating(eating.progress());
+            if(world!=null&&state==State.PLAYING)for(var mob:mobs)if(mob.love>0&&!mob.dead&&itemRandom.nextFloat()<dt*2)particles.emitLoveHeart(mob.position.x,mob.position.y+mob.type.height,mob.position.z);
             roomBrowser.update(dt);
             footsteps.playRemotePlayers();
 
             audioEvents.flush(this::playOccludedNow);
             sound.updateListener(player.camera.position, player.camera.forward());
+            if(wasSubmerged&&!player.eyeInWater&&world!=null)sound.playOneOf(sounds.breath(),.6f,1);
+            wasSubmerged=player.eyeInWater;
             sound.setUnderwater(player.eyeInWater, dt);
             this.lastDt = dt;
             render();
@@ -1226,6 +1241,7 @@ public class Game {
             worldSpawn.set((float) lvl.spawnX, (float) lvl.spawnY, (float) lvl.spawnZ);
             worldClock = com.mineclone.sim.WorldClock.fromSaved(lvl.timeOfDay,
                     lvl.extraSections.get(com.mineclone.sim.WorldClock.SAVE_SECTION));
+            world.rules=lvl.rules;player.rules=world.rules;
             gameMode = lvl.gameMode;
             restorePlayer(lvl.player);
         } else {
@@ -1287,7 +1303,7 @@ public class Game {
                         ? com.mineclone.save.LevelData.creativeInventory()
                         : com.mineclone.save.LevelData.emptyInventory(),
                 ws.mode, System.currentTimeMillis(), 20f, 20f, null,
-                java.util.Map.of(com.mineclone.world.gen.WorldGenSettings.SAVE_SECTION, generator.encode()));
+                java.util.Map.of(com.mineclone.world.gen.WorldGenSettings.SAVE_SECTION,generator.encode(),com.mineclone.world.WorldRules.SAVE_SECTION,ws.rules.encode()));
         save.saveLevel(id, fresh);
         // The first save already established an empty-world backup gate.
         openWorldData(id, fresh);
@@ -1298,6 +1314,7 @@ public class Game {
      * Must be called from the main (GL) thread only.
      */
     private void unloadWorld() {
+        deathHandled=false;wasSubmerged=false;
         if (world == null)
             return;
         if(net.isHost())net.stop(null);
@@ -1379,7 +1396,7 @@ public class Game {
     private void updatePlaying(float dt) {
         long updateProbe = System.nanoTime();
         releasePendingDrops();
-        player.statusSpeedMultiplier = advancedFeedback.movementMultiplier();
+        player.statusSpeedMultiplier = player.effects.movementMultiplier();
         if (photoMode) {
             updatePhotoCamera(dt);
         }
@@ -1414,7 +1431,8 @@ public class Game {
                 input.grabCursor(true);
             }
             updateHeldItem(dt);
-            player.setGameMode(gameMode);
+            player.rules=world==null?com.mineclone.world.WorldRules.LEGACY:world.rules;
+        player.setGameMode(gameMode);
             player.update(dt, world, input, false);
             wasInWater = player.inWater;
             footsteps.update();
@@ -1428,6 +1446,7 @@ public class Game {
             openWindow(gameMode == com.mineclone.world.GameMode.CREATIVE
                     ? new com.mineclone.ui.container.CreativeScreen(windowContext)
                     : new com.mineclone.ui.container.InventoryScreen(windowContext));
+            if(net.isClient() && activeWindow instanceof com.mineclone.ui.container.InventoryScreen){net.openInventory();net.bindContainer(activeWindow.menu());}
             return;
         }
         if (input.keyPressed(GLFW.GLFW_KEY_ESCAPE)) {
@@ -1466,6 +1485,9 @@ public class Game {
             return;
         }
 
+        if(input.pressed(KeyBindings.Action.SWAP_HANDS)&&!net.inventoryBusy()){player.equipment.swapHands(inventory,selectedSlot);equipProgress=0;}
+        eatFrameDt=dt;
+        if(!input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_RIGHT))eating.cancel();
         handleHotbar();
         weapons.update(dt);
         updateHeldItem(dt);
@@ -1526,7 +1548,8 @@ public class Game {
             sound.playOneOf(sounds.playerDeath(), 0.9f, 0.95f + 0.1f * (float) Math.random());
             state = State.DEAD;
             input.grabCursor(false);
-            openMenu(new DeathScreen());
+            handleDeath();
+            openMenu(new DeathScreen(player.lastDamageSource,player.position.x,player.position.y,player.position.z,world.rules.keepInventory()));
             return;
         }
         float hSpeed = (float) Math.sqrt(player.velocity.x * player.velocity.x + player.velocity.z * player.velocity.z);
@@ -1639,15 +1662,14 @@ public class Game {
         ambience.updateLavaEffects(dt);
         ambience.updateAmbient(dt);
         totalTime += dt;
-        applyFireDamage(dt);
+        player.rules=world.rules;
+        hazards.tick(player,world,dt);
         updateDamageFeedback(dt);
         ambience.updateBreath(dt);
         updateFrost(dt);
+        advancedFeedback.bind(player.effects);
         advancedFeedback.update(dt,
                 Math.max(0.03f, daylight * (1f - atmosphere.cloudiness * 0.55f)));
-        if (advancedFeedback.active(AdvancedFeedback.Effect.POISON))
-            player.damage(com.mineclone.world.damage.DamageSource.of(
-                    com.mineclone.world.damage.DamageType.POISON), dt * 0.35f);
         soundCues.update(dt);
         probeEffects = System.nanoTime() - effectsStart;
         long ticksStart = System.nanoTime();
@@ -1761,7 +1783,11 @@ public class Game {
         }
 
         @Override public void swingAtAir() { Game.this.swingAtAir(); }
+        @Override public void harvested(BlockType block,int meta){award("mineclone:first_harvest","Первый урожай");}
         @Override public boolean tryEat() { return Game.this.tryEat(); }
+        @Override public boolean tryFeed(Vector3f origin,Vector3f dir,Raycaster.Hit hit){var mob=pickAimedMob(origin,dir,hit);var held=inventory.get(selectedSlot);if(mob==null||!com.mineclone.world.entity.Breeding.food(mob.type,held))return false;
+            if(net.isClient()){net.requestFeed(mob,held.item.id.toString());return true;}
+            boolean fed=com.mineclone.world.entity.Breeding.feed(mob,held,gameMode);if(fed)mob.breedingOwner=net.localActor();if(held.count<=0)inventory.set(selectedSlot,null);return fed;}
         @Override public void swing() { startHandSwing(); }
         @Override public boolean occupiedByPlayer(int x, int y, int z) { return playerOccupies(x, y, z); }
         @Override public void wearHeldTool() { Game.this.wearHeldTool(); }
@@ -1813,6 +1839,9 @@ public class Game {
             return held != null && held.emittedLight > 0;
         }
 
+        @Override public void bred(int actor){if(actor==net.localActor())award("mineclone:breed_animals","Разведите животных");else net.award(actor,"mineclone:breed_animals","Разведите животных");}
+        @Override public void exploded(float x,float y,float z){net.sendExplosion(x,y,z);}
+        @Override public void effectApplied(com.mineclone.sim.Participant target,com.mineclone.world.effect.StatusEffect effect,float seconds){if(target.local())player.effects.apply(effect,seconds);else net.sendEffect(target.id(),effect,seconds);}
         @Override public boolean focusIsBody() { return true; }
         @Override public boolean spawnMobs() { return bench == null; }
 
@@ -1826,12 +1855,6 @@ public class Game {
             if (!participant.local())
                 return;
             applyMobKnockback(m);
-            if (m.elite == com.mineclone.world.entity.MobTactics.Elite.VENOMOUS)
-                advancedFeedback.apply(AdvancedFeedback.Effect.POISON, 7f);
-            else if (m.elite == com.mineclone.world.entity.MobTactics.Elite.FROST)
-                advancedFeedback.apply(AdvancedFeedback.Effect.FREEZE, 4f);
-            else if (m.elite == com.mineclone.world.entity.MobTactics.Elite.BURNING)
-                advancedFeedback.apply(AdvancedFeedback.Effect.STUN, 1.1f);
             sound.playOneOfAt(sounds.hurt(), playerSoundPosition(),
                     0.8f, 0.9f + 0.1f * (float) Math.random());
         }
@@ -1926,10 +1949,10 @@ public class Game {
         float len = (float) Math.sqrt(dx * dx + dz * dz);
         if (len < 1e-4f)
             return;
-        player.velocity.x += dx / len * 4f;
-        player.velocity.z += dz / len * 4f;
+        player.velocity.x += dx / len * 4f * (1-player.equipment.knockbackResistance());
+        player.velocity.z += dz / len * 4f * (1-player.equipment.knockbackResistance());
         if (player.onGround)
-            player.velocity.y = 3f;
+            player.velocity.y = 3f*(1-player.equipment.knockbackResistance());
     }
 
     /** Пауза: Esc и кнопки разбирает стек меню, миру здесь делать нечего. */
@@ -2019,17 +2042,22 @@ public class Game {
         // A progress payload this build cannot read stays opaque rather than being reset.
         if (progress.length == 0 || SurvivalProgress.readable(progress))
             progress = survivalProgress.encode();
+        var equipped=java.util.Arrays.copyOf(template.equipment(),Math.max(5,template.equipment().length));
+        System.arraycopy(player.equipment.snapshot(),0,equipped,0,5);
         var pose = template.pose();
         var vitals = template.vitals();
-        return template.toBuilder()
+        var builder=template.toBuilder();
+        if(template.effectsReadable())builder.effects(player.effects.snapshot());
+        return builder
                 .inventory(slots)
+                .equipment(equipped)
                 .pending(pendingPlayerItems())
                 .pose(com.mineclone.save.PlayerRecord.keepPrecision(player.position.x, pose.x()),
                         com.mineclone.save.PlayerRecord.keepPrecision(player.position.y, pose.y()),
                         com.mineclone.save.PlayerRecord.keepPrecision(player.position.z, pose.z()),
                         player.camera.yaw, player.camera.pitch, selectedSlot)
                 .vitals(com.mineclone.save.PlayerRecord.Vitals.live(player.health, player.hunger,
-                        vitals.saturation(), vitals.exhaustion(), vitals.air()))
+                        player.saturation,player.exhaustion,player.air))
                 .progress(progress)
                 .build();
     }
@@ -2038,6 +2066,7 @@ public class Game {
         // A host checkpoint supersedes an old remote window; closing normally would return its items twice.
         discardRemoteWindow();
         playerRecordTemplate = record;
+        player.equipment.restore(record.equipment());
         inventory = new com.mineclone.world.Inventory();
         var slots = record.inventory();
         for (int i = 0; i < slots.length; i++)
@@ -2054,6 +2083,8 @@ public class Game {
         player.respawn((float) pose.x(), (float) pose.y(), (float) pose.z());
         player.health = record.vitals().health();
         player.hunger = record.vitals().hunger();
+        player.saturation=record.vitals().saturation();player.exhaustion=record.vitals().exhaustion();player.air=record.vitals().air();
+        player.effects.restore(record.effects());
         player.camera.yaw = pose.yaw();
         player.camera.pitch = pose.pitch();
         selectedSlot = pose.selected();
@@ -2085,7 +2116,14 @@ public class Game {
         updateActiveWorld(dt);
     }
 
+    private boolean deathHandled,wasSubmerged;
+    private void handleDeath(){
+        if(deathHandled)return;deathHandled=true;var cause=player.lastDamageSource;
+        if(net.isClient())net.requestDeathDrop();else {var dropped=com.mineclone.sim.DeathDrops.prepare(capturePlayer(),world.rules.keepInventory());for(var item:dropped.items())session.addItem(item);if(!world.rules.keepInventory())restorePlayer(dropped.record());saveAll();}
+        player.lastDamageSource=cause;net.announceLife(false,cause);
+    }
     private void respawnPlayer() {
+        deathHandled=false;net.announceLife(true,null);hazards.clear();
         Vector3f spawn = findRespawnPosition();
         player.respawn(spawn.x, spawn.y, spawn.z);
         bodyRotation.snap(player.camera.yaw, player.camera.pitch);
@@ -2100,6 +2138,8 @@ public class Game {
     }
 
     private Vector3f findRespawnPosition() {
+        var personal=playerRecordTemplate.spawn();if(personal!=null){loader.loadNow(Math.floorDiv((int)Math.floor(personal.x()),16),Math.floorDiv((int)Math.floor(personal.z()),16));if(com.mineclone.world.SleepRules.validSpawn(world,personal))return new Vector3f((float)personal.x(),(float)personal.y(),(float)personal.z());showCommandToast("Спальник потерян или завален");}
+
         int baseX = (int) Math.floor(worldSpawn.x);
         int baseZ = (int) Math.floor(worldSpawn.z);
         for (int attempts = 0; attempts < 24; attempts++) {
@@ -2169,7 +2209,8 @@ public class Game {
             equipProgress = 0f;
         }
         equipProgress = Math.min(1f, equipProgress + dt * 7.5f);
-        handSwing = Math.max(0f, handSwing - dt * 4.5f);
+        float handDt=dt;if(critHitStop>0){handDt=Math.max(0,dt-critHitStop);critHitStop=Math.max(0,critHitStop-dt);}
+        handSwing = Math.max(0f, handSwing - handDt * 4.5f);
 
         // Осмотр предмета: пока держишь R, предмет выезжает к глазам и медленно
         // поворачивается, а мир за ним уходит в размытие. Только в игре и
@@ -2331,6 +2372,7 @@ public class Game {
         for (Chunk c : doomed) {
             doomedKeys.add(World.key(c.cx, c.cz));
             saveChunkIfModified(c);
+            if(session!=null)session.forgetChunk(c);
         }
         // Один проход по предметам и мобам на всю выгрузку, уже после записи:
         // животные ушли в неё (MOB-01). Прежний removeIf стоял внутри цикла по
@@ -2466,7 +2508,9 @@ public class Game {
             // Крит — как в MC: удар в падении бьёт сильнее. Спринт-удар не
             // добавляет урона, но отбрасывает заметно дальше.
             boolean crit = !player.onGround && player.velocity.y < -0.1f;
-            float damage = com.mineclone.item.Combat.damage(weapon, ready, crit);
+            float damage = player.effects.weaken(com.mineclone.item.Combat.damage(weapon, ready, crit));
+            if(player.effects.active(com.mineclone.world.effect.StatusEffect.STUN))return aimedMob!=null;
+            player.exhaust(.1f);
             float knockback = com.mineclone.item.Combat.knockback(player.isSprinting);
             float hitT = aimedMob.rayHitDistance(origin, dir);
             float hitY = origin.y + dir.y * Math.max(0f, hitT);
@@ -2476,7 +2520,7 @@ public class Game {
             var limb = com.mineclone.world.entity.LimbDamage.fromHitHeight(normalizedY, lateral);
             // У участника моб только показывается: настоящий урон и отброс
             // считает хозяин, а местный удар нужен ради отклика.
-            net.requestMobHit(aimedMob, damage, knockback, player.position.x, player.position.z);
+            net.requestMobHit(aimedMob,limb,ready,crit,player.isSprinting);
             var hit = com.mineclone.world.damage.DamageSource.byPlayer(com.mineclone.world.damage.DamageType.MELEE,
                     net.localActor(), player.position.x, player.position.y, player.position.z, knockback).onLimb(limb);
             if (aimedMob.damage(hit, damage)) {
@@ -2484,6 +2528,7 @@ public class Game {
                         0.8f, (crit ? 1.1f : 0.9f) + 0.2f * (float) Math.random());
                 sound.playOneOfAt(sounds.playerAttack(crit ? "crit" : "strong"),
                         aimedMob.soundPosition(), 0.55f, 0.95f + 0.1f * (float) Math.random());
+                if(crit)critHitStop=.03f;
                 emitHitImpact(aimedMob, origin, dir, Math.max(0f, hitT), crit);
                 // Оружие тупится о живое так же, как инструмент о камень.
                 wearHeldTool();
@@ -2742,7 +2787,7 @@ public class Game {
         // Время мира — хозяина: гость, проматывающий ночь у себя, откатывался
         // бы назад с первым же S_TIME. Спальник переносит ему точку возрождения.
         if (net.isClient()) {
-            worldSpawn.set(x + 0.5f, y + 1f, z + 0.5f);
+            playerRecordTemplate=playerRecordTemplate.toBuilder().spawn(new com.mineclone.save.PlayerRecord.Spawn(x+.5,y+1,z+.5)).build();net.requestPersonalSpawn(x,y,z);
             showCommandToast("Точка возрождения здесь. Ночь пройдёт, когда уснёт хозяин");
             return;
         }
@@ -2750,7 +2795,7 @@ public class Game {
         daylight = computeDaylight();
         // Спальник становится точкой возрождения: ради этого его и носят с
         // собой, а не только ради пропуска ночи.
-        worldSpawn.set(x + 0.5f, y + 1f, z + 0.5f);
+        playerRecordTemplate=playerRecordTemplate.toBuilder().spawn(new com.mineclone.save.PlayerRecord.Spawn(x+.5,y+1,z+.5)).build();
         invalidateShadows();
         if (music != null)
             music.onWake();
@@ -2846,8 +2891,9 @@ public class Game {
                 atmosphere.thunderstorm(), 0f,
                 (int) Math.floor(player.position.x), (int) Math.floor(player.position.z),
                 stormGround);
-        for (var s : tick.struck())
-            ignite(s.x(), s.z());
+        for (var s : tick.struck()){
+            int y=stormGround.surfaceUnderSky(s.x(),s.z());if(!net.isClient()&&session!=null)session.lightning(s.x()+.5f,y,s.z()+.5f);ignite(s.x(),s.z());
+        }
         for (float distance : tick.thunder())
             rollThunder(distance);
     }
@@ -2884,18 +2930,13 @@ public class Game {
      *         заканчивается и не пытается ничего поставить
      */
 
+    void award(String id,String title){var achievements=new java.util.ArrayList<>(playerRecordTemplate.advancements());if(!achievements.contains(id)){achievements.add(id);playerRecordTemplate=playerRecordTemplate.toBuilder().advancements(achievements).build();showCommandToast(title);}}
     private boolean tryEat() {
-        com.mineclone.world.ItemStack held = inventory.get(selectedSlot);
-        if (held == null || held.food() == null)
-            return false;   // не еда — правый клик идёт по обычному пути
-        if (!player.canEat())
-            return true;    // сыт: клик гасится, но ничего не тратит
-        player.eat(held.food().nutrition());
-        startHandSwing();
-        sound.playOneOf(sounds.uiClick(), 0.5f, 0.75f + 0.1f * (float) Math.random());
-        if (gameMode == com.mineclone.world.GameMode.SURVIVAL)
-            inventory.removeOne(selectedSlot);
-        return true;
+        var held=inventory.get(selectedSlot);int before=held==null?0:held.count;
+        boolean consumed=eating.update(player,held,selectedSlot,input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_RIGHT),eatFrameDt,itemRandom);
+        if(held!=null&&held.count<before){sound.playOneOf(sounds.eat(),.6f,1);sound.playOneOf(sounds.burp(),.4f,1);particles.emitBlockBreak((int)player.position.x,(int)player.position.y+1,(int)player.position.z,new float[]{1,1,1},held.item.iconTile,1,0);}
+        if(held!=null&&held.count<=0)inventory.set(selectedSlot,null);
+        return consumed;
     }
 
     /**
@@ -3012,6 +3053,9 @@ public class Game {
     /** The console's commands (SIM-08): {@link CommandProcessor} asks the game through this. */
     private final CommandProcessor commands = new CommandProcessor(new CommandProcessor.CommandTarget() {
         @Override public boolean inRoom() { return net.active(); }
+        @Override public boolean guest(){return net.isClient();}
+        @Override public void rulesChanged(){player.rules=world.rules;net.sendRules();saveAll();}
+        @Override public boolean guestMode(String name,com.mineclone.world.GameMode mode){return net.sendGameMode(name,mode);}
         @Override public void chat(String line) { net.sendChat(line); }
         @Override public Player player() { return player; }
         @Override public World world() { return world; }
@@ -3040,7 +3084,7 @@ public class Game {
         @Override public void showEcology(String[] lines) { commandPanel = lines; commandHelpTimer = 12f; }
     });
 
-    private void setGameMode(com.mineclone.world.GameMode mode) {
+    void setGameMode(com.mineclone.world.GameMode mode) {
         gameMode = mode;
         player.setGameMode(mode);
         interaction.reset();
@@ -3088,6 +3132,8 @@ public class Game {
                 com.mineclone.audio.SoundOcclusion.muffle(walls));
     }
 
+    void remoteExplosion(float x,float y,float z){entityPresentation.explosion(x,y,z,null);}
+
     void emitNoise(float x, float y, float z, float loudness) {
         // Мобов слышит тот, у кого они живут: у гостя они — снимки хозяина.
         if (session != null)
@@ -3098,17 +3144,6 @@ public class Game {
      * Урон от стояния в огне. Считается по обоим блокам, которые занимает
      * игрок: иначе можно стоять ногами в пламени, а голова «не горит».
      */
-    private void applyFireDamage(float dt) {
-        if (gameMode != com.mineclone.world.GameMode.SURVIVAL || player.isDead())
-            return;
-        int x = (int) Math.floor(player.position.x);
-        int z = (int) Math.floor(player.position.z);
-        int y = (int) Math.floor(player.position.y);
-        if (world.getBlock(x, y, z) == BlockType.FIRE
-                || world.getBlock(x, y + 1, z) == BlockType.FIRE)
-            player.damage(com.mineclone.world.damage.DamageSource.of(com.mineclone.world.damage.DamageType.FIRE),
-                    FIRE_DAMAGE_PER_SECOND * dt);
-    }
 
     /**
      * Реакция на потерю здоровья: вспышка по краям кадра, толчок камеры и
@@ -3118,8 +3153,13 @@ public class Game {
      * иначе каждый новый вид урона пришлось бы отдельно вспоминать.
      */
     private void updateDamageFeedback(float dt) {
+        hurtIndicator.tick(dt);
         if (player.health < lastHealth - 0.01f) {
+            hurtIndicator.hit(player.lastDamageSource,player.position.x,player.position.z);
+            eating.cancel();
             float lost = lastHealth - player.health;
+            if(player.lastDamageSource!=null&&!player.lastDamageSource.type().bypassesArmor()&&player.equipment.armor().points()>0)sound.playOneOf(sounds.armorHit(),.65f,1);
+            if(player.brokenArmor>0){particles.emitBlockBreak((int)player.position.x,(int)player.position.y+1,(int)player.position.z,new float[]{.7f,.8f,.9f},com.mineclone.item.Items.get().require("iron_helmet").iconTile,1,0);sound.playOneOf(sounds.armorBreak(),.8f,1);showCommandToast("Часть брони сломалась");player.brokenArmor=0;}
             damageFlash = 1f;
             damageShake = DAMAGE_SHAKE_TIME;
             // Малый урон даёт лёгкий толчок, серьёзный — заметный, но даже
@@ -3451,7 +3491,7 @@ public class Game {
                     playerAnimation.pose(), lighting,
                     world.getSkyLight(px, py, pz) / (float) Chunk.MAX_LIGHT * daylight,
                     world.getBlockLightWorld(px, py, pz) / (float) Chunk.MAX_LIGHT,
-                    atlas, inventory.get(selectedSlot));
+                    atlas, inventory.get(selectedSlot),player.equipment);
         }
         // Чужие игроки — та же модель, тот же шейдер и тот же свет, что у
         // своей: разъехаться по стилю им нечем.
@@ -3467,7 +3507,7 @@ public class Game {
                 playerRenderer.render(proj, view, rp.position, rp.bodyYaw(), rp.yaw, rp.pitch,
                         rp.animation.pose(), lighting,
                         world.getSkyLight(rx, ry, rz) / (float) Chunk.MAX_LIGHT * daylight,
-                        world.getBlockLightWorld(rx, ry, rz) / (float) Chunk.MAX_LIGHT, atlas, rp.heldItem);
+                        world.getBlockLightWorld(rx, ry, rz) / (float) Chunk.MAX_LIGHT, atlas, rp.heldItem,rp.equipment);
             }
             // Матрица кадра нужна интерфейсу: подписи над головами считаются
             // уже после композита, когда ни proj, ни view туда не доходят.
@@ -3627,6 +3667,8 @@ public class Game {
             // рука рисуется поверх чистого z-буфера и в третьем лице висела
             // бы отдельным куском мяса посреди экрана.
             if (viewMode == ViewMode.FIRST) {
+                heldItemRenderer.setEating(eating.progress());
+                heldItemRenderer.setChestArmor(player.equipment.get(1));
                 heldItemRenderer.setBowDraw(weapons.bowDraw());
                 heldItemRenderer.render(atlas, inventory.get(selectedSlot),
                         window.getAspect(), currentFov,
@@ -4237,12 +4279,12 @@ public class Game {
             // тень под ногами — главная подсказка о том, где ты стоишь.
             playerRenderer.renderShadow(shadowMobShader, ls, player.position,
                     bodyRotation.bodyYaw, bodyRotation.headYaw, bodyRotation.headPitch,
-                    playerAnimation.pose(), atlas, inventory.get(selectedSlot));
+                    playerAnimation.pose(), atlas, inventory.get(selectedSlot),player.equipment);
             for (var rp : net.players()) {
                 if (!rp.placed() || rp.isDead()) continue;
                 playerRenderer.renderShadow(shadowMobShader, ls, rp.position,
                         rp.bodyYaw(), rp.yaw, rp.pitch, rp.animation.pose(),
-                        atlas, rp.heldItem);
+                        atlas, rp.heldItem,rp.equipment);
             }
         }
         shadowMap.end(sw, sh);
@@ -4542,8 +4584,7 @@ public class Game {
                 hud.drawCompass(vw, vh, player.camera.yaw, worldClock.gameTimeFloat());
                 hud.drawHotbar(vw, vh, inventory, selectedSlot, slotAnim);
                 if (gameMode == com.mineclone.world.GameMode.SURVIVAL) {
-                    hud.drawHearts(vw, vh, player.health, healthGhost);
-                    hud.drawHunger(vw, vh, player.hunger);
+                    hud.drawStatus(vw,vh,player,healthGhost,hurtIndicator.angle(player.camera.yaw),hurtIndicator.alpha(),hazards.burning());
                 }
                 if (!showDebug && gameMode == com.mineclone.world.GameMode.SURVIVAL)
                     hud.drawSurvivalObjective(vw, vh, survivalProgress.objective(inventory));
@@ -4578,15 +4619,13 @@ public class Game {
             case PAUSED -> {
                 hud.drawHotbar(vw, vh, inventory, selectedSlot, slotAnim);
                 if (gameMode == com.mineclone.world.GameMode.SURVIVAL) {
-                    hud.drawHearts(vw, vh, player.health, healthGhost);
-                    hud.drawHunger(vw, vh, player.hunger);
+                    hud.drawStatus(vw,vh,player,healthGhost,hurtIndicator.angle(player.camera.yaw),hurtIndicator.alpha(),hazards.burning());
                 }
                 handleMenuAction(drawMenus(vw, vh, scale));
             }
             case WINDOW -> {
                 if (gameMode == com.mineclone.world.GameMode.SURVIVAL) {
-                    hud.drawHearts(vw, vh, player.health, healthGhost);
-                    hud.drawHunger(vw, vh, player.hunger);
+                    hud.drawStatus(vw,vh,player,healthGhost,hurtIndicator.angle(player.camera.yaw),hurtIndicator.alpha(),hazards.burning());
                 }
                 // Хотбар не рисуется: он внутри окна, и вторая копия внизу
                 // экрана спорила бы с той, по которой игрок кликает.
@@ -4598,8 +4637,7 @@ public class Game {
             }
             case DEAD -> {
                 if (gameMode == com.mineclone.world.GameMode.SURVIVAL) {
-                    hud.drawHearts(vw, vh, player.health, healthGhost);
-                    hud.drawHunger(vw, vh, player.hunger);
+                    hud.drawStatus(vw,vh,player,healthGhost,hurtIndicator.angle(player.camera.yaw),hurtIndicator.alpha(),hazards.burning());
                 }
                 handleMenuAction(drawMenus(vw, vh, scale));
             }
@@ -4698,6 +4736,13 @@ public class Game {
 
     /** Действие экрана меню, дошедшее до игры. */
     private void handleMenuAction(MenuAction a) {
+        // Upgrades operate on closed worlds. Hosting the currently live world
+        // preserves its generator; it can be upgraded after returning to menus.
+        MenuAction offered = world == null ? com.mineclone.ui.WorldGenUpgradeScreen.offer(save, a) : a;
+        if (offered != a) {
+            menus.push(offered.screen);
+            return;
+        }
         switch (a.kind) {
             case PLAY_WORLD -> startWorld(a.worldId);
             case CREATE_WORLD -> createWorld(a.world);
@@ -4733,7 +4778,7 @@ public class Game {
         state = State.PAUSED;
         saveAll();
         input.grabCursor(false);
-        openMenu(new PauseScreen(worldDisplayName, settingsModel));
+        openMenu(new PauseScreen(worldDisplayName,settingsModel,new com.mineclone.ui.WorldRulesScreen(()->world.rules,rules->{world.rules=rules;player.rules=rules;net.sendRules();saveAll();},!net.isClient())));
     }
 
     /** Код выхода процесса: у автопилота ненулевой — провал. */
@@ -4848,8 +4893,17 @@ public class Game {
         }
 
         @Override
+        public void setSurvival(){Game.this.setGameMode(GameMode.SURVIVAL);}
+        public void command(String command){commands.execute(command);}
+        public void setBlockMeta(int x,int y,int z,int meta){world.setBlock(x,y,z,world.getBlock(x,y,z),(byte)meta);}
+        public void lookAtOtherPlayer(){for(var p:net.players())if(p.placed()){var at=p.acceptedPosition();lookAt(at.x(),at.y()+1.4f,at.z());return;}}
+        public void wearArmor(String material){String[] pieces={"helmet","chestplate","leggings","boots"};for(int i=0;i<4;i++)player.equipment.set(i,ItemStack.of(material+"_"+pieces[i]));}
+        public boolean seesArmor(String material){for(var p:net.players())if(p.placed()&&p.equipment.get(1)!=null&&p.equipment.get(1).item.id.path().equals(material+"_chestplate"))return true;return false;}
+
+
+        @Override
         public void setCreative() {
-            gameMode = com.mineclone.world.GameMode.CREATIVE;
+            Game.this.setGameMode(GameMode.CREATIVE);
         }
 
         @Override
@@ -5429,7 +5483,8 @@ public class Game {
     private void resumeFromPause() {
         if (player.isDead()) {
             state = State.DEAD;
-            openMenu(new DeathScreen());
+            handleDeath();
+            openMenu(new DeathScreen(player.lastDamageSource,player.position.x,player.position.y,player.position.z,world.rules.keepInventory()));
             return;
         }
         state = State.PLAYING;

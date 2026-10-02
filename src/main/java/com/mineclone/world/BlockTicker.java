@@ -114,7 +114,7 @@ public final class BlockTicker {
     private void apply(World world, int wx, int wy, int wz, boolean raining, boolean snowfall,
                        float weatherStrength) {
         switch (world.getBlock(wx, wy, wz)) {
-            case AIR -> fallSnow(world, wx, wy, wz, snowfall);
+            case TALL_GRASS,FLOWER_RED,FLOWER_YELLOW,AIR -> fallSnow(world, wx, wy, wz, snowfall);
             case SNOW_LAYER -> tickSnow(world, wx, wy, wz, snowfall);
             case DIRT -> spreadGrass(world, wx, wy, wz);
             case MUD -> dryMud(world, wx, wy, wz, raining);
@@ -420,7 +420,9 @@ public final class BlockTicker {
                             world.setBlock(wx, wy, wz, BlockType.AIR);
                         return;
                     }
+        byte meta=world.getBlockMeta(wx,wy,wz);
         world.setBlock(wx, wy, wz, BlockType.AIR);
+        com.mineclone.world.behavior.BlockBehavior.dropLoot(world,BlockType.LEAVES,wx,wy,wz,meta,world.dropSink());
     }
 
     private void dryMud(World world, int wx, int wy, int wz, boolean raining) {

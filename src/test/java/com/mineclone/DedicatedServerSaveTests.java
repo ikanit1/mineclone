@@ -18,6 +18,7 @@ final class DedicatedServerSaveTests {
     static void runAll(TestMain.Runner runner) {
         runner.run("dedicated world autosave preserves local owner checkpoint, unknown sections and clock", DedicatedServerSaveTests::ownerCheckpoint);
         runner.run("a new dedicated world records the generator it was made with", DedicatedServerSaveTests::newWorldGenerator);
+        runner.run("an ecology-off save checkpoints a new body's identity before writing its chunk", DedicatedServerSaveTests::newBodyCheckpoint);
     }
 
     /** GEN-01: the version is written with the first save, so no later default can reinterpret the land. */
@@ -57,6 +58,57 @@ final class DedicatedServerSaveTests {
     private static Object get(Object object, String name) throws Exception {
         var field = object.getClass().getDeclaredField(name); field.setAccessible(true); return field.get(object);
     }
+
+    private static void newBodyCheckpoint() throws Exception {
+        Path root = Files.createTempDirectory("mineclone-server-new-body-");
+        DedicatedServer server = null;
+        try {
+            Path configPath = root.resolve("server.properties");
+            Files.writeString(configPath, "saves-dir=" + root.toString().replace('\\', '/')
+                    + "\nworld=fresh\nseed=31337\ndirect=false\nphoton=false\nupnp=false\n");
+            server = new DedicatedServer(ServerConfig.load(configPath.toFile()));
+            var open = DedicatedServer.class.getDeclaredMethod("openWorld");
+            open.setAccessible(true);
+            check((boolean) open.invoke(server), "server refused to create the checkpoint fixture");
+            check(!server.ecology().enabled(), "fixture did not exercise ecology OFF");
+            var entities = (com.mineclone.sim.EntityStore) get(server, "entities");
+            entities.mobs.clear();
+            WorldClock clock = (WorldClock) get(server, "worldClock");
+            clock.observeEntityId((long) Integer.MAX_VALUE + 90);
+            var cow = new com.mineclone.world.entity.Mob(com.mineclone.world.entity.MobType.COW,
+                    8.5f, 65.001f, 8.5f, new java.util.Random(31337));
+            entities.mobs.add(cow);
+            check(cow.id == 0, "fixture's new body already had an identity");
+            server.saveWorld();
+            SaveManager saves = (SaveManager) get(server, "save");
+            saves.flushAndAwait();
+            LevelData saved = saves.loadLevel("fresh");
+            check(saved != null && cow.id > Integer.MAX_VALUE, "actual save did not assign a long world identity");
+            WorldClock reopened = WorldClock.fromSaved(saved.timeOfDay, saved.extraSections.get(WorldClock.SAVE_SECTION));
+            check(reopened.entityCounter() >= cow.id, "level clock was captured before its chunk body's identity");
+            var reopenedEntities = new com.mineclone.sim.EntityStore();
+            reopenedEntities.restoreIds(saved.extraSections.get(com.mineclone.sim.EntityStore.IDS_SECTION));
+            reopenedEntities.bindClock(reopened);
+            var next = new com.mineclone.world.entity.Mob(com.mineclone.world.entity.MobType.COW,
+                    9.5f, 65.001f, 8.5f, new java.util.Random(31338));
+            reopenedEntities.assignId(next);
+            check(next.id > cow.id, "a reopened allocator reused a saved body ID before loading its chunk");
+        } finally {
+            if (server != null) {
+                ChunkLoader loader = (ChunkLoader) get(server, "loader");
+                if (loader != null) loader.shutdown();
+                SaveManager saves = (SaveManager) get(server, "save");
+                saves.flushAndAwait();
+                var writer = SaveManager.class.getDeclaredField("chunkWriter");
+                writer.setAccessible(true);
+                ((java.util.concurrent.ExecutorService) writer.get(saves)).shutdown();
+            }
+            try (var files = Files.walk(root)) {
+                for (Path path : files.sorted(Comparator.reverseOrder()).toList()) Files.deleteIfExists(path);
+            }
+        }
+    }
+
     private static void ownerCheckpoint() throws Exception {
         Path root = Files.createTempDirectory("mineclone-server-owner-");
         SaveManager original = new SaveManager(root.toFile());

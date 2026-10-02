@@ -18,6 +18,7 @@ public final class RemoteMob {
         age = 0;
         remaining = 1f / NetProto.TICK_RATE;
         mob.health = next.health();
+        mob.age=next.age();mob.love=next.love();
         mob.dead = (next.flags() & 1) != 0;
         mob.burning = (next.flags() & 2) != 0;
         mob.inWater = (next.flags() & 4) != 0;

@@ -53,6 +53,9 @@ public final class ServerConfig {
     public final long seed;
     /** Творческий режим вместо выживания. */
     public final boolean creative;
+    public final com.mineclone.world.WorldRules rules;
+    /** Explicitly upgrade generation in new land of existing worlds; default false. */
+    public final boolean upgradeWorldgen;
 
     /** Сколько участников впускаем. */
     public final int maxPlayers;
@@ -78,6 +81,10 @@ public final class ServerConfig {
         worldName = strOf(p, "world-name", "Сервер");
         seed = longOf(p, "seed", 0L);
         creative = "creative".equalsIgnoreCase(strOf(p, "mode", "survival"));
+        com.mineclone.world.Difficulty difficulty;
+        try{difficulty=com.mineclone.world.Difficulty.valueOf(strOf(p,"difficulty","NORMAL").toUpperCase(java.util.Locale.ROOT));}catch(IllegalArgumentException invalid){throw new IllegalArgumentException("invalid server difficulty",invalid);}
+        rules=new com.mineclone.world.WorldRules(difficulty,boolOf(p,"keep-inventory",true),boolOf(p,"allow-commands",true),boolOf(p,"mob-griefing",true),boolOf(p,"natural-regeneration",true));
+        upgradeWorldgen = boolOf(p, "upgrade-worldgen", false);
         maxPlayers = Math.max(1, Math.min(LanTransport.MAX_PLAYERS,
                 intOf(p, "max-players", LanTransport.MAX_PLAYERS)));
         viewDistance = Math.max(2, Math.min(16, intOf(p, "view-distance", 6)));
@@ -174,6 +181,13 @@ public final class ServerConfig {
                 "seed for a new world; 0 = random" });
         rows.put("mode", new String[] { creative ? "creative" : "survival",
                 "survival or creative" });
+        rows.put("difficulty",new String[]{rules.difficulty().name().toLowerCase(java.util.Locale.ROOT),"peaceful, easy, normal or hard (new worlds only)"});
+        rows.put("keep-inventory",new String[]{String.valueOf(rules.keepInventory()),"keep equipment and inventory on death"});
+        rows.put("allow-commands",new String[]{String.valueOf(rules.allowCommands()),"host commands; server console remains privileged"});
+        rows.put("mob-griefing",new String[]{String.valueOf(rules.mobGriefing()),"creeper blasts destroy blocks"});
+        rows.put("natural-regeneration",new String[]{String.valueOf(rules.naturalRegeneration()),"food restores player health"});
+        rows.put("upgrade-worldgen", new String[] { String.valueOf(upgradeWorldgen),
+                "upgrade existing worlds for new land only, after a backup; false keeps their generator" });
         rows.put("max-players", new String[] { String.valueOf(maxPlayers), "" });
         rows.put("view-distance", new String[] { String.valueOf(viewDistance),
                 "chunks kept alive around each player" });

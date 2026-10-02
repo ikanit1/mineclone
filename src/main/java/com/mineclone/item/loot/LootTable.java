@@ -22,14 +22,17 @@ public final class LootTable {
             stack.setDamage((int) Math.round(stack.item.durability * fraction));
         }
     }
-    private record Condition(ToolClass toolClass, Integer toolLevel, Boolean killed, Boolean notCreative, Double chance) {
+    private record Condition(ToolClass toolClass, Integer toolLevel, Boolean killed, Boolean notCreative, Double chance, Integer metaMin, Integer metaMax,Boolean adult) {
         boolean possible(LootContext context) {
             var tool = context.tool() == null || context.tool().count <= 0 ? null : context.tool().tool();
             return (toolClass == null || tool != null && tool.toolClass() == toolClass)
                     && (toolLevel == null || (tool == null ? 0 : tool.level()) >= toolLevel)
                     && (killed == null || killed == context.killedByParticipant())
                     && (!Boolean.TRUE.equals(notCreative) || context.mode() != GameMode.CREATIVE)
-                    && (chance == null || chance > 0);
+                    && (chance == null || chance > 0)
+                    && (metaMin == null || context.blockMeta() >= metaMin)
+                    && (metaMax == null || context.blockMeta() <= metaMax)
+                    && (adult==null||adult==context.isAdult());
         }
         boolean matches(LootContext context, RandomGenerator random) {
             return possible(context) && (chance == null || chance == 1 || random.nextDouble() < chance);
@@ -156,7 +159,7 @@ public final class LootTable {
         List<Condition> result = new ArrayList<>();
         for (int i = 0; i < raw.size(); i++) {
             JsonObject value = parent.element("conditions", i);
-            value.allowOnly("tool_class", "tool_level_min", "killed_by_participant", "random_chance", "not_creative");
+            value.allowOnly("tool_class", "tool_level_min", "killed_by_participant", "random_chance", "not_creative", "block_meta_min", "block_meta_max", "is_adult");
             if (value.keys().isEmpty()) throw parent.error("conditions[" + i + "]", "empty condition");
             ToolClass toolClass = null;
             if (value.has("tool_class")) {
@@ -165,7 +168,9 @@ public final class LootTable {
             }
             Integer level = value.has("tool_level_min") ? integer(value, "tool_level_min", value.raw("tool_level_min"), 0, 255) : null;
             Double chance = value.has("random_chance") ? number(value, "random_chance", value.raw("random_chance"), 0, 1) : null;
-            result.add(new Condition(toolClass, level, bool(value, "killed_by_participant"), bool(value, "not_creative"), chance));
+            result.add(new Condition(toolClass, level, bool(value, "killed_by_participant"), bool(value, "not_creative"), chance,
+                    value.has("block_meta_min")?integer(value,"block_meta_min",value.raw("block_meta_min"),0,255):null,
+                    value.has("block_meta_max")?integer(value,"block_meta_max",value.raw("block_meta_max"),0,255):null,value.has("is_adult")?value.bool("is_adult",true):null));
         }
         return List.copyOf(result);
     }

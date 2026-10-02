@@ -18,6 +18,7 @@ public final class EcologyCodecTests {
         r.run("missing ecology starts empty and newer layout refuses interpretation", EcologyCodecTests::missingAndFuture);
         r.run("truncated, oversized, duplicate and orphan ecology records are refused", EcologyCodecTests::bounds);
         r.run("ecology region and global species limits are enforced", EcologyCodecTests::limits);
+        r.run("ecology reservations preserve full-width world ids", EcologyCodecTests::longIds);
     }
     private static void check(boolean ok, String why) { if (!ok) throw new AssertionError(why); }
     private static EcologyRegion sample() {
@@ -51,6 +52,13 @@ public final class EcologyCodecTests {
         check(Arrays.equals(before, EcologyCodec.encode(snapshot)), "snapshot shared mutable world bytes");
         byte[] greenery = sample().greenery(); greenery[0] = 0;
         check((sample().greenery()[0] & 255) == 91, "region exposes mutable greenery");
+    }
+    private static void longIds() throws Exception {
+        var region = sample(); var species = ResourceId.of("mod:fox");
+        long id = (1L << 40) + 17;
+        var reservation = new EcologyCodec.Reservation(id, -1, 2, species);
+        byte[] bytes = EcologyCodec.encode(new EcologyCodec.Snapshot(List.of(region), Map.of(id, reservation)));
+        check(EcologyCodec.decode(bytes).reservations().get(id).equals(reservation), "long mob id was truncated");
     }
     private static void missingAndFuture() throws Exception {
         check(EcologyCodec.decode(null).regions().isEmpty(), "missing section must be lazy");

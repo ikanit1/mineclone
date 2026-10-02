@@ -15,4 +15,9 @@ public interface StructureWriter {
 
     /** What stands there now; air outside what this writer covers. */
     BlockType get(int x, int y, int z);
+
+    /** A generated chest; buffer writers that contain chests must implement this too. */
+    default void chest(int x, int y, int z, String tableId) {
+        throw new UnsupportedOperationException("this structure writer does not support chests");
+    }
 }

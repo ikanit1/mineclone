@@ -32,6 +32,7 @@ public class BenchChunkPipeline {
     private static final int OLD_REBUILDS_PER_FRAME = 8;
 
     public static void main(String[] args) throws Exception {
+        if(args.length>0&&args[0].equals("--fences")){benchFences();return;}
         java.io.File tmp = java.nio.file.Files.createTempDirectory("mineclone-bench").toFile();
         tmp.deleteOnExit();
 
@@ -55,6 +56,22 @@ public class BenchChunkPipeline {
     }
 
     // ------------------------------------------------------------------ mesh
+
+    private static void benchFences(){
+        World w=new World(20261002L);for(int x=-1;x<=1;x++)for(int z=-1;z<=1;z++)w.getChunk(x,z);
+        Chunk base=w.getChunk(0,0);ChunkMesher mesher=new ChunkMesher(w);
+        Chunk candidate=w.generateDetached(0,0);
+        for(int i=0;i<200;i++)candidate.set(i%16,100,i/16,BlockType.FENCE);
+        for(int i=0;i<40;i++){mesher.buildData(base);mesher.buildData(candidate);}
+        double[] normal=new double[31],fenced=new double[31];
+        for(int i=0;i<31;i++){
+            w.publish(base);long t=System.nanoTime();mesher.buildData(base);normal[i]=(System.nanoTime()-t)/1e6;
+            w.publish(candidate);t=System.nanoTime();mesher.buildData(candidate);fenced[i]=(System.nanoTime()-t)/1e6;
+        }
+        java.util.Arrays.sort(normal);java.util.Arrays.sort(fenced);double ratio=fenced[15]/normal[15];
+        System.out.printf(java.util.Locale.ROOT,"FENCE_BENCH normal=%.3f ms fenced200=%.3f ms ratio=%.3f limit=1.5%n",normal[15],fenced[15],ratio);
+        if(ratio>1.5)throw new AssertionError("fence mesh ratio "+ratio);
+    }
 
     private static void benchMeshBuild() {
         World world = new World(20260915L);

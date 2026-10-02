@@ -1,0 +1,194 @@
+{
+  "leather_helmet": {
+    "name": "Кожаный шлем",
+    "category": "armor",
+    "icon": "leather_helmet",
+    "max_stack": 1,
+    "durability": 55,
+    "armor": {
+      "slot": "head",
+      "defense": 1,
+      "toughness": 0
+    }
+  },
+  "leather_chestplate": {
+    "name": "Кожаный нагрудник",
+    "category": "armor",
+    "icon": "leather_chestplate",
+    "max_stack": 1,
+    "durability": 80,
+    "armor": {
+      "slot": "chest",
+      "defense": 3,
+      "toughness": 0
+    }
+  },
+  "leather_leggings": {
+    "name": "Кожаный поножи",
+    "category": "armor",
+    "icon": "leather_leggings",
+    "max_stack": 1,
+    "durability": 75,
+    "armor": {
+      "slot": "legs",
+      "defense": 2,
+      "toughness": 0
+    }
+  },
+  "leather_boots": {
+    "name": "Кожаный ботинки",
+    "category": "armor",
+    "icon": "leather_boots",
+    "max_stack": 1,
+    "durability": 65,
+    "armor": {
+      "slot": "feet",
+      "defense": 1,
+      "toughness": 0
+    }
+  },
+  "copper_helmet": {
+    "name": "Медный шлем",
+    "category": "armor",
+    "icon": "copper_helmet",
+    "max_stack": 1,
+    "durability": 110,
+    "armor": {
+      "slot": "head",
+      "defense": 2,
+      "toughness": 0
+    }
+  },
+  "copper_chestplate": {
+    "name": "Медный нагрудник",
+    "category": "armor",
+    "icon": "copper_chestplate",
+    "max_stack": 1,
+    "durability": 160,
+    "armor": {
+      "slot": "chest",
+      "defense": 4,
+      "toughness": 0
+    }
+  },
+  "copper_leggings": {
+    "name": "Медный поножи",
+    "category": "armor",
+    "icon": "copper_leggings",
+    "max_stack": 1,
+    "durability": 150,
+    "armor": {
+      "slot": "legs",
+      "defense": 3,
+      "toughness": 0
+    }
+  },
+  "copper_boots": {
+    "name": "Медный ботинки",
+    "category": "armor",
+    "icon": "copper_boots",
+    "max_stack": 1,
+    "durability": 130,
+    "armor": {
+      "slot": "feet",
+      "defense": 1,
+      "toughness": 0
+    }
+  },
+  "iron_helmet": {
+    "name": "Железный шлем",
+    "category": "armor",
+    "icon": "iron_helmet",
+    "max_stack": 1,
+    "durability": 165,
+    "armor": {
+      "slot": "head",
+      "defense": 2,
+      "toughness": 0
+    }
+  },
+  "iron_chestplate": {
+    "name": "Железный нагрудник",
+    "category": "armor",
+    "icon": "iron_chestplate",
+    "max_stack": 1,
+    "durability": 240,
+    "armor": {
+      "slot": "chest",
+      "defense": 6,
+      "toughness": 0
+    }
+  },
+  "iron_leggings": {
+    "name": "Железный поножи",
+    "category": "armor",
+    "icon": "iron_leggings",
+    "max_stack": 1,
+    "durability": 225,
+    "armor": {
+      "slot": "legs",
+      "defense": 5,
+      "toughness": 0
+    }
+  },
+  "iron_boots": {
+    "name": "Железный ботинки",
+    "category": "armor",
+    "icon": "iron_boots",
+    "max_stack": 1,
+    "durability": 195,
+    "armor": {
+      "slot": "feet",
+      "defense": 2,
+      "toughness": 0
+    }
+  },
+  "diamond_helmet": {
+    "name": "Алмазный шлем",
+    "category": "armor",
+    "icon": "diamond_helmet",
+    "max_stack": 1,
+    "durability": 363,
+    "armor": {
+      "slot": "head",
+      "defense": 3,
+      "toughness": 2
+    }
+  },
+  "diamond_chestplate": {
+    "name": "Алмазный нагрудник",
+    "category": "armor",
+    "icon": "diamond_chestplate",
+    "max_stack": 1,
+    "durability": 528,
+    "armor": {
+      "slot": "chest",
+      "defense": 8,
+      "toughness": 2
+    }
+  },
+  "diamond_leggings": {
+    "name": "Алмазный поножи",
+    "category": "armor",
+    "icon": "diamond_leggings",
+    "max_stack": 1,
+    "durability": 495,
+    "armor": {
+      "slot": "legs",
+      "defense": 6,
+      "toughness": 2
+    }
+  },
+  "diamond_boots": {
+    "name": "Алмазный ботинки",
+    "category": "armor",
+    "icon": "diamond_boots",
+    "max_stack": 1,
+    "durability": 429,
+    "armor": {
+      "slot": "feet",
+      "defense": 3,
+      "toughness": 2
+    }
+  }
+}

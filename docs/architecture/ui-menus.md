@@ -1,6 +1,6 @@
 # Menus, HUD and input
 
-Updated: 2026-09-24. Paths in backticks are relative to the repository root.
+Updated: 2026-10-01. Paths in backticks are relative to the repository root.
 
 `ui/ScreenStack` owns menu navigation; `game/Hud` is the in-world overlay.
 `TitleScreen.VERSION` and the HUD resolve `core/BuildInfo.VERSION`, generated from
@@ -45,6 +45,13 @@ see [save safety](saves.md).
   (`render/Thumbnail` снимает кадр из резольва `Backdrop` после сохранения),
   размер на диске считается в фоновом потоке, копия и переименование идут
   прямо в `SaveManager`.
+- **Обновление генератора старого мира**: общий обработчик `PLAY_WORLD`/`NET_HOST`
+  предлагает `WorldGenUpgradeScreen` перед открытием закрытого V1-мира, в том
+  числе через «Продолжить». «Без обновления» сохраняет V1, Esc возвращает в меню.
+  «Обновить» запускает бэкап и запись через фонового писателя `SaveManager`;
+  экран продолжает рисоваться и не позволяет уйти до завершения операции.
+  Только успешная запись возобновляет исходное действие, сохраняя настройки
+  сетевой комнаты. Уже открытый мир при включении сети сохраняет свой генератор.
 - **Фон меню — кинематограф** (`MenuBackground`): серия пролётов камеры над
   пейзажами мира меню. Пейзажи ищет `MenuScout` по сиду — рельеф и биомы
   чистые функции, чанки для поиска не нужны, и разведка укладывается в 56 мс
@@ -81,3 +88,13 @@ see [save safety](saves.md).
 `run-tests.ps1 -Only menu,creative,inventory` checks menu behavior. Actual navigation, focus, scrolling and screenshots require a running game. Container UI is described in [containers.md](containers.md).
 
 Knobs: [TUNING.md](../TUNING.md). Entry points: [PROJECT_MAP.md](../PROJECT_MAP.md).
+
+## Creation and world rules (2 October 2026)
+
+World creation carries difficulty and keepInventory/allowCommands through
+`WorldSettings` into the saved rules section. The expandable More panel retains
+keyboard focus handling and fits 1280×720. Pause opens `WorldRulesScreen`: local
+and host players edit all five rules; guests see the same values read-only.
+Changes broadcast authoritative rules; personal game mode is separately addressed
+by the host. `DeathScreen` shows typed cause, coordinates and retention state.
+The GL menu previews cover collapsed/expanded creation, host/guest rules and death.

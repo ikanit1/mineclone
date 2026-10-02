@@ -1,6 +1,6 @@
 # Loot tables
 
-Updated: 2026-09-24. Paths in backticks are relative to the repository root.
+Updated: 2026-10-01. Paths in backticks are relative to the repository root.
 
 What blocks, mobs and chests drop lives in `assets/data/<namespace>/loot_tables/`,
 under `blocks/`, `entities/` or `chests/` (BLK-06). `ItemRegistry.load` builds the
@@ -45,6 +45,14 @@ anything downstream. Chest loot passes no session RNG: its generator is seeded
 from the world seed, position and table id, so a chest is a pure function of
 where it stands and every build and every guest sees the same contents.
 
+`LootRegistry.fillChest` fills an empty generated chest, merges compatible
+stacks, and scatters them using a separate deterministic stream. It stages the
+whole result before touching the destination: overflow refuses the table rather
+than losing items or leaving a partial chest. The four legacy structure chest
+tables now contain weighted materials, food and worn tools; V1 structures still
+do not place chests. The new structure writer consumes these tables when a
+structure type explicitly requests a chest (GEN-04, natural types in GEN-05).
+
 **Deliberate departure from M0.** Leaves drop a leaves block one time in
 four. They used to drop nothing, while the bedroll's bedding has been leaves
 since its recipe was written (`31afedb`) — so the bed and its respawn point could
@@ -71,8 +79,18 @@ in `BlockType`, `MobType` or `Game`.
 blocks, mobs, chest tables, recipes (3×3 only once a workbench is reachable) and
 smelting (once a furnace and a fuel are). Creative-only building blocks have no
 survival source by design, so the checked property is dead content: every
-recipe and smelting result must be reachable. The known gaps are listed in the
-test with the task that closes them — copper tools until copper ore exists
-(GEN-08) — and a gap that closes fails the test until the list is updated. A
+recipe and smelting result must be reachable. There are no known unreachable
+recipe or smelting results after GEN-08 added copper ore. A new gap fails the
+test rather than joining an allowlist. A
 sampled generation over three seeds checks that the natural-block roots include
 everything the generator actually places.
+
+## Metadata, adults and explosions (2 October 2026)
+
+`LootContext` adds block metadata and `isAdult`, with compatibility constructors.
+Crop stage and leaf species conditions select authored drops. Mob tables require
+adult status; cow leather and rotten flesh are reachable, and the bow accepts
+`#mineclone:bowstring` (cobweb/string). `MobType.drop` is removed. Explosions roll
+block loot at 30%; container removal spills contents independently of that roll.
+TCP scenarios verify all stacks arrive at the guest even when an explosion removes
+the chest, and griefing-disabled blasts leave its contents intact.

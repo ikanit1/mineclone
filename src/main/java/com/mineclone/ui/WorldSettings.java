@@ -13,8 +13,13 @@ public final class WorldSettings {
     public final String name;
     public final long seed;
     public final GameMode mode;
+    public final com.mineclone.world.WorldRules rules;
 
     public WorldSettings(String name, long seed, GameMode mode) {
+        this(name,seed,mode,com.mineclone.world.WorldRules.LEGACY);
+    }
+    public WorldSettings(String name,long seed,GameMode mode,com.mineclone.world.WorldRules rules){
+        this.rules=java.util.Objects.requireNonNull(rules);
         this.name = name;
         this.seed = seed;
         this.mode = mode;

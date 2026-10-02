@@ -1,0 +1,18 @@
+{
+  "bread": {
+    "type": "shaped",
+    "order": 80,
+    "group": "food",
+    "pattern": [
+      "AAA"
+    ],
+    "key": {
+      "A": "mineclone:wheat"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:bread",
+      "count": 1
+    }
+  }
+}

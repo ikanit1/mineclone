@@ -295,6 +295,7 @@ public abstract class ContainerScreen implements Screen {
                     theme.itemIcon(s, r[0] + 6f, r[1] + 6f, r[2] - 12f, 1f,
                             hov ? ItemIcons.ICON_YAW + theme.time() * ItemIcons.ICON_SPIN
                                 : ItemIcons.ICON_YAW);
+                else if(promised==null)drawEmptySlot(theme,ref,r[0],r[1],r[2]);
                 else if (promised != null && menu.cursor() != null)
                     theme.itemIcon(menu.cursor(), r[0] + 6f, r[1] + 6f, r[2] - 12f, 0.45f,
                             ItemIcons.ICON_YAW);
@@ -306,6 +307,8 @@ public abstract class ContainerScreen implements Screen {
                             promised != null ? MenuTheme.ACCENT : MenuTheme.TEXT, 1f);
             }
     }
+
+    protected void drawEmptySlot(MenuTheme theme,SlotRef slot,float x,float y,float size){}
 
     protected void drawSlotBack(MenuTheme theme, float x, float y, float size, boolean hovered) {
         theme.quad(x, y, size, size, 0.16f, 0.18f, 0.23f, hovered ? 0.72f : 0.42f);

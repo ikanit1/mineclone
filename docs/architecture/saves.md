@@ -1,8 +1,9 @@
 # Save opening and preservation
 
-The current writer uses `level.dat` version 11 and chunks version 7. Level versions
-1–10 and chunk versions 1–6 remain readable. Opening an older world schedules an
-original-byte `*-migration.zip` backup before the first mutation or write.
+The current writer uses `level.dat` version 11 and chunks version 8 with minimum
+chunk reader 8. Level versions 1–10 and chunk versions 1–7 remain readable.
+Opening an older world schedules an original-byte `*-migration.zip` backup
+before the first mutation or write.
 
 ## Optional ecology state (LW-02)
 
@@ -117,6 +118,13 @@ chunk/player/ledger bytes match the archive. The level retains gameplay data
 and receives a display name with the backup date. The world selector's
 “Бэкапы…” screen lists copies and opens the restored world after completion.
 
+Explicit generator upgrades use the same ordered writer and a fresh pre-upgrade
+snapshot. `upgradeWorldGen` is for closed worlds: it reads all stored player
+anchors, writes the pinned ledger atomically, then writes the level with new
+generator settings. Errors complete the returned future exceptionally; they
+never publish new settings to the caller. The level remains on V1 after a failed
+commit, and any already-written V1 pins remain safe. See [worldgen](worldgen.md).
+
 `tools/WorldBackupBenchmark.java` measured 200 MiB of deterministic, incompressible
 temporary input at **5.428 seconds**, with a 209,804,472-byte ZIP on this machine.
 The game therefore renders a progress screen while the session backup future is
@@ -177,8 +185,15 @@ and sections the guest's build may not know (`InventoryNetworkTests`).
 missing sections, too-new files, v1 migration with its backup, opaque sections
 over five saves, host/guest byte identity and the recordless M0 level.
 
-Chunk version 7 adds minimum reader 7, keeps RLE blocks/meta, then writes the
-same section envelope with `chests`, `furnaces`, `items`, and opaque extras.
+Chunk version 7 introduced the minimum-reader header and section envelope.
+Version 8 keeps the same RLE blocks/meta and envelope with `chests`, `furnaces`,
+`items`, and opaque extras, but writes minimum reader 8. This gate protects
+the canonical `entities` format from both incompatible version-7 branch codecs:
+older readers return `TooNew` before interpreting the body, never quarantine it
+as corruption, and never overwrite its terrain. Every newly written chunk gets
+this header, including one containing only an empty generation spawn receipt.
+Historical version-7 files still load; future additive envelopes remain readable
+when their minimum reader is at most 8.
 The extras travel through `ChunkSnapshot` and `Chunk` across load/unload cycles.
 
 `trample` (LW-07, optional) stores version 1, the last simulated absolute game
@@ -206,24 +221,29 @@ layout would take a new section name; `ticks` is never reinterpreted. What the
 dues mean after a load — lateness, the two-day cap, a clock behind the save — is
 in [blocks](blocks.md#scheduled-ticks-blk-04).
 
-`entities` (MOB-01, optional — written only when an animal stands in the chunk)
-is `VarInt count` (≤ 256), then per mob `VarInt length` (≤ 1024) and that many
-bytes: `UTF type, VarLong id, f32 x, y, z, yaw, health`, followed by whatever a
-newer build appended. The tail is kept on the mob and written back; a record of
-a type this build does not know stays with its chunk as a pending record, never
-enters the world and is written back unchanged. The reader refuses (quarantine)
-more than 256 records, a record over 1024 bytes or shorter than its fields, a
-non-finite number, an id or health that is not positive, and trailing bytes. A
-chunk without the section has no mobs, which is every chunk before MOB-01; no
-migration. Only persistent mobs are written (every temper but `HOSTILE`); a
+`entities` (MOB-01/04, optional) uses canonical schema 2:
+`i32 0xD94D4F42, u8 version, VarInt count` (≤ 1024), then per mob
+`VarInt length` (≤ 2048) and that many bytes:
+`UTF type, VarLong id, f32 x, y, z, yaw, health, age, boolean persistent,
+f32 loveCooldown, love`, followed by an opaque record tail. The original
+headerless MOB-01 records (≤ 256, record length ≤ 1024) and the generation
+branch's `u8 version1, i32 count` layout migrate on read. The tail is kept on
+the mob and written back; an unknown type stays with its chunk as a pending
+record, never enters the world and is written back unchanged. Invalid bounds,
+duplicate IDs, non-finite values or trailing section bytes fail the read.
+A future entity schema returns `TooNew` and keeps the source read-only.
+An explicit empty `entities` section records that the generated herd was
+already adopted, so dead or departed animals are not generated again. A chunk
+without the section has no saved mobs. Only persistent mobs are written; a
 chunk that held mobs at its last write is written again, so a herd that walked
 away leaves no copy behind, and every chunk with animals is rewritten at each
 save, as chunks with lying items already were.
 
-The level section `entity_ids` (MOB-02) holds the next mob id as one `VarLong`.
-A world without it starts at 1; an unreadable one starts at 1 too, and every
-adopted mob moves the counter past its id. Ids stay positive `int`s because
-`S_MOBS` writes them as a `VarInt`. Details: [simulation](simulation.md#mobs-stay-where-they-were-mob-01-mob-02).
+The legacy level section `entity_ids` (MOB-02) holds the next mob id as one
+`VarLong`. It is bridged into the shared `clock` schema-2 allocator before
+ecology reservations or saved bodies are adopted. IDs are positive `long`s;
+protocol 12 `S_MOBS` carries them as `VarLong`. Both counters are captured after
+new bodies receive IDs. Details: [simulation](simulation.md#mobs-stay-where-they-were-mob-01-mob-02).
 
 `chunks/ledger.dat` (GEN-02) records which generator made each chunk; its format
 and meaning are in [worldgen.md](worldgen.md#chunk-ledger-gen-02). For saving it
@@ -260,3 +280,33 @@ migration archives, clock validation and section bounds.
 
 Fsync durability, region storage and automatic data repair remain separate
 roadmap tasks.
+
+## New optional sections (2 October 2026)
+
+`mineclone:rules` in the level is a strict versioned payload. Absent rules migrate to NORMAL
+with inventory retention and commands enabled, preserving legacy behaviour.
+`clock` section version 2 appends the last allocated stable entity ID; version 1 remains
+readable. `entity_ids` bridges the earlier next-id counter into that clock before
+adoption/materialization/breeding, so both branches share one long allocator.
+An older build supporting only clock version 1 may refuse world initialization
+even though the outer level remains version 11. The chunk-8 gate protects terrain
+when an older reader encounters it; it does not guarantee that the complete world
+can be opened or played in an older build.
+Canonical `entities` version 2 stores persistent mob IDs, type, position, yaw,
+health, age and breeding clocks in bounded length-delimited records. Both the
+original headerless records and the generation branch's byte-version-1 layout
+migrate on read; unknown record tails stay intact. Validate a complete batch before publishing.
+Future schemas/type names are kept opaque through the existing chunk-section
+protection and backup mechanism.
+
+Death inventory, equipment and pending stacks become host-owned ground items at
+600-second lifetime. Ordinary items retain 300 seconds. Optional chunk section
+`item_lifetimes` supplements legacy `items` without rewriting its layout; count,
+finite values and limits are validated before publication. Snapshot copies retain
+lifetime. Player equipment preserves opaque future tail cells; known effect names
+accept both legacy bare names and `mineclone:` IDs, unknown effects round-trip.
+
+The save queue's detached snapshot copy also carries lifetime; the five-cycle
+loader regression uses a ten-minute item to cover this boundary. A death while
+an equipment/chest menu is open captures that host-owned cursor/ingredients
+directly instead of returning them to a full inventory and spilling a duplicate.

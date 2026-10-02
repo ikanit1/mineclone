@@ -19,6 +19,8 @@ import java.util.function.IntSupplier;
 public final class LocalParticipant implements Participant {
     private final Player player;
     private final IntSupplier id;
+    public java.util.function.Supplier<com.mineclone.world.ItemStack> held=()->null;
+    @Override public com.mineclone.world.ItemStack heldItem(){return held.get();}
     private final Vector3f eye = new Vector3f();
 
     public LocalParticipant(Player player, IntSupplier id) {
@@ -44,7 +46,7 @@ public final class LocalParticipant implements Participant {
 
     @Override public GameMode mode() { return player.isCreative() ? GameMode.CREATIVE : GameMode.SURVIVAL; }
     @Override public boolean alive() { return !player.isDead(); }
-    @Override public ArmorView armor() { return ArmorView.NONE; }
+    @Override public ArmorView armor() { return player.equipment.armor(); }
     @Override public boolean local() { return true; }
 
     /** The player's own damage path: attacks share its invulnerability window, the world's harm does not. */

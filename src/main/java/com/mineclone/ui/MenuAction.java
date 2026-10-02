@@ -42,14 +42,26 @@ public final class MenuAction {
     public final WorldSettings world;
     /** Настройки сети для {@link Kind#NET_HOST} и {@link Kind#NET_JOIN}. */
     public final com.mineclone.net.NetSettings net;
+    /** This opening already received an explicit generator choice. */
+    public final boolean worldgenChecked;
 
     private MenuAction(Kind kind, Screen screen, String worldId, WorldSettings world,
             com.mineclone.net.NetSettings net) {
+        this(kind, screen, worldId, world, net, false);
+    }
+
+    private MenuAction(Kind kind, Screen screen, String worldId, WorldSettings world,
+            com.mineclone.net.NetSettings net, boolean worldgenChecked) {
         this.kind = kind;
         this.screen = screen;
         this.worldId = worldId;
         this.world = world;
         this.net = net;
+        this.worldgenChecked = worldgenChecked;
+    }
+
+    public MenuAction withWorldgenChecked() {
+        return new MenuAction(kind, screen, worldId, world, net, true);
     }
 
     public static MenuAction of(Kind kind) {

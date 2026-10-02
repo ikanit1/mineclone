@@ -16,12 +16,10 @@ public enum WorldGenVersion {
     V2(2);
 
     /**
-     * The version new worlds are created with. It stays V1 until V2 has
-     * something to generate (GEN-08's copper is the first): a V2 world with
-     * nothing new would only make 1.0 builds refuse it. Guests learn the host's
-     * generator from the welcome (protocol v8), so moving it breaks no room.
+     * New worlds use V2 with copper (GEN-08). Existing worlds keep their
+     * recorded version/features; guests learn those from the protocol v8 welcome.
      */
-    public static final WorldGenVersion LATEST = V1;
+    public static final WorldGenVersion LATEST = V2;
 
     private final int id;
 

@@ -142,7 +142,7 @@ final class WeaponController {
         g.addProjectile(shot);
         // У участника выстрел считает хозяин: местный снаряд нужен только
         // ради отклика и будет заменён ближайшим снимком.
-        g.net.requestShot(shot);
+        g.net.requestShot(shot,draw);
         wearBow();
         g.sound.playOneOf(g.sounds.playerAttack("sweep"), 0.35f, 1.35f + 0.12f * (float) Math.random());
         g.startHandSwing();

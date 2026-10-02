@@ -35,6 +35,13 @@ final class GameNetContext implements NetContext {
         this.g = game;
     }
 
+    @Override public com.mineclone.world.Equipment playerEquipment(){return g.player.equipment;}
+    @Override public void advancementFromHost(String id,String title){g.award(id,title);}
+    @Override public void effectFromHost(com.mineclone.world.effect.StatusEffect effect,int amplifier,float seconds){g.player.effects.apply(effect,amplifier,seconds,null,false);}
+    @Override public void explosionFromHost(float x,float y,float z){g.remoteExplosion(x,y,z);}
+    @Override public void modeFromHost(com.mineclone.world.GameMode mode){g.setGameMode(mode);}
+    @Override public void rulesFromHost(com.mineclone.world.WorldRules rules){NetContext.super.rulesFromHost(rules);g.player.rules=rules;}
+    @Override public long nextMobId(){return g.worldClock.nextEntityId();}
     @Override public String playerId() { return g.save.playerId(); }
     @Override public PlayerData capturePlayerData() {
         return new PlayerData(g.capturePlayer());
@@ -275,7 +282,10 @@ final class GameNetContext implements NetContext {
         World world = g.world;
         if (world == null)
             return;
-        if (kind == Multiplayer.CONTAINER_CHEST
+        if(kind==Multiplayer.CONTAINER_INVENTORY){
+            g.player.equipment.restore(java.util.Arrays.copyOf(slots,5));
+            if(g.activeWindow instanceof com.mineclone.ui.container.InventoryScreen screen)screen.restoreCraft(slots);
+        }else if (kind == Multiplayer.CONTAINER_CHEST
                 && world.getBlock(x, y, z) == BlockType.CHEST) {
             ItemStack[] live = world.createChest(x, y, z);
             for (int i = 0; i < live.length; i++)

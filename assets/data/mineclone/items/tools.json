@@ -32,5 +32,101 @@
   "diamond_sword": { "name": "Алмазный меч",   "category": "tools", "mass": 1.3, "icon": "diamond_sword", "durability": 900, "tool": { "class": "sword", "level": 4, "speed": 1.0 }, "attack": { "damage": 7, "speed": 1.6 } },
 
   "bow":   { "name": "Лук",   "category": "tools", "mass": 1.0, "icon": "bow",   "durability": 240 },
-  "arrow": { "name": "Стрела", "category": "materials", "mass": 0.1, "icon": "arrow", "max_stack": 64 }
+  "arrow": { "name": "Стрела", "category": "materials", "mass": 0.1, "icon": "arrow", "max_stack": 64 },
+  "wooden_hoe": {
+    "name": "Деревянная мотыга",
+    "category": "tools",
+    "mass": 1,
+    "icon": "wood_hoe",
+    "durability": 60,
+    "tool": {
+      "class": "hoe",
+      "level": 1,
+      "speed": 2.2
+    },
+    "attack": {
+      "damage": 1,
+      "speed": 2
+    }
+  },
+  "stone_hoe": {
+    "name": "Каменная мотыга",
+    "category": "tools",
+    "mass": 1,
+    "icon": "stone_hoe",
+    "durability": 132,
+    "tool": {
+      "class": "hoe",
+      "level": 2,
+      "speed": 4
+    },
+    "attack": {
+      "damage": 1,
+      "speed": 2
+    }
+  },
+  "copper_hoe": {
+    "name": "Медная мотыга",
+    "category": "tools",
+    "mass": 1,
+    "icon": "copper_hoe",
+    "durability": 180,
+    "tool": {
+      "class": "hoe",
+      "level": 2,
+      "speed": 5
+    },
+    "attack": {
+      "damage": 1,
+      "speed": 2
+    }
+  },
+  "iron_hoe": {
+    "name": "Железная мотыга",
+    "category": "tools",
+    "mass": 1,
+    "icon": "iron_hoe",
+    "durability": 251,
+    "tool": {
+      "class": "hoe",
+      "level": 3,
+      "speed": 6.5
+    },
+    "attack": {
+      "damage": 1,
+      "speed": 2
+    }
+  },
+  "gold_hoe": {
+    "name": "Золотая мотыга",
+    "category": "tools",
+    "mass": 1,
+    "icon": "gold_hoe",
+    "durability": 48,
+    "tool": {
+      "class": "hoe",
+      "level": 3,
+      "speed": 10
+    },
+    "attack": {
+      "damage": 1,
+      "speed": 2
+    }
+  },
+  "diamond_hoe": {
+    "name": "Алмазная мотыга",
+    "category": "tools",
+    "mass": 1,
+    "icon": "diamond_hoe",
+    "durability": 900,
+    "tool": {
+      "class": "hoe",
+      "level": 4,
+      "speed": 9
+    },
+    "attack": {
+      "damage": 1,
+      "speed": 2
+    }
+  }
 }

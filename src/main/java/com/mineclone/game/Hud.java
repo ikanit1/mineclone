@@ -340,7 +340,42 @@ public class Hud {
      * Ровно та же геометрия, что у сердец, но отсчёт справа налево: так две
      * шкалы читаются как одна пара, а не как два разных элемента.
      */
-    public void drawHunger(int screenW, int screenH, float hunger) {
+    public void drawAir(int w,int h,float air,boolean underwater){
+        if(!underwater)return;float x0=w/2f+250-158,y=h-111;ui.begin(w,h);
+        for(int i=0;i<10;i++){float x=x0+i*16;ui.quad(x+2,y,8,2,.3f,.65f,.85f,.85f);ui.quad(x,y+2,2,8,.3f,.65f,.85f,.85f);ui.quad(x+10,y+2,2,8,.3f,.65f,.85f,.85f);ui.quad(x+2,y+10,8,2,.3f,.65f,.85f,.85f);if(air>i*30)ui.quad(x+3,y+3,5,5,.7f,.9f,1,1);}
+        ui.end();
+    }
+    public void drawEffects(int w,int h,com.mineclone.world.effect.StatusEffects effects){
+        int i=0;ui.begin(w,h);for(var e:effects.all()){
+            if(e.hidden())continue;if(e.remaining()<5&&((int)(e.remaining()*4)&1)==0)continue;float x=w-200,y=112+i++*34;ui.quad(x,y,164,28,.05f,.07f,.09f,.8f);
+            long mask=effectMask(e.effect());for(int py=0;py<8;py++)for(int px=0;px<8;px++)if(((mask>>>(px+py*8))&1)!=0)ui.quad(x+6+px*2,y+6+py*2,2,2,.65f,.85f,.45f,1);
+            text.drawShadowed(small,effectName(e.effect())+" "+(int)Math.ceil(e.remaining())+"с",x+28,y+19,w,h,.9f,.95f,1);
+        }ui.end();
+    }
+    private static String effectName(com.mineclone.world.effect.StatusEffect e){return switch(e){case POISON->"Яд";case REGENERATION->"Регенерация";case SLOWNESS->"Замедление";case SPEED->"Скорость";case WEAKNESS->"Слабость";case HUNGER->"Голод";case CHILLED->"Озноб";case STUN->"Оглушение";case WELL_FED->"Сытость";case FIRE_RESISTANCE->"Огнестойкость";};}
+    private static long effectMask(com.mineclone.world.effect.StatusEffect e){return switch(e){case POISON->0x183c7e7e3c241800L;case REGENERATION->0x00183c7e7e666600L;case SLOWNESS->0x003c242424243c00L;case SPEED->0x000c18307e301800L;case WEAKNESS->0x0062422418244200L;case HUNGER->0x00183c7e7e3c1800L;case CHILLED->0x8142241818244281L;case STUN->0x000c7e183c183000L;case WELL_FED->0x003c7e7e7e7e3c00L;case FIRE_RESISTANCE->0x183c7e7e663c1800L;};}
+    public void drawStatus(int w,int h,Player player,float ghost,float hurtAngle,float hurtAlpha,boolean burning){ui.beginLayer(w,h);try{drawHearts(w,h,player.health,ghost);drawHunger(w,h,player.hunger,player.saturation);drawArmor(w,h,player.equipment.armor().points());drawAir(w,h,player.air,player.eyeInWater||player.airHudSeconds>0);drawEffects(w,h,player.effects);drawHurt(w,h,hurtAngle,hurtAlpha);drawBurning(w,h,burning);}finally{ui.endLayer();}}
+    public void drawHurt(int w,int h,float angle,float alpha){
+        if(alpha<=0)return;float radius=Math.min(w,h)*.43f;ui.begin(w,h);
+        for(int i=-5;i<=5;i++){float a=angle+i*.025f,x=w/2f+(float)Math.sin(a)*radius,y=h/2f-(float)Math.cos(a)*radius;ui.quad(x-3,y-3,6,6,.95f,.12f,.08f,alpha);}
+        ui.end();
+    }
+    public void drawBurning(int w,int h,boolean burning){if(!burning)return;ui.begin(w,h);for(int i=0;i<12;i++){float x=i*w/12f;ui.quad(x,h-50-(i%3)*15,w/12f,80+(i%3)*15,1,.3f,.04f,.3f);}ui.end();}
+
+    /** Ten shields, filled by halves, share the heart row's alignment. */
+    public void drawArmor(int screenW,int screenH,float points){
+        if(points<=0)return;float x0=screenW/2f-250, y=screenH-111;
+        ui.begin(screenW,screenH);
+        for(int i=0;i<10;i++){
+            float x=x0+i*16;ui.quad(x,y,12,9,.16f,.18f,.2f,1);ui.quad(x+3,y+9,6,3,.16f,.18f,.2f,1);
+            float fraction=Math.max(0,Math.min(1,(points-i*2)/2));
+            if(fraction>0){ui.quad(x+1,y+1,10*fraction,7,.75f,.8f,.85f,1);ui.quad(x+3,y+8,6*fraction,3,.65f,.72f,.8f,1);}
+        }ui.end();
+    }
+
+    public void drawHunger(int screenW,int screenH,float hunger){drawHunger(screenW,screenH,hunger,1);}
+    public void drawHunger(int screenW, int screenH, float hunger,float saturation) {
+        float alpha=saturation<=0?.8f+.2f*(float)Math.sin(System.nanoTime()*1e-9*5):1f;
         float slot = 52f, pad = 4f;
         float totalW = 9 * slot + 8 * pad;
         float hotbarX = screenW / 2f - totalW / 2f;
@@ -357,15 +392,15 @@ public class Hud {
         ui.begin(screenW, screenH);
         for (int i = 0; i < 10; i++) {
             float x = right - (i + 1) * (hs + gap) + gap;
-            ui.texQuad(x, y0, hs, hs, tid, uvE[0], uvE[1], uvE[2], uvE[3], 1f, 1f, 1f, 1f);
+            ui.texQuad(x, y0, hs, hs, tid, uvE[0], uvE[1], uvE[2], uvE[3], 1f, 1f, 1f, alpha);
             float h = hunger - i * 2f;
             if (h >= 2f)
-                ui.texQuad(x, y0, hs, hs, tid, uvF[0], uvF[1], uvF[2], uvF[3], 1f, 1f, 1f, 1f);
+                ui.texQuad(x, y0, hs, hs, tid, uvF[0], uvF[1], uvF[2], uvF[3], 1f, 1f, 1f, alpha);
             else if (h >= 1f)
                 // Половинка: рисуем целый значок, обрезая правую половину
                 // вторым проходом пустого поверх.
                 ui.texQuad(x, y0, hs / 2f, hs, tid, uvF[0], uvF[1],
-                        (uvF[0] + uvF[2]) / 2f, uvF[3], 1f, 1f, 1f, 1f);
+                        (uvF[0] + uvF[2]) / 2f, uvF[3], 1f, 1f, 1f, alpha);
         }
         ui.end();
     }

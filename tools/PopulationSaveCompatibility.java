@@ -1,10 +1,17 @@
 import com.mineclone.core.BuildInfo;
 import com.mineclone.data.ResourceId;
+import com.mineclone.data.SectionCodec;
 import com.mineclone.save.LevelData;
+import com.mineclone.save.LevelLoad;
+import com.mineclone.save.ChunkLoad;
+import com.mineclone.save.ChunkSnapshot;
 import com.mineclone.save.PlayerRecord;
+import com.mineclone.save.PlayerRecordCodec;
 import com.mineclone.save.SaveFormat;
 import com.mineclone.save.SaveManager;
 import com.mineclone.world.GameMode;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
@@ -16,9 +23,15 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 /**
- * A current -> real legacy -> current ecology level-file compatibility gate.
+ * Two explicit compatibility boundaries, using a real pre-ecology reader:
+ * a normal current-clock level must be refused untouched; a separate authored
+ * clock-v1 specimen checks opaque optional ecology preservation. Both specimens
+ * keep the supported player record unchanged. A canonical chunk is protected
+ * by its reader-v8 header and reopens in the current build with its baby state.
  * Run the same Java source with each build's own classpath and assets as cwd:
  *
  * java -cp 'out-test;libs/*' tools/PopulationSaveCompatibility.java write <new-dir>
@@ -31,7 +44,8 @@ import java.util.concurrent.ExecutorService;
  * source also compiles under the legacy build that has no Living World package.
  */
 public final class PopulationSaveCompatibility {
-    private static final String WORLD = "compat-world", MARKER = "mineclone-population-compatibility-v1";
+    private static final String WORLD = "compat-world", NORMAL_WORLD = "normal-current-world",
+            MARKER = "mineclone-population-compatibility-v2";
     private static final String CODEC = "com.mineclone.sim.ecology.EcologyCodec";
     private static final String CURRENT_NAME = "Current population fixture", LEGACY_NAME = "Rewritten by legacy build";
     private static final ResourceId COW = ResourceId.of("mineclone:cow"), UNKNOWN = ResourceId.of("future:aurochs");
@@ -73,12 +87,29 @@ public final class PopulationSaveCompatibility {
             LevelData level = new LevelData(CURRENT_NAME, 20261002L, -503.5, 65, 777.5, 78.0f,
                     GameMode.SURVIVAL, 1L,
                     PlayerRecord.builder().pose(-503.5, 65, 777.5, 0.25f, -0.15f, 2).build(), sections);
-            save.saveLevel(WORLD, level);
+            save.saveLevel(NORMAL_WORLD, level);
             save.flushAndAwait();
+            byte[] normalLevel = Files.readAllBytes(levelFile(root, NORMAL_WORLD));
+            Files.write(root.resolve("expected-normal-level.bin"), normalLevel);
+            writeSupportedClockSpecimen(root, normalLevel);
+            Class<?> mobClass = Class.forName("com.mineclone.save.SavedMob");
+            Object baby = mobClass.getConstructor(String.class, long.class, float.class, float.class,
+                    float.class, float.class, float.class, float.class, boolean.class,
+                    float.class, float.class, byte[].class).newInstance("COW", BODY_ID,
+                    4f, 70f, 6f, .25f, 3f, -850f, true, 290f, 22f, REGION_TAIL);
+            byte[] bodies = (byte[]) Class.forName("com.mineclone.save.SavedMobCodec")
+                    .getMethod("encode", List.class).invoke(null, List.of(baby));
+            byte[] blocks = new byte[SaveFormat.CHUNK_VOLUME];
+            save.saveChunkAsync(WORLD, new ChunkSnapshot(0, 0, blocks, blocks.clone(),
+                    null, null, null, Map.of("entities", bodies)));
+            save.flushAndAwait();
+            Files.write(root.resolve("expected-chunk.bin"), Files.readAllBytes(chunkFile(root)));
             assertSections(root, requireLevel(save), CURRENT_NAME);
+            assertSections(root, requireLevel(save, NORMAL_WORLD), CURRENT_NAME);
             Files.writeString(root.resolve("current-writer.txt"), provenance());
             System.out.println("POPULATION_COMPAT_WRITE PASS ecology_sha256=" + sha256(ecology)
-                    + " rules_sha256=" + sha256(rules) + " " + provenance());
+                    + " rules_sha256=" + sha256(rules)
+                    + " specimens=normalClock2+optionalClock1 playerFieldsUnchanged=true " + provenance());
         } finally { stopWriter(save); }
     }
 
@@ -91,17 +122,34 @@ public final class PopulationSaveCompatibility {
         if (Files.exists(root.resolve("legacy-rewrite.txt"))) throw new IOException("Legacy rewrite was already performed");
         SaveManager save = manager(root);
         try {
+            LevelLoad normal = save.readLevel(NORMAL_WORLD);
+            check(normal instanceof LevelLoad.Unreadable || normal instanceof LevelLoad.TooNew,
+                    "Legacy build unexpectedly accepted the normal current-clock level: " + normal);
             LevelData original = requireLevel(save);
             assertSections(root, original, CURRENT_NAME);
-            Path levelFile = root.resolve("saves").resolve(WORLD).resolve("level.dat");
+            // Even a caller ignoring the refused read cannot replace the normal checkpoint.
+            save.saveLevel(NORMAL_WORLD, original.withName("Rejected legacy overwrite"));
+            save.flushAndAwait();
+            check(Arrays.equals(Files.readAllBytes(root.resolve("expected-normal-level.bin")),
+                    Files.readAllBytes(levelFile(root, NORMAL_WORLD))), "Legacy writer replaced normal current-clock level");
+            Path levelFile = levelFile(root, WORLD);
             byte[] previousFile = Files.readAllBytes(levelFile);
             save.saveLevel(WORLD, original.withName(LEGACY_NAME));
             save.flushAndAwait();
             assertSections(root, requireLevel(save), LEGACY_NAME);
+            check(save.readChunk(WORLD, 0, 0) instanceof ChunkLoad.TooNew,
+                    "Legacy build interpreted new animal schema as damage instead of TooNew");
+            byte[] blocks = new byte[SaveFormat.CHUNK_VOLUME];
+            save.saveChunkAsync(WORLD, new ChunkSnapshot(0, 0, blocks, blocks.clone()));
+            save.flushAndAwait();
+            check(Arrays.equals(Files.readAllBytes(root.resolve("expected-chunk.bin")),
+                    Files.readAllBytes(chunkFile(root))), "Legacy writer replaced a protected animal chunk");
             check(!Arrays.equals(previousFile, Files.readAllBytes(levelFile)), "Legacy phase did not rewrite level.dat");
             Files.writeString(root.resolve("legacy-rewrite.txt"), provenance());
             System.out.println("POPULATION_COMPAT_LEGACY_REWRITE PASS ecology_sha256="
-                    + sha256(original.extraSections.get("ecology")) + " " + provenance());
+                    + sha256(original.extraSections.get("ecology"))
+                    + " optionalClock1Preserved=true normalClock2Refused=true normalLevelPreserved=true"
+                    + " chunkTooNew=true chunkPreserved=true refusal=" + normal + " " + provenance());
         } finally { stopWriter(save); }
     }
 
@@ -111,6 +159,9 @@ public final class PopulationSaveCompatibility {
         Class<?> codec = Class.forName(CODEC);
         SaveManager save = manager(root);
         try {
+            check(Arrays.equals(Files.readAllBytes(root.resolve("expected-normal-level.bin")),
+                    Files.readAllBytes(levelFile(root, NORMAL_WORLD))), "Normal current level bytes changed");
+            assertSections(root, requireLevel(save, NORMAL_WORLD), CURRENT_NAME);
             LevelData level = requireLevel(save);
             assertSections(root, level, LEGACY_NAME);
             byte[] bytes = level.extraSections.get("ecology");
@@ -135,9 +186,23 @@ public final class PopulationSaveCompatibility {
             byte[] rules = level.extraSections.get("rules");
             check(ByteBuffer.wrap(rules, rules.length - 6, 4).getInt() == 0x4C575231 && rules[rules.length - 1] == 1,
                     "The Living World switch changed in the legacy writer");
+            check(Arrays.equals(Files.readAllBytes(root.resolve("expected-chunk.bin")),
+                    Files.readAllBytes(chunkFile(root))), "Legacy phase changed animal chunk bytes");
+            ChunkLoad load = save.readChunk(WORLD, 0, 0);
+            check(load instanceof ChunkLoad.Loaded, "Current build could not reopen protected animal chunk");
+            Object chunkSnapshot = ((ChunkLoad.Loaded) load).snapshot();
+            List<?> mobs = (List<?>) chunkSnapshot.getClass().getField("mobs").get(chunkSnapshot);
+            check(mobs.size() == 1, "Animal chunk lost its baby");
+            Object baby = mobs.get(0);
+            check((long) baby.getClass().getMethod("id").invoke(baby) == BODY_ID
+                    && (float) baby.getClass().getMethod("age").invoke(baby) == -850f
+                    && Arrays.equals((byte[]) baby.getClass().getMethod("tail").invoke(baby), REGION_TAIL),
+                    "Baby identity age or opaque bytes changed through the older build");
             Files.writeString(root.resolve("verification.txt"), "PASS\n" + provenance());
             System.out.println("POPULATION_COMPAT_VERIFY PASS known_species=1 unknown_species=1 reservations=1"
-                    + " ecology_sha256=" + sha256(bytes) + " rules_sha256=" + sha256(rules) + " " + provenance());
+                    + " optionalClock1Preserved=true normalClock2Reopened=true normalLevelPreserved=true"
+                    + " babyRestored=true chunkPreserved=true ecology_sha256=" + sha256(bytes)
+                    + " rules_sha256=" + sha256(rules) + " " + provenance());
         } finally { stopWriter(save); }
     }
 
@@ -171,14 +236,63 @@ public final class PopulationSaveCompatibility {
     private static SaveManager manager(Path root) { return new SaveManager(root.resolve("saves").toFile()); }
 
     private static LevelData requireLevel(SaveManager save) {
-        LevelData level = save.loadLevel(WORLD);
-        check(level != null, "Compatibility fixture level is unreadable");
-        return level;
+        return requireLevel(save, WORLD);
+    }
+
+    private static LevelData requireLevel(SaveManager save, String world) {
+        LevelLoad load = save.readLevel(world);
+        check(load instanceof LevelLoad.Loaded, "Compatibility fixture level is unreadable: " + world + " " + load);
+        return ((LevelLoad.Loaded) load).data();
+    }
+
+    /**
+     * A new, tool-owned optional-payload specimen, never a downgraded user save.
+     * The normal current checkpoint stays untouched. Every player byte and other
+     * section remains identical; only a separately authored zero-allocation clock1
+     * lets the pre-ecology reader reach the unknown optional sections under test.
+     */
+    private static void writeSupportedClockSpecimen(Path root, byte[] normal) throws Exception {
+        Map<String, byte[]> sections;
+        int version, minimum;
+        String writer;
+        try (var in = new DataInputStream(new GZIPInputStream(new java.io.ByteArrayInputStream(normal)))) {
+            check(in.readInt() == SaveFormat.MAGIC, "Normal fixture magic changed");
+            version = in.readInt(); minimum = in.readInt(); writer = in.readUTF();
+            sections = SectionCodec.read(in);
+            check(in.read() == -1, "Unexpected trailing normal level bytes");
+        }
+        byte[] player = sections.get("player").clone();
+        Files.write(root.resolve("expected-player.bin"), player);
+        ByteBuffer clock = ByteBuffer.wrap(sections.get("clock"));
+        check(clock.remaining() == 36 && clock.getInt() == 2, "Normal specimen does not use clock2");
+        double gameTime = clock.getDouble(); long ticks = clock.getLong(); double fraction = clock.getDouble();
+        check(clock.getLong() == 0, "Fixture clock already owns entity IDs; refusing compatible-clock specimen");
+        sections.put("clock", ByteBuffer.allocate(28).putInt(1).putDouble(gameTime)
+                .putLong(ticks).putDouble(fraction).array());
+        check(Arrays.equals(player, sections.get("player")), "Player fields changed while authoring clock1 specimen");
+        Path target = levelFile(root, WORLD);
+        Files.createDirectories(target.getParent());
+        try (var out = new DataOutputStream(new GZIPOutputStream(Files.newOutputStream(target,
+                java.nio.file.StandardOpenOption.CREATE_NEW, java.nio.file.StandardOpenOption.WRITE)))) {
+            out.writeInt(SaveFormat.MAGIC); out.writeInt(version); out.writeInt(minimum);
+            out.writeUTF(writer + " optional-ecology-clock1-specimen");
+            SectionCodec.write(out, sections);
+        }
+    }
+
+    private static Path levelFile(Path root, String world) {
+        return root.resolve("saves").resolve(world).resolve("level.dat");
+    }
+
+    private static Path chunkFile(Path root) {
+        return root.resolve("saves").resolve(WORLD).resolve("chunks").resolve(SaveFormat.chunkFileName(0, 0));
     }
 
     private static void assertSections(Path root, LevelData level, String name) throws IOException {
         check(level.name.equals(name), "Unexpected fixture name: " + level.name);
         check(level.gameMode == GameMode.SURVIVAL, "Game mode changed");
+        check(Arrays.equals(PlayerRecordCodec.encode(level.player), Files.readAllBytes(root.resolve("expected-player.bin"))),
+                "Supported player fields changed during compatibility test");
         check(Arrays.equals(level.extraSections.get("ecology"), Files.readAllBytes(root.resolve("expected-ecology.bin"))),
                 "Ecology section changed byte-for-byte");
         check(Arrays.equals(level.extraSections.get("rules"), Files.readAllBytes(root.resolve("expected-rules.bin"))),
@@ -191,7 +305,7 @@ public final class PopulationSaveCompatibility {
     }
 
     private static String provenance() {
-        return "build=" + BuildInfo.VERSION + " level_version=" + SaveFormat.LEVEL_VERSION
+        return "build=" + BuildInfo.summary() + " level_version=" + SaveFormat.LEVEL_VERSION
                 + " classes=" + SaveManager.class.getProtectionDomain().getCodeSource().getLocation();
     }
 

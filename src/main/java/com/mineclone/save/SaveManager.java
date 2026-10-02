@@ -858,7 +858,7 @@ public final class SaveManager {
         });
         var items = new java.util.ArrayList<com.mineclone.world.DroppedItem>();
         for (var item : source.items)
-            items.add(new com.mineclone.world.DroppedItem(item.stack.copy(), item.x, item.y, item.z, item.age));
+            items.add(new com.mineclone.world.DroppedItem(item.stack.copy(), item.x, item.y, item.z, item.age,item.lifetime));
         // Mob records are immutable; the list is copied by the constructor.
         return new ChunkSnapshot(source.cx, source.cz, source.blocks.clone(), source.meta.clone(),
                 chests, furnaces, items, source.extra, source.ticksAt, source.ticks.clone(), source.mobs);
@@ -875,6 +875,8 @@ public final class SaveManager {
             writeGzipAtomic(chunkFile(id, s.cx, s.cz), o -> {
                 o.writeInt(SaveFormat.MAGIC);
                 o.writeInt(SaveFormat.CHUNK_VERSION);
+                // Canonical entities are incompatible with the two v7 branch codecs.
+                // Refuse on the outer header before an older reader parses/quarantines terrain.
                 o.writeInt(SaveFormat.CHUNK_VERSION); // minReaderVersion
                 ChunkSectionCodec.write(o, s);
             });
@@ -1052,8 +1054,8 @@ public final class SaveManager {
             }
             requireEnd(in);
             return new ChunkLoad.Loaded(new ChunkSnapshot(cx, cz, blocks, meta, chests, furnaces, items));
-        } catch (com.mineclone.sim.ecology.Trample.UnsupportedVersion newer) {
-            // This build cannot simulate the newer track layout. Keep the source read-only.
+        } catch (com.mineclone.sim.ecology.Trample.UnsupportedVersion | SavedMobCodec.UnsupportedVersion newer) {
+            // This build cannot simulate the newer section layout. Keep the source read-only.
             return new ChunkLoad.TooNew(SaveFormat.CHUNK_VERSION + 1, SaveFormat.CHUNK_VERSION);
         } catch (IOException | IllegalArgumentException | SecurityException e) {
             return new ChunkLoad.Unreadable(readReason(e));
@@ -1124,6 +1126,93 @@ public final class SaveManager {
         return keys;
     }
 
+    /**
+     * Explicit upgrade of a closed world. The ordered writer backs up original
+     * bytes, pins saved terrain and every stored player's pose/spawn, then commits
+     * the ledger BEFORE the level. If either write fails, callers must not open
+     * with the target settings. Extra old-version pins left by a failed level
+     * write are harmless; a target level without those pins would not be.
+     */
+    public java.util.concurrent.CompletableFuture<com.mineclone.world.gen.WorldGenSettings> upgradeWorldGen(String id) {
+        synchronized (queueLock) {
+            var backup = beginWorldSession(id, "worldgen");
+            var result = java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+                try {
+                    awaitBackup(backup);
+                    synchronized (this) {
+                        LevelLoad read = readLevelChecked(id);
+                        if (!(read instanceof LevelLoad.Loaded loaded) || protectedLevels.contains(id))
+                            throw new IOException("world is not readable: " + read);
+                        LevelData level = loaded.data();
+                        var from = com.mineclone.world.gen.WorldGenSettings.decode(level.extraSections.get(
+                                com.mineclone.world.gen.WorldGenSettings.SAVE_SECTION));
+                        var target = com.mineclone.world.gen.WorldGenVersion.LATEST;
+                        if (from.version().id() >= target.id()) return from;
+                        float[][] anchors = storedGenerationAnchors(id, level, true);
+                        // list() returns null for an inaccessible directory. An
+                        // upgrade must not interpret that as unexplored land.
+                        if (!Files.notExists(chunksDir(id).toPath()) && chunksDir(id).list() == null)
+                            throw new IOException("cannot enumerate saved chunks");
+                        if (!Files.notExists(ledgerFile(id).toPath()) && !Files.isRegularFile(
+                                ledgerFile(id).toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS))
+                            throw new IOException("chunk ledger is not a regular file");
+                        var ledger = openLedger(id, from, anchors);
+                        if (protectedLedgers.contains(id)) throw new IOException("chunk ledger is protected");
+                        var upgraded = com.mineclone.world.gen.WorldGenUpgrade.upgrade(from, target, ledger,
+                                savedChunkKeys(id), anchors, System.currentTimeMillis());
+                        var sections = new java.util.LinkedHashMap<>(level.extraSections);
+                        sections.put(com.mineclone.world.gen.WorldGenSettings.SAVE_SECTION, upgraded.encode());
+                        var after = new LevelData(level.name, level.seed, level.spawnX, level.spawnY, level.spawnZ,
+                                level.timeOfDay, level.gameMode, level.lastPlayed, level.player, sections);
+                        byte[] payload = sectionBytes(out -> writeLevelPayload(out, after));
+                        byte[] pins = ledger.encode();
+                        writeGzipAtomic(ledgerFile(id), out -> out.write(pins));
+                        writeLevelBytes(id, payload);
+                        return upgraded;
+                    }
+                } catch (IOException | RuntimeException failure) {
+                    throw new java.util.concurrent.CompletionException(failure);
+                }
+            }, chunkWriter);
+            pendingLevels.put(id, result.thenApply(ignored -> null));
+            return result;
+        }
+    }
+
+    private float[][] storedGenerationAnchors(String id, LevelData level, boolean strict) throws IOException {
+        var anchors = new java.util.ArrayList<float[]>();
+        anchors.add(new float[] {(float) level.spawnX, (float) level.spawnZ});
+        addGenerationAnchors(anchors, level.player);
+        var players = new File(worldDir(id), "players").toPath();
+        if (!Files.notExists(players)) {
+            try (var files = Files.newDirectoryStream(players, "*.dat")) {
+                for (var file : files) {
+                    try {
+                        PlayerRecord record = readGuestRecord(file.toFile());
+                        if (record == null) throw new IOException("player checkpoint disappeared: " + file.getFileName());
+                        addGenerationAnchors(anchors, record);
+                    } catch (IOException | RuntimeException failure) {
+                        if (strict) throw new IOException("cannot read generation anchor: " + file.getFileName(), failure);
+                        System.err.println("generation anchor unavailable: " + file.getFileName() + ": " + failure.getMessage());
+                    }
+                }
+            } catch (IOException failure) {
+                if (strict) throw failure;
+                System.err.println("generation anchors unavailable: " + failure.getMessage());
+            }
+        }
+        for (float[] anchor : anchors)
+            if (!Float.isFinite(anchor[0]) || !Float.isFinite(anchor[1]))
+                throw new IOException("non-finite generation anchor");
+        return anchors.toArray(float[][]::new);
+    }
+
+    private static void addGenerationAnchors(java.util.List<float[]> anchors, PlayerRecord player) {
+        anchors.add(new float[] {(float) player.pose().x(), (float) player.pose().z()});
+        if (player.spawn() != null)
+            anchors.add(new float[] {(float) player.spawn().x(), (float) player.spawn().z()});
+    }
+
     /** Inspection only: a damaged ledger stays where it is until {@link #openLedger} moves it aside. */
     public synchronized LedgerLoad readLedger(String id) {
         if (nameless(id)) return new LedgerLoad.Absent();
@@ -1168,9 +1257,23 @@ public final class SaveManager {
             }
         }
         var ledger = new com.mineclone.world.gen.ChunkLedger();
-        if (generator.upgradedAt() > 0)
+        if (generator.upgradedAt() > 0) {
+            // Include stored guests on recovery too: losing the ledger must not
+            // reinterpret the unedited land around their remote checkpoints.
+            synchronized (this) {
+                if (readLevelChecked(id) instanceof LevelLoad.Loaded loaded) {
+                    try {
+                        com.mineclone.world.gen.WorldGenUpgrade.pinSeen(ledger,
+                                com.mineclone.world.gen.WorldGenVersion.V1, java.util.List.of(),
+                                storedGenerationAnchors(id, loaded.data(), false));
+                    } catch (IOException failure) {
+                        System.err.println("generation anchors unavailable: " + failure.getMessage());
+                    }
+                }
+            }
             com.mineclone.world.gen.WorldGenUpgrade.pinSeen(ledger, com.mineclone.world.gen.WorldGenVersion.V1,
                     savedChunkKeys(id), anchors);
+        }
         return ledger;
     }
 

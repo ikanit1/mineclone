@@ -20,19 +20,36 @@ seed=20260922
 mode=creative
 autosave-seconds=15
 view-distance=4
+upgrade-worldgen=${UPGRADE_WORLDGEN:-false}
 PROPERTIES
+# Optional old-world fixture: copy into this disposable test root, never run
+# against the supplied source. Exercises S_GEN_MAP with a mixed V1/V2 server.
+if [ -n "${WORLD_SOURCE:-}" ]; then
+    mkdir -p "$WORK/saves/test"
+    cp -a "$WORLD_SOURCE/." "$WORK/saves/test/" || exit 2
+fi
 mkfifo "$WORK/console"
 java -cp "$SERVER_CP" com.mineclone.server.ServerMain "$WORK/server.properties" \
     < "$WORK/console" > "$WORK/server.out" 2> "$WORK/server.err" &
 SERVER=$!
 exec 3> "$WORK/console"          # keeps the console open until /stop
 sleep 10
-NET=(-Dmineclone.autopilot.net=server "-Dmineclone.autopilot.netPort=$PORT")
+NET=(-Dmineclone.autopilot.net=server "-Dmineclone.autopilot.netPort=$PORT" "-Dmineclone.autopilot.netScenario=${NET_SCENARIO:-}")
 game "$WORK/guest0" "${NET[@]}" -Dmineclone.autopilot.netSlot=0 &
 G0=$!
 sleep 3
 game "$WORK/guest1" "${NET[@]}" -Dmineclone.autopilot.netSlot=1 &
 G1=$!
+if [ "${NET_SCENARIO:-}" = farm ]; then
+    for _ in $(seq 1 900); do
+        if rg -q 'farm server READY' "$WORK/guest0/out.log" 2>/dev/null && rg -q 'farm guest READY' "$WORK/guest1/out.log" 2>/dev/null; then
+            echo '/time add 48' >&3
+            break
+        fi
+        kill -0 "$G0" 2>/dev/null && kill -0 "$G1" 2>/dev/null || break
+        sleep 1
+    done
+fi
 wait "$G0"; C0=$?
 wait "$G1"; C1=$?
 echo "server test: both clients finished"

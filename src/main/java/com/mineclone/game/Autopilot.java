@@ -170,6 +170,12 @@ final class Autopilot {
 
         /** Переключить режим в творческий — окно креатива открывается только в нём. */
         void setCreative();
+        void setSurvival();
+        void command(String command);
+        void setBlockMeta(int x,int y,int z,int meta);
+        void wearArmor(String material);
+        boolean seesArmor(String material);
+        void lookAtOtherPlayer();
 
         /**
          * Довернуть камеру, градусы. Мимо мыши: замеру нужен ровный поворот,
@@ -441,7 +447,7 @@ final class Autopilot {
     private static void rejectGuestEcologyIfRequested(Driver driver) {
         if (!ECOLOGY_MODE) return;
         driver.executeCommand("/ecology on");
-        if (!"Ecology commands are available to the world owner only".equals(driver.commandToast()))
+        if (!"Команды выполняет хозяин".equals(driver.commandToast()))
             throw new IllegalStateException("The actual guest ecology command did not show the owner-only refusal");
         ok("living world guest command refused");
     }
@@ -625,6 +631,76 @@ final class Autopilot {
         out.addAll(b);
         return List.copyOf(out);
     }
+
+    private static final String[] FORMS={"PLANK_SLAB","COBBLE_SLAB","STONE_SLAB","FENCE","FENCE_GATE","LADDER","TRAPDOOR"};
+    private static void placeForms(Driver d){
+        for(int i=0;i<FORMS.length;i++){
+            int[] p=floorAt(d,2*i-6,3);d.setBlockAt(p[0],p[1],p[2],"STONE");
+            d.setBlockAt(p[0]+1,p[1]+1,p[2],"STONE");
+            d.setBlockAt(p[0],p[1]+1,p[2],FORMS[i]);if(FORMS[i].equals("LADDER"))d.setBlockMeta(p[0],p[1]+1,p[2],2);
+        }
+    }
+    private static boolean seesForms(Driver d){for(int i=0;i<FORMS.length;i++){int[] p=floorAt(d,2*i-6,3);if(!FORMS[i].equals(d.blockAt(p[0],p[1]+1,p[2])))return false;}return true;}
+    private static void prepareClimb(Driver d){int[] p=floorAt(d,-2,-2);d.setBlockAt(p[0],p[1],p[2],"STONE");
+        for(int y=1;y<=7;y++){d.setBlockAt(p[0],p[1]+y,p[2],"AIR");d.setBlockAt(p[0]+1,p[1]+y,p[2],"STONE");if(y<=5){d.setBlockAt(p[0],p[1]+y,p[2],"LADDER");d.setBlockMeta(p[0],p[1]+y,p[2],2);}}
+        d.teleport(p[0]+.5f,p[1]+1.01f,p[2]+.5f);d.lookAt(p[0]+3,p[1]+2.62f,p[2]+.5f);
+    }
+    private final List<Step> hostFormsSteps=List.of(
+        step("shared seven building forms",.2f,d->{placeForms(d);d.wearArmor("iron");prepareClimb(d);}),
+        step("climb ladder through W input",.4f,d->d.holdKey(org.lwjgl.glfw.GLFW.GLFW_KEY_W,true)),
+        step("ladder climbed",1.1f,d->{d.holdKey(org.lwjgl.glfw.GLFW.GLFW_KEY_W,false);if(d.playerY()<floorAt(d,-2,-2)[1]+3.5f)throw new IllegalStateException("ladder did not climb");ok("ladder climbed through real input");standAt(d,0,APART);}),
+        when("guest diamond armor arrived",.3f,d->d.seesArmor("diamond"),d->{ok("host sees guest armor");d.lookAtOtherPlayer();d.shot("armor-host");}));
+    private final List<Step> guestFormsSteps=List.of(
+        when("seven building forms arrived",.3f,Autopilot::seesForms,d->{ok("all seven forms replicated");d.wearArmor("diamond");}),
+        when("host iron armor arrived",.3f,d->d.seesArmor("iron"),d->ok("guest sees host armor")),
+        step("capture host after ladder climb",2.5f,d->{d.lookAtOtherPlayer();d.shot("armor-guest");}));
+
+    private static int[] farmCell(Driver d){return floorAt(d,3,1);}
+    private static void prepareFarm(Driver d){
+        int[] p=farmCell(d);d.setBlockAt(p[0],p[1],p[2],"DIRT");
+        for(int y=p[1]+1;y<p[1]+12;y++)d.setBlockAt(p[0],y,p[2],"AIR");
+        d.setBlockAt(p[0]+1,p[1],p[2],"WATER");d.setBlockAt(p[0]-1,p[1]+1,p[2],"TORCH");
+        d.setSurvival();d.equipItem("iron_hoe");d.lookAt(p[0]+.5f,p[1]+1,p[2]+.5f);
+    }
+    private static void plantSharedTree(Driver d){
+        int[] p=floorAt(d,7,2);d.setBlockAt(p[0],p[1],p[2],"DIRT");
+        for(int y=p[1]+1;y<p[1]+14;y++)d.setBlockAt(p[0],y,p[2],"AIR");
+        standAt(d,3,APART);d.equipItem("oak_sapling");d.lookAt(p[0]+.5f,p[1]+1,p[2]+.5f);
+    }
+    private static boolean sharedTreeGrown(Driver d){int[] p=floorAt(d,7,2);return "WOOD".equals(d.blockAt(p[0],p[1]+1,p[2]));}
+    private final List<Step> farmHostSteps=List.of(
+        step("prepare shared farm",.2f,Autopilot::prepareFarm),
+        step("hoe through real right click",.3f,d->d.mouseButton(1,true)),
+        step("release hoe",.1f,d->d.mouseButton(1,false)),
+        when("host tilled farm",.2f,d->{int[] p=farmCell(d);return "FARMLAND".equals(d.blockAt(p[0],p[1],p[2]));},d->ok("farm tilled through input")),
+        step("plant boundary sapling",.2f,Autopilot::plantSharedTree),
+        step("sapling through real input",.3f,d->d.mouseButton(1,true)),
+        step("release sapling",.1f,d->d.mouseButton(1,false)),
+        when("guest seed arrived",.2f,d->{int[] p=farmCell(d);return "WHEAT".equals(d.blockAt(p[0],p[1]+1,p[2]));},d->{ok("guest planted farm");d.command("/time add 48");}),
+        when("host crop ripened",.2f,d->{int[] p=farmCell(d);return d.blockMetaAt(p[0],p[1]+1,p[2])==7;},d->{ok("farm mature on host");d.shot("farm-host");}),
+        step("hold farm room",8f,d->ok("farm host PASS")));
+    private final List<Step> farmServerTillerSteps=List.of(
+        step("prepare server farm",.2f,Autopilot::prepareFarm),
+        step("hoe on server through input",.3f,d->d.mouseButton(1,true)),
+        step("release server hoe",.1f,d->d.mouseButton(1,false)),
+        when("server tilled farm",.2f,d->{int[] p=farmCell(d);return "FARMLAND".equals(d.blockAt(p[0],p[1],p[2]));},d->ok("farm tilled on server")),
+        step("plant server boundary sapling",.2f,Autopilot::plantSharedTree),
+        step("server sapling through input",.3f,d->d.mouseButton(1,true)),
+        step("release server sapling",.1f,d->d.mouseButton(1,false)),
+        when("server guest planted",.2f,d->{int[] p=farmCell(d);return "WHEAT".equals(d.blockAt(p[0],p[1]+1,p[2]));},d->ok("farm server READY")),
+        when("server crop ripened at tiller",.2f,d->{int[] p=farmCell(d);return d.blockMetaAt(p[0],p[1]+1,p[2])==7;},d->{ok("farm mature at server tiller");d.shot("farm-server-tiller");}),
+        step("hold server farmer",4f,d->ok("farm server tiller PASS")));
+    private final List<Step> farmGuestSteps=List.of(
+        when("shared tilled farm arrived",.2f,d->{int[] p=farmCell(d);return "FARMLAND".equals(d.blockAt(p[0],p[1],p[2]));},d->{
+            int[] p=farmCell(d);d.setSurvival();d.equipItem("wheat_seeds");d.lookAt(p[0]+.5f,p[1]+1,p[2]+.5f);}),
+        step("allow mode checkpoint to reach host",2.2f,d->{ }),
+        step("guest seeds through right click",.3f,d->d.mouseButton(1,true)),
+        step("release seed",.1f,d->d.mouseButton(1,false)),
+        when("plant confirmed",.3f,d->{int[] p=farmCell(d);return "WHEAT".equals(d.blockAt(p[0],p[1]+1,p[2])) && count(d,"wheat_seeds")==0;},d->{
+            ok("farm guest READY");}),
+        when("crop mature at guest",.3f,d->{int[] p=farmCell(d);return d.blockMetaAt(p[0],p[1]+1,p[2])==7;},d->{ok("farm mature on guest");d.shot("farm-guest");}),
+        when("boundary tree grew at guest",.2f,Autopilot::sharedTreeGrown,d->ok("boundary sapling tree replicated")),
+        step("hold farm guest",2f,d->ok("farm guest PASS")));
 
     private final List<Step> menuSteps = concat(cinematicSteps(), List.of(
             step("dusk", 2.5f, d -> d.setMenuTime((float) (Math.PI * 0.93))),
@@ -887,10 +963,12 @@ final class Autopilot {
 
     Autopilot(Driver driver) {
         this.d = driver;
-        this.steps = TRAIL_MODE ? trailSteps() : switch (NET_MODE) {
-            case "host" -> hostSteps;
-            case "join" -> guestSteps;
-            case "server" -> serverGuestSteps;
+        boolean farm="farm".equals(System.getProperty("mineclone.autopilot.netScenario",""))||NET_MODE.equals("farm");
+        String role=NET_MODE.equals("farm")?System.getProperty("mineclone.autopilot.farmRole","host"):NET_MODE;
+        this.steps = TRAIL_MODE ? trailSteps() : switch (role) {
+            case "host" -> farm?concat(hostSteps,concat(hostFormsSteps,farmHostSteps)):hostSteps;
+            case "join" -> farm?concat(guestSteps,concat(guestFormsSteps,farmGuestSteps)):guestSteps;
+            case "server" -> farm?concat(serverGuestSteps,NET_SLOT==0?concat(hostFormsSteps,farmServerTillerSteps):concat(guestFormsSteps,farmGuestSteps)):serverGuestSteps;
             default -> menuSteps;
         };
     }

@@ -16,8 +16,54 @@ backgrounds; hoe silhouettes are present but their soft fringe needs removal
 during import. Cell rectangles must use rounded proportional boundaries because
 the generator did not make the armor image dimensions divisible by four.
 
-Later RND-09 work must extract native 32×32 tiles, enforce transparent margins
-and coherent palettes, add runtime atlas names only alongside real content,
-extend the silhouette/alpha tests, and regenerate `docs/textures.html`.
-Neither the source sheets nor this note imply that armor or farming gameplay
-has been implemented.
+RND-09 part 2, 1 October 2026: `tools/ImportRoadmapTextures.java` now imports
+34 native 32×32 sprites. It checks these files against the SHA-256 values in
+their adjacent JSONs, samples logical pixel centres, requires alpha >= 240,
+sets surviving alpha to 255 and clears the outside row/column. Hoes share the
+reviewed wooden silhouette with six material palettes; crop stages keep their
+original size and ground alignment. The source bytes remain unchanged.
+
+Runtime atlas indices 140–155 are armor icons, 156–161 hoes, 162–173 crop stages.
+These atlas entries prepare the rendering assets; item definitions, equipment
+logic and farming gameplay are still upcoming tasks. `EquipmentTextureTests`
+checks resolution, hard alpha, margins, hoe silhouettes and growth stages.
+`RenderRoadmapTexturePreview` renders the actual game atlas/UI under OpenGL;
+`ExportTextureCatalog` exports the real runtime PNGs into `docs/textures.html`.
+
+Reproduce from the repository root with a JDK:
+
+```bash
+java tools/ImportRoadmapTextures.java
+# An optional first argument selects a scratch output folder for comparison.
+java tools/ImportCopperOreTexture.java
+java -cp 'out-test:libs/*' tools/ExportTextureCatalog.java
+```
+
+Copper ore uses the exact stone base and iron-ore fleck mask of the existing
+reviewed equipment pack, mapped to a three-stop copper ramp by
+`ImportCopperOreTexture`. It is tile 139 and is already an obtainable block.
+Remaining RND-09 work includes armor model sheets, other item icons, construction,
+farmland, saplings, ground vegetation and status icons. This note does not imply
+that armor or farming gameplay has been implemented.
+
+## Integrated construction, farm and armor sources — 2 October 2026
+
+Five original built-in image_gen sheets and adjacent SHA-256 receipts are retained:
+
+| Source | Offline importer | Runtime content |
+|---|---|---|
+| building-farm-2026-10-02 | ImportBuildingFarmTextures | tiles 174–181: ladder, trapdoor, gate, dry/wet soil, 3 saplings |
+| farm-items-2026-10-02 | ImportFarmItemTextures | tiles 182–197: food/material inventory icons |
+| vegetation-2026-10-02 | ImportVegetationTextures | tiles 198–200: grass, yellow/red flowers |
+| copper-armor-2026-10-02 | ImportCopperArmorTextures | tiles 201–204: copper equipment icons |
+| armor-models-2026-10-02 | ImportArmorSheet | four separate 64×32 model textures in assets/mobs/armor |
+
+Receipts labelled prompt_summary preserve a summary rather than claiming a verbatim
+prompt. Import samples logical pixel centres, makes alpha binary, keeps silhouette
+margins, and explicitly normalizes the generated model panels into the existing
+skin UV layout. No network service is used at runtime. Source sheets, normalized
+model views (four materials, sixteen directions), baby models, first-person sleeves,
+and day/night construction/farm captures were inspected. Color and shadow geometry
+share the same transforms. The runtime atlas remains 512×512 with 205 native tiles.
+Armor/farming gameplay is now integrated by this batch; RND-09 remains open for
+art required by later roadmap content.

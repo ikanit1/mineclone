@@ -1,6 +1,7 @@
 package com.mineclone.world;
 
 import java.util.Random;
+import com.mineclone.world.gen.GenFeatures;
 
 /**
  * Жилы руды в камне.
@@ -32,21 +33,32 @@ public final class OreGenerator {
             new Vein(BlockType.GOLD_ORE,    2, 32,  3, 3,  7),
             new Vein(BlockType.DIAMOND_ORE, 2, 15,  1, 3,  6),
     };
+    private static final Vein COPPER = new Vein(BlockType.COPPER_ORE, 20, 70, 6, 6, 10);
 
     private OreGenerator() {}
 
     public static void place(Chunk chunk, long seed) {
+        place(chunk, seed, GenFeatures.V1);
+    }
+
+    public static void place(Chunk chunk, long seed, GenFeatures features) {
         // Те же множители, что MC использует для по-чанковых потоков: они
         // достаточно разносят соседние чанки, чтобы жилы не выстраивались в сетку.
         Random rnd = new Random(seed ^ (chunk.cx * 341873128712L) ^ (chunk.cz * 132897987541L));
         for (Vein v : VEINS) {
-            for (int attempt = 0; attempt < v.attempts(); attempt++) {
-                int x = rnd.nextInt(Chunk.SIZE_X);
-                int z = rnd.nextInt(Chunk.SIZE_Z);
-                int y = v.minY() + rnd.nextInt(Math.max(1, v.maxY() - v.minY() + 1));
-                int size = v.minSize() + rnd.nextInt(v.maxSize() - v.minSize() + 1);
-                walk(chunk, rnd, v, x, y, z, size);
-            }
+            placeVein(chunk, rnd, v);
+        }
+        // Append after the frozen V1 passes, so their random stream and ores do not move.
+        if (features.copperOre()) placeVein(chunk, rnd, COPPER);
+    }
+
+    private static void placeVein(Chunk chunk, Random rnd, Vein v) {
+        for (int attempt = 0; attempt < v.attempts(); attempt++) {
+            int x = rnd.nextInt(Chunk.SIZE_X);
+            int z = rnd.nextInt(Chunk.SIZE_Z);
+            int y = v.minY() + rnd.nextInt(Math.max(1, v.maxY() - v.minY() + 1));
+            int size = v.minSize() + rnd.nextInt(v.maxSize() - v.minSize() + 1);
+            walk(chunk, rnd, v, x, y, z, size);
         }
     }
 

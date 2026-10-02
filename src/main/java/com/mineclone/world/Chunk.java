@@ -105,6 +105,8 @@ public class Chunk {
      * {@link #dirty}, which is the mesh-rebuild flag. Drives whole-chunk save.
      */
     public volatile boolean modified = false;
+    /** True only when the loader restored a pre-existing chunk file. */
+    public boolean restoredFromSave;
 
     /** A newer or unpreserved save file must never be overwritten by this session. */
     private volatile boolean readOnly;
@@ -909,7 +911,7 @@ public class Chunk {
         assertMainThread();
         java.util.List<DroppedItem> out = new java.util.ArrayList<>(pendingItems.size());
         for (DroppedItem d : pendingItems)
-            out.add(new DroppedItem(d.stack.copy(), d.x, d.y, d.z, d.age));
+            out.add(new DroppedItem(d.stack.copy(), d.x, d.y, d.z, d.age,d.lifetime));
         return out;
     }
 

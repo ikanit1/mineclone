@@ -124,6 +124,18 @@ public final class DedicatedServer implements NetContext {
             return false;
         }
         LevelData lvl = decision.data();
+        if (lvl != null && config.upgradeWorldgen && com.mineclone.world.gen.WorldGenSettings.decode(
+                lvl.extraSections.get(com.mineclone.world.gen.WorldGenSettings.SAVE_SECTION)).version().id()
+                < com.mineclone.world.gen.WorldGenVersion.LATEST.id()) {
+            try {
+                save.upgradeWorldGen(config.worldId).join();
+                lvl = ((com.mineclone.save.LevelLoad.Loaded) save.readLevel(config.worldId)).data();
+                log("world generation upgraded; recorded and conservatively pinned land keeps its original version");
+            } catch (java.util.concurrent.CompletionException failure) {
+                log("world generation upgrade failed; refusing to open: " + failure.getCause());
+                return false;
+            }
+        }
         ownerTemplate = lvl;
         try {
             save.beginWorldSession(config.worldId).join();
@@ -144,6 +156,7 @@ public final class DedicatedServer implements NetContext {
         ledger = save.openLedger(config.worldId, generator, lvl == null ? new float[0][] : new float[][] {
                 { (float) lvl.spawnX, (float) lvl.spawnZ }, { (float) lvl.px, (float) lvl.pz } });
         world = new World(seed, generator.policy(ledger));
+        world.rules=lvl==null?config.rules:lvl.rules;
         loader = new ChunkLoader(world, new ChunkMesher(world), save, config.worldId);
         // Меши сервер не строит: рисовать ему нечем, а восемь потоков,
         // складывающих треугольники в никуда, — это восемь занятых ядер.
@@ -415,6 +428,9 @@ public final class DedicatedServer implements NetContext {
      */
     private final WorldSession.Host sessionHost = new WorldSession.Host() {
         @Override public Vector3f mobFocus() { return spawn; }
+        @Override public void bred(int actor){net.award(actor,"mineclone:breed_animals","Разведите животных");}
+        @Override public void exploded(float x,float y,float z){net.sendExplosion(x,y,z);}
+        @Override public void effectApplied(com.mineclone.sim.Participant target,com.mineclone.world.effect.StatusEffect effect,float seconds){net.sendEffect(target.id(),effect,seconds);}
         @Override public void projectileTargets(List<com.mineclone.world.entity.Hittable> out) { out.addAll(net.players()); }
     };
 
@@ -477,10 +493,15 @@ public final class DedicatedServer implements NetContext {
     }
 
     private void saveLevel() {
+        // This also covers bodies created since the last tick while ecology is off.
+        entities.assignIds();
         var sections = new java.util.LinkedHashMap<>(levelExtraSections);
-        sections.put(com.mineclone.sim.WorldClock.SAVE_SECTION, worldClock.encode());
         if (session != null) session.ecology().writeSections(sections);
         sections.put(EntityStore.IDS_SECTION, entities.encodeIds());
+        sections.put(com.mineclone.world.WorldRules.SAVE_SECTION,world.rules.encode());
+        // Population and id snapshots may reserve newly added bodies. Encode the
+        // shared clock last so its allocator resumes beyond every saved identity.
+        sections.put(com.mineclone.sim.WorldClock.SAVE_SECTION, worldClock.encode());
         // A server has no local owner to recapture. Preserve the checkpoint from
         // the loaded single-player world instead of replacing its inventory,
         // pending cursor stacks and vitals with a fresh empty player.
@@ -529,6 +550,8 @@ public final class DedicatedServer implements NetContext {
         return worldClock.gameTimeFloat();
     }
 
+    public void addTimeHours(double hours){worldClock.addHours(hours);}
+
     public void setGameTime(float t) {
         worldClock.setGameTime(t);
     }
@@ -575,6 +598,7 @@ public final class DedicatedServer implements NetContext {
         return save.loadGuest(config.worldId,id);
     }
 
+    @Override public long nextMobId(){return worldClock.nextEntityId();}
     @Override public void saveGuest(String id,com.mineclone.net.PlayerData data) {
         save.saveGuest(config.worldId,id,data);
     }

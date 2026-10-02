@@ -23,18 +23,19 @@ public record BlockProps(boolean cross, boolean layered, boolean gravity, boolea
         return switch (type) {
             case AIR, WATER, WATER_FLOW, LAVA, CACTUS, CHEST, FURNACE, GLASS ->
                     p(0, 1f, 1f, null, 0);
-            case GRASS, DIRT, SNOWY_GRASS, PODZOL, DRY_GRASS ->
+            case FARMLAND, GRASS, DIRT, SNOWY_GRASS, PODZOL, DRY_GRASS ->
                     p(SOIL, 1f, 1f, ToolClass.SHOVEL, 0);
-            case STONE, COBBLE, MOSSY_COBBLE, COAL_ORE, TERRACOTTA, LIMESTONE, BASALT ->
+            case STONE, COBBLE, MOSSY_COBBLE, COAL_ORE, COPPER_ORE, TERRACOTTA, LIMESTONE, BASALT, COBBLE_SLAB, STONE_SLAB ->
                     p(0, 1f, 1f, ToolClass.PICKAXE, 1);
             case IRON_ORE -> p(0, 1f, 1f, ToolClass.PICKAXE, 2);
             case GOLD_ORE, DIAMOND_ORE, OBSIDIAN -> p(0, 1f, 1f, ToolClass.PICKAXE, 3);
             case BEDROCK -> p(0, 1f, 1f, ToolClass.PICKAXE, 0);
             case SAND, RED_SAND, GRAVEL -> p(GRAVITY, 1f, 1f, ToolClass.SHOVEL, 0);
             case ASH -> p(GRAVITY, 1f, .9f, ToolClass.SHOVEL, 0);
-            case WOOD, PLANKS, LEAVES, CRAFTING_TABLE -> p(FLAMMABLE, 1f, 1f, ToolClass.AXE, 0);
+            case WOOD, PLANKS, LEAVES, CRAFTING_TABLE, PLANK_SLAB, FENCE, FENCE_GATE, LADDER, TRAPDOOR -> p(FLAMMABLE, 1f, 1f, ToolClass.AXE, 0);
             case DOOR_CLOSED, DOOR_OPEN, STAIRS -> p(0, 1f, 1f, ToolClass.AXE, 0);
-            case TORCH, FIRE, WEB -> p(CROSS, 1f, 1f, null, 0);
+            case TALL_GRASS,FLOWER_RED,FLOWER_YELLOW,SAPLING -> p(CROSS|FLAMMABLE,1f,1f,null,0);
+            case WHEAT, CARROTS, POTATOES, TORCH, FIRE, WEB -> p(CROSS, 1f, 1f, null, 0);
             case SNOW_LAYER -> p(LAYER, 1f, 1f, ToolClass.SHOVEL, 0);
             case BEDROLL -> p(LAYER, 1f, 1f, null, 0);
             case ICE, THIN_ICE -> p(0, .22f, 1f, ToolClass.PICKAXE, 0);

@@ -88,7 +88,7 @@ public final class ItemRegistry {
     private static Item parse(JsonObject file, String key, String namespace, Categories categories) {
         JsonObject o = file.object(key);
         o.allowOnly("name", "icon", "category", "mass", "max_stack", "durability",
-                "hidden", "fuel", "block", "tool", "attack", "food");
+                "hidden", "fuel", "block", "tool", "attack", "food", "armor");
 
         ResourceId id;
         try {
@@ -133,8 +133,29 @@ public final class ItemRegistry {
         FoodSpec food = null;
         if (o.has("food")) {
             JsonObject f = o.object("food");
-            f.allowOnly("nutrition");
-            food = new FoodSpec(f.integer("nutrition"));
+            f.allowOnly("nutrition","saturation","eat_seconds","effects");
+            var effects=new java.util.ArrayList<FoodSpec.Effect>();
+            if(f.has("effects"))for(int n=0;n<f.array("effects").size();n++){
+                var e=f.element("effects",n);e.allowOnly("effect","seconds","amplifier","chance");
+                com.mineclone.world.effect.StatusEffect type;
+                try{type=com.mineclone.world.effect.StatusEffect.valueOf(e.string("effect").toUpperCase(Locale.ROOT));}
+                catch(IllegalArgumentException bad){throw e.error("effect","unknown status effect");}
+                float seconds=e.number("seconds"),chance=e.number("chance",1f);int amplifier=e.integer("amplifier",0);
+                if(!Float.isFinite(seconds)||seconds<=0||seconds>86400||!Float.isFinite(chance)||chance<0||chance>1||amplifier<0||amplifier>255)throw e.error("effect","invalid food effect");
+                effects.add(new FoodSpec.Effect(type,seconds,amplifier,chance));
+            }
+            try{food = new FoodSpec(f.integer("nutrition"),f.number("saturation",f.integer("nutrition")*.6f),f.number("eat_seconds",1.6f),effects);}
+            catch(IllegalArgumentException bad){throw f.error("nutrition",bad.getMessage());}
+        }
+
+        ArmorSpec armor=null;
+        if(o.has("armor")) {
+            JsonObject a=o.object("armor");a.allowOnly("slot","defense","toughness","knockback_resistance");
+            ArmorSpec.Slot slot;
+            try{slot=ArmorSpec.Slot.valueOf(a.string("slot").toUpperCase(Locale.ROOT));}
+            catch(IllegalArgumentException bad){throw a.error("slot","unknown armor slot");}
+            try{armor=new ArmorSpec(slot,a.number("defense"),a.number("toughness",0f),a.number("knockback_resistance",0f));}
+            catch(IllegalArgumentException bad){throw a.error("defense",bad.getMessage());}
         }
 
         int durability = o.integer("durability", 0);
@@ -148,11 +169,12 @@ public final class ItemRegistry {
         if (durability > 0 && maxStack != 1)
             throw o.error("max_stack", "an item with durability cannot stack");
 
+        if(armor!=null && (maxStack!=1 || durability<=0))throw o.error("armor","armor must have durability and max_stack 1");
         int iconTile = icon(o, block);
 
         return new Item(id, o.string("name"), category, o.number("mass", 1f), maxStack,
                 durability, o.bool("hidden", false), o.number("fuel", 0f),
-                block, tool, attack, food, iconTile, false);
+                block, tool, attack, food, armor, iconTile, false);
     }
 
     /**
@@ -176,7 +198,7 @@ public final class ItemRegistry {
     }
 
     private static boolean isFlat(BlockType b) {
-        return b.isCross() || b.isLayered()
+        return b == BlockType.LADDER || b == BlockType.FENCE_GATE || b == BlockType.TRAPDOOR || b.isCross() || b.isLayered()
                 || b == BlockType.WATER || b == BlockType.WATER_FLOW || b == BlockType.LAVA;
     }
 
@@ -224,7 +246,7 @@ public final class ItemRegistry {
      */
     public synchronized Item missing(ResourceId id) {
         return missing.computeIfAbsent(id, k -> new Item(k, k.toString(), fallbackCategory(),
-                1f, DEFAULT_MAX_STACK, 0, true, 0f, null, null, null, null, 0, true));
+                1f, DEFAULT_MAX_STACK, 0, true, 0f, null, null, null, null, null, 0, true));
     }
 
     private String fallbackCategory() {

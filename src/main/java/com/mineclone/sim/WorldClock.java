@@ -12,9 +12,13 @@ public final class WorldClock {
     public static final long TICKS_PER_DAY = Math.round(NightSky.CYCLE / TIME_SCALE * TICKS_PER_SECOND);
     public static final double DEFAULT_TIME = Math.PI / 6.0;
     public static final String SAVE_SECTION = "clock";
-    private static final int SECTION_VERSION = 1;
-    private static final int SECTION_BYTES = Integer.BYTES + Double.BYTES + Long.BYTES + Double.BYTES;
+    private static final int SECTION_VERSION = 2;
+    private static final int SECTION_BYTES = Integer.BYTES + Double.BYTES + Long.BYTES + Double.BYTES + Long.BYTES;
 
+    private long entityCounter;
+    public long entityCounter(){return entityCounter;}
+    public long nextEntityId(){if(entityCounter==Long.MAX_VALUE)throw new IllegalStateException("entity ids exhausted");return ++entityCounter;}
+    public void observeEntityId(long id){if(id<=0)throw new IllegalArgumentException("invalid entity id");entityCounter=Math.max(entityCounter,id);}
     private double gameTime;
     private long worldTicks;
     private double fractionalTick;
@@ -77,7 +81,11 @@ public final class WorldClock {
     }
 
     public void setHours(double hours) { setTimeOfDay(hoursToGameTime(hours)); }
-    public void addHours(double hours) { setGameTime(Math.max(0, gameTime + hoursToRadians(hours))); }
+    public void addHours(double hours) {
+        requireFinite(hours,"hours");double delta=hoursToRadians(hours);
+        if(delta>0)advance(delta/TIME_SCALE);
+        else setGameTime(Math.max(0,gameTime+delta));
+    }
     public void advanceToDawn() { setGameTime(nextDawn(gameTime)); }
 
     public static float daylightAt(double gameTime) {
@@ -117,7 +125,7 @@ public final class WorldClock {
     /** Versioned opaque section, to be stored only by a format supporting the clock section. */
     public byte[] encode() {
         return ByteBuffer.allocate(SECTION_BYTES).putInt(SECTION_VERSION)
-                .putDouble(gameTime).putLong(worldTicks).putDouble(fractionalTick).array();
+                .putDouble(gameTime).putLong(worldTicks).putDouble(fractionalTick).putLong(entityCounter).array();
     }
 
     /**
@@ -132,10 +140,11 @@ public final class WorldClock {
             long whole = (long) Math.floor(ticks);
             return new WorldClock(legacyTime, whole, ticks - whole);
         }
-        if (section.length != SECTION_BYTES) throw new IllegalArgumentException("Invalid clock section length");
+        if (section.length != SECTION_BYTES && section.length != SECTION_BYTES-Long.BYTES) throw new IllegalArgumentException("Invalid clock section length");
         ByteBuffer bytes = ByteBuffer.wrap(section);
-        if (bytes.getInt() != SECTION_VERSION) throw new IllegalArgumentException("Unsupported clock section version");
-        return new WorldClock(bytes.getDouble(), bytes.getLong(), bytes.getDouble());
+        int version=bytes.getInt();if(version!=1&&version!=2)throw new IllegalArgumentException("Unsupported clock section version");
+        if(section.length!=(version==1?SECTION_BYTES-8:SECTION_BYTES))throw new IllegalArgumentException("Invalid clock section length");
+        var clock=new WorldClock(bytes.getDouble(),bytes.getLong(),bytes.getDouble());if(version==2){clock.entityCounter=bytes.getLong();if(clock.entityCounter<0)throw new IllegalArgumentException("invalid entity counter");}return clock;
     }
 
     private static void requireFinite(double value, String field) {

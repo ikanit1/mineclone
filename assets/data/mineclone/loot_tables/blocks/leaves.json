@@ -13,6 +13,66 @@
           "count": 1
         }
       ]
+    },
+    {
+      "rolls": 1,
+      "conditions": [
+        {
+          "block_meta_min": 0,
+          "block_meta_max": 0,
+          "random_chance": 0.05
+        }
+      ],
+      "entries": [
+        {
+          "item": "mineclone:oak_sapling"
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "conditions": [
+        {
+          "block_meta_min": 1,
+          "block_meta_max": 1,
+          "random_chance": 0.05
+        }
+      ],
+      "entries": [
+        {
+          "item": "mineclone:spruce_sapling"
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "conditions": [
+        {
+          "block_meta_min": 2,
+          "block_meta_max": 2,
+          "random_chance": 0.05
+        }
+      ],
+      "entries": [
+        {
+          "item": "mineclone:acacia_sapling"
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "conditions": [
+        {
+          "block_meta_min": 0,
+          "block_meta_max": 0,
+          "random_chance": 0.005
+        }
+      ],
+      "entries": [
+        {
+          "item": "mineclone:apple"
+        }
+      ]
     }
   ]
 }

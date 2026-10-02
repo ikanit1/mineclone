@@ -14,8 +14,13 @@ public final class DroppedItem {
     public final float x, y, z;
     /** Сколько предмет уже пролежал, секунды — от этого считается исчезновение. */
     public final float age;
+    public final float lifetime;
 
     public DroppedItem(ItemStack stack, float x, float y, float z, float age) {
+        this(stack,x,y,z,age,300);
+    }
+    public DroppedItem(ItemStack stack,float x,float y,float z,float age,float lifetime){
+        this.lifetime=lifetime;
         this.stack = stack;
         this.x = x;
         this.y = y;

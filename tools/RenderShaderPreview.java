@@ -55,7 +55,7 @@ public class RenderShaderPreview {
         PostProcess post = new PostProcess(W, H);
         System.out.println("shadow FBO ok: " + shadows.isReady() + ", HDR FBO ok: " + post.isReady());
 
-        World world = new World(SEED);
+        World world = new World(SEED,com.mineclone.world.gen.GenPolicy.fixed(com.mineclone.world.gen.WorldGenVersion.V2));
         ChunkMesher mesher = new ChunkMesher(world);
         for (int cx = -RADIUS - 1; cx <= RADIUS + 1; cx++)
             for (int cz = -RADIUS - 1; cz <= RADIUS + 1; cz++)
@@ -96,6 +96,33 @@ public class RenderShaderPreview {
                 world.setBlock(tx, tracksY + 1, tz, BlockType.SNOW_LAYER);
                 world.setSnowLevel(tx, tracksY + 1, tz, 5);
             }
+
+        int courtY=surfaceOf(world,-7,8);
+        for(int x=-14;x<=-1;x++)for(int z=2;z<=13;z++){
+            for(int y=courtY+1;y<=courtY+16;y++)world.setBlock(x,y,z,BlockType.AIR);
+            for(int y=courtY-2;y<=courtY;y++)world.setBlock(x,y,z,BlockType.GRASS);
+            if(x==-14||x==-1||z==2||z==13)world.setBlock(x,courtY+1,z,BlockType.FENCE);
+        }
+        world.setBlock(-7,courtY+1,13,BlockType.FENCE_GATE);
+        for(int y=courtY+1;y<=courtY+4;y++){
+            world.setBlock(-2,y,4,BlockType.PLANKS);world.setBlock(-2,y,5,BlockType.LADDER,(byte)3);
+        }
+        world.setBlock(-12,courtY+1,10,BlockType.PLANK_SLAB,(byte)0);
+        world.setBlock(-11,courtY+1,10,BlockType.PLANK_SLAB,(byte)1);
+        world.setBlock(-10,courtY+1,10,BlockType.COBBLE_SLAB,(byte)2);
+        world.setBlock(-5,courtY+1,10,BlockType.TRAPDOOR,(byte)0);
+        world.setBlock(-4,courtY+1,10,BlockType.TRAPDOOR,(byte)4);
+        BlockType[] crops={BlockType.WHEAT,BlockType.CARROTS,BlockType.POTATOES};
+        for(int row=0;row<3;row++)for(int stage=0;stage<4;stage++){
+            world.setBlock(-12+stage,courtY,5+row,BlockType.FARMLAND,(byte)(stage<2?0:7));
+            world.setBlock(-12+stage,courtY+1,5+row,crops[row],(byte)(stage*2+(stage==3?1:0)));
+        }
+        for(int z=5;z<=7;z++)world.setBlock(-8,courtY,z,BlockType.WATER);
+        world.setBlock(-6,courtY+1,6,BlockType.TALL_GRASS);
+        world.setBlock(-5,courtY+1,6,BlockType.FLOWER_YELLOW);world.setBlock(-4,courtY+1,6,BlockType.FLOWER_RED);
+        world.setBlock(-3,courtY+1,8,BlockType.TORCH);
+        for(int cx=-RADIUS-1;cx<=RADIUS+1;cx++)for(int cz=-RADIUS-1;cz<=RADIUS+1;cz++)world.getChunk(cx,cz).computeSkyLight();
+        Vector3f courtEye=new Vector3f(-5,courtY+6,19),courtTarget=new Vector3f(-7,courtY+1.4f,7);
 
         Map<Long, Mesh> opaque = new HashMap<>();
         Map<Long, Mesh> water = new HashMap<>();
@@ -164,9 +191,9 @@ public class RenderShaderPreview {
         Vector3f heroPos = new Vector3f(8.5f, heroSurface + 1f, 4.5f);
         Vector3f heroEye = new Vector3f(heroPos.x - 2.1f, heroPos.y + 2.4f, heroPos.z + 3.2f);
         float[] times = { 0.55f, 1.5708f, 2.75f, 4.3f, 0.45f, 1.5708f, 4.3f, 1.2f, 1.1f, 1.1f, 1.0f,
-                0.20f, 1.15f, 1.35f, 1.0f };
+                0.20f, 1.15f, 1.35f, 1.0f, 1.35f, 4.3f };
         String[] names = { "morning", "noon", "sunset", "night", "shadows", "cave", "fire", "snow",
-                "player", "hurt", "structure", "mist", "tracks", "river", "photo" };
+                "player", "hurt", "structure", "mist", "tracks", "river", "photo", "court-day", "court-night" };
         BufferedImage previous = null;
         for (int i = 0; i < times.length; i++) {
             boolean side = names[i].equals("shadows");
@@ -223,6 +250,10 @@ public class RenderShaderPreview {
                 view = new Matrix4f().lookAt(eye, structurePose[1], new Vector3f(0, 1, 0));
                 camFwd = new Vector3f(structurePose[1]).sub(eye).normalize();
             }
+            if(names[i].startsWith("court-")){
+                eye=courtEye;view=new Matrix4f().lookAt(eye,courtTarget,new Vector3f(0,1,0));
+                camFwd=new Vector3f(courtTarget).sub(eye).normalize();
+            }
             if (heroShot) {
                 eye = heroEye;
                 Vector3f t = new Vector3f(heroPos).add(0f, 1.1f, 0f);
@@ -262,6 +293,10 @@ public class RenderShaderPreview {
             sky.render(proj, view, eye, gameTime, daylight, gameTime * 8f, 1f);
             glDepthMask(true);
 
+            if(names[i].startsWith("court-")){
+                eye=courtEye;view=new Matrix4f().lookAt(eye,courtTarget,new Vector3f(0,1,0));
+                camFwd=new Vector3f(courtTarget).sub(eye).normalize();
+            }
             if (heroShot) {
                 // Ходячая поза и замах: статичная модель не показала бы,
                 // что анимация вообще работает.

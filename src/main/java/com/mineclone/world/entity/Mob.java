@@ -11,7 +11,7 @@ import java.util.Random;
  * One mob: state plus AI state machine. The class stays independent from GL
  * and Player; Game translates tick flags into sounds, particles and damage.
  */
-public class Mob implements Hittable {
+public class Mob implements Hittable, com.mineclone.world.effect.StatusEffects.Target {
     public enum State {
         IDLE, WANDER, FLEE, CHASE, ATTACK, INVESTIGATE, SEEK_SHELTER,
         /** Нежить отступает из-под яркого света в темноту. */
@@ -175,6 +175,23 @@ public class Mob implements Hittable {
 
     public boolean onGround;
     public boolean hitWall;
+    public boolean persistent;
+    private final EntityHazards hazards=new EntityHazards();
+    public int breedingOwner=-1;
+    public float age,love,loveCooldown;
+    public org.joml.Vector3f foodTarget;
+    public boolean baby(){return age<0;}
+    public float growthScale(){return .5f+.5f*Math.min(1,Math.max(0,1+age/1200));}
+    public final com.mineclone.world.effect.StatusEffects effects=new com.mineclone.world.effect.StatusEffects();
+    public float air=300;private float drownTimer;
+    public float health(){return health;}
+    public void heal(float amount){if(!dead)health=Math.min(type.maxHealth,health+Math.max(0,amount));}
+    public void tickAir(World world,float dt){
+        int x=(int)Math.floor(position.x),y=(int)Math.floor(position.y+type.height*.85f),z=(int)Math.floor(position.z);
+        var block=world.getBlock(x,y,z);boolean submerged=block==com.mineclone.world.BlockType.WATER||block==com.mineclone.world.BlockType.WATER_FLOW;
+        if(!submerged || type==MobType.BIRD&&state==State.FLY){air=Math.min(300,air+100*dt);drownTimer=0;return;}
+        float elapsed=Math.max(0,dt-air/20);air=Math.max(0,air-20*dt);if(air==0){drownTimer+=elapsed;while(drownTimer>=1){drownTimer--;damage(com.mineclone.world.damage.DamageSource.of(com.mineclone.world.damage.DamageType.DROWN),2);}}
+    }
     public boolean inWater;
     public boolean dead;
     /** Обратный отсчёт падения набок; 0 — можно убирать из мира. */
@@ -376,6 +393,7 @@ public class Mob implements Hittable {
         this.homeY = y;
         this.homeZ = z;
         this.health = type.maxHealth;
+        this.persistent=type.temper==MobType.Temper.PASSIVE||type.temper==MobType.Temper.NEUTRAL;
         this.yaw = rnd.nextFloat() * (float) (Math.PI * 2);
         this.animationTime = (float) (x * 0.73 + z * 0.37);
         this.idleSoundTimer = IDLE_SOUND_MIN + rnd.nextFloat() * (IDLE_SOUND_MAX - IDLE_SOUND_MIN);
@@ -421,6 +439,7 @@ public class Mob implements Hittable {
         if (invulnTime > 0f)
             invulnTime = Math.max(0f, invulnTime - dt);
 
+        if(age<0)age=Math.min(0,age+dt);love=Math.max(0,love-dt);loveCooldown=Math.max(0,loveCooldown-dt);
         animationTime += dt;
         idleSoundTimer -= dt;
         if (idleSoundTimer <= 0f) {
@@ -499,6 +518,9 @@ public class Mob implements Hittable {
             updatePeaceful(dt);
         }
 
+        if(foodTarget!=null && !type.hostile && state!=State.FLEE){
+            if(position.distanceSquared(foodTarget)>.9f){state=State.WANDER; navigateTo(world,dt,foodTarget);}else {state=State.IDLE;stopMoving();}
+        }
         if (type.flying && state == State.FLY) {
             Wildlife.flyStep(this, world, dt);
         } else {
@@ -516,6 +538,8 @@ public class Mob implements Hittable {
         }
         wasInWater = inWater;
 
+        tickAir(world,dt);effects.tick(dt,this);
+        hazards.tick(this,position,type.width*growthScale(),type.height*growthScale(),type.height*.85f*growthScale(),inWater,effects.active(com.mineclone.world.effect.StatusEffect.FIRE_RESISTANCE),world,dt);burning|=hazards.burning();
         applySunBurn(world, dt, daylight);
         if (health <= 0f)
             die(0f, 0f, false);
@@ -631,6 +655,7 @@ public class Mob implements Hittable {
         // спец-случая на вид моба.
         if (onGround && !wasOnGround && impactSpeed > 0f) {
             float fallBlocks = impactSpeed * impactSpeed / (2f * -EntityPhysics.GRAVITY);
+            com.mineclone.world.behavior.Farming.trample(world,position.x,position.y,position.z,fallBlocks,type==MobType.CHICKEN);
             float dmg = fallBlocks - SAFE_FALL;
             if (dmg > 0f) {
                 health -= dmg;
@@ -1342,18 +1367,6 @@ public class Mob implements Hittable {
 
     private void applySunBurn(World world, float dt, float daylight) {
         burning = false;
-        // Стоять в костре больно всем, а не только нежити на солнце.
-        // Проверяем оба занимаемых блока: иначе высокий моб «горит ногами»,
-        // но урона не получает.
-        int fx = (int) Math.floor(position.x);
-        int fz = (int) Math.floor(position.z);
-        int fy = (int) Math.floor(position.y);
-        if (world.getBlock(fx, fy, fz) == BlockType.FIRE
-                || world.getBlock(fx, fy + 1, fz) == BlockType.FIRE) {
-            burning = true;
-            health -= FIRE_DAMAGE_PER_SECOND * dt;
-            return;
-        }
         if (!type.burnsInSunlight || daylight <= BURN_DAYLIGHT)
             return;
         int bx = (int) Math.floor(position.x);
@@ -1363,7 +1376,7 @@ public class Mob implements Hittable {
             if (world.getBlock(bx, y, bz).solid)
                 return;
         burning = true;
-        health -= 2f * dt;
+        if(!inWater&&!effects.active(com.mineclone.world.effect.StatusEffect.FIRE_RESISTANCE))damage(com.mineclone.world.damage.DamageSource.of(com.mineclone.world.damage.DamageType.FIRE),2f*dt);
     }
 
     /**
@@ -1519,7 +1532,7 @@ public class Mob implements Hittable {
      * не исчезает по дальности. Враждебные — нет.
      */
     public boolean persistent() {
-        return type.temper != MobType.Temper.HOSTILE;
+        return persistent || type.temper != MobType.Temper.HOSTILE;
     }
 
     /** Урон удара этого моба по игроку. */

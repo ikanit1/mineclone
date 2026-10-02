@@ -25,6 +25,7 @@ public final class SleepRules {
         MONSTERS
     }
 
+    public static boolean validSpawn(World world,com.mineclone.save.PlayerRecord.Spawn spawn){if(world==null||spawn==null)return false;int x=(int)Math.floor(spawn.x()),y=(int)Math.floor(spawn.y()),z=(int)Math.floor(spawn.z());return world.getBlock(x,y-1,z)==BlockType.BEDROLL&&!world.getBlock(x,y,z).solid&&!world.getBlock(x,y+1,z).solid&&world.getBlock(x,y,z)!=BlockType.WATER&&world.getBlock(x,y+1,z)!=BlockType.WATER&&world.getBlock(x,y,z)!=BlockType.LAVA&&world.getBlock(x,y+1,z)!=BlockType.LAVA&&world.getBlock(x,y,z)!=BlockType.FIRE;}
     private SleepRules() {}
 
     /**

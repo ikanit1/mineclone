@@ -8,9 +8,11 @@
 #
 # Usage: .\run-server-test.ps1
 #        .\run-server-test.ps1 -LivingWorld
+#        .\run-server-test.ps1 -Farm
+#        .\run-server-test.ps1 -Farm -LivingWorld
 # Exits non-zero if the server or either client failed.
 
-param([switch]$LivingWorld)
+param([switch]$LivingWorld, [switch]$Farm)
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -85,6 +87,7 @@ function Start-Guest {
         "-Dmineclone.autopilot=$dir\shots",
         "-Dmineclone.savesDir=$dir\saves",
         '-Dmineclone.autopilot.net=server',
+        "-Dmineclone.autopilot.netScenario=$(if ($Farm) { 'farm' } else { '' })",
         "-Dmineclone.autopilot.netPort=$port",
         "-Dmineclone.autopilot.netSlot=$slot"
     )
@@ -106,6 +109,23 @@ if ($LivingWorld) {
     $server.StandardInput.Flush()
 }
 $guests = @((Start-Guest 0), (Start-Guest 1))
+
+$farmAdvanced = $false
+if ($Farm) {
+    $deadline = [DateTime]::UtcNow.AddMinutes(3)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $a = Get-Content (Join-Path $work 'guest0\out.log') -Raw -ErrorAction SilentlyContinue
+        $b = Get-Content (Join-Path $work 'guest1\out.log') -Raw -ErrorAction SilentlyContinue
+        if ($a -match 'farm server READY' -and $b -match 'farm guest READY') {
+            $server.StandardInput.WriteLine('/time add 48')
+            $server.StandardInput.Flush()
+            $farmAdvanced = $true
+            break
+        }
+        if ($guests[0].HasExited -or $guests[1].HasExited) { break }
+        Start-Sleep -Milliseconds 250
+    }
+}
 
 foreach ($proc in $guests) {
     if (-not $proc.WaitForExit(180000)) {
@@ -166,8 +186,9 @@ if ($serverOut -notmatch 'stopped') {
     $code = 1
 }
 if ($LivingWorld) {
+    $expectedDay = if ($farmAdvanced) { 12 } else { 10 }
     foreach ($pattern in @('\[server\] ecology on', '\[server\] ecology advanced 10 day\(s\)',
-            '\[server\] Ecology ON \| region .+ \| day 10\b',
+            "\[server\] Ecology ON \| region .+ \| day $expectedDay\b",
             '\[server\] Species: total / capacity \| bodies \| change over 3 days',
             '\[server\] saved [1-9][0-9]* chunks')) {
         if ($serverOut -notmatch $pattern) {

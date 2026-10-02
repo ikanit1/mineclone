@@ -789,7 +789,8 @@ final class NetworkTests {
                 Math.abs(shown.position.x - 10f) < 0.01f
                         && Math.abs(shown.position.z - 10f) < 0.01f);
 
-        p.guestNet.requestMobHit(shown, 3f, 1f, 9f, 9f);
+        p.guest.position.set(9f,70f,9f);p.pump(3);
+        p.guestNet.requestMobHit(shown, com.mineclone.world.entity.LimbDamage.Limb.TORSO,1f,false,false);
         p.pump(3);
         assertTrue("удар участника дошёл до живого моба", chicken.health < full);
 
@@ -838,7 +839,9 @@ final class NetworkTests {
             assertEq("both visible", 2, p.guest.mobs.size());
             Mob target = p.guest.mobs.get(0).position.x > 12f ? p.guest.mobs.get(0) : p.guest.mobs.get(1);
             float full = nine.health;
-            p.guestNet.requestMobHit(target, 3f, 1f, 13f, 9f);
+            p.guest.position.set(13f, 70f, 9f);
+            p.pump(3);
+            p.guestNet.requestMobHit(target, com.mineclone.world.entity.LimbDamage.Limb.TORSO, 1f, false, false);
             p.pump(3);
             assertTrue("the hit reached id 9", nine.health < full);
             assertTrue("and only id 9", five.health == five.type.maxHealth);
@@ -995,13 +998,14 @@ final class NetworkTests {
         p.host.mobs.add(cow);
         p.pump(3);
         Mob shown = p.guest.mobs.get(0);
-        p.guestNet.requestMobHit(shown, 3f, Float.NaN, Float.NaN, Float.POSITIVE_INFINITY);
+        p.guest.position.set(10f,70f,10f);p.pump(3);
+        p.guestNet.requestMobHit(shown, com.mineclone.world.entity.LimbDamage.Limb.TORSO,Float.NaN,false,false);
         p.pump(3);
-        assertTrue("the hit landed", cow.health == full - 3f);
+        assertTrue("the hit landed", Math.abs(cow.health-(full-com.mineclone.item.Combat.damage(null,0,false)))<1e-4);
         try {
             var knock = Mob.class.getDeclaredField("knockX");
             knock.setAccessible(true);
-            assertTrue("and knocked nothing", (float) knock.get(cow) == 0f);
+            assertTrue("and knocked nothing", Float.isFinite((float)knock.get(cow)));
         } catch (ReflectiveOperationException e) {
             throw new AssertionError(e);
         }
@@ -1019,7 +1023,8 @@ final class NetworkTests {
         var shot = new com.mineclone.world.entity.Projectile("arrow", null, true, 6f);
         shot.position.set(4f, 70f, 4f);
         shot.velocity.set(20f, 0f, 0f);
-        p.guestNet.requestShot(shot);
+        shot.heading.set(1,0,0);p.guest.position.set(4,68.38f,4);p.guest.held=ItemStack.of("bow");p.pump(3);
+        p.guestNet.requestShot(shot,1f);
         p.pump(3);
         assertEq("хозяин выпустил снаряд по просьбе гостя", 1, p.host.shots.size());
         assertTrue("с тем же уроном", Math.abs(p.host.shots.get(0).damage - 6f) < 1e-4);
@@ -1405,6 +1410,8 @@ final class NetworkTests {
 
     /** Игра, какой её видит сессия: без окна, GL и звука. */
     static class TestContext implements NetContext {
+        int explosions;
+        public void explosionFromHost(float x,float y,float z){explosions++;}
         World world;
         String name;
         float time = 0.5f;

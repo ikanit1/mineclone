@@ -1,0 +1,35 @@
+{
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "item": "mineclone:potato",
+          "count": 1
+        }
+      ],
+      "conditions": [
+        {
+          "block_meta_max": 6
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "item": "mineclone:potato",
+          "count": [
+            1,
+            4
+          ]
+        }
+      ],
+      "conditions": [
+        {
+          "block_meta_min": 7
+        }
+      ]
+    }
+  ]
+}

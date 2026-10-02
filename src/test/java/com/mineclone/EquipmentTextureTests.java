@@ -15,6 +15,8 @@ final class EquipmentTextureTests {
                 EquipmentTextureTests::heldPixels);
         r.run("all ores retain the same stone base and distinct mineral clusters",
                 EquipmentTextureTests::ores);
+        r.run("roadmap armor, hoes and crop sprites are native, hard-alpha and ready in the atlas",
+                EquipmentTextureTests::roadmap);
     }
 
     private static void icons() throws Exception {
@@ -40,8 +42,8 @@ final class EquipmentTextureTests {
             String previous = masks.putIfAbsent(item.tool.toolClass(), mask.toString());
             check(previous == null || previous.equals(mask.toString()), item.id + " changes its class silhouette");
         }
-        check(count == 24, "cover all six materials and four tool classes");
-        check(new java.util.HashSet<>(masks.values()).size() == 4, "axe, shovel, pickaxe and sword must differ");
+        check(count == 30, "cover all six materials and five tool classes");
+        check(new java.util.HashSet<>(masks.values()).size() == 5, "axe, shovel, pickaxe, sword and hoe must differ");
         check(TextureAtlas.TILE_NAMES[Items.get().require("copper_shovel").iconTile].equals("copper_shovel"),
                 "copper shovel must not use the solid material swatch");
         for (String name : new String[]{"copper_ingot", "iron_ingot", "gold_ingot", "stick"}) {
@@ -72,7 +74,7 @@ final class EquipmentTextureTests {
 
     private static void ores() throws Exception {
         var stone = ImageIO.read(Path.of(TextureAtlas.BLOCKS_DIR, "stone.png").toFile());
-        for (String name : new String[]{"coal_ore", "iron_ore", "gold_ore", "diamond_ore"}) {
+        for (String name : new String[]{"coal_ore", "iron_ore", "gold_ore", "diamond_ore", "copper_ore"}) {
             var ore = ImageIO.read(Path.of(TextureAtlas.BLOCKS_DIR, name + ".png").toFile());
             check(ore.getWidth() == 32 && ore.getHeight() == 32, name + " resolution");
             int changed = 0;
@@ -82,6 +84,34 @@ final class EquipmentTextureTests {
             }
             check(changed > 40 && changed < 350, name + " must be mineral clusters in the shared stone");
         }
+    }
+
+    private static void roadmap() throws Exception {
+        String hoeMask = null;
+        int[] cropCounts = new int[12];
+        check(TextureAtlas.TILE_NAMES.length <= 256, "atlas capacity exceeded");
+        for (int tile = 140; tile <= 173; tile++) {
+            String name = TextureAtlas.TILE_NAMES[tile];
+            var sprite = ImageIO.read(Path.of(TextureAtlas.BLOCKS_DIR, name + ".png").toFile());
+            check(sprite != null && sprite.getWidth() == 32 && sprite.getHeight() == 32, name + " resolution");
+            int opaque = 0;
+            StringBuilder mask = new StringBuilder();
+            for (int y = 0; y < 32; y++) for (int x = 0; x < 32; x++) {
+                int alpha = sprite.getRGB(x, y) >>> 24;
+                check(alpha == 0 || alpha == 255, name + " soft halo");
+                if (x == 0 || y == 0 || x == 31 || y == 31) check(alpha == 0, name + " touches adjacent tile");
+                mask.append(alpha == 0 ? '.' : '#');
+                if (alpha == 255) opaque++;
+            }
+            check(opaque >= (tile >= 162 ? 6 : 40) && opaque <= 800, name + " empty or filled rectangle");
+            if (name.endsWith("_hoe")) {
+                check(hoeMask == null || hoeMask.equals(mask.toString()), name + " differs in silhouette");
+                hoeMask = mask.toString();
+            }
+            if (tile >= 162) cropCounts[tile - 162] = opaque;
+        }
+        for (int row = 0; row < 3; row++) for (int stage = 1; stage < 4; stage++)
+            check(cropCounts[row * 4 + stage] > cropCounts[row * 4 + stage - 1], "crop stages do not grow");
     }
 
     private static void check(boolean ok, String message) {

@@ -4,6 +4,7 @@ import com.mineclone.render.MeshData;
 import com.mineclone.render.TextureAtlas;
 import com.mineclone.world.shape.BlockShape;
 import com.mineclone.world.shape.Shapes;
+import com.mineclone.world.shape.MeshKind;
 
 
 /** Face culling mesher with vertex Ambient Occlusion. */
@@ -68,7 +69,8 @@ public class ChunkMesher {
                     if (b == BlockType.AIR)
                         continue;
 
-                    if (b.isCross()) {
+                    MeshKind kind = Shapes.of(b).meshKind();
+                    if (kind == MeshKind.CROSS) {
                         emitCross(chunk, positions, uvs, light, blockLightList, indices, x, y, z, baseX, baseZ, b);
                         continue;
                     }
@@ -79,7 +81,8 @@ public class ChunkMesher {
                         continue;
                     }
 
-                    if (b == BlockType.DOOR_CLOSED || b == BlockType.DOOR_OPEN) {
+                    if(kind==MeshKind.CROP){emitCrop(chunk,positions,uvs,light,blockLightList,indices,x,y,z,baseX,baseZ,b);continue;}
+                    if (kind == MeshKind.DOOR) {
                         emitDoor(chunk, positions, uvs, light, blockLightList, indices, x, y, z, baseX, baseZ, b);
                         continue;
                     }
@@ -100,14 +103,19 @@ public class ChunkMesher {
                         continue;
                     }
 
-                    if (b.isLayered()) {
+                    if (kind == MeshKind.LAYER) {
                         emitLayer(chunk, positions, uvs, light, blockLightList, indices,
                                 x, y, z, baseX, baseZ, b);
                         continue;
                     }
 
-                    if (b == BlockType.STAIRS) {
+                    if (kind == MeshKind.STAIRS) {
                         emitStairs(chunk, positions, uvs, light, blockLightList, indices, x, y, z, baseX, baseZ, b);
+                        continue;
+                    }
+
+                    if (kind == MeshKind.BOXES) {
+                        emitShape(chunk,positions,uvs,light,blockLightList,indices,x,y,z,baseX,baseZ,b);
                         continue;
                     }
 
@@ -160,6 +168,8 @@ public class ChunkMesher {
     }
 
     private static boolean shouldDrawFace(BlockType self, BlockType neighbor) {
+        if (Shapes.of(neighbor) != Shapes.FULL && neighbor != BlockType.AIR)
+            return true;
         if (neighbor == BlockType.AIR)
             return true;
         if (neighbor == BlockType.WATER || neighbor == BlockType.WATER_FLOW)
@@ -257,7 +267,7 @@ public class ChunkMesher {
         boolean waterAbove = above == BlockType.WATER || above == BlockType.WATER_FLOW;
         float topY = waterAbove ? 1.0f : waterLevelTopY(b, meta);
 
-        float[] uv = TextureAtlas.uv(b.sideTile);
+        float[] uv = TextureAtlas.uv(b==BlockType.SAPLING?179+Math.min(2,chunk.getMeta(x,y,z)&3):b.sideTile);
         float u0 = uv[0], v0 = uv[1], u1 = uv[2], v1 = uv[3];
 
         float skyRaw = skyAt(chunk, x, y + 1, z, baseX, baseZ) / (float) Chunk.MAX_LIGHT;
@@ -477,32 +487,17 @@ public class ChunkMesher {
 
         // Vertex order matches emitFace exactly so the shared uvQ produces
         // upright, non-rotated textures on every face (doors, stairs).
-        float[][][] faces = {
-                { { x0, y0, z1 }, { x1, y0, z1 }, { x1, y1, z1 }, { x0, y1, z1 } }, // +Z
-                { { x1, y0, z0 }, { x0, y0, z0 }, { x0, y1, z0 }, { x1, y1, z0 } }, // -Z
-                { { x1, y0, z1 }, { x1, y0, z0 }, { x1, y1, z0 }, { x1, y1, z1 } }, // +X
-                { { x0, y0, z0 }, { x0, y0, z1 }, { x0, y1, z1 }, { x0, y1, z0 } }, // -X
-                { { x0, y1, z1 }, { x1, y1, z1 }, { x1, y1, z0 }, { x0, y1, z0 } }, // +Y
-                { { x0, y0, z0 }, { x1, y0, z0 }, { x1, y0, z1 }, { x0, y0, z1 } } // -Y
-        };
-        float[] faceLight = { 0.88f, 0.88f, 0.80f, 0.80f, 1.0f, 0.65f };
-        float[][] uvQ = { { u0, v1 }, { u1, v1 }, { u1, v0 }, { u0, v0 } };
-
         for (int f = 0; f < 6; f++) {
             if ((skipFaces & (1 << f)) != 0)
                 continue;
-            float[][] quad = faces[f];
-            if (quad[0][0] == quad[2][0] && quad[0][1] == quad[2][1] && quad[0][2] == quad[2][2])
-                continue; // degenerate flat face
+            int[][] quad = BOX_CORNERS[f];
             int base = pos.size() / 3;
             for (int i = 0; i < 4; i++) {
-                pos.add(x + quad[i][0]);
-                pos.add(y + quad[i][1]);
-                pos.add(z + quad[i][2]);
-                uvs.add(uvQ[i][0]);
-                uvs.add(uvQ[i][1]);
-                light.add(lv * faceLight[f]);
-                bl.add(blRaw * faceLight[f]);
+                float vx=quad[i][0]==0?x0:x1, vy=quad[i][1]==0?y0:y1, vz=quad[i][2]==0?z0:z1;
+                pos.add(x+vx);pos.add(y+vy);pos.add(z+vz);
+                uvs.add(i==0||i==3?u0:u1);uvs.add(i<2?v1:v0);
+                float ao=boxAo(chunk,x,y,z,baseX,baseZ,f,vx,vy,vz);
+                light.add(lv*FACE_LIGHT[f]*ao);bl.add(blRaw*FACE_LIGHT[f]*ao);
             }
             idx.add(base);
             idx.add(base + 1);
@@ -512,6 +507,76 @@ public class ChunkMesher {
             idx.add(base + 3);
         }
     }
+
+    private static final int[][][] BOX_CORNERS={
+        {{0,0,1},{1,0,1},{1,1,1},{0,1,1}},{{1,0,0},{0,0,0},{0,1,0},{1,1,0}},
+        {{1,0,1},{1,0,0},{1,1,0},{1,1,1}},{{0,0,0},{0,0,1},{0,1,1},{0,1,0}},
+        {{0,1,1},{1,1,1},{1,1,0},{0,1,0}},{{0,0,0},{1,0,0},{1,0,1},{0,0,1}}};
+    private float boxAo(Chunk chunk,int x,int y,int z,int bx,int bz,int face,float vx,float vy,float vz) {
+        int[] d=FACE_DIRS[face];int axis=d[0]!=0?0:d[1]!=0?1:2,a=axis==0?1:0,b=axis==2?1:2;
+        int sa=(a==0?vx:vy)<.5f?-1:1,sb=(b==1?vy:vz)<.5f?-1:1;
+        int ux=d[0]+(a==0?sa:0),uy=d[1]+(a==1?sa:0),uz=d[2];
+        int vxOff=d[0],vyOff=d[1]+(b==1?sb:0),vzOff=d[2]+(b==2?sb:0);
+        boolean s1=fullOpaque(chunk,x+ux,y+uy,z+uz,bx,bz);
+        boolean s2=fullOpaque(chunk,x+vxOff,y+vyOff,z+vzOff,bx,bz);
+        boolean diagonal=fullOpaque(chunk,x+ux,y+uy+(b==1?sb:0),z+uz+(b==2?sb:0),bx,bz);
+        return AO_TABLE[s1&&s2?3:b(s1)+b(s2)+b(diagonal)];
+    }
+
+    private boolean fullOpaque(Chunk chunk,int x,int y,int z,int bx,int bz) {
+        BlockType t=chunk.inBounds(x,y,z)?chunk.get(x,y,z):world.getBlock(bx+x,y,bz+z);
+        return !t.transparent && !t.cutout && Shapes.of(t).fullCube(
+                chunk.inBounds(x,y,z)?chunk.getMeta(x,y,z):world.getBlockMeta(bx+x,y,bz+z));
+    }
+
+    private void emitShape(Chunk chunk,FloatList pos,FloatList uv,FloatList sky,FloatList bl,IntList idx,
+                           int x,int y,int z,int bx,int bz,BlockType type) {
+        float[] boxes=SHAPE.get();
+        int count=Shapes.of(type).mesh(Shapes.meta(world,Shapes.of(type),bx+x,y,bz+z),boxes);
+        float[] neighbour=NEIGHBOUR_SHAPE.get();
+        for(int box=0;box<count;box++) {
+            int o=box*6, skip=0;
+            for(int f=0;f<6;f++) {
+                int[] d=FACE_DIRS[f]; int axis=d[0]!=0?0:d[1]!=0?1:2;
+                float plane=boxes[o+axis+(d[axis]>0?3:0)];
+                if(plane!=(d[axis]>0?1f:0f))continue;
+                int nx=bx+x+d[0], ny=y+d[1], nz=bz+z+d[2];
+                BlockType next=world.getBlock(nx,ny,nz);
+                if(next.cutout || next==BlockType.AIR || next==BlockType.WATER || next==BlockType.WATER_FLOW)continue;
+                BlockShape shape=Shapes.of(next);
+                if(shape==Shapes.EMPTY)continue;
+                int n=shape.mesh(Shapes.meta(world,shape,nx,ny,nz),neighbour);
+                for(int k=0;k<n;k++) {
+                    int p=k*6; boolean covers=neighbour[p+axis+(d[axis]>0?0:3)]==(d[axis]>0?0f:1f);
+                    for(int a=0;a<3;a++)if(a!=axis)
+                        covers &= neighbour[p+a]<=boxes[o+a] && neighbour[p+a+3]>=boxes[o+a+3];
+                    if(covers){skip|=1<<f;break;}
+                }
+            }
+            if(type.topTile==type.sideTile&&type.bottomTile==type.sideTile)
+                emitBox(chunk,pos,uv,sky,bl,idx,x,y,z,bx,bz,type.sideTile,boxes[o],boxes[o+1],boxes[o+2],boxes[o+3],boxes[o+4],boxes[o+5],skip);
+            else for(int f=0;f<6;f++)if((skip&(1<<f))==0)
+                emitBox(chunk,pos,uv,sky,bl,idx,x,y,z,bx,bz,
+                        f==4?(type==BlockType.FARMLAND&&(chunk.getMeta(x,y,z)&7)>0?178:type.topTile):f==5?type.bottomTile:type.sideTile,
+                        boxes[o],boxes[o+1],boxes[o+2],boxes[o+3],boxes[o+4],boxes[o+5],63^(1<<f));
+        }
+    }
+    private void emitCrop(Chunk chunk,FloatList pos,FloatList uv,FloatList sky,FloatList bl,IntList idx,
+            int x,int y,int z,int bx,int bz,BlockType type){
+        int stage=Math.min(7,chunk.getMeta(x,y,z)&7),tile=type.sideTile+stage/2;
+        float[] tex=TextureAtlas.uv(tile);float s=skyAt(chunk,x,y,z,bx,bz)/15f,l=blockLightAt(chunk,x,y,z,bx,bz)/15f;
+        // Four double-sided planes at +/- one quarter form a grid, with authored transparent stage silhouettes.
+        for(int plane=0;plane<4;plane++){
+            float offset=plane%2==0?.25f:.75f;int base=pos.size()/3;
+            for(int corner=0;corner<4;corner++){
+                float side=corner==1||corner==2?1:0,up=corner>=2?1:0;
+                pos.add(x+(plane<2?offset:side));pos.add(y+up-1f/16);pos.add(z+(plane<2?side:offset));
+                uv.add(side==0?tex[0]:tex[2]);uv.add(up==0?tex[3]:tex[1]);sky.add(Math.max(s*.9f,l));bl.add(l);
+            }
+            for(int v:new int[]{0,1,2,0,2,3,2,1,0,3,2,0})idx.add(base+v);
+        }
+    }
+    private static final ThreadLocal<float[]> NEIGHBOUR_SHAPE=ThreadLocal.withInitial(BlockShape::buffer);
 
     private void emitFace(Chunk chunk,
             FloatList pos, FloatList uvs, FloatList light, FloatList blockLightList, IntList idx,
@@ -724,11 +789,11 @@ public class ChunkMesher {
             FloatList pos, FloatList uvs, FloatList light, FloatList blockLightList,
             IntList idx,
             int x, int y, int z, int baseX, int baseZ, BlockType b) {
-        float[] uv = TextureAtlas.uv(b.sideTile);
+        float[] uv = TextureAtlas.uv(b==BlockType.SAPLING?179+Math.min(2,chunk.getMeta(x,y,z)&3):b.sideTile);
         float u0 = uv[0], v0 = uv[1], u1 = uv[2], v1 = uv[3];
         // Высота креста зависит от блока: факел — короткий фитиль, огонь
         // занимает клетку целиком, иначе пламя лежит на земле лужицей.
-        float h = b == BlockType.FIRE ? 1f : 10f / 16f;
+        float h = b == BlockType.FIRE || b == BlockType.TALL_GRASS ? 1f : 10f / 16f;
 
         int skyRaw = skyAt(chunk, x, y + 1, z, baseX, baseZ);
         float skyFrac = skyRaw / (float) Chunk.MAX_LIGHT;

@@ -7,7 +7,7 @@ public enum GameMode {
 
     public boolean canBreak(BlockType block) {
         return block != null && block != BlockType.AIR && block != BlockType.WATER && block != BlockType.WATER_FLOW && block != BlockType.LAVA
-                && (this == CREATIVE || (block.hardness > 0f && block.hardness < Float.MAX_VALUE));
+                && (this == CREATIVE || (block.hardness >= 0f && block.hardness < Float.MAX_VALUE));
     }
 
     public static GameMode byOrdinalSafe(int i) {

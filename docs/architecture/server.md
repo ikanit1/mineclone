@@ -1,6 +1,6 @@
 # Dedicated server
 
-Updated: 2026-09-24. Paths in backticks are relative to the repository root.
+Updated: 2026-10-01. Paths in backticks are relative to the repository root.
 
 `server/ServerMain` starts without GLFW, rendering or audio. `/stop` saves and
 exits cleanly. An existing unreadable level refuses startup with exit code 2;
@@ -34,6 +34,12 @@ java -cp "out;libs/*" com.mineclone.server.ServerMain [server.properties]
   слэшам в пути. `ServerConsole` — `/list`, `/say`, `/save`, `/time`, `/room`,
   `/seed`, `/stop`; метка порядка байтов выбрасывается и оттуда — PowerShell
   ставит её перед первой строкой перенаправленного ввода.
+- `upgrade-worldgen=false` по умолчанию: старые миры сохраняют свой генератор.
+  При `true` V1-мир обновляется до V2 до загрузки чанков и открытия сети,
+  после оригинального бэкапа и записи защитного журнала. Учитываются позиции
+  и личные точки появления всех сохранённых игроков. Ошибка обновления даёт
+  код выхода 2; сервер не продолжает запуск. V2-миры и новые миры не меняются
+  от переключения этой настройки. См. [worldgen](worldgen.md).
 - Мобы бьют и участников: пакет «хозяин ранил гостя» (`S_PLAYER_HURT`) пришёл
   вместе со снарядами, и прежнее ограничение всей игры по сети снято. С
   протоколом v8 он несёт вид урона, того, кто ударил, и точку удара: гость

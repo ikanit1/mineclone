@@ -201,7 +201,11 @@ public class UiRenderer {
     }
 
     /** Отправляет накопленное и закрывает пакет, возвращая состояние GL. */
+    private int layerDepth;
+    public void beginLayer(int w,int h){begin(w,h);layerDepth++;}
+    public void endLayer(){if(layerDepth<=0)throw new IllegalStateException("unbalanced UI layer");if(--layerDepth==0)end();}
     public void end() {
+        if(layerDepth>0)return;
         if (!open)
             return;
         flush();

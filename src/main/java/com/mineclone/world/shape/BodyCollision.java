@@ -56,7 +56,7 @@ public final class BodyCollision {
     public static boolean overlaps(World world, float x, float y, float z, float width, float height) {
         float half = width * 0.5f;
         int minX = (int) Math.floor(x - half), maxX = (int) Math.floor(x + half);
-        int minY = (int) Math.floor(y), maxY = (int) Math.floor(y + height);
+        int minY = (int) Math.floor(y) - 1, maxY = (int) Math.floor(y + height);
         int minZ = (int) Math.floor(z - half), maxZ = (int) Math.floor(z + half);
         float[] boxes = BOXES.get();
         for (int bx = minX; bx <= maxX; bx++)
@@ -84,7 +84,7 @@ public final class BodyCollision {
                                        Overlap action) {
         float half = width * 0.5f;
         int minX = (int) Math.floor(x - half), maxX = (int) Math.floor(x + half);
-        int minY = (int) Math.floor(y), maxY = (int) Math.floor(y + height);
+        int minY = (int) Math.floor(y) - 1, maxY = (int) Math.floor(y + height);
         int minZ = (int) Math.floor(z - half), maxZ = (int) Math.floor(z + half);
         float[] boxes = BOXES.get();
         for (int bx = minX; bx <= maxX; bx++)

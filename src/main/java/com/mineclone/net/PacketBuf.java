@@ -127,6 +127,9 @@ public final class PacketBuf {
     }
 
     /** Беззнаковое число переменной длины: 7 бит на байт, старший — признак продолжения. */
+    public PacketBuf varLong(long value){if(value<0)throw new IllegalArgumentException("negative varlong");while((value&~127L)!=0){u8((int)(value&127)|128);value>>>=7;}return u8((int)value);}
+    public long readVarLong(){long value=0;for(int shift=0;shift<63;shift+=7){int b=readU8();value|=(long)(b&127)<<shift;if((b&128)==0)return value;}while(hasMore())readU8();readU8();return 0;}
+
     public PacketBuf varInt(int v) {
         int x = v;
         while ((x & ~0x7F) != 0) {

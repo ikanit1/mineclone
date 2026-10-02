@@ -36,6 +36,7 @@ public final class MaterializerTests {
         runner.run("materialization cannot generate chunks or put animals in water", MaterializerTests::loadedAndDry);
         runner.run("materialized groups respect local and global caps without overshooting", MaterializerTests::groupCap);
         runner.run("hostile-only spawning never adds infinite animals in living mode", MaterializerTests::hostilesOnly);
+        runner.run("materialization leaves protected chunks untouched", MaterializerTests::protectedTerrain);
     }
 
     private static void cameraAxes() {
@@ -197,6 +198,15 @@ public final class MaterializerTests {
         check(!fixture.mobs.isEmpty() && fixture.mobs.size() <= MobSpawner.HOSTILE_CAP,
                 "hostile spawn/cap path did not run");
         for (Mob body : fixture.mobs) check(body.type.hostile, "hostile path created an animal");
+    }
+
+    private static void protectedTerrain() {
+        Fixture fixture = new Fixture(0, 0);
+        for (Chunk chunk : fixture.world.getLoadedChunks()) chunk.markReadOnly();
+        Stock stock = new Stock(MobType.COW, 5);
+        Materializer materializer = new Materializer(93);
+        for (int n = 0; n < 150; n++) materializer.tryMaterialize(fixture.world, fixture.mobs, fixture.players, 1f, stock);
+        check(fixture.mobs.isEmpty() && stock.claimed.isEmpty(), "protected terrain acquired unsavable animals");
     }
 
     private static boolean insideView(View player, float x, float y, float z) {

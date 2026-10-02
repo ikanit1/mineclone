@@ -10,7 +10,7 @@ import com.mineclone.world.ScheduledTicks;
 import java.io.*;
 import java.util.*;
 
-/** Version 7 chunk body: RLE terrain followed by bounded, extensible sections. */
+/** Chunk versions 7 and 8: RLE terrain followed by bounded, extensible sections. */
 public final class ChunkSectionCodec {
     private ChunkSectionCodec() {}
     @FunctionalInterface private interface Writer { void write(DataOutputStream out) throws IOException; }
@@ -56,71 +56,22 @@ public final class ChunkSectionCodec {
                 data.writeFloat(item.x); data.writeFloat(item.y); data.writeFloat(item.z); data.writeFloat(item.age);
             }
         }));
+        sections.put("item_lifetimes",bytes(data->{data.writeByte(1);data.writeInt(snapshot.items.size());for(var item:snapshot.items){if(!Float.isFinite(item.lifetime)||item.lifetime<=0||item.lifetime>600)throw new IOException("invalid item lifetime");data.writeFloat(item.lifetime);}}));
         if (snapshot.ticks.length > 0)
             sections.put(TICKS, bytes(data -> writeTicks(data, snapshot)));
-        if (!snapshot.mobs.isEmpty())
-            sections.put(ENTITIES, bytes(data -> writeMobs(data, snapshot.mobs)));
+        if (!snapshot.mobs.isEmpty() || sections.containsKey(com.mineclone.sim.EntityPersistence.SPAWN_RECEIPT))
+            sections.put(ENTITIES, SavedMobCodec.encode(snapshot.mobs));
         SectionCodec.write(out, sections);
     }
 
     /**
-     * Persistent mobs (MOB-01): {@code VarInt count}, then per mob {@code VarInt length}
-     * and that many bytes — {@code UTF type, VarLong id, f32 x, y, z, yaw, health} and
-     * whatever a newer build appended, kept as the record's tail. Written only when a mob
-     * stands in the chunk; a chunk without the section has none. A layout that cannot
-     * be read by appending would take a new section name.
+     * Persistent mobs (MOB-01/04), unified by {@link SavedMobCodec}: both historical
+     * layouts are read, the versioned writer preserves age, breeding clocks and opaque
+     * record tails. An explicit empty spawn receipt prevents generation from respawning
+     * a herd after every animal has died.
      */
     static final String ENTITIES = "entities";
     public static final int MAX_MOB_RECORDS = 256;
-    static final int MAX_MOB_RECORD_BYTES = 1024;
-
-    private static void writeMobs(DataOutputStream data, List<SavedMob> mobs) throws IOException {
-        if (mobs.size() > MAX_MOB_RECORDS) throw new IOException("too many mobs in a chunk");
-        VarInt.write(data, mobs.size());
-        for (SavedMob mob : mobs) {
-            byte[] record = bytes(out -> {
-                if (mob.type() == null || mob.type().isEmpty()) throw new IOException("mob without a type");
-                if (mob.id() <= 0) throw new IOException("mob without an id");
-                if (!(mob.health() > 0f)) throw new IOException("dead mob in a chunk write");
-                out.writeUTF(mob.type());
-                VarLong.write(out, mob.id());
-                finite(mob.x()); finite(mob.y()); finite(mob.z()); finite(mob.yaw());
-                out.writeFloat(mob.x()); out.writeFloat(mob.y()); out.writeFloat(mob.z());
-                out.writeFloat(mob.yaw()); out.writeFloat(finite(mob.health()));
-                out.write(mob.tail());
-            });
-            if (record.length > MAX_MOB_RECORD_BYTES) throw new IOException("mob record too long");
-            VarInt.write(data, record.length);
-            data.write(record);
-        }
-    }
-
-    private static List<SavedMob> readMobs(byte[] payload) throws IOException {
-        if (payload == null) return List.of();
-        try (DataInputStream data = new DataInputStream(new ByteArrayInputStream(payload))) {
-            int count = VarInt.read(data);
-            if (count < 0 || count > MAX_MOB_RECORDS) throw new IOException("invalid mob count " + count);
-            List<SavedMob> mobs = new ArrayList<>(count);
-            for (int i = 0; i < count; i++) {
-                int length = VarInt.read(data);
-                if (length <= 0 || length > MAX_MOB_RECORD_BYTES) throw new IOException("invalid mob record length " + length);
-                byte[] record = new byte[length];
-                data.readFully(record);
-                try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(record))) {
-                    String type = in.readUTF();
-                    long id = VarLong.read(in);
-                    float x = finite(in.readFloat()), y = finite(in.readFloat()), z = finite(in.readFloat());
-                    float yaw = finite(in.readFloat()), health = finite(in.readFloat());
-                    if (type.isEmpty()) throw new IOException("mob without a type");
-                    if (id <= 0) throw new IOException("mob without an id");
-                    if (!(health > 0f)) throw new IOException("dead mob in a chunk");
-                    mobs.add(new SavedMob(type, id, x, y, z, yaw, health, in.readAllBytes()));
-                }
-            }
-            end(data);
-            return mobs;
-        }
-    }
 
     /**
      * Scheduled ticks (BLK-04): {@code VarLong writtenAt, VarInt count}, then
@@ -216,9 +167,13 @@ public final class ChunkSectionCodec {
             }
             end(data);
         }
+        byte[] lifetimes=sections.remove("item_lifetimes");if(lifetimes!=null)try(var data=new DataInputStream(new java.io.ByteArrayInputStream(lifetimes))){if(data.readUnsignedByte()!=1||data.readInt()!=items.size())throw new IOException("item lifetime schema/count");for(int i=0;i<items.size();i++){float lifetime=finite(data.readFloat());if(lifetime<=0||lifetime>600)throw new IOException("item lifetime bounds");var item=items.get(i);items.set(i,new DroppedItem(item.stack,item.x,item.y,item.z,item.age,lifetime));}end(data);}
         long[] ticksAt = { 0 };
         long[] ticks = readTicks(sections.remove(TICKS), ticksAt);
-        List<SavedMob> mobs = readMobs(sections.remove(ENTITIES));
+        byte[] savedEntities = sections.remove(ENTITIES);
+        List<SavedMob> mobs = SavedMobCodec.decode(savedEntities);
+        if (savedEntities != null)
+            sections.put(com.mineclone.sim.EntityPersistence.SPAWN_RECEIPT, new byte[] { 1 });
         return new ChunkSnapshot(cx, cz, blocks, meta, chests, furnaces, items, sections, ticksAt[0], ticks, mobs);
     }
 

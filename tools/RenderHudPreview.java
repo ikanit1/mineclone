@@ -75,6 +75,11 @@ public class RenderHudPreview {
             hud.drawVersionLabel(W, H);
         });
 
+        var survivalPlayer=new com.mineclone.game.Player();survivalPlayer.health=14;survivalPlayer.hunger=12;
+        for(int i=0;i<4;i++)survivalPlayer.equipment.set(i,ItemStack.of("iron_"+new String[]{"helmet","chestplate","leggings","boots"}[i]));
+        String[] newFrames={"armor","underwater","poison","hurt-back-left"};
+        for(int f=0;f<4;f++){final int frame=f;shot("hud-survival-"+newFrames[f],()->{survivalPlayer.eyeInWater=frame==1;survivalPlayer.air=frame==1?105:300;survivalPlayer.effects.clear();if(frame==2){survivalPlayer.effects.apply(com.mineclone.world.effect.StatusEffect.POISON,22);survivalPlayer.effects.apply(com.mineclone.world.effect.StatusEffect.SLOWNESS,4.3f);}hud.drawCompass(W,H,0,.5f);hud.drawHotbar(W,H,inv,0,1);int before=UiRenderer.drawCalls();hud.drawStatus(W,H,survivalPlayer,17,(float)(-Math.PI*.75),frame==3?1:0,false);if(UiRenderer.drawCalls()-before!=1)throw new IllegalStateException("Survival HUD must remain one draw per layer");});}
+
         // Кадры компаса: рассвет, полдень, закат, ночь. Лента одна и та же,
         // меняются светило и цвет полосы неба — по этим четырём кадрам видно,
         // читается ли переход.
@@ -328,6 +333,12 @@ public class RenderHudPreview {
         menuFrame(backdrop, theme, create, click(800f, 356f), 0.4f);
         menuShot("menu-create", backdrop, theme, create, at(480f, 594f), 2);
 
+        menuFrame(backdrop,theme,create,click(640f,383f),2.1f);
+        menuShot("menu-create-more",backdrop,theme,create,at(-1,-1),2.2f);
+        var liveRules=new com.mineclone.world.WorldRules[]{com.mineclone.world.WorldRules.LEGACY};
+        menuShot("menu-world-rules-host",backdrop,theme,new com.mineclone.ui.WorldRulesScreen(()->liveRules[0],r->liveRules[0]=r,true),at(-1,-1),2.4f);
+        menuShot("menu-world-rules-guest",backdrop,theme,new com.mineclone.ui.WorldRulesScreen(()->liveRules[0],r->{throw new IllegalStateException("guest changed rules");},false),at(-1,-1),2.6f);
+
         settings.keys.set(com.mineclone.core.KeyBindings.Action.JUMP, org.lwjgl.glfw.GLFW.GLFW_KEY_W);
         settings.videoModes = new int[][] { { 1280, 720 }, { 1600, 900 }, { 1920, 1080 }, { 2560, 1440 } };
         menuShot("menu-settings-graphics", backdrop, theme, new com.mineclone.ui.SettingsScreen(settings, 0),
@@ -368,7 +379,7 @@ public class RenderHudPreview {
         com.mineclone.ui.PauseScreen pause = new com.mineclone.ui.PauseScreen("\u041e\u0441\u0442\u0440\u043e\u0432", settings);
         menuFrame(backdrop, theme, pause, click(640f, 326f), 0.5f);
         menuShot("menu-pause", backdrop, theme, pause, at(640f, 270f), 4);
-        menuShot("menu-death", backdrop, theme, new com.mineclone.ui.DeathScreen(), at(640f, 336f), 4);
+        menuShot("menu-death", backdrop, theme, new com.mineclone.ui.DeathScreen(com.mineclone.world.damage.DamageSource.of(com.mineclone.world.damage.DamageType.DROWN),-13,42,25,false), at(640f, 336f), 4);
         backdrop.destroy();
 
         text.destroy();

@@ -70,6 +70,13 @@ public final class LootReachability {
             // Opening a generated chest has no killer or mining tool.
             for (LootTable chest : chests)
                 add(reached, chest.possibleItems(LootContext.chest(0, 0, 0, 0)), "chest:" + chest.id());
+            // Cultivation is an executable source only after clear soil, a hoe and the actual seed are obtainable.
+            boolean field=roots.generatedBlocks().stream().anyMatch(b->b==BlockType.DIRT||b==BlockType.GRASS)
+                    && reached.keySet().stream().anyMatch(i->i.tool!=null&&i.tool.toolClass()==com.mineclone.item.ToolClass.HOE);
+            if(field)for(Item item:new ArrayList<>(reached.keySet())){
+                BlockType plant=com.mineclone.world.behavior.Farming.seed(new ItemStack(item,1));
+                if(plant!=null)add(reached,items.loot().blockSources(plant,new LootContext(0,0,0,0,null,true,GameMode.SURVIVAL,null,7)),"grown:"+plant);
+            }
             boolean workbench = reached.containsKey(items.forBlock(BlockType.CRAFTING_TABLE));
             for (var entry : items.recipes().crafting()) {
                 var recipe = entry.recipe();

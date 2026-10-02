@@ -1,0 +1,282 @@
+{
+  "leather_helmet": {
+    "type": "shaped",
+    "order": 90,
+    "group": "armor",
+    "pattern": [
+      "AAA",
+      "A A"
+    ],
+    "key": {
+      "A": "mineclone:leather"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:leather_helmet",
+      "count": 1
+    }
+  },
+  "leather_chestplate": {
+    "type": "shaped",
+    "order": 90,
+    "group": "armor",
+    "pattern": [
+      "A A",
+      "AAA",
+      "AAA"
+    ],
+    "key": {
+      "A": "mineclone:leather"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:leather_chestplate",
+      "count": 1
+    }
+  },
+  "leather_leggings": {
+    "type": "shaped",
+    "order": 90,
+    "group": "armor",
+    "pattern": [
+      "AAA",
+      "A A",
+      "A A"
+    ],
+    "key": {
+      "A": "mineclone:leather"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:leather_leggings",
+      "count": 1
+    }
+  },
+  "leather_boots": {
+    "type": "shaped",
+    "order": 90,
+    "group": "armor",
+    "pattern": [
+      "A A",
+      "A A"
+    ],
+    "key": {
+      "A": "mineclone:leather"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:leather_boots",
+      "count": 1
+    }
+  },
+  "copper_helmet": {
+    "type": "shaped",
+    "order": 90,
+    "group": "armor",
+    "pattern": [
+      "AAA",
+      "A A"
+    ],
+    "key": {
+      "A": "mineclone:copper_ingot"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:copper_helmet",
+      "count": 1
+    }
+  },
+  "copper_chestplate": {
+    "type": "shaped",
+    "order": 90,
+    "group": "armor",
+    "pattern": [
+      "A A",
+      "AAA",
+      "AAA"
+    ],
+    "key": {
+      "A": "mineclone:copper_ingot"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:copper_chestplate",
+      "count": 1
+    }
+  },
+  "copper_leggings": {
+    "type": "shaped",
+    "order": 90,
+    "group": "armor",
+    "pattern": [
+      "AAA",
+      "A A",
+      "A A"
+    ],
+    "key": {
+      "A": "mineclone:copper_ingot"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:copper_leggings",
+      "count": 1
+    }
+  },
+  "copper_boots": {
+    "type": "shaped",
+    "order": 90,
+    "group": "armor",
+    "pattern": [
+      "A A",
+      "A A"
+    ],
+    "key": {
+      "A": "mineclone:copper_ingot"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:copper_boots",
+      "count": 1
+    }
+  },
+  "iron_helmet": {
+    "type": "shaped",
+    "order": 90,
+    "group": "armor",
+    "pattern": [
+      "AAA",
+      "A A"
+    ],
+    "key": {
+      "A": "mineclone:iron_ingot"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:iron_helmet",
+      "count": 1
+    }
+  },
+  "iron_chestplate": {
+    "type": "shaped",
+    "order": 90,
+    "group": "armor",
+    "pattern": [
+      "A A",
+      "AAA",
+      "AAA"
+    ],
+    "key": {
+      "A": "mineclone:iron_ingot"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:iron_chestplate",
+      "count": 1
+    }
+  },
+  "iron_leggings": {
+    "type": "shaped",
+    "order": 90,
+    "group": "armor",
+    "pattern": [
+      "AAA",
+      "A A",
+      "A A"
+    ],
+    "key": {
+      "A": "mineclone:iron_ingot"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:iron_leggings",
+      "count": 1
+    }
+  },
+  "iron_boots": {
+    "type": "shaped",
+    "order": 90,
+    "group": "armor",
+    "pattern": [
+      "A A",
+      "A A"
+    ],
+    "key": {
+      "A": "mineclone:iron_ingot"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:iron_boots",
+      "count": 1
+    }
+  },
+  "diamond_helmet": {
+    "type": "shaped",
+    "order": 90,
+    "group": "armor",
+    "pattern": [
+      "AAA",
+      "A A"
+    ],
+    "key": {
+      "A": "mineclone:diamond"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:diamond_helmet",
+      "count": 1
+    }
+  },
+  "diamond_chestplate": {
+    "type": "shaped",
+    "order": 90,
+    "group": "armor",
+    "pattern": [
+      "A A",
+      "AAA",
+      "AAA"
+    ],
+    "key": {
+      "A": "mineclone:diamond"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:diamond_chestplate",
+      "count": 1
+    }
+  },
+  "diamond_leggings": {
+    "type": "shaped",
+    "order": 90,
+    "group": "armor",
+    "pattern": [
+      "AAA",
+      "A A",
+      "A A"
+    ],
+    "key": {
+      "A": "mineclone:diamond"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:diamond_leggings",
+      "count": 1
+    }
+  },
+  "diamond_boots": {
+    "type": "shaped",
+    "order": 90,
+    "group": "armor",
+    "pattern": [
+      "A A",
+      "A A"
+    ],
+    "key": {
+      "A": "mineclone:diamond"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:diamond_boots",
+      "count": 1
+    }
+  }
+}

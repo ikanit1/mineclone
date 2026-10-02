@@ -25,6 +25,7 @@ public final class PlayerPhysicsTests {
     private PlayerPhysicsTests() {}
 
     public static void runAll(Runner r) {
+        r.run("horizontal recovery includes a fence protruding from below the feet", PlayerPhysicsTests::tallShapeRecovery);
         r.run("walking into a block or a stair never lifts the player",
                 PlayerPhysicsTests::noAutoStep);
         r.run("but you can still stand on a stair", PlayerPhysicsTests::standOnStair);
@@ -43,6 +44,18 @@ public final class PlayerPhysicsTests {
 
     private static void check(boolean value, String message) {
         if (!value) throw new AssertionError(message);
+    }
+
+    private static void tallShapeRecovery() {
+        World world = ground(9);
+        world.getChunk(0, 0).set(8, 10, 8, BlockType.FENCE);
+        var body = new Vector3f(8.75f, 11f, 8.5f);
+        check(com.mineclone.world.shape.BodyCollision.overlaps(world, body.x, body.y, body.z, .6f, 1.8f),
+                "fence top below the feet's cell was missed");
+        check(com.mineclone.world.shape.BodyCollision.recoverHorizontal(world, body, .6f, 1.8f),
+                "fence overlap had no horizontal recovery");
+        check(body.y == 11f && !com.mineclone.world.shape.BodyCollision.overlaps(world, body.x, body.y, body.z, .6f, 1.8f),
+                "recovery crossed the fence vertically or remained embedded");
     }
 
     /** Пол на {@code floorY}, воздух выше. */

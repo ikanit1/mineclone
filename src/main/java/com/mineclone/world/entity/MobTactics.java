@@ -53,10 +53,15 @@ public final class MobTactics {
     }
 
     public static Elite eliteFor(long seed, int spawnIndex, boolean hostile) {
-        if (!hostile) return Elite.NONE;
+        return eliteFor(seed,spawnIndex,hostile,1f);
+    }
+
+    public static Elite eliteFor(long seed,int spawnIndex,boolean hostile,float multiplier){
+        if (!hostile || multiplier<=0) return Elite.NONE;
         long h = seed ^ (spawnIndex * 0x9E3779B97F4A7C15L);
         h ^= h >>> 30; h *= 0xbf58476d1ce4e5b9L; h ^= h >>> 27;
-        if ((h & 31L) != 0L) return Elite.NONE;
+        long bucket=(h & 31L)*2+((h>>>5)&1L);
+        if (bucket >= Math.round(2*multiplier)) return Elite.NONE;
         return Elite.values()[1 + (int)((h >>> 8) % 3)];
     }
 

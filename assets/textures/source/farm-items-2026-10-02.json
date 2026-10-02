@@ -1,0 +1,11 @@
+{
+  "provider": "OpenAI image_gen",
+  "generatedAt": "2026-10-02",
+  "prompt": "Pixel art item icon atlas for a classic voxel survival game. Exactly 4 columns x 4 rows, 16 equal square cells, each icon with transparent background. No text or numbers, no shadows, no perspective sheet mockup. Crisp 32x32 logical pixel sprites, nearest-neighbor appearance, no smooth antialiasing. Read left to right, top to bottom: row1 wheat stalks tied in a small bundle; three green wheat seeds; golden loaf of bread; orange carrot with leafy green top. Row2 brown raw potato; baked potato cut open yellow inside; red apple with green leaf; magical golden apple with leaf. Row3 mottled rotten flesh chunk; white bone; small black gunpowder pile; white coil of string. Row4 bright green slimeball; brown piece of leather; white feather; white chicken egg. Items centered fully contained within their equal cells with transparent margin of at least 2 logical pixels on every side, stylistically consistent traditional pixelated game inventory icons. Only these 16 icons.",
+  "layout": {
+    "columns": 4,
+    "rows": 4
+  },
+  "inspection": "All sixteen item silhouettes visually inspected; nearest-centre native32 hard-alpha import, outer pixel cleared, source preserved.",
+  "sha256": "e8e46d53d459494793851c3bc3a3abe1a813ec0c520d00b70365430fe47ea856"
+}

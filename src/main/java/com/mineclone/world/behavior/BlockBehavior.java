@@ -64,7 +64,7 @@ public interface BlockBehavior {
     default void collapse(World world, int x, int y, int z, byte meta, DropSink drops) {
         BlockType type = world.getBlock(x, y, z);
         world.setBlock(x, y, z, BlockType.AIR);
-        dropLoot(world, type, x, y, z, drops);
+        dropLoot(world, type, x, y, z, meta, drops);
     }
 
     /**
@@ -85,7 +85,11 @@ public interface BlockBehavior {
      * torch in any game mode.
      */
     static void dropLoot(World world, BlockType type, int x, int y, int z, DropSink drops) {
-        var context = new LootContext(world.seed, x, y, z, null, false, GameMode.SURVIVAL, null);
+        dropLoot(world,type,x,y,z,(byte)0,drops);
+    }
+
+    static void dropLoot(World world, BlockType type, int x, int y, int z, byte meta, DropSink drops) {
+        var context = new LootContext(world.seed, x, y, z, null, false, GameMode.SURVIVAL, null,meta&255);
         for (ItemStack stack : Items.get().loot().blockDrops(type, context))
             drops.drop(stack, x + 0.5f, y + 0.3f, z + 0.5f);
     }

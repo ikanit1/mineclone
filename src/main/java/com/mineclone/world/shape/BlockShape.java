@@ -15,7 +15,7 @@ package com.mineclone.world.shape;
  */
 public interface BlockShape {
     /** The most boxes any shape writes. */
-    int MAX_BOXES = 2;
+    int MAX_BOXES = 9;
     /** Floats per box. */
     int STRIDE = 6;
 
@@ -24,6 +24,12 @@ public interface BlockShape {
 
     /** Boxes the aim hits and the outline follows; the count written. */
     int outline(byte meta, float[] out);
+
+    default MeshKind meshKind() { return MeshKind.BOXES; }
+
+    /** Visible boxes may be shorter than collision (a fence cannot be jumped). */
+    default int mesh(byte meta, float[] out) { return outline(meta, out); }
+    default float maxCollisionHeight() { return 1f; }
 
     /**
      * The whole cell collides. Collision takes its old, box-free path for such

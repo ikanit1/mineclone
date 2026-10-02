@@ -8,6 +8,20 @@
           "count": 1
         }
       ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "item": "mineclone:wheat_seeds",
+          "count": 1
+        }
+      ],
+      "conditions": [
+        {
+          "random_chance": 0.125
+        }
+      ]
     }
   ]
 }

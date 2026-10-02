@@ -5,38 +5,41 @@ import com.mineclone.world.entity.MobType;
 import com.mineclone.world.entity.MobTactics;
 
 /** Complete visual state. The same codec is used even when skipping an untrusted sender. */
-public record MobSnapshot(int id, int type, int flags, int elite, int state,
+public record MobSnapshot(long id, int type, int flags, int elite, int state,
         float x, float y, float z, float yaw, float health, float distance, float time,
         float walk, float look, float graze, float attack, float footA, float footB,
-        float topple, float axisX, float axisZ, float deathTime, float hurt, float vy, float air) {
-    public static final int MIN_BYTES = 85;
-    public static MobSnapshot capture(int id, Mob m) {
+        float topple, float axisX, float axisZ, float deathTime, float hurt, float vy, float air, float age,float love) {
+    public MobSnapshot(long id,int type,int flags,int elite,int state,float x,float y,float z,float yaw,float health,float distance,float time,float walk,float look,float graze,float attack,float footA,float footB,float topple,float axisX,float axisZ,float deathTime,float hurt,float vy,float air){this(id,type,flags,elite,state,x,y,z,yaw,health,distance,time,walk,look,graze,attack,footA,footB,topple,axisX,axisZ,deathTime,hurt,vy,air,(flags&64)!=0?-1200:0,0);}
+    public static final int MIN_BYTES = 93;
+    public static MobSnapshot capture(long id, Mob m) {
         int flags = (m.dead ? 1 : 0) | (m.burning ? 2 : 0) | (m.inWater ? 4 : 0)
-                | (m.onGround ? 8 : 0) | (m.enraged ? 16 : 0) | (m.isAngry() ? 32 : 0);
+                | (m.onGround ? 8 : 0) | (m.enraged ? 16 : 0) | (m.isAngry() ? 32 : 0) | (m.baby()?64:0);
         return new MobSnapshot(id, m.type.ordinal(), flags, m.elite.ordinal(), m.state.ordinal(),
                 m.position.x, m.position.y, m.position.z, com.mineclone.render.BodyRotation.wrap(m.yaw), m.health, m.walkedDistance,
                 m.animationTime, m.walkAmount, m.lookYaw, m.grazeAmount, m.attackSwing,
                 m.legOffsetA, m.legOffsetB, m.topple, m.deathAxisX, m.deathAxisZ,
-                m.deathTimer, m.hurtFlash, m.velocity.y, m.airborneAmount);
+                m.deathTimer, m.hurtFlash, m.velocity.y, m.airborneAmount,m.age,m.love);
     }
     public void write(PacketBuf b) {
-        b.varInt(id).u8(type).u8(flags).u8(elite).u8(state)
+        b.varLong(id).u8(type).u8(flags).u8(elite).u8(state)
                 .f32(x).f32(y).f32(z).f32(yaw).f32(health).f32(distance).f32(time)
                 .f32(walk).f32(look).f32(graze).f32(attack).f32(footA).f32(footB)
-                .f32(topple).f32(axisX).f32(axisZ).f32(deathTime).f32(hurt).f32(vy).f32(air);
+                .f32(topple).f32(axisX).f32(axisZ).f32(deathTime).f32(hurt).f32(vy).f32(air).f32(age).f32(love);
     }
     public static MobSnapshot read(PacketBuf b) {
-        return new MobSnapshot(b.readVarInt(), b.readU8(), b.readU8(), b.readU8(), b.readU8(),
+        return new MobSnapshot(b.readVarLong(), b.readU8(), b.readU8(), b.readU8(), b.readU8(),
                 b.readF32(), b.readF32(), b.readF32(), b.readF32(), b.readF32(), b.readF32(), b.readF32(),
                 b.readF32(), b.readF32(), b.readF32(), b.readF32(), b.readF32(), b.readF32(),
-                b.readF32(), b.readF32(), b.readF32(), b.readF32(), b.readF32(), b.readF32(), b.readF32());
+                b.readF32(), b.readF32(), b.readF32(), b.readF32(), b.readF32(), b.readF32(), b.readF32(),b.readF32(),b.readF32());
     }
     private static final int TYPES = MobType.values().length, ELITES = MobTactics.Elite.values().length,
             STATES = Mob.State.values().length;
 
     /** Checked field by field: a snapshot per mob per network frame must not allocate (TD-35). */
     public boolean valid() {
-        if (id <= 0 || type < 0 || type >= TYPES || elite >= ELITES || state >= STATES || (flags & ~63) != 0) return false;
+        if(!Float.isFinite(love)||love<0||love>30)return false;
+        if(!Float.isFinite(age)||age< -1200||age>1e6)return false;
+        if (id <= 0 || type < 0 || type >= TYPES || elite >= ELITES || state >= STATES || (flags & ~127) != 0) return false;
         if (!Float.isFinite(x) || !Float.isFinite(y) || !Float.isFinite(z) || !Float.isFinite(yaw)
                 || !Float.isFinite(health) || !Float.isFinite(distance) || !Float.isFinite(time)
                 || !Float.isFinite(walk) || !Float.isFinite(look) || !Float.isFinite(graze) || !Float.isFinite(attack)

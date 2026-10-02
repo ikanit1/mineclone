@@ -29,37 +29,37 @@ public final class EntityStore {
     /** Level section with the next mob id (MOB-02): one {@code VarLong}. */
     public static final String IDS_SECTION = "entity_ids";
 
-    /**
-     * The next world id. Ids stay positive {@code int}s, because {@code S_MOBS} writes
-     * them as a {@code VarInt}: past {@code Integer.MAX_VALUE} the counter wraps to 1 and
-     * skips live ids. Two billion spawns in one world is not a practical case; the wrap
-     * only keeps the invariant.
-     */
+    /** Legacy next-id section, bridged to the shared long counter in clock v2. */
     private long nextMobId = 1;
-    private boolean wrapped;
+    private WorldClock allocatorClock;
+
+    public void bindClock(WorldClock clock) {
+        allocatorClock = clock;
+        if (nextMobId > 1) clock.observeEntityId(nextMobId - 1);
+        for (Mob mob : mobs) if (mob.id > 0) clock.observeEntityId(mob.id);
+    }
 
     /** Gives every mob without an id its world id; a mob keeps it for life. */
     public void assignIds() {
         for (Mob m : mobs)
             if (m.id == 0)
                 m.id = allocate();
+            else reserveId(m.id);
     }
 
     /** Reserve an id before a population body enters the list. */
     public void assignId(Mob mob) { if (mob.id == 0) mob.id = allocate(); }
     /** A body saved outside the loaded terrain still owns its id. */
-    public void reserveId(long id) { if (id >= nextMobId && id < Integer.MAX_VALUE) nextMobId = id + 1; }
+    public void reserveId(long id) {
+        if (id <= 0) return;
+        if (allocatorClock != null) allocatorClock.observeEntityId(id);
+        if (id >= nextMobId) nextMobId = id == Long.MAX_VALUE ? Long.MAX_VALUE : id + 1;
+    }
 
     private long allocate() {
-        while (true) {
-            if (nextMobId > Integer.MAX_VALUE || nextMobId < 1) {
-                nextMobId = 1;
-                wrapped = true;
-            }
-            long id = nextMobId++;
-            if (!wrapped || !live(id))
-                return id;
-        }
+        if (allocatorClock != null) return allocatorClock.nextEntityId();
+        if (nextMobId == Long.MAX_VALUE) throw new IllegalStateException("entity ids exhausted");
+        return nextMobId++;
     }
 
     private boolean live(long id) {
@@ -80,15 +80,16 @@ public final class EntityStore {
         if (m.id <= 0 || live(m.id))
             return false;
         mobs.add(m);
-        if (m.id >= nextMobId && m.id < Integer.MAX_VALUE)
-            nextMobId = m.id + 1;
+        reserveId(m.id);
         return true;
     }
 
     public byte[] encodeIds() {
         java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
         try (java.io.DataOutputStream out = new java.io.DataOutputStream(bytes)) {
-            com.mineclone.data.VarLong.write(out, nextMobId);
+            long last = allocatorClock == null ? 0 : allocatorClock.entityCounter();
+            long next = last == Long.MAX_VALUE ? Long.MAX_VALUE : Math.max(nextMobId, last + 1);
+            com.mineclone.data.VarLong.write(out, next);
         } catch (java.io.IOException impossible) {
             throw new java.io.UncheckedIOException(impossible);
         }
@@ -101,13 +102,13 @@ public final class EntityStore {
      */
     public void restoreIds(byte[] section) {
         nextMobId = 1;
-        wrapped = false;
         if (section == null)
             return;
         try (java.io.DataInputStream in = new java.io.DataInputStream(new java.io.ByteArrayInputStream(section))) {
             long next = com.mineclone.data.VarLong.read(in);
-            if (next >= 1 && next <= Integer.MAX_VALUE)
+            if (next >= 1)
                 nextMobId = next;
+            if (allocatorClock != null && nextMobId > 1) allocatorClock.observeEntityId(nextMobId - 1);
         } catch (java.io.IOException unreadable) {
             // Start at 1; adopted mobs move the counter past themselves.
         }

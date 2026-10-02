@@ -60,13 +60,13 @@ final class LootTableTests {
      * dropped nothing, yet the bedroll's bedding has been leaves since 31afedb: the
      * bed and its respawn point could not be made in survival.
      */
-    static final List<BlockType> CHANGED_SINCE_M0 = List.of(BlockType.LEAVES);
+    static final List<BlockType> CHANGED_SINCE_M0 = List.of(BlockType.LEAVES,BlockType.GRASS,BlockType.TALL_GRASS);
 
     private static void blockGolden() throws Exception {
         LootRegistry loot = Items.get().loot();
         ItemStack best = ItemStack.of("diamond_pickaxe");
         List<String> expected = Files.readAllLines(Path.of("src/test/resources/loot/legacy-block-drops.tsv"));
-        check(expected.size() == BlockType.values().length, "golden does not cover every block");
+        check(expected.size() == BlockType.COPPER_ORE.ordinal(), "golden does not cover the frozen M0 prefix");
         for (String row : expected) {
             String[] cells = row.split("\\|");
             BlockType block = BlockType.valueOf(cells[0]);
@@ -84,6 +84,7 @@ final class LootTableTests {
         for (String row : expected) {
             String[] cells = row.split("\\|");
             MobType type = MobType.valueOf(cells[0]);
+            if(type==MobType.COW || type==MobType.ZOMBIE)continue; // MOB-06 adds new drops.
             // M0 never asked who killed: a mob that burned or fell dropped the same.
             for (boolean killed : new boolean[] { true, false }) {
                 var context = new LootContext(99, 0, 70, 0, null, killed, GameMode.SURVIVAL, new SplittableRandom(2));
@@ -132,12 +133,12 @@ final class LootTableTests {
             if (!CHANGED_SINCE_M0.contains(block))
                 loot.blockDrops(block, mining(ItemStack.of("diamond_pickaxe"), GameMode.SURVIVAL, random));
         for (MobType type : MobType.values())
-            loot.entityDrops(type, new LootContext(1, 0, 0, 0, null, true, GameMode.SURVIVAL, random));
+            if(type!=MobType.COW && type!=MobType.ZOMBIE)loot.entityDrops(type, new LootContext(1, 0, 0, 0, null, true, GameMode.SURVIVAL, random));
         // Every M0 drop was constant; porting it must not shift the session RNG that
         // item bounce and everything else downstream share.
         check(random.draws == 0, "constant tables drew " + random.draws + " values from the session");
         loot.blockDrops(BlockType.LEAVES, mining(null, GameMode.SURVIVAL, random));
-        check(random.draws == 1, "a leaf chance drew " + random.draws + " values");
+        check(random.draws == 3, "three independent leaf chances drew " + random.draws + " values");
     }
 
     private static void leavesMakeBedding() {
@@ -146,8 +147,8 @@ final class LootTableTests {
         int leaves = 0, rolls = 10_000;
         for (int i = 0; i < rolls; i++) {
             List<ItemStack> drops = loot.blockDrops(BlockType.LEAVES, mining(null, GameMode.SURVIVAL, random));
-            check(drops.isEmpty() || describe(drops).equals("mineclone:leaves|1"), "leaves dropped " + drops);
-            leaves += drops.size();
+            for(ItemStack drop:drops)check(java.util.Set.of("leaves","oak_sapling","apple").contains(drop.item.id.path())&&drop.count==1,"leaves dropped "+drop);
+            leaves += drops.stream().filter(s->s.item.id.path().equals("leaves")).count();
         }
         check(Math.abs(leaves / (double) rolls - .25) <= .03, "leaf share " + leaves / (double) rolls);
         check(loot.blockDrops(BlockType.LEAVES, mining(null, GameMode.CREATIVE, random)).isEmpty(), "creative leaves");

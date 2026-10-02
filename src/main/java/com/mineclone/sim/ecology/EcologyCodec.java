@@ -21,7 +21,7 @@ public final class EcologyCodec {
     private EcologyCodec() {}
     public record Reservation(long mobId, int regionX, int regionZ, ResourceId species) {
         public Reservation {
-            if (mobId <= 0 || mobId > Integer.MAX_VALUE || species == null) throw new IllegalArgumentException("invalid ecology reservation");
+            if (mobId <= 0 || species == null) throw new IllegalArgumentException("invalid ecology reservation");
         }
         public long regionKey() { return EcologyRegion.key(regionX, regionZ); }
     }

@@ -13,6 +13,14 @@ caps on servers that keep distant chunks loaded. Existing bodies from older worl
 are adopted without deleting them. Population may initially rise to the number of
 such bodies, but materialization cannot raise it.
 
+Integration with the GitHub generation/survival series keeps the shared long-ID
+WorldClock allocator. A real breeding birth increments population once, then
+reserves the newborn; re-materializing an existing record only reserves it.
+Pending distant records are reserved before they can compete with new bodies.
+The canonical chunk animal record preserves age, breeding clocks and opaque
+tails, imports both earlier layouts, and requires chunk reader 8. Older builds
+protect these chunks instead of treating their animal section as corruption.
+
 The pure model operates on copied snapshots in stable coordinate order. Each day
 applies logistic births, predation of unrepresented prey by unrepresented wolves,
 then simultaneous migration of excess animals into cardinal neighbours. Randomness
@@ -31,3 +39,4 @@ Existing unknown rule bytes stay intact.
 Animals appear on already loaded terrain, outside every living participant's view,
 at least 32 blocks away, with collision-safe footprints and existing local/global
 caps. Their bodies travel through ordinary `S_MOBS`; there is no protocol change.
+The integrated series uses protocol 12; all peers require the same build.

@@ -18,6 +18,8 @@ import java.util.List;
 public final class PreviewContext implements WindowContext {
 
     public final Inventory inv;
+    public final com.mineclone.world.Equipment eq=new com.mineclone.world.Equipment();
+    @Override public com.mineclone.world.Equipment equipment(){return eq;}
     public final List<ItemStack> thrown = new ArrayList<>();
     public final List<String> toasts = new ArrayList<>();
     public GameMode mode = GameMode.SURVIVAL;

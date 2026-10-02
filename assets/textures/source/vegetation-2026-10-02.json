@@ -1,0 +1,7 @@
+{
+  "provider": "OpenAI image_gen",
+  "generatedAt": "2026-10-02",
+  "prompt": "Native crisp pixel-art sprite sheet for a classic voxel survival game. EXACTLY three equal square cells in one horizontal row. Each cell represents 32x32 logical pixels. Transparent background, nearest-neighbor pixel art, no smooth antialiasing, no text, no labels, no shadows. Cell 1: tall grassy tuft with many slim upright slightly bending bright and dark green blades emerging from the bottom center; cell 2: one small yellow dandelion flower on a thin green stem with two leaves; cell 3: one small red poppy flower on a thin green stem with two leaves. Flat front view for crossed voxel plant billboards. The plants touch the bottom transparent margin, all silhouettes stay within their own cell, at least one logical transparent pixel along every edge. Grass has a light green upper half and dark green base. Flowers simple readable six-pixel blossoms, distinct green stems. Equal cell boundaries, no additional plants or decoration.",
+  "inspection": "Grass tuft and two flower silhouettes inspected; native32 centre-sampled hard-alpha importer; original source retained.",
+  "sha256": "24f25200d9fc2cac7f1afac0d80610bbe8a37cfec564b7646c90512e14468ce3"
+}

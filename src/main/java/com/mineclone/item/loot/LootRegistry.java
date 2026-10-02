@@ -70,7 +70,11 @@ public final class LootRegistry {
         LootTable table = blocks.get(block);
         if (table != null) return table.roll(context);
         Item self = items.forBlock(block);
-        return self == null ? List.of() : List.of(new ItemStack(self, 1));
+        return self == null ? List.of() : List.of(new ItemStack(self, com.mineclone.world.shape.Shapes.of(block)==com.mineclone.world.shape.Shapes.SLAB && (context.blockMeta()&2)!=0 ? 2 : 1));
+    }
+    public List<ItemStack> explosionDrops(BlockType block,LootContext context){
+        var table=blocks.get(block);if(table!=null)return table.roll(context);
+        var self=items.forBlock(block);return self==null?List.of():List.of(new ItemStack(self,1));
     }
     public Set<Item> blockSources(BlockType block, LootContext context) {
         if (context.mode() == GameMode.CREATIVE || !canHarvest(block, context.tool())) return Set.of();
@@ -91,5 +95,31 @@ public final class LootRegistry {
         LootTable resolved = require(table);
         if (!resolved.id().path().startsWith("chests/")) throw new IllegalArgumentException("not a chest loot table " + table);
         return resolved.roll(LootContext.chest(seed, x, y, z));
+    }
+
+    /** Fills empty generated slots atomically, merging equal stacks and scattering them deterministically. */
+    public void fillChest(ItemStack[] slots, String table, long seed, int x, int y, int z) {
+        Objects.requireNonNull(slots, "slots");
+        for (ItemStack slot : slots)
+            if (slot != null) throw new IllegalArgumentException("generated chest must be empty");
+        ItemStack[] filled = new ItemStack[slots.length];
+        for (ItemStack drop : chestDrops(table, seed, x, y, z)) {
+            int remaining = drop.count;
+            for (ItemStack stack : filled)
+                if (stack != null && stack.stacksWith(drop)) remaining = stack.addUpTo(remaining);
+            for (int i = 0; i < filled.length && remaining > 0; i++)
+                if (filled[i] == null) {
+                    filled[i] = drop.copy();
+                    filled[i].count = Math.min(remaining, drop.maxStack());
+                    remaining -= filled[i].count;
+                }
+            if (remaining > 0) throw new IllegalArgumentException("chest loot exceeds slot capacity: " + table);
+        }
+        var random = LootContext.chest(seed ^ 0x534c4f5453485546L, x, y, z).randomFor(ResourceId.of(table));
+        for (int i = filled.length - 1; i > 0; i--) {
+            int j = random.nextInt(i + 1);
+            ItemStack tmp = filled[i]; filled[i] = filled[j]; filled[j] = tmp;
+        }
+        System.arraycopy(filled, 0, slots, 0, slots.length);
     }
 }

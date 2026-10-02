@@ -4,7 +4,22 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 
 ## [Unreleased]
 
+### Added
+- Seven construction forms: lower/upper/double slabs, fences, gates, ladders and trapdoors with shared collision, meshing, interaction and recipes.
+- Six hoes, wet/dry farmland, three crops with scheduled growth and harvest loot, three growing saplings, biome vegetation and grass seeds; farms work on LAN and dedicated servers.
+- Sixteen craftable armor pieces, four equipment slots and offhand, F hand swap (creative flight defaults to G), armor mitigation/wear, first/third-person armor and matching shadows.
+- Action-based exhaustion and saturation, air and drowning, typed environmental hazards, persistent status effects and held-input eating with food effects.
+- Four difficulty levels and world rules in creation/pause menus, host command permissions, typed death causes and conserved ten-minute death drops with personal bed respawn.
+- Persistent finite livestock, stable long entity IDs, feeding/tempting/breeding, growing baby models and data-driven biome spawn/loot tables.
+- Protocol 12: host-executed personal equipment menus, melee/bow intents, feeding/effects/rules/death/bed/advancement events. All peers need the same protocol.
+- Armor, air, effect timers, fire and damage direction share one survival HUD draw layer; native previews and Linux test compilation helper cover the new systems.
+
+### Validation notes
+- Original V1 terrain goldens remain unchanged. Existing worlds keep their recorded generation flags.
+- Software-GL eight-player armor overhead is +0.1653 ms after instancing; the +0.1 ms target and hardware milestone baselines remain open. Functional native LAN/server checks pass.
+
 ### Fixed
+- Population reservations remain correct for distant saved herds, newborn animals and saving just before a death tick. Both earlier animal save layouts import with breeding state and opaque tails intact; new chunks require reader 8 so older builds preserve them safely.
 - Bodies clipped into a room wall by crowd pressure or a changed block recover into nearby free space instead of remaining embedded. Mob collisions no longer mistake an old side overlap for landing on top of a wall and launch the mob through a roof; a fully sealed body stays below the roof until space is opened.
 - Rain is one steady sound. It used to loop a single two-second recording that fades in and out, so the rain dipped by about 30 dB and restarted the same pattern every two seconds; now all eight recordings are stitched into one seamless 12-second loop with crossfades.
 - Storm wind no longer dies away every few seconds. It looped one gust that rises out of silence and falls back into it, so a third of every turn was a lull; now all four gusts are stitched into one 22-second stereo loop that keeps its swells.
@@ -33,6 +48,10 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 - Opt-in finite wildlife populations for seven animal species in 256×256 regions (`/ecology on`). Births, wolves, habitat and migration change their numbers each game day; hunting reduces them once, and materialization consumes existing animals. Distant herds park in saved chunk records and return with the same identities. Populations and reservations survive saves and catch up for at most 60 days. Owners get `/ecology info`, `/ecology advance 1–60`, and a separate F3+G page; guests cannot run these commands.
 - Repeated walks by players and animals now reveal irregular soil-wear trails in five stages while grass remains grass. Used paths widen and join; abandoned paths fade over quiet days. Snow is physically pressed and later covers the route again. Trails survive leaving and reopening the world and are simulated by the host or dedicated server for all players.
 - Animals stay where they were. Cows, pigs, sheep, chickens, rabbits, wolves and birds are saved with the chunk they stand in and come back when it loads; they no longer vanish once you are 72 blocks away. Hostile mobs still come and go. Every mob keeps one world id for life, so a guest keeps seeing the same cow after the host walks away and back, and a mob written twice by a crash comes back once.
+- Old worlds offer an explicit generator upgrade before opening from the world list, Continue or hosting menus; dedicated servers opt in with `upgrade-worldgen=true` (default false). An original-byte backup and durable old-terrain pins precede the new level settings, including saved guest positions and personal spawns. Failed upgrades preserve the old generator and report an error.
+- New worlds use generator V2 with copper ore at y20–70. Copper ore smelts into copper ingots, making all four existing copper tool recipes obtainable in survival. Existing worlds retain their stored generator and the V1 terrain hashes.
+- Structure pieces can place deterministically filled loot chests, clipped to their own chunk. Player changes, empty contents and broken chests survive saving and loading; the first natural structures using this path arrive with GEN-05.
+- Imported 16 armor icons, six hoe icons and twelve crop-stage textures into the runtime atlas; their source sheets remain unchanged. These are prepared assets for upcoming equipment and farming gameplay. The texture catalog now shows the actual runtime PNGs.
 - Blocks can ask to be woken after a set number of world ticks (scheduled ticks). The ticks are saved with their chunk and survive unloading; a world left closed catches up for at most two world days. No block uses them yet — crops and saplings will.
 - One player record (`PlayerRecord`) for the host's level, guests' `players/<uuid>.dat` (now version 2; version 1 files migrate behind a backup) and the network adapter, with sections for vitals, equipment, effects, personal spawn, advancements and recipes.
 - Block, mob and chest drops load from validated JSON loot tables with the M0 drops preserved; a reachability check reports recipes whose result cannot be obtained in survival.

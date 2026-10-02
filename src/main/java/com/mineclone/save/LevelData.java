@@ -8,6 +8,7 @@ import com.mineclone.world.ItemStack;
 public final class LevelData {
     /** Canonical player checkpoint; compatibility fields below are detached views. */
     public final PlayerRecord player;
+    public final com.mineclone.world.WorldRules rules;
     public final String name;
     public final long seed;
     public final double px, py, pz;
@@ -120,6 +121,7 @@ public final class LevelData {
                      long lastPlayed, float health, float hunger, ItemStack[] pending,
                      java.util.Map<String, byte[]> extraSections, PlayerRecord record) {
         this.pending = pending == null ? new ItemStack[0] : PlayerRecord.copy(pending);
+        this.rules=com.mineclone.world.WorldRules.decode(extraSections==null?null:extraSections.get(com.mineclone.world.WorldRules.SAVE_SECTION));
         this.extraSections = extraSections == null || extraSections.isEmpty()
                 ? java.util.Map.of()
                 : PlayerRecord.copySections(extraSections);

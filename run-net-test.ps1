@@ -8,12 +8,14 @@
 # Usage: .\run-net-test.ps1            - over a local TCP socket
 #        .\run-net-test.ps1 -Photon    - over Photon Cloud, the real thing
 #        .\run-net-test.ps1 -LivingWorld - enabled ecology and real guest refusal
+#        .\run-net-test.ps1 -Farm       - farm actions and growth through the host
+#        .\run-net-test.ps1 -Farm -LivingWorld - both scenarios together
 #
 # Photon costs two of the free concurrent slots and needs the internet, so it
 # is opt-in; the socket run is the one that gates every change.
 # Exits non-zero if either side failed.
 
-param([switch]$Photon, [switch]$LivingWorld)
+param([switch]$Photon, [switch]$LivingWorld, [switch]$Farm)
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -49,6 +51,7 @@ function Start-Side {
         "-Dmineclone.autopilot=$dir\shots",
         "-Dmineclone.savesDir=$dir\saves",
         "-Dmineclone.autopilot.net=$mode",
+        "-Dmineclone.autopilot.netScenario=$(if ($Farm) { 'farm' } else { '' })",
         "-Dmineclone.autopilot.netPort=$port",
         "-Dmineclone.autopilot.netVia=$via",
         "-Dmineclone.autopilot.netRoom=$room"
@@ -122,8 +125,9 @@ if ($LivingWorld) {
             $code = 1
         }
     }
-    foreach ($marker in @('living world guest command refused', 'all mob species replicated with valid poses',
-            'all checks passed')) {
+    $guestMarkers = @('living world guest command refused', 'all checks passed')
+    if (-not $Farm) { $guestMarkers += 'all mob species replicated with valid poses' }
+    foreach ($marker in $guestMarkers) {
         if ($guestLog -notmatch [regex]::Escape($marker)) {
             Write-Host "net test: missing guest ecology proof: $marker"
             $code = 1

@@ -42,6 +42,7 @@ public final class RemotePlayer implements com.mineclone.world.entity.Hittable {
     public int gameMode;
     public int flags;
     public com.mineclone.world.ItemStack heldItem;
+    public final com.mineclone.world.Equipment equipment=new com.mineclone.world.Equipment();
     private long equipmentSequence = -1;
 
     /** Где рисовать. */
@@ -51,6 +52,9 @@ public final class RemotePlayer implements com.mineclone.world.entity.Hittable {
     private final Vector3f to = new Vector3f();
     private float lerp = 1f;
     private boolean placed;
+    private float farmFall;
+    public float consumeFarmLanding(){float v=farmLanding;farmLanding=0;return v;}
+    private float farmLanding;
 
     public float yaw;
     public float pitch;
@@ -114,6 +118,12 @@ public final class RemotePlayer implements com.mineclone.world.entity.Hittable {
             yawFrom = yaw;
             pitchFrom = pitch;
         }
+        if(teleport){farmFall=0;farmLanding=0;}
+        if(placed&&!teleport){
+            if((newFlags&(F_IN_WATER|F_FLYING))!=0)farmFall=0;
+            else if(y<to.y)farmFall+=to.y-y;
+            if((newFlags&F_ON_GROUND)!=0){if((flags&F_ON_GROUND)==0)farmLanding=farmFall;farmFall=0;}
+        }
         to.set(x, y, z);
         yawTo = newYaw;
         pitchTo = newPitch;
@@ -122,12 +132,20 @@ public final class RemotePlayer implements com.mineclone.world.entity.Hittable {
         silence = 0f;
     }
 
-    public void acceptEquipment(long sequence, String id) {
-        if (sequence <= equipmentSequence || id == null || id.length() > 128) return;
-        var item = id.isEmpty() ? null : com.mineclone.item.Items.get().get(id);
-        if (!id.isEmpty() && item == null) return;
-        equipmentSequence = sequence;
-        heldItem = item == null ? null : new com.mineclone.world.ItemStack(item, 1);
+    public void acceptEquipment(long sequence,String id){acceptEquipment(sequence,id,new String[]{"","","","",""});}
+    public void acceptEquipment(long sequence,String id,String[] equipped){
+        if(sequence<=equipmentSequence||equipped.length!=5)return;
+        String[] all=new String[6];all[0]=id;System.arraycopy(equipped,0,all,1,5);
+        var stacks=new com.mineclone.world.ItemStack[6];
+        for(int i=0;i<6;i++){
+            if(all[i]==null||all[i].length()>128)return;
+            var item=all[i].isEmpty()?null:com.mineclone.item.Items.get().get(all[i]);
+            if(!all[i].isEmpty()&&item==null)return;
+            stacks[i]=item==null?null:new com.mineclone.world.ItemStack(item,1);
+            if(i>1&&!equipment.canPlace(i-2,stacks[i]))return;
+        }
+        equipmentSequence=sequence;heldItem=stacks[0];
+        var a=new com.mineclone.world.ItemStack[5];a[4]=stacks[1];System.arraycopy(stacks,2,a,0,4);equipment.restore(a);
     }
 
     public void startSwing() {

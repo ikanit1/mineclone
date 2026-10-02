@@ -88,5 +88,124 @@
       "item": "mineclone:bedroll",
       "count": 1
     }
+  },
+  "plank_slab": {
+    "type": "shaped",
+    "order": 60,
+    "group": "building",
+    "pattern": [
+      "AAA"
+    ],
+    "key": {
+      "A": "#mineclone:planks"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:plank_slab",
+      "count": 6
+    }
+  },
+  "cobble_slab": {
+    "type": "shaped",
+    "order": 61,
+    "group": "building",
+    "pattern": [
+      "AAA"
+    ],
+    "key": {
+      "A": "mineclone:cobblestone"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:cobble_slab",
+      "count": 6
+    }
+  },
+  "stone_slab": {
+    "type": "shaped",
+    "order": 62,
+    "group": "building",
+    "pattern": [
+      "AAA"
+    ],
+    "key": {
+      "A": "mineclone:stone"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:stone_slab",
+      "count": 6
+    }
+  },
+  "fence": {
+    "type": "shaped",
+    "order": 63,
+    "group": "building",
+    "pattern": [
+      "ABA",
+      "ABA"
+    ],
+    "key": {
+      "A": "#mineclone:planks",
+      "B": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:fence",
+      "count": 3
+    }
+  },
+  "fence_gate": {
+    "type": "shaped",
+    "order": 64,
+    "group": "building",
+    "pattern": [
+      "ABA",
+      "ABA"
+    ],
+    "key": {
+      "A": "mineclone:stick",
+      "B": "#mineclone:planks"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:fence_gate",
+      "count": 1
+    }
+  },
+  "ladder": {
+    "type": "shaped",
+    "order": 65,
+    "group": "building",
+    "pattern": [
+      "A.A",
+      "AAA",
+      "A.A"
+    ],
+    "key": {
+      "A": "mineclone:stick"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:ladder",
+      "count": 3
+    }
+  },
+  "trapdoor": {
+    "type": "shaped",
+    "order": 66,
+    "group": "building",
+    "pattern": [
+      "AAA",
+      "AAA"
+    ],
+    "key": {
+      "A": "#mineclone:planks"
+    },
+    "mirrored": false,
+    "result": {
+      "item": "mineclone:trapdoor",
+      "count": 2
+    }
   }
 }

@@ -84,6 +84,7 @@ public final class Multiplayer implements NetTransport.Listener {
     private static final int CHAT_HISTORY = 48;
     /** Вид контейнера в пакете. */
     public static final int CONTAINER_CHEST = 0;
+    public static final int CONTAINER_INVENTORY = 2;
     public static final int CONTAINER_FURNACE = 1;
 
     private final NetContext ctx;
@@ -144,6 +145,7 @@ public final class Multiplayer implements NetTransport.Listener {
     private boolean applyingRemote;
     /** A guest's uses, numbered for the host's log and a later reply (BLK-03). */
     private int useSequence;
+    private final Map<Integer,Integer> usedSequences=new HashMap<>();
     /**
      * How far from a guest's eye a block it uses may be: the reach of a hand
      * and a margin for the snapshot the host last accepted being one interval old.
@@ -152,6 +154,7 @@ public final class Multiplayer implements NetTransport.Listener {
     private boolean swingPending;
     private float infoTimer;
     private float lastSentHealth = -1f;
+    private int lastSentMode=-1;
 
     // ---- участник: какие чанки уже спрошены ----
     private final Set<Long> requestedChunks = new HashSet<>();
@@ -167,11 +170,13 @@ public final class Multiplayer implements NetTransport.Listener {
     private final ConcurrentLinkedQueue<Runnable> deltaResults = new ConcurrentLinkedQueue<>();
 
     // ---- участник: существа по номеру ----
-    private final Map<Integer, Mob> shownMobs = new HashMap<>();
-    private final Map<Integer, RemoteMob> mobPoses = new HashMap<>();
+    private final Map<Long, Mob> shownMobs = new HashMap<>();
+    private final Map<Long, RemoteMob> mobPoses = new HashMap<>();
     private long mobSequence, lastMobSequence = -1;
     private long equipmentSequence;
     private String lastHeldId;
+    private final Map<Integer,Double> lastMelee=new HashMap<>(),lastShot=new HashMap<>();
+    private double combatTime;
     private final Map<Integer, ItemEntity> shownItems = new HashMap<>();
     private final Random visualRandom = new Random(0x5EED);
 
@@ -226,6 +231,7 @@ public final class Multiplayer implements NetTransport.Listener {
     void rejectPlayer(int actor,String reason) { channel.packet(NetProto.S_REJECT,true,actor).str(reason); }
     public boolean inventoryBusy() { return inventorySync.busy(); }
     public void savePlayerNow() { inventorySync.saveNow();flushInventory(); }
+    public void openInventory(){inventorySync.openInventory();}
     public void bindContainer(com.mineclone.ui.container.ContainerMenu menu) { inventorySync.bind(menu); }
     public boolean closeContainer() { return inventorySync.close(); }
     public boolean requestDrop(ItemEntity item) { return inventorySync.drop(item); }
@@ -287,7 +293,7 @@ public final class Multiplayer implements NetTransport.Listener {
         joined = false;
         worldReady = false;
         hostActor = 0;
-        players.clear();
+        players.clear();lastMelee.clear();lastShot.clear();usedSequences.clear();
         requestedChunks.clear();
         chunkQueue.clear();
         itemIds.clear();
@@ -440,6 +446,7 @@ public final class Multiplayer implements NetTransport.Listener {
 
     /** Один кадр сессии. Зовётся из игрового потока. */
     public void update(float dt) {
+        combatTime+=Math.max(0,dt);
         updateSession(dt);
         syncParticipants();
         if (statsDump != null)
@@ -510,7 +517,7 @@ public final class Multiplayer implements NetTransport.Listener {
         PacketBuf b = channel.packet(NetProto.X_PLAYER_STATE, false, NetChannel.ALL);
         b.f32(p.x).f32(p.y).f32(p.z).f32(ctx.playerYaw()).f32(ctx.playerPitch())
                 .u8(ctx.playerFlags());
-        String heldId = heldItemId();
+        String heldId = equipmentSignature();
         if (!heldId.equals(lastHeldId)) {
             sendEquipment(NetChannel.ALL);
             lastHeldId = heldId;
@@ -523,9 +530,9 @@ public final class Multiplayer implements NetTransport.Listener {
         // потерянный пакет с ними оставил бы чужую полоску здоровья враньём.
         infoTimer += 1f / NetProto.TICK_RATE;
         float health = ctx.playerHealth();
-        if (infoTimer >= 2f || Math.abs(health - lastSentHealth) > 0.01f) {
+        if (infoTimer >= 2f || ctx.gameMode()!=lastSentMode || Math.abs(health - lastSentHealth) > 0.01f) {
             infoTimer = 0f;
-            lastSentHealth = health;
+            lastSentHealth = health;lastSentMode=ctx.gameMode();
             sendInfo(NetChannel.ALL);
         }
     }
@@ -535,9 +542,11 @@ public final class Multiplayer implements NetTransport.Listener {
         return held == null || held.count <= 0 ? "" : held.item.id.toString();
     }
 
+    private String equipmentSignature(){var a=ctx.playerEquipment().snapshot();StringBuilder b=new StringBuilder(heldItemId());for(var stack:a)b.append('|').append(stack==null?"":stack.item.id);return b.toString();}
     private void sendEquipment(int target) {
-        channel.packet(NetProto.X_PLAYER_EQUIPMENT, true, target)
-                .i64(++equipmentSequence).str(heldItemId());
+        var b=channel.packet(NetProto.X_PLAYER_EQUIPMENT,true,target).i64(++equipmentSequence).str(heldItemId());
+        var a=ctx.playerEquipment();int[] order={4,0,1,2,3};
+        for(int i:order){var stack=a.get(i);b.str(stack==null?"":stack.item.id.toString());}
     }
 
     private void sendInfo(int target) {
@@ -620,11 +629,18 @@ public final class Multiplayer implements NetTransport.Listener {
      * @param nx normal of the face clicked
      * @param hx where in the block the click landed, 0..1 on each axis
      */
-    public void requestUse(int x, int y, int z, int nx, int ny, int nz, float hx, float hy, float hz) {
+    public void requestDeathDrop(){inventorySync.death();flushInventory();}
+    public void requestPersonalSpawn(int x,int y,int z){if(isClient())channel.packet(NetProto.C_PERSONAL_SPAWN,true,hostActor).blockPos(x,y,z);}
+    public void announceLife(boolean alive,com.mineclone.world.damage.DamageSource source){if(!joined||channel==null)return;channel.packet(NetProto.X_PLAYER_LIFE,true,NetChannel.ALL).bool(alive).u8(source==null?14:source.type().id()).str(source==null||source.attackerType()==null?"":source.attackerType().name());}
+    public void beginItemUse(){inventorySync.beginItemUse();flushInventory();}
+
+    public void requestUse(int x,int y,int z,int nx,int ny,int nz,float hx,float hy,float hz){requestUse(x,y,z,nx,ny,nz,hx,hy,hz,false);}
+    public void requestFarm(int x,int y,int z,int nx,int ny,int nz,float hx,float hy,float hz){requestUse(x,y,z,nx,ny,nz,hx,hy,hz,true);}
+    private void requestUse(int x, int y, int z, int nx, int ny, int nz, float hx, float hy, float hz,boolean itemUse) {
         if (role != Role.CLIENT || !joined || channel == null)
             return;
         channel.packet(NetProto.C_USE_BLOCK, true, hostActor)
-                .blockPos(x, y, z).u8(faceCode(nx, ny, nz))
+                .blockPos(x, y, z).u8(faceCode(nx, ny, nz)|(itemUse?128:0))
                 .u8(unit(hx)).u8(unit(hy)).u8(unit(hz)).varInt(++useSequence);
     }
 
@@ -649,12 +665,21 @@ public final class Multiplayer implements NetTransport.Listener {
      * the guest's prediction included. A guest farther than it can reach, or
      * clicking a block with nothing to use, changes nothing.
      */
+    private final Map<Integer,Long> mobUseSequences=new HashMap<>();
+    private long mobUseSequence;
+    public void requestFeed(Mob mob,String itemId){if(!isClient()||inventoryBusy()||channel==null)return;beginItemUse();channel.packet(NetProto.C_USE_MOB,true,hostActor).varLong(mob.id).str(itemId).i64(++mobUseSequence);}
+    private void onUseMob(int from,PacketBuf in){long id=in.readVarLong();String item=in.readStr();long sequence=in.readI64();
+        if(in.truncated()||!isHost()||sequence<=mobUseSequences.getOrDefault(from,0L))return;mobUseSequences.put(from,sequence);var player=playerOf(from);boolean ok=false;
+        if(player!=null&&player.placed()&&!player.isDead())for(var m:ctx.mobs())if(m.id==id&&player.acceptedPosition().distance(m.position)<USE_REACH){ok=inventorySync.feed(from,m,item);break;}
+        if(!ok)inventorySync.ackItemUse(from);channel.packet(NetProto.S_USE_ACK,true,from).i64(sequence).bool(ok);
+    }
     private void onUseBlock(int from, PacketBuf in) {
         int[] at = in.readBlockPos();
-        int face = in.readU8();
+        int encodedFace = in.readU8(),face=encodedFace&127;
+        boolean itemUse=(encodedFace&128)!=0;
         in.readU8(); in.readU8(); in.readU8();
-        in.readVarInt();
-        if (in.truncated() || role != Role.HOST || face > 6)
+        int sequence=in.readVarInt();
+        if (in.truncated() || role != Role.HOST || face > 6 || sequence<=usedSequences.getOrDefault(from,0))
             return;
         World world = ctx.world();
         RemotePlayer guest = players.get(from);
@@ -663,9 +688,10 @@ public final class Multiplayer implements NetTransport.Listener {
         org.joml.Vector3fc p = guest.acceptedPosition();
         float dx = at[0] + 0.5f - p.x(), dy = at[1] + 0.5f - (p.y() + Participant.EYE_HEIGHT),
                 dz = at[2] + 0.5f - p.z();
-        if (dx * dx + dy * dy + dz * dz > USE_REACH * USE_REACH)
-            return;
+        usedSequences.put(from,sequence);
+        if (dx * dx + dy * dy + dz * dz > USE_REACH * USE_REACH){if(itemUse)inventorySync.ackItemUse(from);return;}
         BlockType type = world.getBlock(at[0], at[1], at[2]);
+        if(itemUse){inventorySync.farm(from,at[0],at[1],at[2],face==3?1:face==4?-1:0);return;}
         var behavior = com.mineclone.world.behavior.Behaviors.of(type);
         if (behavior.interactive())
             behavior.use(world, at[0], at[1], at[2], world.getBlockMeta(at[0], at[1], at[2]),
@@ -720,14 +746,10 @@ public final class Multiplayer implements NetTransport.Listener {
     }
 
     /** Участник ударил моба: урон и отброс считает хозяин. */
-    public void requestMobHit(Mob m, float damage, float knockback, float fromX, float fromZ) {
-        if (role != Role.CLIENT || !joined)
-            return;
-        Integer id = idOf(shownMobs, m);
-        if (id == null)
-            return;
-        channel.packet(NetProto.C_MOB_HIT, true, hostActor)
-                .varInt(id).f32(damage).f32(knockback).f32(fromX).f32(fromZ);
+    public void requestMobHit(Mob m,com.mineclone.world.entity.LimbDamage.Limb limb,float readiness,boolean crit,boolean sprint) {
+        if(role!=Role.CLIENT||!joined)return;
+        Long id=idOf(shownMobs,m);if(id==null)return;
+        channel.packet(NetProto.C_MOB_HIT,true,hostActor).varLong(id).u8(limb.ordinal()).u8((crit?1:0)|(sprint?2:0)).u8(Math.round(Math.max(0,Math.min(1,readiness))*255));
     }
 
     /** Удалённый игрок по номеру, либо null: нужен снаряду, чтобы не бить стрелка. */
@@ -736,8 +758,8 @@ public final class Multiplayer implements NetTransport.Listener {
     }
 
     /** Номер существа в карте показываемых; поиск по ссылке, а не по равенству. */
-    private static <T> Integer idOf(Map<Integer, T> shown, T value) {
-        for (Map.Entry<Integer, T> e : shown.entrySet())
+    private static <K,T> K idOf(Map<K, T> shown, T value) {
+        for (Map.Entry<K, T> e : shown.entrySet())
             if (e.getValue() == value)
                 return e.getKey();
         return null;
@@ -815,7 +837,7 @@ public final class Multiplayer implements NetTransport.Listener {
         channel = null;
         // Чужие игроки приедут снова: их положение за время обрыва устарело,
         // а фигуры, застывшие там, где их застал обрыв, — это враньё.
-        players.clear();
+        players.clear();usedSequences.clear();
         // Дельты чанков спросим заново: пока нас не было, там могли копать.
         requestedChunks.clear();
         chunkQueue.clear();
@@ -920,7 +942,7 @@ public final class Multiplayer implements NetTransport.Listener {
 
     @Override
     public void onActorLeave(int actor) {
-        inventorySync.left(actor);
+        inventorySync.left(actor);usedSequences.remove(actor);mobUseSequences.remove(actor);lastMelee.remove(actor);lastShot.remove(actor);
         RemotePlayer gone = players.remove(actor);
         if (gone != null)
             addChat(gone.name.isEmpty() ? "Игрок вышел" : gone.name + " вышел");
@@ -975,13 +997,16 @@ public final class Multiplayer implements NetTransport.Listener {
                 float x = in.readF32(), y = in.readF32(), z = in.readF32();
                 float yaw = in.readF32(), pitch = in.readF32();
                 int flags = in.readU8();
-                if (!in.truncated())
-                    player(from).accept(x, y, z, yaw, pitch, flags);
+                if (!in.truncated()){
+                    RemotePlayer remote=player(from);remote.accept(x,y,z,yaw,pitch,flags);
+                    float fall=remote.consumeFarmLanding();
+                    if(role==Role.HOST&&ctx.world()!=null)com.mineclone.world.behavior.Farming.trample(ctx.world(),x,y,z,fall,false);
+                }
             }
             case NetProto.X_PLAYER_EQUIPMENT -> {
                 long sequence = in.readI64();
-                String id = in.readStr();
-                if (!in.truncated()) player(from).acceptEquipment(sequence, id);
+                String id = in.readStr();String[] equipped=new String[5];for(int i=0;i<5;i++)equipped[i]=in.readStr();
+                if (!in.truncated()) player(from).acceptEquipment(sequence,id,equipped);
             }
             case NetProto.X_PLAYER_INFO -> {
                 String name = in.readStr();
@@ -1002,7 +1027,7 @@ public final class Multiplayer implements NetTransport.Listener {
                 if (!in.truncated())
                     ctx.remoteBlockAction(from, at[0], at[1], at[2], (byte) id, broke);
             }
-            case NetProto.X_PLAYER_LIFE -> in.readU8();
+            case NetProto.X_PLAYER_LIFE -> {boolean alive=in.readBool();var type=com.mineclone.world.damage.DamageType.byId(in.readU8());String mob=in.readStr();if(!in.truncated()&&type!=null){if(isHost())inventorySync.life(from,alive);com.mineclone.world.entity.MobType killer=null;try{if(!mob.isEmpty())killer=com.mineclone.world.entity.MobType.valueOf(mob);}catch(IllegalArgumentException ignored){}var p=playerOf(from);ctx.chatLine((p==null?"Игрок":p.name)+(alive?" возродился":": "+com.mineclone.world.damage.DeathMessage.text(com.mineclone.world.damage.DamageSource.byMob(type,killer,0,0,0,0))));}}
             case NetProto.S_BLOCK_SET -> {
                 int[] at = in.readBlockPos();
                 int id = in.readU8();
@@ -1021,6 +1046,8 @@ public final class Multiplayer implements NetTransport.Listener {
                     // разошлёт её всем — включая того, кто просил.
                     ctx.applyRemoteBlock(at[0], at[1], at[2], (byte) id, (byte) meta, broke);
             }
+            case NetProto.C_USE_MOB -> onUseMob(from,in);
+            case NetProto.S_USE_ACK -> {in.readI64();in.readBool();}
             case NetProto.C_USE_BLOCK -> onUseBlock(from, in);
             case NetProto.C_CHUNK_REQUEST -> {
                 int cx = in.readI32(), cz = in.readI32();
@@ -1036,14 +1063,24 @@ public final class Multiplayer implements NetTransport.Listener {
             case NetProto.S_MOBS -> onMobs(from, in);
             case NetProto.S_ITEMS -> onItems(from, in);
             case NetProto.S_PROJECTILES -> onProjectiles(from, in);
+            case NetProto.S_ADVANCEMENT -> {String id=in.readStr(),title=in.readStr();if(!in.truncated()&&isClient()&&from==hostActor&&id.length()<128&&title.length()<256)ctx.advancementFromHost(id,title);}
+            case NetProto.S_EFFECT -> {
+                String name=in.readStr();int amplifier=in.readU8();float seconds=in.readF32();
+                if(!in.truncated()&&role==Role.CLIENT&&from==hostActor&&Float.isFinite(seconds)&&seconds>0&&seconds<=86400)
+                    try{ctx.effectFromHost(com.mineclone.world.effect.StatusEffect.valueOf(name),amplifier,seconds);}catch(IllegalArgumentException future){}
+            }
+            case NetProto.S_EVENT -> {
+                int kind=in.readU8();float x=in.readF32(),y=in.readF32(),z=in.readF32();
+                if(!in.truncated()&&role==Role.CLIENT&&from==hostActor&&kind==0&&Float.isFinite(x+y+z))ctx.explosionFromHost(x,y,z);
+            }
+            case NetProto.S_RULES -> {
+                byte[] body=in.readBytes();int mode=in.readU8();if(!in.truncated()&&role==Role.CLIENT&&from==hostActor)try{{ctx.rulesFromHost(com.mineclone.world.WorldRules.decode(body));if(mode>0&&mode<=com.mineclone.world.GameMode.values().length)ctx.modeFromHost(com.mineclone.world.GameMode.values()[mode-1]);}}catch(IllegalArgumentException invalid){}
+            }
             case NetProto.C_SHOOT -> onShoot(from, in);
             case NetProto.S_PLAYER_HURT -> onPlayerHurt(from, in);
             case NetProto.C_MOB_HIT -> {
-                int id = in.readVarInt();
-                float damage = in.readF32(), knockback = in.readF32();
-                float fx = in.readF32(), fz = in.readF32();
-                if (!in.truncated() && role == Role.HOST)
-                    hostMobHit(from, id, damage, knockback, fx, fz);
+                long id=in.readVarLong();int limb=in.readU8(),flags=in.readU8(),ready=in.readU8();
+                if(!in.truncated()&&role==Role.HOST)hostMobHit(from,id,limb,flags,ready);
             }
             case NetProto.C_ITEM_PICK -> {
                 // Retired in v7: pickup must checkpoint both ownership changes together.
@@ -1110,7 +1147,7 @@ public final class Multiplayer implements NetTransport.Listener {
                 ? com.mineclone.world.gen.WorldGenSettings.LEGACY : policy.settings();
         new GenMap(policy == null ? Map.of() : policy.pinned()).write(channel.packet(NetProto.S_GEN_MAP, true, from));
         Welcome.of(ctx.seed(), ctx.worldName(), ctx.preciseTime(), ctx.worldTicks(), ctx.gameMode(),
-                spawn.x, spawn.y, spawn.z, generator).write(channel.packet(NetProto.S_WELCOME, true, from));
+                spawn.x, spawn.y, spawn.z, generator).rules(world==null?com.mineclone.world.WorldRules.LEGACY:world.rules).write(channel.packet(NetProto.S_WELCOME, true, from));
         sendInfo(from);
         inventorySync.hello(from,identity);
         channel.flush();
@@ -1161,6 +1198,7 @@ public final class Multiplayer implements NetTransport.Listener {
             // Тот же мир, в который мы и так стоим: строить его заново значит
             // выкинуть игрока на экран загрузки из-за секундного обрыва.
             // Время суток всё равно берём хозяйское — за обрыв оно ушло.
+            ctx.rulesFromHost(welcome.worldRules());
             ctx.setTimeOfDay(time);
             requestLoadedChunks();
             return;
@@ -1168,6 +1206,7 @@ public final class Multiplayer implements NetTransport.Listener {
         var policy = generator.policy(com.mineclone.world.gen.ChunkLedger.of(pinned == null ? Map.of() : pinned.pinned()));
         ctx.startRemoteWorld(new RemoteWorld(seed, name, welcome.gameTime(), welcome.worldTicks(), welcome.mode(),
                 welcome.spawnX(), welcome.spawnY(), welcome.spawnZ(), policy));
+        ctx.rulesFromHost(welcome.worldRules());
         addChat("Вошли в мир «" + name + "»");
     }
 
@@ -1348,18 +1387,15 @@ public final class Multiplayer implements NetTransport.Listener {
         if (mobs == null) return;
         ctx.assignMobIds();
         int sendable = 0;
-        for (Mob m : mobs)
-            if (wireId(m) > 0) sendable++;
+        for (Mob m : mobs) {
+            if (m.id == 0) m.id = ctx.nextMobId();
+            if (m.id > 0) sendable++;
+        }
         PacketBuf b = channel.packet(NetProto.S_MOBS, false, NetChannel.ALL);
         b.i64(++mobSequence).varInt(sendable);
         for (Mob m : mobs)
-            if (wireId(m) > 0)
-                MobSnapshot.capture(wireId(m), m).write(b);
-    }
-
-    /** A mob's world id as {@code S_MOBS} carries it; 0 when it has none yet (MOB-02). */
-    private static int wireId(Mob m) {
-        return m.id > 0 && m.id <= Integer.MAX_VALUE ? (int) m.id : 0;
+            if (m.id > 0)
+                MobSnapshot.capture(m.id, m).write(b);
     }
 
     private void onMobs(int from, PacketBuf in) {
@@ -1371,7 +1407,7 @@ public final class Multiplayer implements NetTransport.Listener {
             return;
         }
         List<MobSnapshot> snapshots = new ArrayList<>(count);
-        Set<Integer> seen = new HashSet<>();
+        Set<Long> seen = new HashSet<>();
         boolean valid = true;
         for (int i = 0; i < count; i++) {
             MobSnapshot s = MobSnapshot.read(in);
@@ -1386,7 +1422,7 @@ public final class Multiplayer implements NetTransport.Listener {
             Mob m = shownMobs.get(s.id());
             if (m == null || m.type.ordinal() != s.type()) {
                 m = new Mob(MobType.values()[s.type()], s.x(), s.y(), s.z(), visualRandom);
-                shownMobs.put(s.id(), m);
+                m.id=s.id();shownMobs.put(s.id(), m);
                 mobPoses.put(s.id(), new RemoteMob(m));
             }
             mobPoses.get(s.id()).accept(s);
@@ -1441,22 +1477,21 @@ public final class Multiplayer implements NetTransport.Listener {
     }
 
     /** Участник просит выстрелить: стреляет хозяин. */
-    public void requestShot(Projectile shot) {
-        if (role != Role.CLIENT || !joined)
-            return;
-        channel.packet(NetProto.C_SHOOT, true, hostActor)
-                .f32(shot.position.x).f32(shot.position.y).f32(shot.position.z)
-                .f32(shot.velocity.x).f32(shot.velocity.y).f32(shot.velocity.z)
-                .f32(shot.damage);
+    public void requestShot(Projectile shot,float draw) {
+        if(role!=Role.CLIENT||!joined)return;
+        var dir=new Vector3f(shot.heading);if(dir.lengthSquared()<.01f)return;dir.normalize();
+        channel.packet(NetProto.C_SHOOT,true,hostActor).f32(shot.position.x).f32(shot.position.y).f32(shot.position.z)
+            .f32(dir.x).f32(dir.y).f32(dir.z).u8(Math.round(Math.max(0,Math.min(1,draw))*255));
     }
-
-    private void onShoot(int from, PacketBuf in) {
-        float x = in.readF32(), y = in.readF32(), z = in.readF32();
-        float vx = in.readF32(), vy = in.readF32(), vz = in.readF32();
-        float damage = in.readF32();
-        if (role != Role.HOST || in.truncated())
-            return;
-        ctx.shootFor(from, x, y, z, vx, vy, vz, damage);
+    private void onShoot(int from,PacketBuf in){
+        float x=in.readF32(),y=in.readF32(),z=in.readF32(),dx=in.readF32(),dy=in.readF32(),dz=in.readF32();float draw=in.readU8()/255f;
+        if(role!=Role.HOST||in.truncated())return;
+        RemotePlayer p=playerOf(from);float len=dx*dx+dy*dy+dz*dz;
+        if(p==null||!p.placed()||p.heldItem==null||!com.mineclone.item.Bow.ITEM.equals(p.heldItem.item.id.path())
+           ||!Float.isFinite(x+y+z+len)||Math.abs(len-1f)>.05f||p.acceptedPosition().distance(x,y-1.62f,z)>2.5f
+           ||!com.mineclone.item.Bow.canRelease(draw)||combatTime-lastShot.getOrDefault(from,-100d)<.8f*draw)return;
+        lastShot.put(from,combatTime);float speed=com.mineclone.item.Bow.speed(draw);
+        ctx.shootFor(from,x,y,z,dx*speed,dy*speed,dz*speed,com.mineclone.item.Bow.damage(draw));
     }
 
     /**
@@ -1465,6 +1500,12 @@ public final class Multiplayer implements NetTransport.Listener {
      * Ровно этого пакета не хватало, чтобы мобы могли ранить гостя: урон
      * всегда считался у хозяина, а сказать о нём было нечем.
      */
+    public boolean sendGameMode(String name,com.mineclone.world.GameMode mode){if(role!=Role.HOST||ctx.world()==null)return false;for(var p:players.values())if(p.name.equals(name)){p.gameMode=mode.ordinal();channel.packet(NetProto.S_RULES,true,p.actor).bytes(ctx.world().rules.encode()).u8(mode.ordinal()+1);return true;}return false;}
+    public void award(int actor,String id,String title){if(isHost()&&actor>=0){inventorySync.award(actor,id);channel.packet(NetProto.S_ADVANCEMENT,true,actor).str(id).str(title);}}
+    public void sendEffect(int actor,com.mineclone.world.effect.StatusEffect effect,float seconds){if(role==Role.HOST){inventorySync.effect(actor,effect,seconds);channel.packet(NetProto.S_EFFECT,true,actor).str(effect.name()).u8(0).f32(seconds);}}
+    public void sendExplosion(float x,float y,float z){if(role==Role.HOST)channel.packet(NetProto.S_EVENT,true,NetChannel.ALL).u8(0).f32(x).f32(y).f32(z);}
+    public void sendRules(){if(role==Role.HOST&&ctx.world()!=null)channel.packet(NetProto.S_RULES,true,NetChannel.ALL).bytes(ctx.world().rules.encode()).u8(0);}
+
     public void hurtPlayer(int actor, com.mineclone.world.damage.DamageSource source, float damage) {
         if (role != Role.HOST || !(damage > 0f))
             return;
@@ -1527,23 +1568,30 @@ public final class Multiplayer implements NetTransport.Listener {
      * и поправляется следующим снимком: ждать ответа сервера, чтобы меч
      * зазвенел, значит превратить бой в переписку.
      */
-    private void hostMobHit(int from, int id, float damage, float knockback, float fromX, float fromZ) {
-        if (!(damage > 0f) || damage > 100f)
-            return;
-        // A guest's numbers are not trusted to be numbers: a hit from nowhere
-        // knocks nothing back, and a broken knockback is none.
-        float push = Float.isFinite(knockback) ? Math.max(0f, Math.min(4f, knockback)) : 0f;
-        boolean placed = Float.isFinite(fromX) && Float.isFinite(fromZ);
+    private void hostMobHit(int from, long id, int limb, int flags, int readiness) {
+        var limbs = com.mineclone.world.entity.LimbDamage.Limb.values();
         List<Mob> mobs = ctx.mobs();
-        if (mobs == null || id <= 0)
+        RemotePlayer p = playerOf(from);
+        if (mobs == null || id <= 0 || p == null || !p.placed() || p.isDead()
+                || limb < 0 || limb >= limbs.length || (flags & ~3) != 0
+                || readiness < 0 || readiness > 255)
+            return;
+        var held = p.heldItem == null ? null : p.heldItem.item;
+        float cooldown = com.mineclone.item.Combat.cooldown(held);
+        if (combatTime - lastMelee.getOrDefault(from, -100d) < cooldown * .8f)
             return;
         for (Mob m : mobs) {
-            if (wireId(m) != id)
-                continue;
-            if (!m.dead)
-                m.damage(com.mineclone.world.damage.DamageSource.byPlayer(com.mineclone.world.damage.DamageType.MELEE,
-                        from, placed ? fromX : Float.NaN, placed ? m.position.y : Float.NaN,
-                        placed ? fromZ : Float.NaN, push), damage);
+            if (m.id != id) continue;
+            if (m.dead || p.acceptedPosition().distance(m.position) > 6f) return;
+            lastMelee.put(from, combatTime);
+            boolean crit = (flags & 1) != 0 && (p.flags & (RemotePlayer.F_ON_GROUND | RemotePlayer.F_FLYING)) == 0;
+            boolean sprint = (flags & 2) != 0;
+            float damage = com.mineclone.item.Combat.damage(held, readiness / 255f, crit);
+            var at = p.acceptedPosition();
+            var source = com.mineclone.world.damage.DamageSource.byPlayer(
+                    com.mineclone.world.damage.DamageType.MELEE, from, at.x(), at.y(), at.z(),
+                    com.mineclone.item.Combat.knockback(sprint)).onLimb(limbs[limb]);
+            m.damage(source, damage);
             return;
         }
     }

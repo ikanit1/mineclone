@@ -258,10 +258,11 @@ final class ServerSimulationTests {
                     "the guest never announced survival");
             Mob cow = place(s, MobType.COW, 2, 1);
             Mob seen = mirrorOf(s, cow);
-            s.guestNet.requestMobHit(seen, 50f, 0.4f, s.guest.position.x, s.guest.position.z);
+            cow.health=2; // Lethal test fixture: guest no longer supplies an arbitrary damage value.
+            s.guestNet.requestMobHit(seen,com.mineclone.world.entity.LimbDamage.Limb.TORSO,1f,false,false);
             s.await(() -> cow.dead, 100, "the guest's hit never reached the cow");
-            s.await(() -> count(s.server.groundItems(), "beef") == 2, 100, "the cow dropped nothing on the server");
-            s.await(() -> count(s.guest.items, "beef") == 2, 100, "the guest never saw the beef");
+            s.await(() -> count(s.server.groundItems(), "beef") >=1 && count(s.server.groundItems(), "beef") <=3, 100, "the cow dropped nothing on the server");
+            s.await(() -> count(s.guest.items, "beef") ==count(s.server.groundItems(), "beef"), 100, "the guest never saw the beef");
         }
     }
 
@@ -270,7 +271,8 @@ final class ServerSimulationTests {
             s.join();
             Mob cow = place(s, MobType.COW, 2, 1);
             Mob seen = mirrorOf(s, cow);
-            s.guestNet.requestMobHit(seen, 50f, 0.4f, s.guest.position.x, s.guest.position.z);
+            cow.health=2; // Lethal test fixture: guest no longer supplies an arbitrary damage value.
+            s.guestNet.requestMobHit(seen,com.mineclone.world.entity.LimbDamage.Limb.TORSO,1f,false,false);
             s.await(() -> cow.dead, 100, "the guest's hit never reached the cow");
             s.pump(40);
             check(count(s.server.groundItems(), "beef") == 0, "a creative guest's kill dropped beef");

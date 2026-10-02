@@ -15,6 +15,8 @@ final class ContainerBreakNetworkTests {
         runner.run("guest breaking a chest preserves its contents on host and guest", () -> chest(false));
         runner.run("guest replacing a furnace preserves all three slots", ContainerBreakNetworkTests::furnace);
         runner.run("guest chest destruction preserves items over TCP", () -> chest(true));
+        runner.run("a server explosion spills every chest stack and sends its guest event over TCP",()-> explosion(true));
+        runner.run("mobGriefing false keeps containers while the guest still receives the explosion",()-> explosion(false));
     }
 
     public static void main(String[] args) throws Exception { chest(false); }
@@ -39,6 +41,24 @@ final class ContainerBreakNetworkTests {
             room.pump(10);
             check(room.host.groundItems().stream().mapToInt(e -> e.stack.count).sum() == 16,
                     "duplicate block edit cannot spill contents twice");
+        }
+    }
+
+    private static void explosion(boolean grief) throws Exception {
+        try(Room room=new Room(true)){
+            var w=room.host.world();w.rules=w.rules.set("mobGriefing",grief);
+            w.setBlock(8,100,8,BlockType.CHEST);var chest=w.createChest(8,100,8);
+            chest[0]=ItemStack.of("diamond",16);chest[1]=ItemStack.of("coal",23);
+            room.await(()->room.guest.world.getBlock(8,100,8)==BlockType.CHEST);
+            Field field=DedicatedServer.class.getDeclaredField("session");field.setAccessible(true);
+            var session=(com.mineclone.sim.WorldSession)field.get(room.host);
+            session.explode(8.5f,100.5f,8.5f,Explosion.RADIUS,null);
+            room.await(()->room.guest.explosions==1);
+            if(grief){
+                check(w.getBlock(8,100,8)==BlockType.AIR,"blast kept chest");
+                check(room.host.groundItems().stream().filter(e->e.stack.item.id.path().equals("diamond")||e.stack.item.id.path().equals("coal")).mapToInt(e->e.stack.count).sum()==39,"blast lost contents");
+                room.await(()->room.guest.items.stream().filter(e->e.stack.item.id.path().equals("diamond")||e.stack.item.id.path().equals("coal")).mapToInt(e->e.stack.count).sum()==39);
+            }else check(w.getBlock(8,100,8)==BlockType.CHEST&&w.getChest(8,100,8)[0].count==16&&room.host.groundItems().isEmpty(),"grief false changed chest");
         }
     }
 

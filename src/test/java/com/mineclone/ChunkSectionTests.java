@@ -12,7 +12,9 @@ import java.util.zip.*;
 /** Format boundaries and real loader cycles, including opaque future data. */
 final class ChunkSectionTests {
     static void runAll(TestMain.Runner r) {
-        r.run("chunk v7 preserves containers, item components and opaque sections through five loader cycles", ChunkSectionTests::roundTrips);
+        r.run("chunk v8 preserves containers, item components and opaque sections through five loader cycles", ChunkSectionTests::roundTrips);
+        r.run("canonical animals and empty spawn receipts require chunk reader8", ChunkSectionTests::canonicalReader);
+        r.run("historical chunk v7 sections remain readable", ChunkSectionTests::historicalSections);
         r.run("additive future chunk loads but required future reader is preserved read-only", ChunkSectionTests::readerGate);
         r.run("oversized, duplicate and missing chunk sections are refused and quarantined", ChunkSectionTests::badSections);
     }
@@ -34,7 +36,7 @@ final class ChunkSectionTests {
         furnace.output = new ItemStack(BlockType.GLASS, 2);
         furnace.burnLeft = 12.25f; furnace.burnMax = 15f; furnace.cook = 0.625f;
         return new ChunkSnapshot(0, 0, blocks, meta, Map.of(CHEST, slots), Map.of(FURNACE, furnace),
-                List.of(new DroppedItem(ItemStack.of("diamond", 11), 7.25f, 6f, 5.5f, 2.75f)),
+                List.of(new DroppedItem(ItemStack.of("diamond", 11), 7.25f, 6f, 5.5f, 2.75f,600)),
                 Map.of("future:entity", new byte[] { 1, 0, -1, 17, 9 }));
     }
     private static void roundTrips() throws Exception {
@@ -60,7 +62,7 @@ final class ChunkSectionTests {
                     check(Arrays.equals(initial.extra.get("future:entity"), c.copyExtraSections().get("future:entity")), "opaque bytes lost");
                     ChunkSnapshot disk = ((ChunkLoad.Loaded) f.save.readChunk("world", 0, 0)).snapshot();
                     check(disk.items.size() == 1 && disk.items.get(0).stack.count == 11
-                            && disk.items.get(0).x == 7.25f && disk.items.get(0).age == 2.75f, "dropped item lost");
+                            && disk.items.get(0).x == 7.25f && disk.items.get(0).age == 2.75f && disk.items.get(0).lifetime==600, "dropped item lost");
                     c.set(3, 4, 1, BlockType.STONE);
                     f.save.saveChunkAsync("world", new ChunkSnapshot(0, 0, c.copyBlocks(), c.copyMeta(),
                             c.copyChests(), c.copyFurnaces(), disk.items, c.copyExtraSections()));
@@ -72,10 +74,11 @@ final class ChunkSectionTests {
 
     private static void readerGate() throws Exception {
         try (Fixture f = new Fixture()) {
-            f.write(8, 7, out -> ChunkSectionCodec.write(out, example()));
+            int next = SaveFormat.CHUNK_VERSION + 1;
+            f.write(next, SaveFormat.CHUNK_VERSION, out -> ChunkSectionCodec.write(out, example()));
             check(f.save.readChunk("world", 0, 0) instanceof ChunkLoad.Loaded, "additive future chunk refused");
             // Use a fresh reader after replacing an already inspected file.
-            f.write(8, 8, out -> ChunkSectionCodec.write(out, example()));
+            f.write(next, next, out -> ChunkSectionCodec.write(out, example()));
             byte[] original = Files.readAllBytes(f.chunk);
             SaveManager future = new SaveManager(f.root.toFile());
             check(future.readChunk("world", 0, 0) instanceof ChunkLoad.TooNew, "minimum reader ignored");
@@ -87,7 +90,66 @@ final class ChunkSectionTests {
                 future.saveChunkAsync("world", example());
                 future.flushAndAwait();
                 check(Arrays.equals(original, Files.readAllBytes(f.chunk)), "future chunk overwritten");
+                try (var files = Files.list(f.chunk.getParent())) {
+                    check(files.noneMatch(path -> path.getFileName().toString().contains(".corrupt-")),
+                            "future chunk was quarantined");
+                }
             } finally { loader.shutdown(); }
+        }
+    }
+
+    private static void canonicalReader() throws Exception {
+        for (boolean empty : new boolean[] { false, true }) {
+            try (Fixture f = new Fixture()) {
+                ChunkSnapshot base = example();
+                var extra = new LinkedHashMap<>(base.extra);
+                extra.put(com.mineclone.sim.EntityPersistence.SPAWN_RECEIPT, new byte[] { 1 });
+                List<SavedMob> mobs = empty ? List.of() : List.of(new SavedMob(
+                        "COW", (long) Integer.MAX_VALUE + 9, 6.5f, 5f, 6.5f, .5f, 8f,
+                        -600f, true, 120f, 0f, new byte[] { 9, 7 }));
+                ChunkSnapshot snapshot = new ChunkSnapshot(0, 0, base.blocks, base.meta,
+                        base.chests, base.furnaces, base.items, extra, 0, new long[0], mobs);
+                f.save.saveChunkAsync("world", snapshot);
+                f.save.flushAndAwait();
+                try (var in = new DataInputStream(new GZIPInputStream(Files.newInputStream(f.chunk)))) {
+                    check(in.readInt() == SaveFormat.MAGIC, "writer magic changed");
+                    int version = in.readInt(), minimum = in.readInt();
+                    check(version == SaveFormat.CHUNK_VERSION && minimum >= 8 && minimum <= version,
+                            "canonical entities could reach a v7 reader");
+                    byte[] terrain = new byte[SaveFormat.CHUNK_VOLUME];
+                    RunLengthCodec.read(in, terrain);
+                    RunLengthCodec.read(in, new byte[SaveFormat.CHUNK_VOLUME]);
+                    Map<String, byte[]> sections = SectionCodec.read(in);
+                    check(sections.containsKey("entities"), "canonical entities section omitted");
+                    List<SavedMob> records = SavedMobCodec.decode(sections.get("entities"));
+                    check(records.size() == mobs.size(), "canonical entities omitted");
+                    check(sections.containsKey(com.mineclone.sim.EntityPersistence.SPAWN_RECEIPT),
+                            "empty canonical receipt omitted");
+                    if (!empty) {
+                        SavedMob animal = records.get(0);
+                        check(animal.id() == mobs.get(0).id() && animal.age() == -600f
+                                && animal.loveCooldown() == 120f && Arrays.equals(animal.tail(), new byte[] { 9, 7 }),
+                                "canonical animal state changed");
+                    }
+                }
+                ChunkSnapshot loaded = ((ChunkLoad.Loaded) f.save.readChunk("world", 0, 0)).snapshot();
+                check(Arrays.equals(base.blocks, loaded.blocks) && Arrays.equals(base.meta, loaded.meta),
+                        "v8 header changed terrain");
+            }
+        }
+    }
+
+    private static void historicalSections() throws Exception {
+        try (Fixture f = new Fixture()) {
+            ChunkSnapshot original = example();
+            f.write(7, 7, out -> ChunkSectionCodec.write(out, original));
+            ChunkSnapshot loaded = ((ChunkLoad.Loaded) f.save.readChunk("world", 0, 0)).snapshot();
+            check(Arrays.equals(original.blocks, loaded.blocks) && Arrays.equals(original.meta, loaded.meta),
+                    "historical v7 terrain changed");
+            check(loaded.chests.get(CHEST)[0].count == 16 && loaded.items.get(0).stack.count == 11,
+                    "historical v7 possessions changed");
+            check(Arrays.equals(original.extra.get("future:entity"), loaded.extra.get("future:entity")),
+                    "historical opaque v7 section changed");
         }
     }
 

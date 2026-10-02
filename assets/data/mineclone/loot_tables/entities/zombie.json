@@ -2,7 +2,23 @@
   "conditions": [
     {
       "not_creative": true
+    },
+    {
+      "is_adult": true
     }
   ],
-  "pools": []
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "item": "mineclone:rotten_flesh",
+          "count": [
+            0,
+            2
+          ]
+        }
+      ]
+    }
+  ]
 }

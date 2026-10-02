@@ -88,7 +88,23 @@ public enum BlockType {
     TERRACOTTA  (true, false, false, 110, 110, 110, 0.62f, 0.31f, 0.21f, 0, 6f),
     LIMESTONE   (true, false, false, 111, 111, 111, 0.77f, 0.75f, 0.65f, 0, 5f),
     BASALT      (true, false, false, 112, 112, 112, 0.25f, 0.27f, 0.29f, 0, 9f),
-    GRAVEL      (true, false, false, 113, 113, 113, 0.48f, 0.46f, 0.42f, 0, 0.6f);
+    GRAVEL      (true, false, false, 113, 113, 113, 0.48f, 0.46f, 0.42f, 0, 0.6f),
+    COPPER_ORE  (true, false, false, 139, 139, 139, 0.75f, 0.34f, 0.17f, 0, 10f),
+    PLANK_SLAB  (true, true, false, 11, 11, 11, .60f, .45f, .27f, 0, 1.5f),
+    COBBLE_SLAB (true, true, false, 10, 10, 10, .45f, .45f, .45f, 0, 7.5f),
+    STONE_SLAB  (true, true, false, 3, 3, 3, .47f, .47f, .47f, 0, 7.5f),
+    FENCE       (true, true, false, 11, 11, 11, .60f, .45f, .27f, 0, 1.5f),
+    FENCE_GATE  (true, true, true, 176, 176, 176, .60f, .45f, .27f, 0, 1.5f),
+    LADDER      (false, true, true, 174, 174, 174, .60f, .45f, .27f, 0, .5f),
+    TRAPDOOR    (true, true, true, 175, 175, 175, .60f, .45f, .27f, 0, 1.5f),
+    FARMLAND    (true, true, false, 2, 177, 2, .47f, .33f, .22f, 0, .5f),
+    WHEAT       (false, true, true, 162, 162, 162, .60f, .70f, .20f, 0, 0f),
+    CARROTS     (false, true, true, 166, 166, 166, .30f, .70f, .20f, 0, 0f),
+    POTATOES    (false, true, true, 170, 170, 170, .30f, .60f, .20f, 0, 0f),
+    SAPLING (false,true,true,179,179,179,.20f,.47f,.16f,0,0f),
+    TALL_GRASS (false,true,true,198,198,198,.30f,.60f,.15f,0,0f),
+    FLOWER_YELLOW (false,true,true,199,199,199,.90f,.80f,.10f,0,0f),
+    FLOWER_RED (false,true,true,200,200,200,.85f,.15f,.10f,0,0f);
 
     public final boolean solid;
     public final boolean transparent;

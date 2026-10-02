@@ -101,6 +101,7 @@ public final class Materializer {
                     || !placementAllowed(world, mobs, participants, type, px, py, pz))
                 continue;
             Mob body = new Mob(type, px, py, pz, new Random(random.nextLong()));
+            body.persistent = true;
             if (!populations.claim(body)) continue;
             mobs.add(body);
             added++;
@@ -149,8 +150,8 @@ public final class Materializer {
         float half = type.width * .5f;
         for (int bx = (int) Math.floor(x - half); bx <= (int) Math.floor(x + half); bx++)
             for (int bz = (int) Math.floor(z - half); bz <= (int) Math.floor(z + half); bz++) {
-                if (world.getChunkIfExists(Math.floorDiv(bx, Chunk.SIZE_X),
-                        Math.floorDiv(bz, Chunk.SIZE_Z)) == null
+                Chunk chunk = world.getChunkIfExists(Math.floorDiv(bx, Chunk.SIZE_X), Math.floorDiv(bz, Chunk.SIZE_Z));
+                if (chunk == null || chunk.isReadOnly()
                         || !world.getBlock(bx, (int) Math.floor(y - .01f), bz).solid)
                     return false;
                 for (int by = (int) Math.floor(y); by <= (int) Math.floor(y + type.height); by++) {

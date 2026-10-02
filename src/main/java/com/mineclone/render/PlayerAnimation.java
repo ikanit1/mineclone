@@ -44,6 +44,8 @@ public final class PlayerAnimation {
     }
 
     /** Repeated mining finishes the current arc before starting the next one. */
+    private float eating;
+    public void setEating(float progress){eating=Math.max(0,Math.min(1,progress));evaluate();}
     public void startSwing() {
         if (attackTime < ATTACK_TIME) queuedAttack = true;
         else attackTime = 0;
@@ -137,6 +139,7 @@ public final class PlayerAnimation {
                 + stride * sideways * 0.45f + attack * 0.08f;
         pose.armYawA = 0;
         pose.armYawB = attack * 0.10f;
+        if(eating>0){pose.armB=1.95f+.08f*sin(eating*50);pose.armRollB=0;pose.armYawB=.55f;}
     }
 
     private static float footBottom(float pitch, float roll, float length) {

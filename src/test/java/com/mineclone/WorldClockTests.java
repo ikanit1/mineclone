@@ -32,12 +32,14 @@ public final class WorldClockTests {
         check(NightSky.dayIndex(clock.gameTime()) == 5 && clock.moonPhase() == 5, "midnight reset the day");
         clock.addHours(24);
         check(clock.moonPhase() == 6, "adding one day did not advance the moon");
+        long afterAdd=clock.worldTicks();
+        check(afterAdd>20,"positive time add must advance farming ticks");
         clock.advanceToDawn();
         check(clock.moonPhase() == 7, "sleep did not move to the next dawn");
-        check(clock.worldTicks() == 20, "commands incorrectly changed the simulation counter");
+        check(clock.worldTicks() == afterAdd, "sleep changed the simulation counter");
         clock.setGameTime(0);
         clock.advance(0.1);
-        check(clock.worldTicks() == 22, "setting time back rewound worldTicks");
+        check(clock.worldTicks() == afterAdd+2, "setting time back rewound worldTicks");
     }
 
     private static void timestepParity() {
@@ -95,7 +97,7 @@ public final class WorldClockTests {
         check(java.util.Arrays.equals(before, clock.encode()), "invalid input partially changed clock state");
         expectInvalid(() -> WorldClock.fromSaved(0, new byte[1]));
         byte[] unknownVersion = before.clone();
-        ByteBuffer.wrap(unknownVersion).putInt(2);
+        ByteBuffer.wrap(unknownVersion).putInt(99);
         expectInvalid(() -> WorldClock.fromSaved(0, unknownVersion));
         byte[] negativeTicks = before.clone();
         ByteBuffer.wrap(negativeTicks).putLong(12, -1);

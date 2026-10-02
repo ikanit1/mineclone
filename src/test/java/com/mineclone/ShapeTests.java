@@ -44,8 +44,9 @@ final class ShapeTests {
                 byte meta = (byte) m;
                 int c = shape.collision(meta, boxes);
                 check(c <= BlockShape.MAX_BOXES, type + " writes " + c + " boxes");
-                check((c > 0) == type.solid, type + " meta " + m + ": " + c + " collision boxes, solid=" + type.solid);
-                inCell(boxes, c, type + " collision");
+                boolean openGate=type==BlockType.FENCE_GATE&&(m&4)!=0;
+                check((c > 0) == (type.solid&&!openGate), type + " meta " + m + ": " + c + " collision boxes, solid=" + type.solid);
+                if(type!=BlockType.FENCE&&type!=BlockType.FENCE_GATE)inCell(boxes, c, type + " collision");
                 check(shape.fullCube(meta) == (c == 1 && BlockShape.unit(boxes, 0)),
                         type + " meta " + m + " claims fullCube=" + shape.fullCube(meta));
                 int o = shape.outline(meta, boxes);

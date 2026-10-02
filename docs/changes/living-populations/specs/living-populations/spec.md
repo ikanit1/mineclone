@@ -15,3 +15,7 @@
 6. Ordinary time and `/ecology advance 1–60` use the same bounded daily sequence.
    Guests cannot change or inspect the authoritative ecological state via commands.
 7. With the rule off, the previously recorded mob trajectory remains unchanged.
+8. A breeding birth adds one population member once. Materialization, parking and
+   restore retain the same long world ID, age, breeding clocks and opaque tail.
+9. Both historical animal layouts import without loss. Older chunk readers reject
+   the canonical format as TooNew and cannot overwrite or quarantine its source.

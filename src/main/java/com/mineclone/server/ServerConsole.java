@@ -80,6 +80,9 @@ public final class ServerConsole {
             case "/say", "say" -> say(rest);
             case "/time", "time" -> time(rest);
             case "/ecology", "ecology" -> ecology(rest);
+            case "/difficulty","difficulty" -> changeRules("difficulty",rest);
+            case "/gamerule","gamerule" -> changeRules("gamerule",rest);
+            case "/gamemode","gamemode" -> changeMode(rest);
             case "/seed", "seed" -> DedicatedServer.log(
                     server.world() == null ? "no world" : "seed " + server.world().seed);
             case "/room", "room" -> room();
@@ -87,6 +90,9 @@ public final class ServerConsole {
             default -> DedicatedServer.log("unknown command: " + command + " (try /help)");
         }
     }
+
+    private void changeMode(String rest){try{String[] p=rest.split("\\s+");if(p.length!=2||!server.net().sendGameMode(p[0],com.mineclone.world.GameMode.valueOf(p[1].toUpperCase(java.util.Locale.ROOT))))throw new IllegalArgumentException("/gamemode <name> <mode>");}catch(IllegalArgumentException invalid){DedicatedServer.log(invalid.getMessage());}}
+    private void changeRules(String command,String rest){try{var world=server.world();if(command.equals("difficulty"))world.rules=world.rules.difficulty(com.mineclone.world.Difficulty.valueOf(rest.toUpperCase(java.util.Locale.ROOT)));else{String[] p=rest.split("\\s+");if(p.length!=2||(!p[1].equals("true")&&!p[1].equals("false")))throw new IllegalArgumentException("/gamerule <name> true|false");world.rules=world.rules.set(p[0],Boolean.parseBoolean(p[1]));}server.net().sendRules();server.saveWorld();}catch(IllegalArgumentException invalid){DedicatedServer.log(invalid.getMessage());}}
 
     private void list() {
         var lines = server.playerLines();
@@ -111,6 +117,10 @@ public final class ServerConsole {
      * игре не ходит — от этого зависит фаза луны.
      */
     private void time(String arg) {
+        if(arg.toLowerCase(java.util.Locale.ROOT).startsWith("add ")){
+            try {double hours=Double.parseDouble(arg.substring(4).trim());if(!Double.isFinite(hours)||Math.abs(hours)>100000)throw new NumberFormatException();server.addTimeHours(hours);DedicatedServer.log("time added");}
+            catch(IllegalArgumentException bad){DedicatedServer.log("usage: /time add <hours>");}return;
+        }
         float now = server.gameTime();
         if (arg.isEmpty()) {
             DedicatedServer.log("time " + String.format(java.util.Locale.ROOT, "%.2f", now)
@@ -208,6 +218,9 @@ public final class ServerConsole {
         System.out.println("  /backup          save and create a manual world backup");
         System.out.println("  /time [day|noon|night|<radians>]");
         System.out.println("  /ecology [info|on|off|advance <1-60>]");
+        System.out.println("  /difficulty <peaceful|easy|normal|hard>");
+        System.out.println("  /gamerule <name> true|false");
+        System.out.println("  /gamemode <name> <survival|creative>");
         System.out.println("  /room            show the room code");
         System.out.println("  /seed            show the world seed");
         System.out.println("  /stop            save and shut down");

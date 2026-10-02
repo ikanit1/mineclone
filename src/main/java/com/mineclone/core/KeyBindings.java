@@ -40,7 +40,7 @@ public final class KeyBindings {
         JUMP(Group.MOVEMENT, "Прыжок, всплыть", GLFW_KEY_SPACE),
         DESCEND(Group.MOVEMENT, "Вниз в полёте и воде", GLFW_KEY_LEFT_SHIFT),
         SPRINT(Group.MOVEMENT, "Бег", GLFW_KEY_LEFT_CONTROL),
-        FLY(Group.MOVEMENT, "Полёт", GLFW_KEY_F),
+        FLY(Group.MOVEMENT, "Полёт", GLFW_KEY_G),
         INVENTORY(Group.ACTIONS, "Инвентарь", GLFW_KEY_E),
         DROP(Group.ACTIONS, "Выбросить предмет", GLFW_KEY_Q),
         INSPECT(Group.ACTIONS, "Осмотреть предмет", GLFW_KEY_R),
@@ -53,7 +53,8 @@ public final class KeyBindings {
         SLOT_6(Group.HOTBAR, "Слот 6", GLFW_KEY_6),
         SLOT_7(Group.HOTBAR, "Слот 7", GLFW_KEY_7),
         SLOT_8(Group.HOTBAR, "Слот 8", GLFW_KEY_8),
-        SLOT_9(Group.HOTBAR, "Слот 9", GLFW_KEY_9);
+        SLOT_9(Group.HOTBAR, "Слот 9", GLFW_KEY_9),
+        SWAP_HANDS(Group.ACTIONS,"Поменять руки",GLFW_KEY_F);
 
         public final Group group;
         public final String title;

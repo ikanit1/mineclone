@@ -24,6 +24,7 @@ public final class CommandProcessorTests {
     public interface Runner { void run(String name, Check check); }
 
     public static void runAll(Runner r) {
+        r.run("guest and disabled commands cannot mutate the world but local commands and chat work",CommandProcessorTests::permissions);
         r.run("time commands set and add hours, keep the day, refuse bad input", CommandProcessorTests::time);
         r.run("weather is forced for ten minutes, queried, refused when unknown", CommandProcessorTests::weather);
         r.run("teleport, spawn point, speed and flight act on the player", CommandProcessorTests::player);
@@ -32,7 +33,10 @@ public final class CommandProcessorTests {
         r.run("fill sets a square of blocks around the player", CommandProcessorTests::fill);
         r.run("ecology owner commands report, persist switches and advance bounded days", CommandProcessorTests::ecology);
         r.run("ecology commands deny a guest before touching the host model", CommandProcessorTests::ecologyGuest);
+        r.run("world rules disable ecology commands before model access", CommandProcessorTests::ecologyRules);
     }
+
+    private static void permissions(){var fake=new Fake();fake.guest=true;fake.room=true;var commands=new CommandProcessor(fake);var initial=fake.clock.encode();for(String command:List.of("/fill stone 1","/time add 4","/weather storm","/gamemode creative","/tp 100 100 100","/difficulty hard","/gamerule keepInventory false","/effect speed 100"))commands.execute(command);check(java.util.Arrays.equals(initial,fake.clock.encode())&&fake.mode==GameMode.SURVIVAL&&!fake.teleported&&fake.forced==null,"guest mutation");commands.execute("/debug");commands.execute("hello");commands.execute("/help");check(fake.debug&&fake.helped&&fake.chat.contains("hello"),"guest local commands");fake.guest=false;fake.world.rules=fake.world.rules.set("allowCommands",false);commands.execute("/time add 1");commands.execute("/fill stone 1");check(java.util.Arrays.equals(initial,fake.clock.encode()),"disabled host commands");}
 
     private static void check(boolean ok, String why) {
         if (!ok)
@@ -41,7 +45,7 @@ public final class CommandProcessorTests {
 
     /** Records what the commands asked of the game. */
     private static final class Fake implements CommandProcessor.CommandTarget {
-        boolean room, debug, instant, saved, teleported, helped, next, ecologyOwner = true;
+        boolean room, debug, instant, saved, teleported, helped, next, guest, ecologyOwner = true;
         int timeChanges, saves, ecologyReads;
         String[] ecologyLines;
         final List<String> chat = new ArrayList<>(), toasts = new ArrayList<>();
@@ -55,6 +59,7 @@ public final class CommandProcessorTests {
         final Vector3f spawn = new Vector3f(8.5f, 80f, 8.5f);
 
         @Override public boolean inRoom() { return room; }
+        @Override public boolean guest() { return guest; }
         @Override public void chat(String line) { chat.add(line); }
         @Override public Player player() { return player; }
         @Override public World world() { return world; }
@@ -112,7 +117,7 @@ public final class CommandProcessorTests {
         check(f.timeChanges == changes && f.clock.gameTime() == before, "a refused /time moved the clock");
         long ticks = f.clock.worldTicks();
         c.execute("/time add 100");
-        check(f.clock.worldTicks() == ticks, "/time moved the tick counter");
+        check(f.clock.worldTicks() >= ticks, "/time rewound the tick counter");
     }
 
     private static void weather() {
@@ -267,8 +272,9 @@ public final class CommandProcessorTests {
         long day = NightSky.dayIndex(f.clock.gameTime());
         long ticks = f.clock.worldTicks();
         c.execute("/ecology advance 1");
-        check(NightSky.dayIndex(f.clock.gameTime()) == day + 1 && f.clock.worldTicks() == ticks,
-                "advance must move absolute days, not the fixed tick counter");
+        check(NightSky.dayIndex(f.clock.gameTime()) == day + 1
+                && Math.abs(f.clock.worldTicks() - ticks - WorldClock.TICKS_PER_DAY) <= 1,
+                "advance must move an absolute day and its scheduled world ticks");
         check(f.saves == 4 && f.timeChanges == 1 && f.lastToast().equals("Ecology advanced 1 day(s)"), f.lastToast());
         c.execute("/ecology advance 60");
         check(NightSky.dayIndex(f.clock.gameTime()) == day + 61 && f.saves == 5 && f.timeChanges == 2,
@@ -294,15 +300,40 @@ public final class CommandProcessorTests {
     private static void ecologyGuest() {
         Fake f = new Fake();
         f.room = true;
-        f.ecologyOwner = false;
+        f.guest = true;
         CommandProcessor c = new CommandProcessor(f);
         double before = f.clock.gameTime();
-        for (String cmd : new String[] { "/ecology", "/ecology info", "/ecology lair", "/ecology on",
-                "/ecology off", "/ecology advance 2", "/ecology advance NaN" }) {
+        String[] commands = { "/ecology", "/ecology info", "/ecology lair", "/ecology on",
+                "/ecology off", "/ecology advance 2", "/ecology advance NaN" };
+        for (String cmd : commands) {
+            c.execute(cmd);
+            check(f.lastToast().equals("Команды выполняет хозяин"), cmd + " -> " + f.lastToast());
+        }
+        // The ecology-specific authority seam also fails closed when the
+        // network adapter is absent or has not established ownership yet.
+        f.guest = false;
+        f.ecologyOwner = false;
+        for (String cmd : commands) {
             c.execute(cmd);
             check(f.lastToast().equals("Ecology commands are available to the world owner only"), cmd + " -> " + f.lastToast());
         }
         check(f.ecologyReads == 0 && f.ecologyLines == null && f.saves == 0 && f.timeChanges == 0
                 && f.clock.gameTime() == before, "a guest reached or mutated ecology");
+    }
+
+    private static void ecologyRules() {
+        Fake f = new Fake();
+        f.world.rules = f.world.rules.set("allowCommands", false);
+        CommandProcessor c = new CommandProcessor(f);
+        byte[] before = f.clock.encode();
+        for (String command : new String[] { "/ecology", "/ecology info", "/ecology on", "/ecology off",
+                "/ecology advance 2", "/ecology lair" }) {
+            c.execute(command);
+            check(f.lastToast().equals("Команды отключены правилами мира"), command + " -> " + f.lastToast());
+        }
+        check(f.ecologyReads == 0 && f.saves == 0 && f.timeChanges == 0 && f.ecologyLines == null
+                && java.util.Arrays.equals(before, f.clock.encode()), "disabled owner commands reached ecology");
+        c.execute("/help"); c.execute("/debug");
+        check(f.helped && f.debug, "disabling world commands also disabled local help or debug");
     }
 }

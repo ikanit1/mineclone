@@ -15,8 +15,13 @@ import java.util.random.RandomGenerator;
  * result is then a pure function of the world seed, the position and the table.
  */
 public record LootContext(long worldSeed, int x, int y, int z, ItemStack tool,
-                          boolean killedByParticipant, GameMode mode, RandomGenerator sessionRandom) {
+                          boolean killedByParticipant, GameMode mode, RandomGenerator sessionRandom, int blockMeta,boolean isAdult) {
+    public LootContext(long seed,int x,int y,int z,ItemStack tool,boolean killed,GameMode mode,RandomGenerator random,int meta){this(seed,x,y,z,tool,killed,mode,random,meta,true);}
     public LootContext { Objects.requireNonNull(mode, "mode"); }
+
+    public LootContext(long seed,int x,int y,int z,ItemStack tool,boolean killed,GameMode mode,RandomGenerator random) {
+        this(seed,x,y,z,tool,killed,mode,random,0);
+    }
 
     public static LootContext chest(long seed, int x, int y, int z) {
         return new LootContext(seed, x, y, z, null, false, GameMode.SURVIVAL, null);

@@ -24,6 +24,14 @@ import java.util.List;
  */
 public interface NetContext {
     /** Stable installation identity; names can change without losing the checkpoint. */
+    default com.mineclone.world.Equipment playerEquipment(){return new com.mineclone.world.Equipment();}
+    default void effectFromHost(com.mineclone.world.effect.StatusEffect effect,int amplifier,float seconds){}
+    default void explosionFromHost(float x,float y,float z){}
+    default void advancementFromHost(String id,String title){}
+    default void modeFromHost(com.mineclone.world.GameMode mode){}
+    default void rulesFromHost(com.mineclone.world.WorldRules rules){if(world()!=null)world().rules=rules;}
+    java.util.concurrent.atomic.AtomicLong FALLBACK_MOB_IDS=new java.util.concurrent.atomic.AtomicLong();
+    default long nextMobId(){return FALLBACK_MOB_IDS.incrementAndGet();}
     default String playerId() { return ""; }
     default PlayerData capturePlayerData() { return null; }
     default void restorePlayerData(PlayerData data) { }
