@@ -312,9 +312,11 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [EcologyCodec](../src/main/java/com/mineclone/sim/ecology/EcologyCodec.java) | Bounded level ecology snapshots preserving unknown species and future lair/scar payloads. |
 | [EcologyModel](../src/main/java/com/mineclone/sim/ecology/EcologyModel.java) | Pure deterministic daily births, predation and simultaneous cardinal-neighbour migration. |
 | [EcologyRegion](../src/main/java/com/mineclone/sim/ecology/EcologyRegion.java) | One 256-block region's population snapshot, including bodies reserved in saved chunks. |
+| [FieldHabitat](../src/main/java/com/mineclone/sim/ecology/FieldHabitat.java) | Last observed field size per chunk, keeping rabbit food estimates when land is unloaded. |
 | [Materializer](../src/main/java/com/mineclone/sim/ecology/Materializer.java) | Places finite regional animals on loaded terrain outside every living participant's view. |
 | [SpeciesTable](../src/main/java/com/mineclone/sim/ecology/SpeciesTable.java) | Strict data-driven capacities, reproduction and food chains for finite wildlife. |
 | [Trample](../src/main/java/com/mineclone/sim/ecology/Trample.java) | Bounded, saved pressure on ground cells; an absent section means untouched land. |
+| [WeatherHearing](../src/main/java/com/mineclone/sim/ecology/WeatherHearing.java) | Rain at an exposed sound source shortens the radius a mob can hear, without changing the weather. |
 
 ## com.mineclone.ui
 
@@ -478,6 +480,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 |---|---|
 | [Behavior](../src/main/java/com/mineclone/world/entity/Behavior.java) | Дерево поведения моба: один узел, который за тик возвращает свой исход. |
 | [Breeding](../src/main/java/com/mineclone/world/entity/Breeding.java) | Host-owned feeding, food following, pairing and birth; children are appended after mob iteration. |
+| [CropRaids](../src/main/java/com/mineclone/world/entity/CropRaids.java) | Bounded, loaded-terrain crop seeking; a raid consumes a plant only after physically reaching it. |
 | [EntityHazards](../src/main/java/com/mineclone/world/entity/EntityHazards.java) | Shared environmental contact pulses for players and mobs, with independent damage clocks. |
 | [EntityPhysics](../src/main/java/com/mineclone/world/entity/EntityPhysics.java) | Упрощённая физика сущностей: гравитация + осевой AABB-свип по коробкам блоков (Shapes, BLK-02). |
 | [Hittable](../src/main/java/com/mineclone/world/entity/Hittable.java) | Во что может попасть снаряд. |
@@ -533,4 +536,4 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [StructureTypes](../src/main/java/com/mineclone/world/structure/StructureTypes.java) | The structure types of the 1.1 generator (GEN-03). |
 | [StructureWriter](../src/main/java/com/mineclone/world/structure/StructureWriter.java) | Where a structure piece puts its blocks, in world coordinates: the chunk being generated (ChunkWriter) or, in tests, one large buffer. |
 
-Top-level declarations: 392.
+Top-level declarations: 395.

@@ -39,6 +39,9 @@ public class Chunk {
     private int waterCount;
     private int[] lavaCells = new int[32];
     private int lavaCount;
+    /** Derived sparse crop index, rebuilt from restored blocks before publication. */
+    private int[] cropCells = new int[8];
+    private int cropCount;
     private final long[] solidMask = new long[SIZE_X * SIZE_Y * SIZE_Z / 64];
     /**
      * Пропускает ли ячейка небесный свет. Та же идея, что у {@code solidMask},
@@ -176,6 +179,12 @@ public class Chunk {
         BlockType old = BlockType.byId(blocks.get(i));
         if (old == t) return;
         blocks.set(i, (byte) t.ordinal());
+        if (!crop(old) && crop(t)) addCrop(i);
+        else if (crop(old) && !crop(t)) {
+            for (int n = 0; n < cropCount; n++) if (cropCells[n] == i) {
+                cropCells[n] = cropCells[--cropCount]; break;
+            }
+        }
         if (trailSurface(t) && !trailSurface(old)) meta[i] = 0;
         updateTrailVisual(i, t, meta[i]);
         boolean oldWater = old == BlockType.WATER || old == BlockType.WATER_FLOW;
@@ -1015,6 +1024,20 @@ public class Chunk {
     public int waterCellAt(int index) { return waterCells[index]; }
     public int lavaCellCount() { return lavaCount; }
     public int lavaCellAt(int index) { return lavaCells[index]; }
+    public int cropCellCount() { return cropCount; }
+    public int cropCellAt(int index) {
+        if (index < 0 || index >= cropCount) throw new IndexOutOfBoundsException(index);
+        return cropCells[index];
+    }
+    public int[] cropIndices() { return java.util.Arrays.copyOf(cropCells, cropCount); }
+
+    private static boolean crop(BlockType block) {
+        return block == BlockType.WHEAT || block == BlockType.CARROTS || block == BlockType.POTATOES;
+    }
+    private void addCrop(int index) {
+        if (cropCount == cropCells.length) cropCells = java.util.Arrays.copyOf(cropCells, cropCount * 2);
+        cropCells[cropCount++] = index;
+    }
 
     public byte[] copyBlocks() {
         return blocks.copy();
@@ -1036,8 +1059,10 @@ public class Chunk {
         blocks.restore(srcBlocks);
         waterCount = 0;
         lavaCount = 0;
+        cropCount = 0;
         for (int i = 0; i < srcBlocks.length; i++) {
             BlockType bt = BlockType.byId(srcBlocks[i]);
+            if (crop(bt)) addCrop(i);
             if (bt == BlockType.WATER || bt == BlockType.WATER_FLOW) {
                 if (waterCount == waterCells.length) waterCells = java.util.Arrays.copyOf(waterCells, waterCount * 2);
                 waterCells[waterCount++] = i;

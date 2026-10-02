@@ -117,6 +117,9 @@ final class Autopilot {
 
         void spawnAnimationMobs();
 
+        /** Claim a finite rabbit body on the owner; its ordinary brain performs the raid. */
+        long spawnRaidRabbit(float x, float y, float z);
+
         /** Скот — коровы, свиньи, овцы — в ряд рядом с точкой появления; ни хищников, ни добычи. */
         void spawnAnimals();
 
@@ -655,11 +658,43 @@ final class Autopilot {
         when("host iron armor arrived",.3f,d->d.seesArmor("iron"),d->ok("guest sees host armor")),
         step("capture host after ladder climb",2.5f,d->{d.lookAtOtherPlayer();d.shot("armor-guest");}));
 
-    private static int[] farmCell(Driver d){return floorAt(d,3,1);}
+    // The raid field is away from the earlier animation-species display and its wolf.
+    private static final int RAID_Z = -20;
+    private static int[] farmCell(Driver d){return floorAt(d,3,ECOLOGY_MODE?RAID_Z:1);}
+    private static int[] protectedRaidCell(Driver d){return floorAt(d,13,RAID_Z);}
+    private static int[] raidGate(Driver d){return floorAt(d,3,RAID_Z-2);}
+    private static int[] raidReadyMark(Driver d,int slot){return mark(d,18+slot,RAID_Z+8);}
+    private static void raidWall(Driver d,int x,int z){
+        int[] p=floorAt(d,x,z);
+        for(int y=p[1]+1;y<=p[1]+3;y++)d.setBlockAt(p[0],y,p[2],"STONE");
+    }
+    /** Initial terrain only: neither this fixture nor the driver consumes a crop. */
+    private static void prepareRaidArena(Driver d){
+        for(int dx=0;dx<=15;dx++)for(int dz=RAID_Z-5;dz<=RAID_Z+4;dz++){
+            if(dx>6&&dx<11)continue;
+            int[] p=floorAt(d,dx,dz);d.setBlockAt(p[0],p[1],p[2],"GRASS");
+            for(int y=p[1]+1;y<128;y++)d.setBlockAt(p[0],y,p[2],"AIR");
+        }
+        for(int dz=RAID_Z-5;dz<=RAID_Z+4;dz++)for(int dx:new int[]{0,6,11,15})raidWall(d,dx,dz);
+        for(int dx=0;dx<=6;dx++){raidWall(d,dx,RAID_Z-5);raidWall(d,dx,RAID_Z+4);if(dx!=3)raidWall(d,dx,RAID_Z-2);}
+        for(int dx=11;dx<=15;dx++){raidWall(d,dx,RAID_Z-5);raidWall(d,dx,RAID_Z+4);}
+        int[] gate=raidGate(d);d.setBlockAt(gate[0],gate[1]+1,gate[2],"FENCE_GATE");
+        int[] p=protectedRaidCell(d);
+        for(int dx=-1;dx<=1;dx++)for(int dz=-1;dz<=1;dz++)if(dx!=0||dz!=0)
+            d.setBlockAt(p[0]+dx,p[1]+1,p[2]+dz,dx==0&&dz==-1?"FENCE_GATE":"FENCE");
+        d.setBlockAt(p[0],p[1],p[2],"FARMLAND");d.setBlockMeta(p[0],p[1],p[2],7);
+        d.setBlockAt(p[0],p[1]+1,p[2],"WHEAT");d.setBlockMeta(p[0],p[1]+1,p[2],7);
+        d.setBlockAt(p[0]+2,p[1],p[2],"WATER");d.setBlockAt(p[0]-2,p[1]+1,p[2],"TORCH");
+    }
+    private static void standNearFarm(Driver d){
+        int[] p=farmCell(d);d.teleport(p[0]+.5f,p[1]+1.001f,p[2]+2.5f);
+    }
     private static void prepareFarm(Driver d){
+        if(ECOLOGY_MODE&&d.netIsHost())prepareRaidArena(d);
         int[] p=farmCell(d);d.setBlockAt(p[0],p[1],p[2],"DIRT");
         for(int y=p[1]+1;y<p[1]+12;y++)d.setBlockAt(p[0],y,p[2],"AIR");
         d.setBlockAt(p[0]+1,p[1],p[2],"WATER");d.setBlockAt(p[0]-1,p[1]+1,p[2],"TORCH");
+        if(ECOLOGY_MODE)standNearFarm(d);
         d.setSurvival();d.equipItem("iron_hoe");d.lookAt(p[0]+.5f,p[1]+1,p[2]+.5f);
     }
     private static void plantSharedTree(Driver d){
@@ -692,7 +727,7 @@ final class Autopilot {
         step("hold server farmer",4f,d->ok("farm server tiller PASS")));
     private final List<Step> farmGuestSteps=List.of(
         when("shared tilled farm arrived",.2f,d->{int[] p=farmCell(d);return "FARMLAND".equals(d.blockAt(p[0],p[1],p[2]));},d->{
-            int[] p=farmCell(d);d.setSurvival();d.equipItem("wheat_seeds");d.lookAt(p[0]+.5f,p[1]+1,p[2]+.5f);}),
+            int[] p=farmCell(d);if(ECOLOGY_MODE)standNearFarm(d);d.setSurvival();d.equipItem("wheat_seeds");d.lookAt(p[0]+.5f,p[1]+1,p[2]+.5f);}),
         step("allow mode checkpoint to reach host",2.2f,d->{ }),
         step("guest seeds through right click",.3f,d->d.mouseButton(1,true)),
         step("release seed",.1f,d->d.mouseButton(1,false)),
@@ -701,6 +736,55 @@ final class Autopilot {
         when("crop mature at guest",.3f,d->{int[] p=farmCell(d);return d.blockMetaAt(p[0],p[1]+1,p[2])==7;},d->{ok("farm mature on guest");d.shot("farm-guest");}),
         when("boundary tree grew at guest",.2f,Autopilot::sharedTreeGrown,d->ok("boundary sapling tree replicated")),
         step("hold farm guest",2f,d->ok("farm guest PASS")));
+
+    private static boolean raidStages(Driver d,int stage){
+        int[] p=farmCell(d),protectedCell=protectedRaidCell(d);
+        return "WHEAT".equals(d.blockAt(p[0],p[1]+1,p[2]))&&d.blockMetaAt(p[0],p[1]+1,p[2])==stage
+                &&"WHEAT".equals(d.blockAt(protectedCell[0],protectedCell[1]+1,protectedCell[2]))
+                &&d.blockMetaAt(protectedCell[0],protectedCell[1]+1,protectedCell[2])==7;
+    }
+    private static boolean raidReady(Driver d,int slot){int[] p=raidReadyMark(d,slot);return "GLASS".equals(d.blockAt(p[0],p[1],p[2]));}
+    private static void retreatFromRaid(Driver d){
+        int[] p=floorAt(d,8,RAID_Z+16);d.flyInCreative();
+        d.teleport(p[0]+.5f,p[1]+4f,p[2]+.5f);
+        int[] crop=farmCell(d);d.lookAt(crop[0]+.5f,crop[1]+1,crop[2]+.5f);
+    }
+    private static void openRaidGate(Driver d){
+        // Preserve irrigation without an exposed swim pocket beside the approach.
+        // The mature farm was grown with its original source before release.
+        int[] crop=farmCell(d);
+        d.setBlockAt(crop[0]+1,crop[1],crop[2],"GRASS");
+        d.setBlockAt(crop[0]+3,crop[1],crop[2],"WATER");
+        int[] p=raidGate(d);d.setBlockMeta(p[0],p[1]+1,p[2],4);retreatFromRaid(d);
+        ok("raid release gate opened");
+    }
+    private List<Step> raidHostSteps(){return List.of(
+        when("both raid crops begin mature",.2f,d->raidStages(d,7),d->ok("raid host saw mature crop stage7")),
+        when("guest acknowledged stage7",.2f,d->raidReady(d,0),d->{
+            int[] a=farmCell(d),b=protectedRaidCell(d);
+            long first=d.spawnRaidRabbit(a[0]+.5f,a[1]+1.001f,a[2]-3.5f);
+            long second=d.spawnRaidRabbit(b[0]+.5f,b[1]+1.001f,b[2]-2.5f);
+            if(first<=0||second<=0||first==second)throw new IllegalStateException("raid rabbits have no distinct finite identities");
+            ok("raid host released two finite natural rabbits");openRaidGate(d);
+        }),
+        when("actual rabbit consumed the open crop",.2f,d->raidStages(d,0),d->{ok("raid host rabbit consumed stage7 to0");d.shot("raid-host");}),
+        step("protected crop survives the raid",5f,d->{if(!raidStages(d,0))throw new IllegalStateException("raid crop changed after authoritative meal");ok("raid protected crop stayed stage7");})
+    );}
+    private List<Step> raidGuestSteps(boolean tiller){
+        List<Step> route=new java.util.ArrayList<>();
+        route.add(when("guest observed both mature raid crops",.2f,d->raidStages(d,7),d->{
+            if(d.ecologyEnabled())throw new IllegalStateException("guest is running an authoritative Ecology instance");
+            int slot=NET_MODE.equals("server")?NET_SLOT:0;int[] p=raidReadyMark(d,slot);
+            d.setBlockAt(p[0],p[1],p[2],"GLASS");retreatFromRaid(d);ok("raid guest acknowledged mature crop stage7 with ecology absent");
+        }));
+        if(tiller)route.add(when("both server guests acknowledged stage7",.2f,d->raidReady(d,1),Autopilot::openRaidGate));
+        route.add(when("authoritative raid reached the guest",.2f,d->raidStages(d,0),d->{
+            if(d.ecologyEnabled())throw new IllegalStateException("guest simulated the raid locally");
+            ok("raid guest received crop stage0 and protected stage7");d.shot("raid-guest"+NET_SLOT);
+        }));
+        route.add(step("protected crop remains mirrored",5f,d->{if(!raidStages(d,0))throw new IllegalStateException("guest raid crop changed after meal");ok("raid protected crop stayed stage7");}));
+        return route;
+    }
 
     private final List<Step> menuSteps = concat(cinematicSteps(), List.of(
             step("dusk", 2.5f, d -> d.setMenuTime((float) (Math.PI * 0.93))),
@@ -966,9 +1050,9 @@ final class Autopilot {
         boolean farm="farm".equals(System.getProperty("mineclone.autopilot.netScenario",""))||NET_MODE.equals("farm");
         String role=NET_MODE.equals("farm")?System.getProperty("mineclone.autopilot.farmRole","host"):NET_MODE;
         this.steps = TRAIL_MODE ? trailSteps() : switch (role) {
-            case "host" -> farm?concat(hostSteps,concat(hostFormsSteps,farmHostSteps)):hostSteps;
-            case "join" -> farm?concat(guestSteps,concat(guestFormsSteps,farmGuestSteps)):guestSteps;
-            case "server" -> farm?concat(serverGuestSteps,NET_SLOT==0?concat(hostFormsSteps,farmServerTillerSteps):concat(guestFormsSteps,farmGuestSteps)):serverGuestSteps;
+            case "host" -> farm?concat(hostSteps,concat(hostFormsSteps,concat(farmHostSteps,ECOLOGY_MODE?raidHostSteps():List.of()))):hostSteps;
+            case "join" -> farm?concat(guestSteps,concat(guestFormsSteps,concat(farmGuestSteps,ECOLOGY_MODE?raidGuestSteps(false):List.of()))):guestSteps;
+            case "server" -> farm?concat(serverGuestSteps,NET_SLOT==0?concat(hostFormsSteps,concat(farmServerTillerSteps,ECOLOGY_MODE?raidGuestSteps(true):List.of())):concat(guestFormsSteps,concat(farmGuestSteps,ECOLOGY_MODE?raidGuestSteps(false):List.of()))):serverGuestSteps;
             default -> menuSteps;
         };
     }

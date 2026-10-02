@@ -30,6 +30,9 @@ public final class Ecology implements Materializer.Populations {
     private final Map<Long, EcologyRegion> regions = new LinkedHashMap<>();
     private final Map<Long, EcologyCodec.Reservation> reservations = new LinkedHashMap<>();
     private final Materializer materializer;
+    private static final ResourceId RABBIT = ResourceId.of("rabbit");
+    private FieldHabitat fields = new FieldHabitat();
+    private byte[] opaqueFields;
     private SpeciesTable species;
     private byte[] sectionTail = new byte[0], opaqueSection, rules = new byte[Integer.BYTES];
     private boolean enabled, supported = true, ruleWritten;
@@ -51,6 +54,7 @@ public final class Ecology implements Materializer.Populations {
     /** Restore before any chunk adoption. Newer layouts stay opaque; bad bytes need durable evidence first. */
     public void restore(Map<String, byte[]> sections, Consumer<byte[]> preserveEvidence) {
         regions.clear(); reservations.clear(); sectionTail = new byte[0]; opaqueSection = null;
+        fields = new FieldHabitat(); opaqueFields = null;
         enabled = false; supported = true; ruleWritten = false; recovery = ""; lastTickDay = Long.MIN_VALUE;
         rules = sections.getOrDefault("rules", new byte[Integer.BYTES]).clone();
         if (rules.length >= 10 && ByteBuffer.wrap(rules, rules.length - 6, 4).getInt() == RULE_MAGIC) {
@@ -61,8 +65,10 @@ public final class Ecology implements Materializer.Populations {
             } else enabled = rules[rules.length - 1] != 0;
         }
         byte[] bytes = sections.get(SAVE_SECTION);
-        if (bytes == null) return;
-        if (!supported) { opaqueSection = bytes.clone(); return; }
+        if (bytes == null) { restoreFields(sections, preserveEvidence); return; }
+        if (!supported) {
+            opaqueSection = bytes.clone(); restoreFields(sections, preserveEvidence); return;
+        }
         try {
             EcologyCodec.Snapshot saved = EcologyCodec.decode(bytes);
             for (EcologyRegion region : saved.regions()) regions.put(region.key(), region.copy());
@@ -75,6 +81,7 @@ public final class Ecology implements Materializer.Populations {
             if (allSpecies.size() > SpeciesTable.MAX_SPECIES) {
                 opaqueSection = bytes.clone(); supported = false;
                 recovery = "Ecology species table exceeds this build's limit; preserved unchanged";
+                restoreFields(sections, preserveEvidence);
                 return;
             }
             refreshProtection();
@@ -88,6 +95,29 @@ public final class Ecology implements Materializer.Populations {
             } catch (RuntimeException failed) {
                 opaqueSection = bytes.clone(); supported = false;
                 recovery = "Cannot preserve damaged ecology; Living World disabled";
+            }
+        }
+        restoreFields(sections, preserveEvidence);
+    }
+
+    private void restoreFields(Map<String, byte[]> sections, Consumer<byte[]> preserveEvidence) {
+        byte[] bytes = sections.get(FieldHabitat.SECTION);
+        if (bytes == null) return;
+        if (!supported) { opaqueFields = bytes.clone(); return; }
+        try { fields = FieldHabitat.decode(bytes); }
+        catch (FieldHabitat.NewerVersionException newer) {
+            opaqueFields = bytes.clone(); supported = false;
+            opaqueSection = sections.get(SAVE_SECTION) == null ? null : sections.get(SAVE_SECTION).clone();
+            recovery = "Living World field data are newer; preserved unchanged";
+        } catch (IOException | IllegalArgumentException damaged) {
+            try {
+                preserveEvidence.accept(bytes.clone());
+                for (EcologyRegion region : regions.values()) region.foodBonus(RABBIT, 0);
+                recovery = "Damaged field habitat preserved separately; rebuilt from loaded land";
+            } catch (RuntimeException failed) {
+                opaqueFields = bytes.clone(); supported = false;
+                opaqueSection = sections.get(SAVE_SECTION) == null ? null : sections.get(SAVE_SECTION).clone();
+                recovery = "Cannot preserve damaged field habitat; Living World disabled";
             }
         }
     }
@@ -171,6 +201,7 @@ public final class Ecology implements Materializer.Populations {
         for (var region : regions.values()) first = Math.min(first, region.lastDay());
         if (first >= target) return;
         refreshHabitat();
+        refreshFields();
         refreshProtection();
         first = Math.max(first, target - 60);
         for (long next = first; next < target; ) {
@@ -294,7 +325,12 @@ public final class Ecology implements Materializer.Populations {
         // corpse is not saved, so release its count now; presentation still runs
         // normally at deathEffectsDone and the later died call is idempotent.
         for (Mob mob : entities.mobs) if (mob.dead) died(mob);
-        if (enabled()) registerLivingBodies();
+        if (enabled()) { registerLivingBodies(); refreshFields(); }
+        if (opaqueFields != null) into.put(FieldHabitat.SECTION, opaqueFields.clone());
+        else if (!fields.empty()) {
+            try { into.put(FieldHabitat.SECTION, fields.encode()); }
+            catch (IOException impossible) { throw new java.io.UncheckedIOException(impossible); }
+        } else into.remove(FieldHabitat.SECTION);
         if (opaqueSection != null) into.put(SAVE_SECTION, opaqueSection.clone());
         else if (!regions.isEmpty()) {
             refreshProtection();
@@ -313,6 +349,7 @@ public final class Ecology implements Materializer.Populations {
 
     public String[] info(float x, float z) {
         if (!supported) return new String[] { "Ecology unavailable", recovery };
+        if (enabled()) refreshFields();
         EcologyRegion region = regionAt(x, z);
         if (region == null) return new String[] { "Ecology: region limit reached" };
         var lines = new ArrayList<String>();
@@ -320,9 +357,10 @@ public final class Ecology implements Materializer.Populations {
         lines.add("Species: total / capacity | bodies | change over 3 days");
         for (var definition : table().definitions()) {
             int[] trend = region.trend(definition.id()); int delta = trend[0] + trend[1] + trend[2];
-            lines.add(definition.type().name() + ": " + region.population(definition.id()) + " / " + region.capacity(definition.id())
+            lines.add(definition.type().name() + ": " + region.population(definition.id()) + " / " + EcologyModel.effectiveCapacity(region, definition.id())
                     + " | " + represented(region.x(), region.z(), definition.id()) + " | " + (delta >= 0 ? "+" : "") + delta);
         }
+        lines.add("Fields: " + fields.crops(region.key()) + " crop estimate | rabbit food +" + region.foodBonus(RABBIT));
         lines.add("Lairs: " + region.lairs().size() + " | burn scars: " + region.scars().size());
         lines.add("Losses: hunt " + region.lossCount(EcologyRegion.LossCause.PLAYER) + ", predators "
                 + region.lossCount(EcologyRegion.LossCause.PREDATOR) + ", fire " + region.lossCount(EcologyRegion.LossCause.FIRE));
@@ -368,5 +406,22 @@ public final class Ecology implements Materializer.Populations {
                 region.capacity(definition.id(), (int) Math.round(sum / 16.0 * region.averageGreenery()));
             }
         }
+    }
+
+    /** Loaded fields update an estimate; unloaded chunks retain their last observed count. */
+    private void refreshFields() {
+        for (Chunk chunk : world.getLoadedChunks()) observeField(chunk);
+        for (EcologyRegion region : regions.values())
+            if (fields.known(region.key())) region.foodBonus(RABBIT, fields.bonus(region.key()));
+    }
+
+    /** Capture the final crop estimate before the host snapshots and evicts writable terrain. */
+    public void observeField(Chunk chunk) {
+        if (!enabled() || chunk.isReadOnly()) return;
+        long key = EcologyRegion.key(Math.floorDiv(chunk.cx, 16), Math.floorDiv(chunk.cz, 16));
+        EcologyRegion region = regions.get(key);
+        if (region == null) return;
+        fields.observe(chunk);
+        region.foodBonus(RABBIT, fields.bonus(key));
     }
 }

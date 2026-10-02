@@ -127,6 +127,17 @@ if ($LivingWorld) {
     }
     $guestMarkers = @('living world guest command refused', 'all checks passed')
     if (-not $Farm) { $guestMarkers += 'all mob species replicated with valid poses' }
+    if ($Farm) {
+        foreach ($marker in @('raid host saw mature crop stage7', 'raid host released two finite natural rabbits',
+                'raid host rabbit consumed stage7 to0', 'raid protected crop stayed stage7')) {
+            if ($hostLog -notmatch [regex]::Escape($marker)) {
+                Write-Host "net test: missing authoritative raid proof: $marker"
+                $code = 1
+            }
+        }
+        $guestMarkers += @('raid guest acknowledged mature crop stage7 with ecology absent',
+                'raid guest received crop stage0 and protected stage7', 'raid protected crop stayed stage7')
+    }
     foreach ($marker in $guestMarkers) {
         if ($guestLog -notmatch [regex]::Escape($marker)) {
             Write-Host "net test: missing guest ecology proof: $marker"
@@ -134,6 +145,7 @@ if ($LivingWorld) {
         }
     }
     if ($code -eq 0) { Write-Host 'net test: Living World owner, guest authority and S_MOBS checks passed' }
+    if ($code -eq 0 -and $Farm) { Write-Host 'net test: natural host rabbit raid, guest crop replication and protected field passed' }
 }
 if ($code -eq 0) { Write-Host ""; Write-Host "net test: both sides passed" }
 exit $code

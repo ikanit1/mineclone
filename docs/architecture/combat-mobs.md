@@ -1,6 +1,6 @@
 # Combat, projectiles and mobs
 
-Updated: 2026-09-24. Paths in backticks are relative to the repository root.
+Updated: 2026-10-02. Paths in backticks are relative to the repository root.
 
 `world/entity` holds mobs and navigation; combat/projectile helpers live in
 `world`. Animation is tested separately from combat timing and networking.
@@ -191,6 +191,58 @@ This prevents a packed room from ejecting a mob through its roof.
 худший случай 1.9 мс, стая из восьми — 2.6 мс/с. ADR:
 `knowledge/decisions/mob-navigation.md`.
 
+## Field raids (LW-06)
+
+With Living World enabled, `Wildlife` lets a hungry rabbit seek wheat, carrots or
+potatoes at stage 4–7 within 16 blocks. `CropRaids` reads the loaded chunks' sparse
+crop index: at most 192 cells and two bounded `PathFinder` attempts per search,
+with a staggered 1.5-second interval. An inaccessible plant is temporarily skipped
+so another reachable plant can be considered. The first path attempt uses the
+nearest eligible plant in the inspected cells. If it fails, the second uses an
+eligible plant from the rotating scan order, skipping a duplicate of the first.
+The cursor advances past that exploration target even when all cells fit in one
+scan, so a large fenced field cannot keep recycling only nearby rejected crops.
+The search never generates terrain and excludes read-only chunks.
+
+Raids follow actual cardinal routes, including the 15/16-block farmland surface.
+Their tighter waypoint reach keeps the rabbit's footprint centred through a
+one-cell gap or open gate. A closed 1.5-block fence or gate blocks the route;
+failed paths do not fall back to walking directly into the field. Generic wall
+jumps and sidesteps are suppressed only during an active raid. Eating requires
+physical proximity, a clear body and a mouth-to-plant line checked against actual
+collision shapes, including tall shapes in the cell below.
+
+Eating resets the same plant to stage 0 and schedules normal `CropBehavior`
+regrowth; it does not remove the plant or produce harvest loot. The rabbit then
+stays sated for 45–90 seconds. Fear of players or wolves, existing `FLEE`, and
+held-food temptation take priority. Disabling the rule or distracting the rabbit
+cancels the old route even while its daily routine sleeps. Appetite and route
+memory are transient, as the existing wolf appetite is; crop stages and scheduled
+ticks use normal block persistence. A restored body starts with the constructor's
+usual appetite delay. With the rule off, the prior rabbit behaviour remains on
+its original path.
+
+Living World also includes height in wildlife sensing: threat distance, wolf prey
+selection and pack anger use three-dimensional separation. Underground hostiles
+twenty blocks below a field no longer keep its rabbit in flight merely because
+their X/Z positions are nearby. Wolves use the same height-aware metric for their
+1.4-block bite range, so prey sensed four blocks below may be pursued but cannot
+be bitten at that separation. Same-level fear and close bites remain active.
+`WorldSession` supplies the rule to `Wildlife.sense` and sets the transient mob
+flag before each update. The original `sense(mobs)` entry point and disabled-rule
+bite calculation retain their exact horizontal metric.
+
+## Rain and hearing (LW-09)
+
+`WorldSession.noise` applies `WeatherHearing` only while Living World is enabled.
+It reduces the radius of an exposed rainy sound source by the actual precipitation
+and thunder: full rain plus thunder changes radius 16 to 4. A solid roof above
+the source, an arid biome, falling snow or an unloaded source column leaves the
+radius unchanged. The graphical host supplies `Atmosphere.global`, including
+weather overrides and blending; the dedicated server samples the same world-seed
+front at `WorldClock.frontSeconds()`. The original mob hearing rules then process
+the adjusted radius. This changes neither weather nor audible playback volume.
+
 ## Checks and tuning
 
 With Living World enabled, regional totals include each live or saved animal.
@@ -200,7 +252,12 @@ physical bodies still die through actual combat. See
 [simulation](simulation.md) for spawning
 and distant herd residency.
 
-`run-tests.ps1 -Only combat,physics,animation,core,net` covers hit windows, projectile walls, explosions, mob behavior and remote state. Relevant visual reviews are under `docs/rendering/`.
+`run-tests.ps1 -Only ecology,combat,physics,animation,core,net` covers hit windows,
+projectile walls, explosions, mob behaviour, field barriers and remote state.
+`RabbitRaidTests`, `StoryARaidTests` and `WeatherHearingTests` cover the new
+behaviour; real Game validation uses `tools/RabbitRaidGameSmoke.java`. Current
+evidence belongs in [field-raids validation](../changes/field-raids/validation.md).
+Relevant visual reviews are under `docs/rendering/`.
 
 Knobs: [TUNING.md](../TUNING.md). Entry points: [PROJECT_MAP.md](../PROJECT_MAP.md).
 

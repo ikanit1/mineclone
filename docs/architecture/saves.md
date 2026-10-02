@@ -26,6 +26,30 @@ leaves the section opaque and the feature disabled. Evidence files never replace
 the original world. Body reservation accounting is described in
 [simulation.md](simulation.md).
 
+`ecology_fields` (LW-06) is an additional optional level section: FHLD magic,
+version 1, region count, then signed region coordinates and sparse per-chunk
+crop counts. There are at most 4096 regions and 256 chunk cells per region;
+each count is 1–256, and zero cells are omitted. The estimated crop total yields
+one rabbit food point per four cells, capped at 64 per region. Saturating a
+chunk's stored count at 256 cannot reduce that ceiling. The largest supported
+payload, including a preserved tail of at most 4096 bytes, stays below 3.2 MiB
+and the outer 4 MiB section bound.
+
+Loaded observations replace only their own chunk's last estimate. Saving and
+`WorldSession.snapshotChunk` capture it before writable terrain is evicted;
+unloaded fields keep their previous estimate across reopening. Actual plants
+remain in blocks/meta and regrowth in `ticks`; the sparse crop index is rebuilt
+from block data. Rabbit appetite and navigation have no new saved fields.
+
+Missing field data starts with an empty observation table. A newer field format
+disables Living World and preserves both original ecology sections and rule bytes.
+Unknown version-1 tail bytes round-trip unchanged. Damaged data rebuilds from
+loaded land only after the same durable evidence callback succeeds; if evidence
+preservation fails, the raw field and ecology payloads remain opaque and the
+feature stays disabled. This optional section does not change the level header
+or chunk reader requirement. [Field-raids test plan](../changes/field-raids/test-plan.md)
+separates these save checks from real gameplay acceptance.
+
 ## Opening a world
 
 `SaveManager.readLevel(id)` returns a sealed `LevelLoad` result:

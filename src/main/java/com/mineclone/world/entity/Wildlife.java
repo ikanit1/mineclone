@@ -62,6 +62,11 @@ public final class Wildlife {
      * обновлением мобов — так же, как {@link MobHerd}.
      */
     public static void sense(List<Mob> mobs) {
+        sense(mobs, false);
+    }
+
+    /** Living World senses physical separation; the legacy entry point keeps its horizontal metric. */
+    public static void sense(List<Mob> mobs, boolean livingWorld) {
         for (Mob m : mobs) {
             m.threatDist = Float.MAX_VALUE;
             if (m.type == MobType.WOLF)
@@ -79,6 +84,10 @@ public final class Wildlife {
                     continue;
                 float dx = b.position.x - a.position.x, dz = b.position.z - a.position.z;
                 float ds = dx * dx + dz * dz;
+                if (livingWorld) {
+                    float dy = b.position.y - a.position.y;
+                    ds += dy * dy;
+                }
                 boolean bPredator = b.type == MobType.WOLF || b.type.hostile;
                 boolean aPredator = a.type == MobType.WOLF || a.type.hostile;
                 if (bPredator && a.type != MobType.WOLF && !a.type.hostile
@@ -111,7 +120,12 @@ public final class Wildlife {
 
     private static float dist(Mob a, Mob b) {
         float dx = b.position.x - a.position.x, dz = b.position.z - a.position.z;
-        return (float) Math.sqrt(dx * dx + dz * dz);
+        float ds = dx * dx + dz * dz;
+        if (a.cropRaidsEnabled) {
+            float dy = b.position.y - a.position.y;
+            ds += dy * dy;
+        }
+        return (float) Math.sqrt(ds);
     }
 
     /** Один тик дикого зверя. */
@@ -127,9 +141,16 @@ public final class Wildlife {
     // ---- кролик ---------------------------------------------------------------
 
     private static void rabbit(Mob m, MobContext c) {
+        if (m.cropRaidsEnabled)
+            m.hungerTimer -= c.dt;
+        else if (m.cropRaid != null) {
+            m.cropRaid.cancel(m);
+            m.cropRaid = null;
+        }
         boolean playerNear = c.dist < RABBIT_ALERT;
         boolean threatNear = m.threatDist < THREAT_ALERT;
         if (m.state == Mob.State.FLEE) {
+            if (m.cropRaid != null) m.cropRaid.cancel(m);
             m.stateTimer -= c.dt;
             float ax, az;
             if (threatNear && m.threatDist < c.dist) {
@@ -149,9 +170,21 @@ public final class Wildlife {
             return;
         }
         if (playerNear || threatNear) {
+            if (m.cropRaid != null) m.cropRaid.cancel(m);
             m.state = Mob.State.FLEE;
             m.stateTimer = 2.5f;
             return;
+        }
+        if (m.cropRaidsEnabled) {
+            if (m.foodTarget != null) {
+                if (m.cropRaid != null) m.cropRaid.cancel(m);
+            } else if (m.hungerTimer <= 0f) {
+                if (m.cropRaid == null) m.cropRaid = new CropRaids(m);
+                if (m.cropRaid.tick(m, c)) {
+                    if (m.state == Mob.State.WANDER) hop(m);
+                    return;
+                }
+            }
         }
         m.updatePeaceful(c.dt);
         if (m.state == Mob.State.WANDER)

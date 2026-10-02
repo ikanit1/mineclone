@@ -1,6 +1,6 @@
 # Shared simulation
 
-Updated: 2026-09-24. Paths in backticks are relative to the repository root.
+Updated: 2026-10-02. Paths in backticks are relative to the repository root.
 
 The `sim` package holds what a single-player host and the dedicated server must
 simulate identically. It never references `render`, `audio`, `game` or LWJGL;
@@ -77,8 +77,41 @@ Read-only or full chunks keep the body live. With the rule off, the legacy spawn
 path and recorded simulation trajectory remain unchanged.
 
 Owners use `/ecology on|off|info|advance <1–60>`; F3+G selects diagnostics.
-Spider nests, field raids, burn-scar behaviour and the LW-12 performance budget
+Spider nests, burn-scar behaviour and the LW-12 performance budget
 remain later work. See [change evidence](../changes/living-populations/validation.md).
+
+## Fields and rain (LW-06, LW-09)
+
+The same opt-in rule now connects fields to the regional rabbit population and
+physical raids. `Chunk` keeps a sparse index of all wheat, carrot and potato cells,
+at every growth stage. `Ecology` observes loaded writable chunks before daily
+steps and saving; `WorldSession.snapshotChunk` also observes a chunk before
+eviction. `FieldHabitat` retains its last observed count while terrain is absent,
+so unloading a field does not immediately remove its food. A new observation of
+removed crops withdraws that chunk's contribution. No unseen terrain is generated
+for an estimate.
+
+Each four observed crop cells add one rabbit food point, up to 64 per region.
+Stored counts saturate at 256 per chunk, which already suffices for the regional
+ceiling. The food bonus enters `EcologyModel.effectiveCapacity` before the same
+daily births, predation and migration used by ordinary play and owner advancement.
+Wolf predation therefore limits rabbit pressure while fields support more rabbits.
+The F3+G and `/ecology info` output includes the field estimate and food bonus.
+
+Only the authoritative session sets `Mob.cropRaidsEnabled`. Rabbits walk to a
+reachable maturing plant and reset its stage; guests see the ordinary block-meta
+change. Crops and regrowth ticks persist in their usual chunk data; appetite and
+navigation are transient. [Combat and mobs](combat-mobs.md#field-raids-lw-06)
+describes barriers, search bounds and fear/temptation priority.
+
+The session also adjusts noise radius for rain at the source through
+`WeatherHearing`. Game supplies its actual `Atmosphere.global`; the dedicated
+host uses deterministic seed/clock sampling through the default host seam.
+Roof, arid-biome, snow and missing-source-column exclusions apply before the
+existing `Mob.hearNoise` call. Both behaviours leave the disabled-rule path
+unchanged and require no protocol extension. Acceptance evidence is tracked in
+[the field-raids change](../changes/field-raids/validation.md); this is not the
+complete LW-11 story set or the LW-12 performance gate.
 
 ## Ground trails (LW-07)
 

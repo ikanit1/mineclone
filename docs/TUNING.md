@@ -35,6 +35,10 @@ Moved from the pre-foundation CLAUDE.md on 2026-09-24; structure placement corre
 | `Weather` | `FRONT_LENGTH / TRANSITION` | Длина атмосферного фронта и время перетекания в следующий |
 | `Weather` | `Kind` | Таблица видов погоды: осадки, облачность, ветер, буря |
 | `Weather` | `SNOW_ALTITUDE / MIN_VISIBILITY` | С какой высоты дождь становится снегом и предел видимости в буре |
+| `WeatherHearing` | `RAIN_MASK / THUNDER_MASK / MIN_RADIUS_FACTOR` | With Living World enabled, exposed rain sources reduce mob hearing radius by `rain * (0.35 + 0.40 * storm)`, down to 25%; a 16-block stone noise reaches 4 blocks in full thunder. Snow, arid biomes and roofs keep the original radius |
+| `CropRaids` | `RANGE / CELL_BUDGET / PATH_BUDGET / SEARCH_INTERVAL` | Hungry rabbits inspect up to 192 indexed crop cells within 16 blocks and try up to two real paths per 1.5-second search: nearest first, then rotating exploration so closed clusters cannot starve reachable crops; failed targets wait eight seconds |
+| `CropRaids` | `SATED_MIN / SATED_MAX` | A reached crop at stage 4 or later resets to stage 0 and feeds the rabbit for 45–90 seconds; fleeing and held food take priority |
+| `FieldHabitat` | `CROPS_PER_FOOD / MAX_FOOD / MAX_CROPS_PER_CHUNK` | Four observed plants add one rabbit capacity, up to +64 per region; each chunk estimate caps at 256 because any higher count already saturates regional food. Unloaded fields retain the last observed estimate |
 | `NightSky` | `moonPhase() / PHASES` | Фаза луны по номеру суток; из-за неё `/time set` не нормализует оборот |
 | `NightSky` | `moonlight()` | Сколько света даёт луна в этой фазе |
 | `NightSky` | `AURORA_CHANCE / AURORA_WARM_BIOME` | Как часто бывает сияние и насколько оно слабее в тёплых биомах |

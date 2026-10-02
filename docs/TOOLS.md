@@ -46,6 +46,7 @@ writer and its assets, as described in the [fixture reproduction guide](../src/t
 
 | File | Run | Purpose | Output / effects |
 |---|---|---|---|
+| [RabbitRaidGameSmoke.java](../tools/RabbitRaidGameSmoke.java) | J | Actual Game: seven-day wolf release, reachable/fenced crops, gate, save/reopen and stone-breaking hearing in clear/storm weather | `out-test/rabbit-raid-game; disposable saves and native captures; optional output argument` |
 | [BenchArmor.java](../tools/BenchArmor.java) | J | Eight-player armor CPU submission before/after under real GL; reports renderer and delta | `console; hardware budget still needs mp-host-3 baseline` |
 | [RenderSurvivalPreview.java](../tools/RenderSurvivalPreview.java) | J | 78 real color captures, armor depth comparisons, baby models, sleeves and eating | `out-test/previews/survival` |
 | [ImportBuildingFarmTextures.java](../tools/ImportBuildingFarmTextures.java) | J | Hash-checked source sheet → eight construction/farm/sapling tiles | `assets/textures/blocks` |
@@ -134,6 +135,24 @@ save/menu/reopen and identity checks. Screenshots/logs use `out-test/population-
 `run-net-test.ps1 -LivingWorld` enables the host rule and checks guest rejection;
 `run-server-test.ps1 -LivingWorld` enables and advances through the server console.
 Default and Photon paths retain their existing opt-in behaviour.
+
+For LW-06/LW-09, `java -cp 'out;libs/*' tools/RabbitRaidGameSmoke.java` uses the
+actual Game update/render path and temporary saves. It checks fields before and
+after a gate opens, then reopening, and uses real stone-breaking input to compare
+clear weather with the host's storm state. It does not measure the LW-12 hardware
+budget or complete the other Living World stories. See the
+[field-raids test plan](changes/field-raids/test-plan.md) and
+[validation](changes/field-raids/validation.md) for the boundaries and results.
+
+On Windows the combined `-Farm -LivingWorld` LAN/server scenarios also wait for
+an ordinary hungry rabbit to consume a mature crop on the authority and require
+guests to receive stage 0 while the protected crop stays at 7. They do not grant
+guest Ecology authority. The dedicated script invokes
+`java -cp 'out;libs/*' tools/RaidSaveAcceptance.java prepare|verify out-test/server/server.properties`:
+preparation creates a fresh disposable real server save with two reserved animals
+behind gates; verification reads the actual saved crop stages before the later
+ten-day command can regrow them. It refuses paths outside this checkout's
+`out-test` directory. Linux scripts retain their earlier farm scenario scope.
 
 ## Historical generators
 

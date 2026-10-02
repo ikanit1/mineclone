@@ -28,7 +28,12 @@ and `feature`. M0 also adds `data`, `clock`, `render` and `perf`. More categorie
 may be registered as the roadmap proceeds.
 `ecology` covers strict species data, deterministic daily dynamics, bounded
 codecs, corruption/future-layout preservation, finite materialization and
-save/travel body ownership. `sim` retains the disabled-rule parity fixture.
+save/travel body ownership. It also registers `RabbitRaidTests` for physical
+approach, regrowth, barriers, fear/temptation and sleeping rule changes;
+`FieldHabitatTests` for the sparse index, bounded optional save data and eviction;
+`StoryARaidTests` for seven-day predator release and actual session raids; and
+`WeatherHearingTests` for source exposure, weather overrides and host/server
+hearing parity. `sim` retains the disabled-rule parity fixture.
 Unknown categories/arguments, missing values and an empty selected set exit 2;
 an assertion/test or report-write failure exits 1. A valid all-passing run exits 0.
 `--only` explicitly overrides `MINECLONE_TEST_ONLY`; `--skip` then removes categories.
@@ -102,6 +107,16 @@ LAN evidence lives under `out-test/net`; package smoke extracts into a fresh
 exit 0 and saved `level.dat`, and retains stdout/stderr. No user world is touched.
 Native animation, audio, menus and performance need their actual render/input path;
 see [TOOLS](TOOLS.md), [rendering reviews](rendering/) and [architecture](architecture/).
+
+`java -cp 'out;libs/*' tools/RabbitRaidGameSmoke.java` runs a disposable native
+Game scenario with wolf deaths, seven days, open and fenced plots, opening a
+gate, save/reopen, and actual stone-breaking input under clear/storm weather.
+Its default artifacts go to `out-test/rabbit-raid-game`; a positional argument
+selects another output directory. Run against the current compiled sources with
+the usual GL/OpenAL natives; Linux needs Xvfb and the Linux classpath separator.
+Headless checks do not establish native, LAN, dedicated-server or hardware
+performance acceptance. [The field-raids test plan](changes/field-raids/test-plan.md)
+defines those gates; [validation](changes/field-raids/validation.md) records results.
 
 ## Continuous integration
 
