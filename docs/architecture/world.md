@@ -1,6 +1,6 @@
 # World, chunks and block changes
 
-Updated: 2026-09-25. Paths in backticks are relative to the repository root.
+Updated: 2026-10-02. Paths in backticks are relative to the repository root.
 
 `world/World.java` owns loaded chunks; `world/Chunk.java` owns block data, light,
 metadata, containers and meshes. Read [chunk publication](chunk-publication.md)
@@ -71,6 +71,14 @@ After publication, container mutation belongs to the main simulation thread;
   случайных тиков, сохраняет секция чанка `ticks` (BLK-04,
   [blocks](blocks.md#scheduled-ticks-blk-04)). Восстановленный чанк отдаёт свои
   тики симуляции при публикации (`World.tickArrivals`), не патчем после неё.
+- `Chunk.cropCellCount` / `cropCellAt` give O(1) sparse iteration over wheat,
+  carrots and potatoes at all stages; `cropIndices` returns a defensive copy.
+  Planting, crop type changes, removal and restored block data maintain the index.
+  It is derived from blocks, never a second persisted source of crop state.
+  Living World rabbit raids inspect this index only in already loaded writable
+  chunks. Eating changes the existing plant's meta to stage 0 through
+  `World.setBlock` and calls `CropBehavior.onPlaced` to schedule regrowth, without
+  removal callbacks or harvest drops. Existing block updates replicate the stage.
 - `sim.ecology.Trample` (LW-07) keeps foot traffic in an optional, bounded chunk
   section. The server or host deepens a five-stage soil-wear overlay above
   unchanged grass and thins snow as players and animals cross cells;

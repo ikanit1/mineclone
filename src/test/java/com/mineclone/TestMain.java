@@ -108,6 +108,10 @@ public final class TestMain {
         suite("ecology", "EcologyTravelTests", EcologyTravelTests::runAll);
         suite("ecology", "EcologyBreedingTests", EcologyBreedingTests::runAll);
         suite("ecology", "EcologyPendingMigrationTests", EcologyPendingMigrationTests::runAll);
+        suite("ecology", "FieldHabitatTests", FieldHabitatTests::runAll);
+        suite("ecology", "WeatherHearingTests", WeatherHearingTests::runAll);
+        suite("ecology", "RabbitRaidTests", RabbitRaidTests::runAll);
+        suite("ecology", "StoryARaidTests", StoryARaidTests::runAll);
         suite("render", "GpuTimersRingTests", GpuTimersRingTests::runAll);
         suite("perf", "BenchMetricsTests", BenchMetricsTests::runAll);
         suite("feature", "FeatureTests", r -> FeatureTests.runAll((n, c) -> r.run(n, c::run)));

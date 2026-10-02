@@ -1844,6 +1844,7 @@ public class Game {
         @Override public void effectApplied(com.mineclone.sim.Participant target,com.mineclone.world.effect.StatusEffect effect,float seconds){if(target.local())player.effects.apply(effect,seconds);else net.sendEffect(target.id(),effect,seconds);}
         @Override public boolean focusIsBody() { return true; }
         @Override public boolean spawnMobs() { return bench == null; }
+        @Override public com.mineclone.world.Weather.State hearingWeather() { return atmosphere.global; }
 
         /**
          * Удар дошёл до своего игрока — урон уже снят через окно неуязвимости
@@ -5005,6 +5006,21 @@ public class Game {
                 mobs.add(new com.mineclone.world.entity.Mob(type, x, y + 0.05f, z,
                         new java.util.Random(type.ordinal())));
             }
+        }
+
+        @Override
+        public long spawnRaidRabbit(float x, float y, float z) {
+            if (!net.isHost() || session == null || !session.ecology().enabled())
+                throw new IllegalStateException("Only the live Living World owner may release a raid rabbit");
+            var rabbit = new com.mineclone.world.entity.Mob(com.mineclone.world.entity.MobType.RABBIT,
+                    x, y, z, new java.util.Random(world.seed ^ (long) Math.floor(x) * 31L
+                    ^ (long) Math.floor(z) * 137L));
+            rabbit.onGround = true;
+            rabbit.persistent = true;
+            if (!session.ecology().claim(rabbit))
+                throw new IllegalStateException("No finite rabbit population is available for the raid fixture");
+            mobs.add(rabbit);
+            return rabbit.id;
         }
 
         @Override

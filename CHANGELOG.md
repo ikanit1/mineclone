@@ -5,6 +5,8 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 ## [Unreleased]
 
 ### Added
+- With opt-in Living World enabled, hungry rabbits find reachable maturing wheat, carrots and potatoes and eat them back to seedlings. Closed fences and gates protect fields; opening a gate lets rabbits through. Plants regrow normally and raids produce no harvest loot. Field food supports the regional rabbit population, retaining its last observed estimate while terrain is unloaded or the world is closed.
+- Living World rain and thunder reduce how far mobs hear exposed outdoor noise. A roof over the source, arid land and snowfall keep the usual hearing radius; the host's actual weather and dedicated-server weather front drive the same rule.
 - Seven construction forms: lower/upper/double slabs, fences, gates, ladders and trapdoors with shared collision, meshing, interaction and recipes.
 - Six hoes, wet/dry farmland, three crops with scheduled growth and harvest loot, three growing saplings, biome vegetation and grass seeds; farms work on LAN and dedicated servers.
 - Sixteen craftable armor pieces, four equipment slots and offhand, F hand swap (creative flight defaults to G), armor mitigation/wear, first/third-person armor and matching shadows.
@@ -19,6 +21,7 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 - Software-GL eight-player armor overhead is +0.1653 ms after instancing; the +0.1 ms target and hardware milestone baselines remain open. Functional native LAN/server checks pass.
 
 ### Fixed
+- F3+G opens the ecology diagnostics without also toggling creative flight.
 - Population reservations remain correct for distant saved herds, newborn animals and saving just before a death tick. Both earlier animal save layouts import with breeding state and opaque tails intact; new chunks require reader 8 so older builds preserve them safely.
 - Bodies clipped into a room wall by crowd pressure or a changed block recover into nearby free space instead of remaining embedded. Mob collisions no longer mistake an old side overlap for landing on top of a wall and launch the mob through a roof; a fully sealed body stays below the roof until space is opened.
 - Rain is one steady sound. It used to loop a single two-second recording that fades in and out, so the rain dipped by about 30 dB and restarted the same pattern every two seconds; now all eight recordings are stitched into one seamless 12-second loop with crossfades.

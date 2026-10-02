@@ -56,9 +56,19 @@ world=test
 world-name=TestServer
 seed=20260922
 mode=creative
+difficulty=normal
 autosave-seconds=15
 view-distance=4
 "@ | Set-Content -LiteralPath $conf -Encoding ascii
+
+# Only the combined scenario needs saved, finite rabbits. A source-mode tool
+# prepares a new temporary server world through its normal save path; the real
+# server reopens it and its ordinary rabbit brains wait behind a closed gate.
+if ($Farm -and $LivingWorld) {
+    $fixtureTool = Join-Path $root 'tools\RaidSaveAcceptance.java'
+    & java -cp $cp $fixtureTool prepare $conf
+    if ($LASTEXITCODE -ne 0) { throw 'server test: could not prepare finite natural raid fixture' }
+}
 
 # The server is started through .NET rather than Start-Process because we need
 # its stdin: stopping it with /stop is the path a person uses, and it is the
@@ -139,6 +149,27 @@ foreach ($proc in $guests) {
 }
 Write-Host 'server test: both clients finished'
 
+# Capture the actual meal before the later ten-day clock command can regrow it.
+# Read the atomically published snapshots until /save's queue is durable; no
+# mutation or fabricated stage0 is performed by the verification tool.
+$raidSaved = $false
+if ($Farm -and $LivingWorld -and -not $server.HasExited) {
+    $server.StandardInput.WriteLine('/save')
+    $server.StandardInput.Flush()
+    $deadline = [DateTime]::UtcNow.AddSeconds(20)
+    do {
+        $verificationErrorPolicy = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            $raidProof = & java -cp $cp $fixtureTool verify $conf 2>&1
+            $raidExit = $LASTEXITCODE
+        } finally { $ErrorActionPreference = $verificationErrorPolicy }
+        $raidProof | Set-Content -LiteralPath (Join-Path $work 'raid-save.log') -Encoding utf8
+        if ($raidExit -eq 0) { $raidSaved = $true; Write-Host $raidProof; break }
+        Start-Sleep -Milliseconds 300
+    } while ([DateTime]::UtcNow -lt $deadline -and -not $server.HasExited)
+}
+
 # Clients are done: ask the server to save and stop the way a person would.
 Write-Host 'server test: asking the server to stop'
 $stoppedCleanly = $true
@@ -175,6 +206,10 @@ if ($serverOut) { Write-Host $serverOut.TrimEnd() }
 if ($serverErr) { Write-Host ($serverErr -split "`n" | Select-Object -First 10) }
 
 $code = 0
+if ($Farm -and $LivingWorld -and -not $raidSaved) {
+    Write-Host 'server test: the actual rabbit meal was not saved as crop0 with protected crop7 (see raid-save.log)'
+    $code = 1
+}
 if (-not $stoppedCleanly) {
     Write-Host 'server test: the server did not stop on /stop'
     $code = 1
@@ -216,7 +251,13 @@ foreach ($slot in 0, 1) {
     }
     if ($LivingWorld) {
         $guestLog = if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Raw } else { '' }
-        foreach ($marker in @('living world guest command refused', 'all checks passed')) {
+        $markers = @('living world guest command refused', 'all checks passed')
+        if ($Farm) {
+            $markers += @('raid guest acknowledged mature crop stage7 with ecology absent',
+                    'raid guest received crop stage0 and protected stage7', 'raid protected crop stayed stage7')
+            if ($slot -eq 0) { $markers += 'raid release gate opened' }
+        }
+        foreach ($marker in $markers) {
             if ($guestLog -notmatch [regex]::Escape($marker)) {
                 Write-Host "server test: guest $slot lacks ecology proof: $marker"
                 $code = 1
@@ -238,6 +279,7 @@ if (-not (Test-Path $chunks) -or ((Get-ChildItem $chunks -File).Count -eq 0)) {
 
 if ($code -eq 0) {
     if ($LivingWorld) { Write-Host 'server test: Living World commands, ten-day advance and guest authority passed' }
+    if ($Farm -and $LivingWorld) { Write-Host 'server test: natural server raid, both guest mirrors, protected crop and saved meal passed' }
     Write-Host ''; Write-Host 'server test: the server and both clients passed'
 }
 exit $code

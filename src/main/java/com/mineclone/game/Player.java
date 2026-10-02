@@ -175,7 +175,8 @@ public class Player implements com.mineclone.world.effect.StatusEffects.Target {
 
         updateFlightControls(dt, controlsEnabled,
                 controlsEnabled && input.pressed(com.mineclone.core.KeyBindings.Action.JUMP),
-                controlsEnabled && input.pressed(com.mineclone.core.KeyBindings.Action.FLY));
+                controlsEnabled && !input.keyDown(org.lwjgl.glfw.GLFW.GLFW_KEY_F3)
+                        && input.pressed(com.mineclone.core.KeyBindings.Action.FLY));
 
         // horizontal input
         Vector3f fwd = camera.forward();

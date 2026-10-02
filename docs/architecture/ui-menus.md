@@ -3,6 +3,7 @@
 Updated: 2026-10-01. Paths in backticks are relative to the repository root.
 
 `ui/ScreenStack` owns menu navigation; `game/Hud` is the in-world overlay.
+F3 is a debug modifier: F3+G shows ecology without toggling creative flight on G.
 `TitleScreen.VERSION` and the HUD resolve `core/BuildInfo.VERSION`, generated from
 `gradle.properties`; game and server logs use the same BuildInfo summary.
 Unreadable worlds route to `WorldLoadErrorScreen` and never enter regeneration;

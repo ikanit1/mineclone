@@ -84,6 +84,8 @@ public final class WorldSession {
 
         /** False stops natural spawning (benchmarks); despawning goes on. */
         default boolean spawnMobs() { return true; }
+        /** Forced game weather, or null to use the shared world-seed/clock weather front. */
+        default com.mineclone.world.Weather.State hearingWeather() { return null; }
 
         /** A mob's blow hurt this participant; a local player is thrown back and feels the elite's touch. */
         default void participantStruck(Participant participant, Mob mob) {}
@@ -202,7 +204,7 @@ public final class WorldSession {
         if (senseTimer <= 0f) {
             senseTimer = SENSE_INTERVAL;
             MobHerd.update(mobs);
-            Wildlife.sense(mobs);
+            Wildlife.sense(mobs, ecology.enabled());
         }
         MobTactics.updateGroup(mobs, clock.dayPhase(), dt);
         boolean torch = host.focusHoldsLight();
@@ -210,6 +212,7 @@ public final class WorldSession {
         Iterator<Mob> it = mobs.iterator();
         while (it.hasNext()) {
             Mob m = it.next();
+            m.cropRaidsEnabled = ecology.enabled();
             if(world.rules.difficulty()==com.mineclone.world.Difficulty.PEACEFUL&&m.type.hostile){it.remove();continue;}
             if(m.id==0)m.id=clock.nextEntityId();
             m.setPlayerTorch(torch);
@@ -380,6 +383,11 @@ public final class WorldSession {
 
     /** A sound a mob may come to check: a block broken or placed, by anyone. */
     public void noise(float x, float y, float z, float loudness) {
+        if (ecology.enabled()) {
+            var weather = host.hearingWeather();
+            if (weather == null) weather = com.mineclone.world.Weather.sample(world.seed, clock.frontSeconds());
+            loudness = com.mineclone.sim.ecology.WeatherHearing.atSource(world, weather, x, y, z, loudness);
+        }
         for (Mob m : entities.mobs)
             m.hearNoise(x, y, z, loudness);
     }
@@ -676,6 +684,7 @@ public final class WorldSession {
     public ChunkSnapshot snapshotChunk(Chunk c) {
         if (c.isReadOnly())
             return null;
+        ecology.observeField(c);
         List<DroppedItem> dropped = itemsInChunk(c);
         List<SavedMob> animals = mobsInChunk(c);
         if (!c.modified && dropped.isEmpty() && c.savedItems == 0 && animals.isEmpty() && c.savedMobs == 0)

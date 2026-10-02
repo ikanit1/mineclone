@@ -6,6 +6,7 @@ import com.mineclone.world.World;
 import org.joml.Vector3f;
 
 import java.util.Random;
+import java.util.List;
 
 /**
  * One mob: state plus AI state machine. The class stays independent from GL
@@ -180,6 +181,9 @@ public class Mob implements Hittable, com.mineclone.world.effect.StatusEffects.T
     public int breedingOwner=-1;
     public float age,love,loveCooldown;
     public org.joml.Vector3f foodTarget;
+    /** Host-only Living World switch. Appetite and raid navigation are transient. */
+    public boolean cropRaidsEnabled;
+    CropRaids cropRaid;
     public boolean baby(){return age<0;}
     public float growthScale(){return .5f+.5f*Math.min(1,Math.max(0,1+age/1200));}
     public final com.mineclone.world.effect.StatusEffects effects=new com.mineclone.world.effect.StatusEffects();
@@ -434,6 +438,11 @@ public class Mob implements Hittable, com.mineclone.world.effect.StatusEffects.T
             updateCorpse(world, dt);
             return;
         }
+        // Sleep bypasses Wildlife; rule changes, fear and temptation must still retire its route.
+        if (cropRaid != null && (!cropRaidsEnabled || foodTarget != null || state == State.FLEE)) {
+            cropRaid.cancel(this);
+            if (!cropRaidsEnabled) cropRaid = null;
+        }
         if (hurtFlash > 0f)
             hurtFlash = Math.max(0f, hurtFlash - dt);
         if (invulnTime > 0f)
@@ -637,11 +646,12 @@ public class Mob implements Hittable, com.mineclone.world.effect.StatusEffects.T
         // Накопитель «застрял» тикает по самому упору в стену, а не по контакту с
         // землёй: прыжок сбрасывает onGround в следующем кадре и обнулял бы
         // счётчик тем самым прыжком, который мы и лечим.
+        boolean raiding = cropRaidsEnabled && cropRaid != null && cropRaid.active();
         if (hitWall && !leaping) {
             blockedTimer += dt;
-            if (onGround)
+            if (onGround && !raiding)
                 velocity.y = EntityPhysics.JUMP_VELOCITY;
-            if (blockedTimer > STUCK_TIME && sidestepTimer <= 0f) {
+            if (!raiding && blockedTimer > STUCK_TIME && sidestepTimer <= 0f) {
                 sidestepTimer = SIDESTEP_TIME;
                 sidestepSign = rnd.nextBoolean() ? 1f : -1f;
                 blockedTimer = 0f;
@@ -1202,6 +1212,10 @@ public class Mob implements Hittable, com.mineclone.world.effect.StatusEffects.T
      * тогда наводимся напрямую.
      */
     private boolean followPath() {
+        return followPath(WAYPOINT_REACH);
+    }
+
+    private boolean followPath(float reach) {
         if (path == null)
             return false;
         // Проскакиваем уже пройденные точки: физика могла протащить моба
@@ -1209,7 +1223,7 @@ public class Mob implements Hittable, com.mineclone.world.effect.StatusEffects.T
         while (pathIndex < path.size()) {
             Vector3f wp = path.get(pathIndex);
             float wx = wp.x - position.x, wz = wp.z - position.z;
-            if (wx * wx + wz * wz > WAYPOINT_REACH * WAYPOINT_REACH
+            if (wx * wx + wz * wz > reach * reach
                     || Math.abs(wp.y - position.y) > 1.2f)
                 break;
             pathIndex++;
@@ -1240,6 +1254,26 @@ public class Mob implements Hittable, com.mineclone.world.effect.StatusEffects.T
             }
         }
         return true;
+    }
+
+    /** Crop paths keep turns centred so a small rabbit fits an open, one-cell gate. */
+    void beginCropPath(List<Vector3f> route, Vector3f goal) {
+        path = route;
+        pathIndex = 0;
+        pathGoal.set(goal);
+        sidestepTimer = 0f;
+        blockedTimer = 0f;
+    }
+
+    boolean followCropPath() { return followPath(0.18f); }
+
+    void clearCropPath() {
+        path = null;
+        pathIndex = 0;
+        leaping = false;
+        sidestepTimer = 0f;
+        blockedTimer = 0f;
+        stopMoving();
     }
 
     /** Есть ли сейчас построенный маршрут — для тестов и отладки. */

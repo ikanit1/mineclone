@@ -10,6 +10,8 @@ import com.mineclone.save.PlayerRecordCodec;
 import com.mineclone.save.SaveFormat;
 import com.mineclone.save.SaveManager;
 import com.mineclone.world.GameMode;
+import com.mineclone.world.Chunk;
+import com.mineclone.world.BlockType;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -79,11 +81,21 @@ public final class PopulationSaveCompatibility {
         Files.writeString(root.resolve("fixture.marker"), MARKER);
         Files.write(root.resolve("expected-ecology.bin"), ecology);
         Files.write(root.resolve("expected-rules.bin"), rules);
+        Class<?> fieldClass = Class.forName("com.mineclone.sim.ecology.FieldHabitat");
+        Object field = fieldClass.getConstructor().newInstance();
+        Chunk crops = new Chunk(-32, 48);
+        for (int i = 0; i < 32; i++) crops.set(i % 16, 65, i / 16, BlockType.valueOf("CARROTS"));
+        fieldClass.getMethod("observe", Chunk.class).invoke(field, crops);
+        byte[] fieldBytes = (byte[]) fieldClass.getMethod("encode").invoke(field);
+        fieldBytes = Arrays.copyOf(fieldBytes, fieldBytes.length + 3);
+        fieldBytes[fieldBytes.length - 3] = 19; fieldBytes[fieldBytes.length - 1] = -1;
+        Files.write(root.resolve("expected-fields.bin"), fieldBytes);
         SaveManager save = manager(root);
         try {
             Map<String, byte[]> sections = new LinkedHashMap<>();
             sections.put("ecology", ecology);
             sections.put("rules", rules);
+            sections.put("ecology_fields", fieldBytes);
             LevelData level = new LevelData(CURRENT_NAME, 20261002L, -503.5, 65, 777.5, 78.0f,
                     GameMode.SURVIVAL, 1L,
                     PlayerRecord.builder().pose(-503.5, 65, 777.5, 0.25f, -0.15f, 2).build(), sections);
@@ -188,6 +200,12 @@ public final class PopulationSaveCompatibility {
                     "The Living World switch changed in the legacy writer");
             check(Arrays.equals(Files.readAllBytes(root.resolve("expected-chunk.bin")),
                     Files.readAllBytes(chunkFile(root))), "Legacy phase changed animal chunk bytes");
+            Class<?> fieldClass = Class.forName("com.mineclone.sim.ecology.FieldHabitat");
+            byte[] fieldBytes = level.extraSections.get("ecology_fields");
+            Object fields = fieldClass.getMethod("decode", byte[].class).invoke(null, fieldBytes);
+            check(Arrays.equals(fieldBytes, (byte[]) fieldClass.getMethod("encode").invoke(fields))
+                    && (int) fieldClass.getMethod("crops", long.class).invoke(fields, ((long) -2 << 32) ^ 3L) == 32,
+                    "Field food estimate or opaque tail changed through the legacy writer");
             ChunkLoad load = save.readChunk(WORLD, 0, 0);
             check(load instanceof ChunkLoad.Loaded, "Current build could not reopen protected animal chunk");
             Object chunkSnapshot = ((ChunkLoad.Loaded) load).snapshot();
@@ -297,6 +315,8 @@ public final class PopulationSaveCompatibility {
                 "Ecology section changed byte-for-byte");
         check(Arrays.equals(level.extraSections.get("rules"), Files.readAllBytes(root.resolve("expected-rules.bin"))),
                 "Rules section or unknown rules suffix changed byte-for-byte");
+        check(Arrays.equals(level.extraSections.get("ecology_fields"), Files.readAllBytes(root.resolve("expected-fields.bin"))),
+                "Field food observations or opaque tail changed byte-for-byte");
     }
 
     private static void requireFixture(Path root) throws IOException {
