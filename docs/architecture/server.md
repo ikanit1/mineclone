@@ -64,6 +64,18 @@ diagnostic uses the player's region, and guests cannot invoke it. Behaviour and
 acceptance evidence are tracked in
 [spider-lairs validation](../changes/spider-lairs/validation.md).
 
+`info` and `lair` inspect existing state without seeding a region or refreshing
+field observations. Shared diagnostics include the stored three daily model
+deltas and the nearest known nest/scar in the current and eight adjacent regions;
+the location search is explicitly bounded and never generates terrain.
+
+`run-server-test.ps1 -Stories` runs a NORMAL headless authority and two real
+clients in one disposable valley. It checks ordinary nest/silk/trail/crop snapshots
+and finite forest recovery, then independently reads saved terrain, histories and
+healthy reserved body IDs before and after `/stop`. Complete nest-clearing and
+thirty-day absence journeys run separately in actual Game and deterministic tests;
+see [combined evidence](../changes/living-world-stories/validation.md).
+
 `run-tests.ps1 -Only net,save` checks dedicated logic. `run-server-test.ps1` is the end-to-end LAN gate; `tools/TestServerPackage.ps1` checks extracted distribution boot and /stop.
 
 Knobs: [TUNING.md](../TUNING.md). Entry points: [PROJECT_MAP.md](../PROJECT_MAP.md).

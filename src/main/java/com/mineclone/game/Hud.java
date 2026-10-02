@@ -98,16 +98,26 @@ public class Hud {
         float x = Math.max(8f, screenW - panelW - 8f);
         float y = small.getPixelHeight() + 8f;
         int visible = Math.min(lines.length, Math.max(1, (int) ((screenH - y - 28f) / lineH)));
+        String[] shown = ecologyRows(lines, visible);
         float panelH = visible * lineH + 20f;
         ui.begin(screenW, screenH);
         ui.quad(x, y - small.getPixelHeight(), panelW, panelH, 0.025f, 0.06f, 0.045f, 0.82f);
         ui.quad(x, y - small.getPixelHeight(), 2f, panelH, 0.35f, 0.68f, 0.43f, 0.85f);
         ui.end();
         for (int i = 0; i < visible; i++) {
-            String line = fitEcologyLine(lines[i], panelW - 24f);
+            String line = fitEcologyLine(shown[i], panelW - 24f);
             text.drawShadowed(small, line, x + 12f, y + i * lineH,
                     screenW, screenH, i == 0 ? 0.85f : 0.9f, 0.96f, i == 0 ? 0.6f : 0.92f);
         }
+    }
+
+    /** Reserve the final visible row for an explicit count when the panel cannot fit its report. */
+    static String[] ecologyRows(String[] lines, int visible) {
+        if (visible >= lines.length) return lines;
+        if (visible <= 1) return new String[] { lines[0] + " (" + (lines.length - 1) + " more rows)" };
+        String[] shown = java.util.Arrays.copyOf(lines, visible);
+        shown[visible - 1] = "+" + (lines.length - visible + 1) + " more ecology rows";
+        return shown;
     }
 
     private String fitEcologyLine(String line, float width) {

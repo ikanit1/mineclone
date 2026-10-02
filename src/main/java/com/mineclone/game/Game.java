@@ -4835,7 +4835,7 @@ public class Game {
             return burnFixtureAnchor.clone();
         }
         @Override public void prepareBurnArena() {
-            if (net.isClient() || !"burn".equals(System.getProperty("mineclone.autopilot.netScenario", "")))
+            if (net.isClient() || !("burn".equals(System.getProperty("mineclone.autopilot.netScenario", "")) || "stories".equals(System.getProperty("mineclone.autopilot.netScenario", ""))))
                 throw new IllegalStateException("Burn preparation belongs only to the disposable owner scenario");
             if (session.ecology().enabled()) throw new IllegalStateException("Initial burn authoring must precede Ecology adoption");
             int[] p = burnAnchor(); int x = p[0], y = p[1], z = p[2];
@@ -4906,7 +4906,7 @@ public class Game {
                     + " seededFireIgnitions=" + ignitions + " originalCowID=" + cow.id + " naturalRain=true");
         }
         @Override public void holdBurnMaterialization(boolean hold) {
-            if (!"burn".equals(System.getProperty("mineclone.autopilot.netScenario", "")))
+            if (!("burn".equals(System.getProperty("mineclone.autopilot.netScenario", "")) || "stories".equals(System.getProperty("mineclone.autopilot.netScenario", ""))))
                 throw new IllegalStateException("Spawn timing hook belongs only to the disposable burn scenario");
             if (!net.isClient()) try {
                 var timer = com.mineclone.sim.WorldSession.class.getDeclaredField("spawnTimer");
@@ -4968,6 +4968,78 @@ public class Game {
                             && Math.abs(m.position.y - (p[1] + 1)) < 3)
                     .mapToLong(m -> m.id).sorted().toArray();
         }
+        @Override public int[] storiesAnchor() { int[] p=burnAnchor(); return new int[]{p[0]-70,100,p[2]-70}; }
+        @Override public void prepareStoriesArena() {
+            if(net.isClient() || !"stories".equals(System.getProperty("mineclone.autopilot.netScenario", "")) || session.ecology().enabled())
+                throw new IllegalStateException("Combined initial valley authoring belongs to the disposable Ecology OFF owner");
+            int[] a=storiesAnchor();int bx=a[0],bz=a[2],margin=renderRadius+1;
+            for(int cx=Math.floorDiv(bx,16)-margin;cx<=Math.floorDiv(bx+140,16)+margin;cx++)
+                for(int cz=Math.floorDiv(bz,16)-margin;cz<=Math.floorDiv(bz+180,16)+margin;cz++)loader.loadNow(cx,cz);
+            storiesBuildFields(world,bx,bz);storiesBuildCaves(world,bx,bz);prepareBurnArena();
+            var rabbit=new com.mineclone.world.entity.Mob(com.mineclone.world.entity.MobType.RABBIT,bx+9.5f,101.001f,bz+147.5f,new java.util.Random(world.seed+30));
+            rabbit.onGround=true;rabbit.persistent=true;
+            try {var hunger=com.mineclone.world.entity.Mob.class.getDeclaredField("hungerTimer");hunger.setAccessible(true);hunger.setFloat(rabbit,0f);}
+            catch(ReflectiveOperationException failed){throw new IllegalStateException("Story rabbit fixture unavailable",failed);}
+            if(!session.ecology().claim(rabbit))throw new IllegalStateException("Story rabbit did not reserve finite wildlife");mobs.add(rabbit);
+            executeCommand("/weather clear");System.out.println("autopilot: stories initial valley prepared actualProductionFire=true initialCowAndRabbitFinite=true rabbitID="+rabbit.id);
+        }
+        @Override public void storiesCropControl(boolean frozen) {
+            if(!"stories".equals(System.getProperty("mineclone.autopilot.netScenario", "")))throw new IllegalStateException("Crop observation control belongs only to Stories");
+            if(!net.isClient())world.setScheduledTickHandler(frozen ? (w,x,y,z,b,m,late)->{
+                if(b!=BlockType.WHEAT&&b!=BlockType.CARROTS&&b!=BlockType.POTATOES)World.ScheduledTickHandler.BEHAVIOURS.tick(w,x,y,z,b,m,late);
+            } : null);
+        }
+        @Override public void storiesClearPresentation() {
+            if(!"stories".equals(System.getProperty("mineclone.autopilot.netScenario", "")))throw new IllegalStateException("Story capture presentation belongs to its disposable scenario");
+            String disposableSaves=System.getProperty("mineclone.savesDir","");
+            java.nio.file.Path isolated=java.nio.file.Path.of(disposableSaves).toAbsolutePath().normalize();
+            boolean underTestOutput=false;for(var part:isolated)if(part.toString().equals("out-test"))underTestOutput=true;
+            if(disposableSaves.isBlank() || !underTestOutput || shotDir==null || !isolated.getParent().equals(shotDir.toAbsolutePath().normalize().getParent()))
+                throw new IllegalStateException("Stories controls require isolated saves and shots under out-test");
+            // The developer's real cursor remains free; scripted looks must survive its movement.
+            // Options, if written by room opening, also belong to this disposable SaveManager.
+            mouseSensitivity=0f;input.setGrabAllowed(false);
+            commandHelpTimer=0;commandToastTimer=0;commandPanel=new String[0];showDebug=false;inventory.set(selectedSlot,null);
+        }
+        @Override public int[] storiesStats() {
+            int[] a=storiesAnchor();int open=0,closed=0,webs=0;
+            for(int left:new int[]{8,32})for(int x=left;x<left+4;x++)for(int z=150;z<154;z++) {
+                if(world.getBlock(a[0]+x,100,a[2]+z)!=BlockType.FARMLAND || world.getBlock(a[0]+x,101,a[2]+z)!=BlockType.CARROTS){if(left==8)open=-100;else closed=-100;}
+                else if((world.getBlockMeta(a[0]+x,101,a[2]+z)&7)<7){if(left==8)open++;else closed++;}
+            }
+            for(int dx=-8;dx<=8;dx++)for(int dy=-8;dy<=8;dy++)for(int dz=-8;dz<=8;dz++)if(dx*dx+dy*dy+dz*dz<=64&&world.getBlock(a[0]+16+dx,101+dy,a[2]+16+dz)==BlockType.WEB)webs++;
+            return new int[]{open,closed,webs,world.getBlockMeta(a[0]+13,100,a[2]+168)};
+        }
+        private void storiesBuildFields(World w,int bx,int bz){
+            w.batchBlocks(()->{
+                for(int x=0;x<64;x++)for(int z=136;z<176;z++){
+                    w.setBlock(bx+x,99,bz+z,BlockType.DIRT);w.setBlock(bx+x,100,bz+z,BlockType.GRASS);
+                    for(int y=101;y<Chunk.SIZE_Y;y++)w.setBlock(bx+x,y,bz+z,BlockType.AIR);
+                }
+                for(int left:new int[]{8,32})for(int x=left;x<left+4;x++)for(int z=150;z<154;z++){
+                    w.setBlock(bx+x,100,bz+z,BlockType.FARMLAND,(byte)7);w.setBlock(bx+x,101,bz+z,BlockType.CARROTS,(byte)7);
+                    com.mineclone.world.behavior.Behaviors.of(BlockType.CARROTS).onPlaced(w,bx+x,101,bz+z,(byte)7);
+                }
+                for(int z=142;z<=155;z++)for(int x:new int[]{30,37})w.setBlock(bx+x,101,bz+z,BlockType.FENCE);
+                for(int x=30;x<=37;x++)for(int z:new int[]{142,148,155})w.setBlock(bx+x,101,bz+z,BlockType.FENCE);
+                w.setBlock(bx+33,101,bz+148,BlockType.FENCE_GATE,(byte)0);
+                for(int x=6;x<=13;x++)for(int z=144;z<=148;z++)if(x==6||x==13||z==144||z==148)w.setBlock(bx+x,101,bz+z,BlockType.FENCE);
+                w.setBlock(bx+9,101,bz+148,BlockType.FENCE_GATE,(byte)0);
+                for(int x=53;x<=62;x++)for(int z=160;z<=167;z++)if(x==53||x==62||z==160||z==167)
+                    for(int y=101;y<=103;y++)w.setBlock(bx+x,y,bz+z,BlockType.STONE);
+                for(int x:new int[]{7,18})for(int z=167;z<=169;z++)for(int y=101;y<=102;y++)w.setBlock(bx+x,y,bz+z,BlockType.STONE);
+            });
+            storiesSkylight(w,bx,bx+63,bz+136,bz+175);
+        }
+        private void storiesBuildCaves(World w,int bx,int bz){
+            w.batchBlocks(()->{
+                for(int centre:new int[]{16,88})for(int x=centre-10;x<=centre+10;x++)for(int z=6;z<=26;z++)for(int y=100;y<=105;y++)
+                    w.setBlock(bx+x,y,bz+z,y==100||y==105||x==centre-10||x==centre+10||z==6||z==26?BlockType.STONE:BlockType.AIR);
+                w.setBlock(bx+14,101,bz+21,BlockType.TORCH);w.setBlock(bx+22,101,bz+23,BlockType.CHEST);
+                w.setBlock(bx+16,101,bz+16,BlockType.SPIDER_NEST);com.mineclone.world.behavior.Behaviors.of(BlockType.SPIDER_NEST).onPlaced(w,bx+16,101,bz+16,(byte)0);
+            });storiesSkylight(w,bx+6,bx+98,bz+6,bz+26);
+        }
+        private void storiesSkylight(World w,int x1,int x2,int z1,int z2){for(int cx=Math.floorDiv(x1,16);cx<=Math.floorDiv(x2,16);cx++)for(int cz=Math.floorDiv(z1,16);cz<=Math.floorDiv(z2,16);cz++){Chunk c=w.getChunkIfExists(cx,cz);if(c!=null)c.computeSkyLight();}}
         @Override public int[] lairAnchor() {
             if (lairFixtureAnchor == null) lairFixtureAnchor = new int[]{
                     Math.floorDiv((int) Math.floor(worldSpawn.x), 256) * 256 + 70,

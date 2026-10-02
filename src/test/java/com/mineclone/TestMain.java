@@ -114,6 +114,8 @@ public final class TestMain {
         suite("ecology", "BurnScarsTests", BurnScarsTests::runAll);
         suite("ecology", "BurnGrowthTests", BurnGrowthTests::runAll);
         suite("ecology", "BurnRuntimeTests", BurnRuntimeTests::runAll);
+        suite("ecology", "EcologyDiagnosticsTests", EcologyDiagnosticsTests::runAll);
+        suite("ecology", "LivingWorldTests", LivingWorldTests::runAll);
         suite("ecology", "NestBlockTests", NestBlockTests::runAll);
         suite("ecology", "ColonizerTests", ColonizerTests::runAll);
         suite("ecology", "WeatherHearingTests", WeatherHearingTests::runAll);

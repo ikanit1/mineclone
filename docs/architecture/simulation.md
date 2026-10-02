@@ -400,3 +400,26 @@ Acceptance uses real fire callbacks and native input, day-seven trees, physical
 flight, fresh finite animal IDs and real save/reopening. Scheduled/random fire
 callbacks are explicitly accelerated in fixtures; no normal-time fire-rate or
 LW-12 frame-budget claim follows. See [validation](../changes/burn-scars/validation.md).
+
+## Read-only ecology diagnostics (LW-10)
+
+`Ecology.info` and `lairInfo` inspect existing regional state without calling
+`regionAt`, observing fields/terrain, advancing history or assigning IDs. An
+unobserved region is reported explicitly; opening F3+G or owner info cannot
+create a new population or change the next simulation result.
+
+The report shows persisted species totals, effective capacities, represented
+bodies and the three signed daily model deltas in oldest-to-latest order with
+their sum. These slots start at zero; direct body deaths/breeding are separate
+events and are not presented as model deltas. Field values are the last known
+crop estimate, rather than a scan triggered by displaying the panel.
+
+Nearest known nest and scar searches cover the current region and its eight
+neighbors, with horizontal distance and deterministic coordinate tie breaking.
+They do not generate/discover terrain. Burn rows count typed histories, sites,
+age-under-three-day sites and planted-once sites; a future saved date is labeled
+as future instead of negative age. Unknown record bytes remain untouched.
+
+The same info path serves the graphical host and headless owner console. Guest
+commands are refused before model lookup. The HUD prioritizes location/scar
+rows and explicitly counts hidden rows when vertical space runs out.

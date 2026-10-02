@@ -133,6 +133,30 @@ is separate from `-Farm`; it does not replace that scenario's farming coverage.
 [Spider-lairs validation](changes/spider-lairs/validation.md) records actual results
 and separates functional acceptance from the open performance/Photon gates.
 
+## Combined Living World stories (LW-10/11)
+
+`EcologyDiagnosticsTests` pins read-only reports, stored model trends, bounded
+nearest-location lookup, protected history and viewport overflow. `LivingWorldTests`
+uses one valley with fields, caves, burn history and trails to test real predator
+losses/raids, colony clearing beside forest recovery, common saves, thirty-day
+absence with arriving chunks and ordinary-day/owner-advance parity.
+Both suites are registered under `ecology` in the ordinary runner.
+
+`java -cp 'out;libs/*' tools/EcologyHudPreview.java` renders the actual ecology
+panel at three sizes from a restored diagnostic fixture and verifies that reads
+leave saved state unchanged. It is a GL layout preview; real Game input and
+network stories are separate gates. See the
+[combined validation plan](changes/living-world-stories/test-plan.md) and
+[recorded evidence](changes/living-world-stories/validation.md).
+
+`LivingWorldGameSmoke` exercises actual Game input and combined saves, including
+a departure that really unloads the valley and return after thirty days. The
+optional `run-net-test.ps1 -Stories` and `run-server-test.ps1 -Stories` require
+matching current classes and both peers' success markers. They prove ordinary
+nest/silk/trail/crop replication alongside finite forest recovery. Dedicated
+acceptance also reads the actual combined save before and after `/stop`.
+Commands and the distinction from complete native nest chronology are in [TOOLS](TOOLS.md).
+
 ## Continuous integration
 
 
