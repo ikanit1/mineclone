@@ -13,6 +13,20 @@ public final class ContainerMenus {
     private static SlotGroup hotbar(Inventory inv) {
         return new SlotGroup("hotbar",SlotRole.HOTBAR,new InventoryStorage(inv,0,Inventory.HOTBAR),9);
     }
+    public static ContainerMenu inventory(Inventory inv,Equipment equipment,SlotStorage craft) {
+        var groups=new java.util.ArrayList<SlotGroup>();
+        if(craft!=null)groups.add(new SlotGroup("craft",SlotRole.CRAFT_GRID,craft,2));
+        SlotRole[] roles={SlotRole.ARMOR_HEAD,SlotRole.ARMOR_CHEST,SlotRole.ARMOR_LEGS,SlotRole.ARMOR_FEET,SlotRole.OFFHAND};
+        String[] names={"head","chestplate","legs","feet","offhand"};
+        for(int i=0;i<5;i++)groups.add(new SlotGroup(names[i],roles[i],equipment.cell(i),1));
+        groups.add(main(inv));groups.add(hotbar(inv));
+        ContainerMenu m=new ContainerMenu(groups);
+        m.route(SlotRole.CRAFT_GRID,SlotRole.MAIN,SlotRole.HOTBAR);
+        m.route(SlotRole.MAIN,SlotRole.ARMOR_HEAD,SlotRole.ARMOR_CHEST,SlotRole.ARMOR_LEGS,SlotRole.ARMOR_FEET,SlotRole.HOTBAR);
+        m.route(SlotRole.HOTBAR,SlotRole.ARMOR_HEAD,SlotRole.ARMOR_CHEST,SlotRole.ARMOR_LEGS,SlotRole.ARMOR_FEET,SlotRole.MAIN);
+        for(var r:roles)m.route(r,SlotRole.MAIN,SlotRole.HOTBAR);
+        return m;
+    }
     public static ContainerMenu chest(Inventory inv,ItemStack[] chest,IntConsumer changed) {
         ContainerMenu m=new ContainerMenu(List.of(new SlotGroup("chest",SlotRole.CONTAINER,
                 new ArrayStorage(chest,null,changed),9),main(inv),hotbar(inv)));

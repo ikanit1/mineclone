@@ -70,7 +70,11 @@ public final class LootRegistry {
         LootTable table = blocks.get(block);
         if (table != null) return table.roll(context);
         Item self = items.forBlock(block);
-        return self == null ? List.of() : List.of(new ItemStack(self, 1));
+        return self == null ? List.of() : List.of(new ItemStack(self, com.mineclone.world.shape.Shapes.of(block)==com.mineclone.world.shape.Shapes.SLAB && (context.blockMeta()&2)!=0 ? 2 : 1));
+    }
+    public List<ItemStack> explosionDrops(BlockType block,LootContext context){
+        var table=blocks.get(block);if(table!=null)return table.roll(context);
+        var self=items.forBlock(block);return self==null?List.of():List.of(new ItemStack(self,1));
     }
     public Set<Item> blockSources(BlockType block, LootContext context) {
         if (context.mode() == GameMode.CREATIVE || !canHarvest(block, context.tool())) return Set.of();

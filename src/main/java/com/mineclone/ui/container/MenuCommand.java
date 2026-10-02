@@ -4,7 +4,7 @@ import java.util.List;
 
 /** A single inventory gesture, also executable on the host without a window. */
 public record MenuCommand(Kind kind, String group, int index, int argument, List<Target> targets) {
-    public enum Kind { LEFT, RIGHT, SHIFT, DOUBLE, NUMBER, DROP, DROP_CURSOR, CLONE, DELETE, DRAG, PICK_ALL }
+    public enum Kind { LEFT, RIGHT, SHIFT, DOUBLE, NUMBER, DROP, DROP_CURSOR, CLONE, DELETE, DRAG, PICK_ALL, CRAFT, CRAFT_ALL }
     public record Target(String group, int index) { }
 
     public static MenuCommand of(Kind kind, SlotRef slot, int argument) {
@@ -29,6 +29,7 @@ public record MenuCommand(Kind kind, String group, int index, int argument, List
             case DROP_CURSOR -> menu.dropCursor(argument!=0);
             case CLONE -> { if(creative)menu.cloneFull(s); }
             case DELETE -> { if(creative)menu.delete(s); }
+            case CRAFT, CRAFT_ALL -> { /* the authoritative crafting grid executes these */ }
             case DRAG -> {
                 menu.beginDrag(argument!=0);
                 for(Target t:targets)menu.dragOver(resolve(menu,t.group,t.index));

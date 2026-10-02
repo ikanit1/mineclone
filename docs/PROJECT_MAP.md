@@ -70,13 +70,16 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [CommandProcessor](../src/main/java/com/mineclone/game/CommandProcessor.java) | The console line's commands: /time, /weather, /tp, /gamemode and the rest, moved out of Game whole (SIM-08). |
 | [ContextHint](../src/main/java/com/mineclone/game/ContextHint.java) | Всплывающая подсказка у прицела: что сделает клик по тому, на что смотришь. |
 | [DebugKeys](../src/main/java/com/mineclone/game/DebugKeys.java) | F3 и сочетания с ним. |
+| [Eating](../src/main/java/com/mineclone/game/Eating.java) | Held input consumption: cancellation never consumes or applies effects. |
 | [EntityPresentation](../src/main/java/com/mineclone/game/EntityPresentation.java) | How the host shows what its mobs did: voices, splashes, footprints, fire, deaths and the sound cues at the screen edge. |
+| [EnvironmentalHazards](../src/main/java/com/mineclone/game/EnvironmentalHazards.java) | Player presentation adapter for the shared environmental simulation. |
 | [FootstepFeedback](../src/main/java/com/mineclone/game/FootstepFeedback.java) | Steps, footprints, kicked snow and landings — the player's and the other participants' — moved out of Game whole (SIM-08). |
 | [FrameProfiler](../src/main/java/com/mineclone/game/FrameProfiler.java) | Разбивка времени кадра по фазам плюс худший кадр за скользящее окно. |
 | [Frost](../src/main/java/com/mineclone/game/Frost.java) | Сколько мороза набрал игрок: 0 — тепло, 1 — края экрана затянуло инеем. |
 | [Game](../src/main/java/com/mineclone/game/Game.java) | Javadoc summary not yet supplied. |
 | [GameNetContext](../src/main/java/com/mineclone/game/GameNetContext.java) | Всё, что сетевая сессия знает об игре. |
 | [Hud](../src/main/java/com/mineclone/game/Hud.java) | Игровой интерфейс поверх мира: F3, хотбар, сердца, сытость, компас, подсказки и консоль. |
+| [HurtIndicator](../src/main/java/com/mineclone/game/HurtIndicator.java) | Direction of the latest positioned hit, in camera-relative radians, lasting 1.2 seconds. |
 | [InteractionController](../src/main/java/com/mineclone/game/InteractionController.java) | What a click does to the block under the crosshair (BLK-03): breaking, placing, using, picking. |
 | [InteractionRepeat](../src/main/java/com/mineclone/game/InteractionRepeat.java) | Immediate press plus a bounded repeat cadence while a button stays held. |
 | [LocalParticipant](../src/main/java/com/mineclone/game/LocalParticipant.java) | The player of this process as the simulation sees it. |
@@ -99,6 +102,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 
 | Type | Purpose |
 |---|---|
+| [ArmorSpec](../src/main/java/com/mineclone/item/ArmorSpec.java) | Immutable armor data. |
 | [AttackSpec](../src/main/java/com/mineclone/item/AttackSpec.java) | Боевая часть предмета: урон и темп ударов. |
 | [BlockState](../src/main/java/com/mineclone/item/BlockState.java) | Данные блока, уехавшие в предмет: meta, содержимое сундука, состояние печи. |
 | [Bow](../src/main/java/com/mineclone/item/Bow.java) | Правила натяжения лука: во что превращается удержание кнопки. |
@@ -106,7 +110,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [Combat](../src/main/java/com/mineclone/item/Combat.java) | Правила ближнего боя: сколько бьёт то, что в руке, и как часто. |
 | [ComponentType](../src/main/java/com/mineclone/item/ComponentType.java) | Вид компонента стопки: строковый id и способ записать значение в байты. |
 | [Components](../src/main/java/com/mineclone/item/Components.java) | Реестр известных компонентов стопки. |
-| [FoodSpec](../src/main/java/com/mineclone/item/FoodSpec.java) | Съедобная часть предмета: сколько единиц сытости он возвращает из двадцати. |
+| [FoodSpec](../src/main/java/com/mineclone/item/FoodSpec.java) | Nutrition and saturation are separate; optional effects are rolled on completed eating only. |
 | [FurnaceState](../src/main/java/com/mineclone/item/FurnaceState.java) | Снимок печи: три слота и два таймера. |
 | [Item](../src/main/java/com/mineclone/item/Item.java) | Предмет: одна строка из assets/data//items/*.json. |
 | [ItemComponents](../src/main/java/com/mineclone/item/ItemComponents.java) | Набор компонентов одной стопки — неизменяемый. |
@@ -197,6 +201,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 
 | Type | Purpose |
 |---|---|
+| [ArmorLayer](../src/main/java/com/mineclone/render/ArmorLayer.java) | Four authored sheets, shared by body color/shadow passes and the first-person sleeve. |
 | [Backdrop](../src/main/java/com/mineclone/render/Backdrop.java) | Размытая копия готового кадра — то, что видно сквозь стеклянные панели интерфейса. |
 | [BlockBreakOverlay](../src/main/java/com/mineclone/render/BlockBreakOverlay.java) | Javadoc summary not yet supplied. |
 | [BlockOutline](../src/main/java/com/mineclone/render/BlockOutline.java) | Неброский тёмный контур вокруг выбранного блока — по рёбрам его формы (Shapes#edges, BLK-02): Г-образный у ступени, тонкий у двери и факела. |
@@ -285,6 +290,8 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 
 | Type | Purpose |
 |---|---|
+| [DeathDrops](../src/main/java/com/mineclone/sim/DeathDrops.java) | One death checkpoint and its inventory/equipment/cursor contents, preserving stack components. |
+| [EntityPersistence](../src/main/java/com/mineclone/sim/EntityPersistence.java) | Bounded chunk entity section. |
 | [EntityStore](../src/main/java/com/mineclone/sim/EntityStore.java) | The entities of one world. |
 | [Participant](../src/main/java/com/mineclone/sim/Participant.java) | Someone the world is simulated for: the host's own player or an accepted guest. |
 | [Participants](../src/main/java/com/mineclone/sim/Participants.java) | The live list of participants, kept in ascending id order. |
@@ -320,6 +327,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [WorldGenUpgradeScreen](../src/main/java/com/mineclone/ui/WorldGenUpgradeScreen.java) | Explicit generation choice before opening an old world, including Continue and LAN hosting. |
 | [WorldIconCache](../src/main/java/com/mineclone/ui/WorldIconCache.java) | Текстуры превью миров для списка. |
 | [WorldLoadErrorScreen](../src/main/java/com/mineclone/ui/WorldLoadErrorScreen.java) | Read failures stay in the menu, with no world construction or disk writes. |
+| [WorldRulesScreen](../src/main/java/com/mineclone/ui/WorldRulesScreen.java) | Live host controls; guests see the same values through a read-only screen. |
 | [WorldSelectScreen](../src/main/java/com/mineclone/ui/WorldSelectScreen.java) | Список миров: превью, режим, сутки, размер, последний вход. |
 | [WorldSettings](../src/main/java/com/mineclone/ui/WorldSettings.java) | Что игрок выбрал на экране создания мира. |
 
@@ -366,7 +374,9 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [ChunkLoader](../src/main/java/com/mineclone/world/ChunkLoader.java) | Asynchronous chunk pipeline: missing -> detached GEN + saved snapshot (bg) -> publish complete chunk generated && neighbours generated -> MESH (bg) -> MeshData in ready queue main thread polls ready queue -> uploads to GPU |
 | [ChunkMesher](../src/main/java/com/mineclone/world/ChunkMesher.java) | Face culling mesher with vertex Ambient Occlusion. |
 | [ChunkPipelineMetrics](../src/main/java/com/mineclone/world/ChunkPipelineMetrics.java) | Optional benchmark telemetry: enqueue-to-completion latency, with bounded storage. |
+| [Difficulty](../src/main/java/com/mineclone/world/Difficulty.java) | Names are persisted; order is append-only for runtime selection. |
 | [DroppedItem](../src/main/java/com/mineclone/world/DroppedItem.java) | Предмет, лежащий в мире, — в том виде, в каком он едет в сейв чанка. |
+| [Equipment](../src/main/java/com/mineclone/world/Equipment.java) | Four armor slots and an independent offhand; never changes the 36 inventory slots. |
 | [Explosion](../src/main/java/com/mineclone/world/Explosion.java) | Взрыв: что сносит и кого задевает. |
 | [FallingBlocks](../src/main/java/com/mineclone/world/FallingBlocks.java) | Event-driven loose-block physics. |
 | [FloatList](../src/main/java/com/mineclone/world/MeshBuffers.java) | Primitive growable buffers avoid boxing every meshed coordinate and index. |
@@ -399,6 +409,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [WaterSimulator](../src/main/java/com/mineclone/world/WaterSimulator.java) | Incremental water flow simulator. |
 | [Weather](../src/main/java/com/mineclone/world/Weather.java) | Погода: общий на весь мир график атмосферных фронтов. |
 | [World](../src/main/java/com/mineclone/world/World.java) | Javadoc summary not yet supplied. |
+| [WorldRules](../src/main/java/com/mineclone/world/WorldRules.java) | Host-owned rules with a bounded versioned save section. |
 | [WorldSimulation](../src/main/java/com/mineclone/world/WorldSimulation.java) | Мировой тик: печи, случайные тики блоков, вода, лава, обвалы и блоки, потерявшие опору (NeighbourUpdates). |
 
 ## com.mineclone.world.behavior
@@ -408,12 +419,18 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [BedrollBehavior](../src/main/java/com/mineclone/world/behavior/BedrollBehavior.java) | A bedroll is laid half a block high and slept in. |
 | [Behaviors](../src/main/java/com/mineclone/world/behavior/Behaviors.java) | Every block's behaviour (BLK-03). |
 | [BlockBehavior](../src/main/java/com/mineclone/world/behavior/BlockBehavior.java) | What a block does, as opposed to what it is made of (BlockShape): how it is placed, what a right click does, what holds it up and what it leaves when it goes (AC-06, BLK-03). |
+| [BuildingBehavior](../src/main/java/com/mineclone/world/behavior/BuildingBehavior.java) | Placement, hinges and wall support for the appended building forms. |
 | [ChestBehavior](../src/main/java/com/mineclone/world/behavior/ChestBehavior.java) | A chest opens its window and, whatever removes it, spills what it holds first. |
 | [CraftingTableBehavior](../src/main/java/com/mineclone/world/behavior/CraftingTableBehavior.java) | A crafting table opens the 3x3 grid. |
+| [CropBehavior](../src/main/java/com/mineclone/world/behavior/CropBehavior.java) | Crop stages advance only on a lit field and catch up using the bounded scheduler lateness. |
 | [DoorBehavior](../src/main/java/com/mineclone/world/behavior/DoorBehavior.java) | A door is two blocks: the lower half (meta bit 2 clear) stands on something solid, the upper half (bit 2 set) on the lower. |
 | [DropSink](../src/main/java/com/mineclone/world/behavior/DropSink.java) | Where the things a block leaves behind go: a spilled chest, the torch that lost its wall. |
+| [Farming](../src/main/java/com/mineclone/world/behavior/Farming.java) | Screen-independent hoe, seed and landing actions; callers provide the participant's inventory. |
+| [FarmlandBehavior](../src/main/java/com/mineclone/world/behavior/FarmlandBehavior.java) | Scheduled hydration of cultivated soil; dry empty fields return to dirt. |
 | [FurnaceBehavior](../src/main/java/com/mineclone/world/behavior/FurnaceBehavior.java) | A furnace opens its window and spills its three slots whatever removes it. |
 | [PlaceContext](../src/main/java/com/mineclone/world/behavior/PlaceContext.java) | How a block is being placed. |
+| [PlantBehavior](../src/main/java/com/mineclone/world/behavior/PlantBehavior.java) | Ground vegetation collapses when its soil is removed. |
+| [SaplingBehavior](../src/main/java/com/mineclone/world/behavior/SaplingBehavior.java) | Replenishable trees; all crown chunks must be loaded and clear before any block changes. |
 | [SnowLayerBehavior](../src/main/java/com/mineclone/world/behavior/SnowLayerBehavior.java) | A snow layer lies on something solid and goes when that is dug out. |
 | [StairsBehavior](../src/main/java/com/mineclone/world/behavior/StairsBehavior.java) | A stair's step faces away from the placer: it is climbed from where they stand. |
 | [TorchBehavior](../src/main/java/com/mineclone/world/behavior/TorchBehavior.java) | A torch stands on a block or leans from a wall (meta 1..4, the mount the mesher tilts it by) and falls, as an item, when that block goes. |
@@ -424,17 +441,28 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 
 | Type | Purpose |
 |---|---|
-| [ArmorMath](../src/main/java/com/mineclone/world/damage/ArmorMath.java) | What armor leaves of a hit. |
+| [ArmorMath](../src/main/java/com/mineclone/world/damage/ArmorMath.java) | Shared defense formula for local and remote participants. |
 | [ArmorView](../src/main/java/com/mineclone/world/damage/ArmorView.java) | The armor a damage calculation sees on a target. |
 | [DamageSource](../src/main/java/com/mineclone/world/damage/DamageSource.java) | One hit: its kind, who dealt it, where it came from and where it landed. |
 | [DamageType](../src/main/java/com/mineclone/world/damage/DamageType.java) | What kind of harm a hit is, independent of who dealt it. |
 | [Damageable](../src/main/java/com/mineclone/world/damage/Damageable.java) | Anything that can be hurt through the shared damage vocabulary. |
+| [DeathMessage](../src/main/java/com/mineclone/world/damage/DeathMessage.java) | Localized cause shared by the death screen and replicated player-life announcements. |
+
+## com.mineclone.world.effect
+
+| Type | Purpose |
+|---|---|
+| [EffectInstance](../src/main/java/com/mineclone/world/effect/EffectInstance.java) | Javadoc summary not yet supplied. |
+| [StatusEffect](../src/main/java/com/mineclone/world/effect/StatusEffect.java) | Append only; saves and commands use names, never ordinals. |
+| [StatusEffects](../src/main/java/com/mineclone/world/effect/StatusEffects.java) | Simulation effects, with no renderer or platform dependencies. |
 
 ## com.mineclone.world.entity
 
 | Type | Purpose |
 |---|---|
 | [Behavior](../src/main/java/com/mineclone/world/entity/Behavior.java) | Дерево поведения моба: один узел, который за тик возвращает свой исход. |
+| [Breeding](../src/main/java/com/mineclone/world/entity/Breeding.java) | Host-owned feeding, food following, pairing and birth; children are appended after mob iteration. |
+| [EntityHazards](../src/main/java/com/mineclone/world/entity/EntityHazards.java) | Shared environmental contact pulses for players and mobs, with independent damage clocks. |
 | [EntityPhysics](../src/main/java/com/mineclone/world/entity/EntityPhysics.java) | Упрощённая физика сущностей: гравитация + осевой AABB-свип по коробкам блоков (Shapes, BLK-02). |
 | [Hittable](../src/main/java/com/mineclone/world/entity/Hittable.java) | Во что может попасть снаряд. |
 | [ItemEntity](../src/main/java/com/mineclone/world/entity/ItemEntity.java) | Предмет на земле: выпал из блока, из моба, из разбитого сундука или брошен. |
@@ -448,6 +476,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [MobType](../src/main/java/com/mineclone/world/entity/MobType.java) | Параметры одного вида моба. |
 | [PathFinder](../src/main/java/com/mineclone/world/entity/PathFinder.java) | A* по воксельной сетке для наземных сущностей. |
 | [Projectile](../src/main/java/com/mineclone/world/entity/Projectile.java) | Летящий снаряд: стрела и всё, что полетит после неё. |
+| [SpawnTable](../src/main/java/com/mineclone/world/entity/SpawnTable.java) | Strict biome-weighted spawn rules shared by initial herds and ongoing wildlife/hostile attempts. |
 | [Wildlife](../src/main/java/com/mineclone/world/entity/Wildlife.java) | Поведение диких зверей: кролик, волк, птица. |
 
 ## com.mineclone.world.gen
@@ -458,6 +487,8 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [GenFeatures](../src/main/java/com/mineclone/world/gen/GenFeatures.java) | The generation changes a chunk is made with. |
 | [GenPolicy](../src/main/java/com/mineclone/world/gen/GenPolicy.java) | Which generator version a chunk is generated with. |
 | [LedgerPolicy](../src/main/java/com/mineclone/world/gen/LedgerPolicy.java) | Every chunk on the version its ledger recorded (GEN-02); a chunk not there yet is generated with the world's own version and features, and recorded — so a later upgrade knows exactly which land was already seen. |
+| [TreeShapes](../src/main/java/com/mineclone/world/gen/TreeShapes.java) | Pure deterministic tree cells shared by V1 generation and scheduled sapling growth. |
+| [Vegetation](../src/main/java/com/mineclone/world/gen/Vegetation.java) | Flagged deterministic ground cover; no neighbour writes or random stream shared with trees. |
 | [WorldGenSettings](../src/main/java/com/mineclone/world/gen/WorldGenSettings.java) | The level's worldgen section: which generator the world uses, the 1.1 changes it was created with, and when it was last upgraded (0 when never). |
 | [WorldGenUpgrade](../src/main/java/com/mineclone/world/gen/WorldGenUpgrade.java) | Moving a world to a newer generator (GEN-02) without changing land anyone has seen. |
 | [WorldGenVersion](../src/main/java/com/mineclone/world/gen/WorldGenVersion.java) | Which generator made a chunk. |
@@ -467,6 +498,8 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | Type | Purpose |
 |---|---|
 | [BlockShape](../src/main/java/com/mineclone/world/shape/BlockShape.java) | What a block is made of, as boxes in its own cell (0..1 on each axis): what a body collides with, and what the aim and the outline see (AC-05). |
+| [BuildingShapes](../src/main/java/com/mineclone/world/shape/BuildingShapes.java) | Slabs, dynamic fence arms and hinged panels; persisted meta stores only placement state. |
+| [MeshKind](../src/main/java/com/mineclone/world/shape/MeshKind.java) | Geometry dispatch shared by block forms and the chunk mesher. |
 | [Shapes](../src/main/java/com/mineclone/world/shape/Shapes.java) | The shape of every block (BLK-02): one registry that collision, the aim, the outline and the mesher read instead of five places that knew stairs apart. |
 
 ## com.mineclone.world.structure
@@ -483,4 +516,4 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [StructureTypes](../src/main/java/com/mineclone/world/structure/StructureTypes.java) | The structure types of the 1.1 generator (GEN-03). |
 | [StructureWriter](../src/main/java/com/mineclone/world/structure/StructureWriter.java) | Where a structure piece puts its blocks, in world coordinates: the chunk being generated (ChunkWriter) or, in tests, one large buffer. |
 
-Top-level declarations: 352.
+Top-level declarations: 380.

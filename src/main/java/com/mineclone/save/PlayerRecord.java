@@ -136,6 +136,7 @@ public final class PlayerRecord {
     public Map<String, byte[]> extraSections() { return copySections(extra); }
     /** What could not be applied on reading; the data itself was preserved. */
     public List<String> warnings() { return warnings; }
+    public boolean effectsReadable(){return damagedEffects==null;}
     byte[] damagedEffects() { return damagedEffects == null ? null : damagedEffects.clone(); }
 
     /** The same player holding different items. */

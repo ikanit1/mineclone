@@ -19,3 +19,10 @@ the fixed-step simulation loop scheduled for SIM-06.
 commands, sleep, fractional tick round trips and invalid input. Native
 `SaveLifecycleSmoke` checks the actual Game save/close/reopen path with precision
 and opaque extra sections.
+
+## Stable entity identity (2 October 2026)
+
+Clock section version 2 appends the world-owned `long` entity counter (36-byte
+payload). Version 1's 28-byte clock remains readable. Restored entities advance
+the counter through `observeEntityId`; a birth reserves one ID and network varlong
+encoding preserves it. Time commands never rewind this counter.

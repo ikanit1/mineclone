@@ -276,3 +276,24 @@ outline), `CRACK` (mining overlay), `PARTICLE`, `HUD`, `TEXT`, `UI`, и четы
 `run-tests.ps1 -Only optimization,animation,menu` checks pure invariants. Run `OptimizationGlSmoke` and the relevant preview/native smoke for actual GL behavior; compilation alone does not validate rendering.
 
 Knobs: [TUNING.md](../TUNING.md). Entry points: [PROJECT_MAP.md](../PROJECT_MAP.md).
+
+## Construction, armor and survival HUD (2 October 2026)
+
+`MeshKind.BOXES` shares partial-box meshing, light and AO for slabs, fences, gates,
+trapdoors and farmland. Crops use four cutout planes and metadata-selected stages;
+grass/flowers share crossed cutout rendering and alpha-tested shadows. The reviewed
+court preview covers daylight and torch-lit night. CPU meshing 200 fences measured
+10.246 ms versus 7.757 ms ordinary (1.321×, target ≤1.5×); this is not a GPU FPS claim.
+
+Armor sheets are separate authored 64×32 textures normalized to the skin UV format,
+loaded once per material, rather than occupying block-atlas slots. Equipment part
+transforms are shared by color/shadow rendering and the first-person chest sleeve.
+Armor pieces of a material use one instanced draw with reusable transform/UV buffers.
+`RenderSurvivalPreview` checks 4 materials ×16 directions, actual armor depth changes,
+first/third-person eating and four baby species. `BenchArmor` compares eight players.
+
+`Hud.drawStatus` opens a single `UiRenderer` layer for hearts, hunger, armor, air,
+status icons/timers, damage direction and flames. Air lingers two seconds on
+surfacing; effect icons blink in their last five seconds. Hunger subtly flickers
+at zero saturation. Nested UI scopes batch into one draw. `RenderHudPreview` and
+`BenchUi` use the same game paths, not a substitute mock renderer.

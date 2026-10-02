@@ -23,7 +23,7 @@ final class CreativeModeTests {
         p.flying=true;p.fallDistance=100;p.setGameMode(GameMode.SURVIVAL);
         check(!p.flying && p.fallDistance==0,"switch resets flight and carried fall");
         p.takeDamage(4);check(p.health==16,"survival damage restored");
-        p.tickHunger(10,true);check(p.hunger<20,"survival hunger restored");
+        p.exhaust(24);p.tickHunger(10,true);check(p.hunger<20,"survival hunger restored");
     }
     private static void flight() {
         Player p=new Player();p.updateFlightControls(0,true,true,true);check(!p.flying,"survival cannot fly");

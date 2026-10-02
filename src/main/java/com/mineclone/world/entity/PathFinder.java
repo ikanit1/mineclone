@@ -64,8 +64,14 @@ public final class PathFinder {
     public static boolean passable(World world, int x, int y, int z) {
         if (y < 0 || y >= Chunk.SIZE_Y)
             return false;
-        return !world.getBlock(x, y, z).solid;
+        float[] boxes=PASS_BOXES.get();
+        int n=com.mineclone.world.shape.Shapes.collision(world,x,y,z,boxes);
+        if(n>0)return false;
+        n=com.mineclone.world.shape.Shapes.collision(world,x,y-1,z,boxes);
+        for(int i=0;i<n;i++)if(boxes[i*6+4]>1)return false;
+        return true;
     }
+    private static final ThreadLocal<float[]> PASS_BOXES=ThreadLocal.withInitial(com.mineclone.world.shape.BlockShape::buffer);
 
     /**
      * Может ли моб ростом {@code height} блоков стоять ногами в (x, y, z):
@@ -74,11 +80,16 @@ public final class PathFinder {
     public static boolean standable(World world, int x, int y, int z, int height) {
         if (y <= 0 || y + height > Chunk.SIZE_Y)
             return false;
-        if (!world.getBlock(x, y - 1, z).solid)
+        if (supportHeight(world,x,y-1,z)<=0)
             return false;
         return columnFree(world, x, y, z, height);
     }
 
+    private static float supportHeight(World w,int x,int y,int z){
+        float[] boxes=PASS_BOXES.get();int count=com.mineclone.world.shape.Shapes.collision(w,x,y,z,boxes);float top=0;
+        for(int i=0;i<count;i++){int o=i*6;if(boxes[o]<=.5f&&boxes[o+3]>=.5f&&boxes[o+2]<=.5f&&boxes[o+5]>=.5f)top=Math.max(top,boxes[o+4]);}
+        return top>1?0:top;
+    }
     /** Свободна ли колонна ростом height — можно ли шагнуть в неё. */
     public static boolean columnFree(World world, int x, int y, int z, int height) {
         for (int i = 0; i < height; i++)
@@ -144,7 +155,7 @@ public final class PathFinder {
             Node top = open.poll();
             long cur = top.key();
             if (cur == goal)
-                return rebuild(from, start, goal);
+                return rebuild(world,from, start, goal);
 
             int cx = unpackX(cur), cy = unpackY(cur), cz = unpackZ(cur);
             float g = best.getOrDefault(cur, Float.MAX_VALUE);
@@ -258,11 +269,12 @@ public final class PathFinder {
         return Math.abs(x - tx) + Math.abs(z - tz) + Math.abs(y - ty) * 0.5f;
     }
 
-    private static List<Vector3f> rebuild(Map<Long, Long> from, long start, long goal) {
+    private static List<Vector3f> rebuild(World world,Map<Long, Long> from, long start, long goal) {
         List<Vector3f> out = new ArrayList<>();
         long cur = goal;
         while (cur != start) {
-            out.add(new Vector3f(unpackX(cur) + 0.5f, unpackY(cur), unpackZ(cur) + 0.5f));
+            int px=unpackX(cur),py=unpackY(cur),pz=unpackZ(cur);
+            out.add(new Vector3f(px+.5f,py-1+supportHeight(world,px,py-1,pz),pz+.5f));
             Long prev = from.get(cur);
             // Слишком длинный путь выбрасывается целиком: цель успеет уйти
             // раньше, чем моб его пройдёт, а прямое наведение дешевле.

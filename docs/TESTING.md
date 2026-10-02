@@ -110,3 +110,23 @@ the six-world SAVE-08 corpus in `src/test/resources/fixtures/saves`; a missing o
 incomplete corpus fails the job. No Photon job is scheduled.
 Local passing commands do not establish a green remote Actions run; verify the
 PR checks separately before marking remote CI acceptance complete.
+
+## 30-task survival/farm batch (2 October 2026)
+
+`ArmorTests`, `BuildingBlockTests`, `FarmingTests`, `VegetationTests`,
+`SurvivalRulesTests` and `EntityLifecycleTests` extend the same TestMain runner.
+Network inventory tests include host equipment gestures, farming, shared breeding,
+rule updates, death conservation, effects/reconnect and combat intent abuse.
+ContainerBreakNetworkTests uses actual TCP for explosion contents and guest events.
+
+Linux compilation with a JDK and already fetched libs: `bash tools/linux/run-tests.sh`.
+Set `JAVA_HOME` when the compiler is not on PATH, `CLASSES` to choose the output.
+Farm native scenarios: Windows `run-net-test.ps1 -Farm` / `run-server-test.ps1 -Farm`;
+Linux `NET_SCENARIO=farm CLASSES=<current build> bash tools/linux/run-net-test.sh`
+and the corresponding server script. Both create disposable worlds; they also
+exercise seven forms, real ladder input, and armor appearance on another player.
+
+GL: RenderShaderPreview (17 frames), RenderHudPreview (42), RenderSurvivalPreview
+(78 plus four depth comparisons). BenchUi checks one survival-layer draw call;
+BenchArmor reports isolated CPU submission and identifies software vs hardware.
+[Results and open hardware gates](BATCH_30_PROGRESS.md).

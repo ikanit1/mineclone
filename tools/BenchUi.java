@@ -57,6 +57,8 @@ public class BenchUi {
         creativeCtx.mode = com.mineclone.world.GameMode.CREATIVE;
         var creativeScreen = new com.mineclone.ui.container.CreativeScreen(creativeCtx);
 
+        var hud=new Hud(font,small,text,ui,atlas);var player=new com.mineclone.game.Player();player.air=100;player.eyeInWater=true;player.effects.apply(com.mineclone.world.effect.StatusEffect.POISON,30);player.equipment.set(1,ItemStack.of("diamond_chestplate"));
+        bench("survival",window,()->hud.drawStatus(W,H,player,20,1,1,false));
         System.out.printf("%-10s %10s %12s%n", "window", "ms/frame", "draws/frame");
         bench("inventory", window, () -> frame(theme, inventoryScreen));
         bench("chest", window, () -> frame(theme, chestScreen));

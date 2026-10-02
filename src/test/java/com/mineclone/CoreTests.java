@@ -58,9 +58,9 @@ final class CoreTests {
         r.run("crafting consumes exactly what the recipe says", CoreTests::testCrafting);
         r.run("every recipe is reachable and unambiguous", CoreTests::testRecipeTable);
         r.run("food stacks by kind and never with blocks", CoreTests::testFoodStacks);
-        r.run("hunger drains, gates regen and stops short of killing",
+        r.run("exhaustion costs hunger, gates regen and starvation respects normal difficulty",
                 CoreTests::testHunger);
-        r.run("peaceful mobs drop meat, zombies drop nothing", CoreTests::testMobDrops);
+        r.run("peaceful mobs drop meat and zombies roll rotten flesh", CoreTests::testMobDrops);
         r.run("new biome blocks registered", CoreTests::testBiomeBlocks);
         r.run("Mob floats upward in water", CoreTests::testMobBuoyancy);
         r.run("Water drains, weakens and falls without sideways arms", CoreTests::testWaterFlow);
@@ -2761,6 +2761,7 @@ final class CoreTests {
         com.mineclone.world.entity.Mob far =
                 spawnAt(com.mineclone.world.entity.MobType.COW, 8.5f, 11f, 900f, 2L);
         mobs.add(near);
+        far.persistent=false;
         mobs.add(far);
         sp.despawnFar(mobs, new org.joml.Vector3f(8.5f, 11f, 8.5f));
         assertEq("only the distant mob is removed", 1, mobs.size());
@@ -3252,7 +3253,7 @@ final class CoreTests {
         // update требует настоящего GLFW-ввода, которого в тестах нет.
         for (int i = 0; i < 600; i++)
             p.tickHunger(1f / 60f, true);
-        assertTrue("hunger drains over time (" + p.hunger + ")", p.hunger < Player.MAX_HUNGER);
+        assertEq("idle time preserves hunger",Player.MAX_HUNGER,p.hunger);
 
         // В меню и в творческом полёте голод стоит.
         float held = p.hunger;
@@ -3260,19 +3261,7 @@ final class CoreTests {
             p.tickHunger(1f / 60f, false);
         assertEq("hunger freezes when controls are off", held, p.hunger);
 
-        // Бег ест сытость заметно быстрее ходьбы.
-        p.hunger = Player.MAX_HUNGER;
-        for (int i = 0; i < 600; i++)
-            p.tickHunger(1f / 60f, true);
-        float walked = Player.MAX_HUNGER - p.hunger;
-        p.hunger = Player.MAX_HUNGER;
-        p.isSprinting = true;
-        for (int i = 0; i < 600; i++)
-            p.tickHunger(1f / 60f, true);
-        float sprinted = Player.MAX_HUNGER - p.hunger;
-        p.isSprinting = false;
-        assertTrue("sprinting costs more (" + walked + " vs " + sprinted + ")",
-                sprinted > walked * 2f);
+        p.saturation=0;p.exhaust(8);assertEq("work spends hunger",18f,p.hunger);
 
         // Реген гейтится сытостью.
         p.health = 10f;
@@ -3307,7 +3296,7 @@ final class CoreTests {
         assertEq("sheep drops mutton", item("mutton"), loot.entityDrops(MobType.SHEEP, context).get(0).item);
         // Зомби ничего не даёт: иначе ночь превращается в ферму и сидеть в
         // темноте становится выгоднее, чем строить дом.
-        assertTrue("zombie drops nothing", loot.entityDrops(MobType.ZOMBIE, context).isEmpty());
+        for(var drop:loot.entityDrops(MobType.ZOMBIE,context))assertEq("zombie flesh",item("rotten_flesh"),drop.item);
         for (MobType t : MobType.values())
             for (var drop : loot.entityDrops(t, context))
                 assertTrue("drop count is sane for " + t, drop.count > 0 && drop.count <= 4);

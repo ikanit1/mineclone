@@ -94,6 +94,10 @@ public final class WorldSession {
 
         /** A blast hurt this participant; a local player is thrown back from its source. */
         default void blasted(Participant participant, Mob source) {}
+        default void bred(int actor){}
+        default void exploded(float x,float y,float z){}
+        default void effectApplied(Participant participant,com.mineclone.world.effect.StatusEffect effect,float seconds){}
+
     }
 
     /**
@@ -139,6 +143,8 @@ public final class WorldSession {
     private final Vector3f aim = new Vector3f();
     /** This tick's centres of life; rebuilt by {@link #centres()}. */
     private final List<org.joml.Vector3fc> centres = new ArrayList<>();
+    private final java.util.Set<Chunk> adoptedChunks=java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+    private final com.mineclone.world.entity.Breeding breeding=new com.mineclone.world.entity.Breeding();
     private float senseTimer;
     private float spawnTimer;
     private float mergeTimer;
@@ -152,6 +158,7 @@ public final class WorldSession {
         this.participants = Objects.requireNonNull(participants, "participants");
         this.host = Objects.requireNonNull(host, "host");
         this.events = Objects.requireNonNull(events, "events");
+        breeding.bred=host::bred;
         this.random = new Random(world.seed ^ 0x1735_D40BL);
         this.shots = entities.projectiles::add;
         // A session means this world is the real one: whatever takes a chest
@@ -188,6 +195,8 @@ public final class WorldSession {
         Iterator<Mob> it = mobs.iterator();
         while (it.hasNext()) {
             Mob m = it.next();
+            if(world.rules.difficulty()==com.mineclone.world.Difficulty.PEACEFUL&&m.type.hostile){it.remove();continue;}
+            if(m.id==0)m.id=clock.nextEntityId();
             m.setPlayerTorch(torch);
             m.shotSink = shots;
             // A mob hunts its target; with no one to hunt it still looks at
@@ -212,8 +221,13 @@ public final class WorldSession {
             }
             if (m.justStepSound) events.mobStep(m);
             if (m.justAttacked && target != null && target.damage(DamageSource.byMob(DamageType.MELEE,
-                    m.type, m.position.x, m.position.y, m.position.z, 1f), m.attackDamage()))
-                host.participantStruck(target, m);
+                    m.type, m.position.x, m.position.y, m.position.z, 1f), m.attackDamage()*world.rules.difficulty().mobDamage))
+                {
+                    host.participantStruck(target,m);
+                    if(m.elite==com.mineclone.world.entity.MobTactics.Elite.VENOMOUS)host.effectApplied(target,com.mineclone.world.effect.StatusEffect.POISON,7);
+                    if(m.elite==com.mineclone.world.entity.MobTactics.Elite.FROST)host.effectApplied(target,com.mineclone.world.effect.StatusEffect.CHILLED,4);
+                    if(m.elite==com.mineclone.world.entity.MobTactics.Elite.BURNING)host.effectApplied(target,com.mineclone.world.effect.StatusEffect.STUN,1.1f);
+                }
             if (m.justExploded)
                 explode(m.position.x, m.position.y + m.type.height * 0.5f, m.position.z, Explosion.RADIUS, m);
             if (m.burning) events.mobBurning(m);
@@ -232,6 +246,7 @@ public final class WorldSession {
             Wildlife.sate(fed.get(i));
         fed.clear();
 
+        breeding.tick(world,mobs,participants,dt,clock::nextEntityId);
         separate(mobs, focus);
 
         // Mobs live around everyone: despawned only far from all, spawned
@@ -241,6 +256,7 @@ public final class WorldSession {
         spawnTimer -= dt;
         if (host.spawnMobs() && spawnTimer <= 0f) {
             spawnTimer = MobSpawner.TICK_INTERVAL;
+            spawner.advance(MobSpawner.TICK_INTERVAL);
             spawner.trySpawn(world, mobs, around, daylight);
         }
     }
@@ -299,7 +315,7 @@ public final class WorldSession {
         // no entity table asks for a weapon yet.
         var context = new LootContext(world.seed,
                 (int) Math.floor(m.position.x), (int) Math.floor(m.position.y), (int) Math.floor(m.position.z),
-                null, m.killedByParticipant, mode, random);
+                null, m.killedByParticipant, mode, random,0,!m.baby());
         for (var drop : Items.get().loot().entityDrops(m.type, context))
             dropStack(drop, m.position.x, m.position.y + m.type.height * 0.5f, m.position.z);
     }
@@ -317,9 +333,15 @@ public final class WorldSession {
      * every participant and mob, and then it is shown. {@link Explosion} decides
      * which blocks; walls between keep what is behind them.
      */
+    public void lightning(float x,float y,float z){var source=DamageSource.byMob(DamageType.LIGHTNING,null,x,y,z,0);for(int i=0;i<participants.size();i++){var p=participants.get(i);if(p.position().distanceSquared(x,y,z)<=4)p.damage(source,5);}for(var mob:entities.mobs)if(!mob.dead&&mob.position.distanceSquared(x,y,z)<=4)mob.damage(source,5);}
+
     public void explode(float x, float y, float z, float radius, Mob source) {
-        for (int[] at : Explosion.destroyed(world, x, y, z, radius))
-            world.setBlock(at[0], at[1], at[2], BlockType.AIR);
+        if(world.rules.mobGriefing())for(int[] at:Explosion.destroyed(world,x,y,z,radius)){
+            var block=world.getBlock(at[0],at[1],at[2]);int meta=world.getBlockMeta(at[0],at[1],at[2])&255;
+            world.setBlock(at[0],at[1],at[2],BlockType.AIR);
+            if(random.nextFloat()<.3f){var loot=new LootContext(world.seed,at[0],at[1],at[2],null,false,GameMode.SURVIVAL,random,meta);
+                for(var drop:Items.get().loot().explosionDrops(block,loot))dropStack(drop,at[0]+.5f,at[1]+.5f,at[2]+.5f);}
+        }
         MobType by = source == null ? null : source.type;
         DamageSource blast = DamageSource.byMob(DamageType.EXPLOSION, by, x, y, z, 1f);
         for (int i = 0; i < participants.size(); i++) {
@@ -341,6 +363,7 @@ public final class WorldSession {
             if (damage > 0f)
                 other.damage(throwing, damage);
         }
+        host.exploded(x,y,z);
         events.explosion(x, y, z, source);
     }
 
@@ -363,9 +386,20 @@ public final class WorldSession {
 
     /** Items restored with a chunk enter the world once the chunk is live. */
     public void adoptChunkItems(Chunk chunk) {
+        if(!adoptedChunks.add(chunk))return;
+        var saved=chunk.copyExtraSections().get(EntityPersistence.SECTION);
+        if(saved==null&&!chunk.restoredFromSave&&world.genPolicy().featuresAt(chunk.cx,chunk.cz).livestockAtGen()){
+            var herd=com.mineclone.world.entity.SpawnTable.get().initialHerd(world,chunk);for(var mob:herd){mob.id=clock.nextEntityId();entities.mobs.add(mob);}chunk.modified=true;
+        }
+        if(saved!=null)for(var m:EntityPersistence.decode(saved)){
+            clock.observeEntityId(m.id);
+            if(entities.mobs.stream().noneMatch(live->live.id==m.id))entities.mobs.add(m);
+        }
         for (DroppedItem d : chunk.takePendingItems())
             entities.items.add(ItemEntity.restored(d, random));
     }
+
+    public void forgetChunk(Chunk chunk){adoptedChunks.remove(chunk);entities.mobs.removeIf(m->EntityPersistence.belongs(m,chunk));}
 
     /** What falling blocks broke on landing: a torch under sand drops as an item. */
     public void adoptFallingDrops() {
@@ -424,6 +458,7 @@ public final class WorldSession {
      * @return ticks run
      */
     public int tickScheduled() {
+        world.setSimulationDaylight(clock.daylight());
         return world.runScheduledTicks(clock.worldTicks(), TICK_BUDGET, MAX_TICK_LATENESS);
     }
 
@@ -466,7 +501,7 @@ public final class WorldSession {
         if (c.isReadOnly())
             return null;
         List<DroppedItem> dropped = itemsInChunk(c);
-        if (!c.modified && dropped.isEmpty() && c.savedItems == 0)
+        if (!c.modified && dropped.isEmpty() && c.savedItems == 0 && entities.mobs.stream().noneMatch(m->m.persistent&&EntityPersistence.belongs(m,c)) && !c.copyExtraSections().containsKey(EntityPersistence.SECTION))
             return null;
         byte[] blocks = c.copyBlocks(), meta = c.copyMeta();
         world.falling.snapshot(c, blocks, meta, dropped);
@@ -478,8 +513,11 @@ public final class WorldSession {
             ticksAt = origin == com.mineclone.world.ScheduledTicks.ADOPTED ? ticksAt : origin;
             ticks = c.scheduledTicks().entries();
         }
+        for(var m:entities.mobs)if(m.id==0)m.id=clock.nextEntityId();
+        var sections=new java.util.LinkedHashMap<>(c.copyExtraSections());sections.put(EntityPersistence.SECTION,EntityPersistence.snapshot(entities.mobs,c));
         ChunkSnapshot snapshot = new ChunkSnapshot(c.cx, c.cz, blocks, meta, c.copyChests(), c.copyFurnaces(),
-                dropped, c.copyExtraSections(), ticksAt, ticks);
+                dropped, sections, ticksAt, ticks);
+        c.restoreExtraSections(sections);
         c.savedItems = dropped.size();
         c.modified = false;
         return snapshot;
@@ -494,7 +532,7 @@ public final class WorldSession {
             if (Math.floorDiv((int) Math.floor(e.position.x), Chunk.SIZE_X) != c.cx
                     || Math.floorDiv((int) Math.floor(e.position.z), Chunk.SIZE_Z) != c.cz)
                 continue;
-            out.add(new DroppedItem(e.stack.copy(), e.position.x, e.position.y, e.position.z, e.age));
+            out.add(new DroppedItem(e.stack.copy(), e.position.x, e.position.y, e.position.z, e.age,e.lifetime));
         }
         return out;
     }

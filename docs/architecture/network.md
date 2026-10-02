@@ -190,3 +190,21 @@ real `Multiplayer`; the v7 numbers are in
 `run-tests.ps1 -Only net` covers protocol/transport/session rules. `run-net-test.ps1` gates two real game processes over LAN, and `run-server-test.ps1` covers dedicated host + clients. Both sides must pass, not merely connect.
 
 Knobs: [TUNING.md](../TUNING.md). Entry points: [PROJECT_MAP.md](../PROJECT_MAP.md).
+
+## Protocol 12 (2 October 2026)
+
+Farming and personal equipment menus execute on the host with checkpoint
+acknowledgements. Equipment appearance carries held/offhand/head/chest/legs/feet.
+Mobs use stable varlong IDs, age and love clocks. Melee sends an intent (limb,
+readiness and crit/sprint flags), and bow sends direction/draw; the host derives
+weapon stats, checks authoritative accepted position/reach, grounded crit state
+and per-player cooldown. Raw client damage is no longer accepted.
+
+New events: mob feeding 71/72, effect 73, explosion 75, rules/personal mode 76,
+death 77, personal bed 78 and host achievement 79. Code 74 remains generation map.
+World rules are sent on welcome and live changes. Known host effects tick while
+the guest is connected and are protected from stale checkpoints; unknown effects
+and personal spawn remain host-owned. Client vitals and food consumption retain
+the established trust model. A host-issued achievement cannot be erased by the
+client's preceding checkpoint. Full bodies: [protocol table](../NETWORK_PROTOCOL.md).
+Tests include loopback, actual TCP, real two-client LAN and dedicated-server runs.

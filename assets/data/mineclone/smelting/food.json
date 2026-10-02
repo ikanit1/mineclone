@@ -38,5 +38,15 @@
       "count": 1
     },
     "time": 8.0
+  },
+  "baked_potato": {
+    "type": "smelting",
+    "order": 20,
+    "input": "mineclone:potato",
+    "result": {
+      "item": "mineclone:baked_potato",
+      "count": 1
+    },
+    "time": 8
   }
 }

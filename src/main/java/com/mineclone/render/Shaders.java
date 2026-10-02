@@ -690,6 +690,11 @@ public final class Shaders {
         layout (location = 2) in vec2 aCorner;
         uniform mat4 uLightSpace;
         uniform mat4 uModel;
+        uniform bool uArmor;
+        uniform mat4 uArmorModels[8];
+        uniform vec2 uArmorFront[8];
+        uniform vec2 uArmorSide[8];
+        uniform vec2 uArmorTop[8];
         uniform vec2 uUvFront;
         uniform vec2 uUvSide;
         uniform vec2 uUvTop;
@@ -698,9 +703,12 @@ public final class Shaders {
         out vec3 vRepeat;
         void main() {
             vRepeat = vec3(0.0);
-            vec2 base = aFace < 0.5 ? uUvFront : (aFace < 1.5 ? uUvSide : uUvTop);
+            vec2 front = uArmor ? uArmorFront[gl_InstanceID] : uUvFront;
+            vec2 side = uArmor ? uArmorSide[gl_InstanceID] : uUvSide;
+            vec2 top = uArmor ? uArmorTop[gl_InstanceID] : uUvTop;
+            vec2 base = aFace < 0.5 ? front : (aFace < 1.5 ? side : top);
             vUv = base + aCorner * uTileSize;
-            gl_Position = uLightSpace * uModel * vec4(aPos, 1.0);
+            gl_Position = uLightSpace * (uArmor ? uArmorModels[gl_InstanceID] : uModel) * vec4(aPos, 1.0);
         }
         """;
 
@@ -1556,6 +1564,11 @@ public final class Shaders {
         uniform mat4 uProjection;
         uniform mat4 uView;
         uniform mat4 uModel;
+        uniform bool uArmor;
+        uniform mat4 uArmorModels[8];
+        uniform vec2 uArmorFront[8];
+        uniform vec2 uArmorSide[8];
+        uniform vec2 uArmorTop[8];
         uniform vec2 uUvFront;
         uniform vec2 uUvSide;
         uniform vec2 uUvTop;
@@ -1564,10 +1577,13 @@ public final class Shaders {
         out float vFogDist;
         out vec3 vWorld;
         void main() {
-            vec4 worldPos = uModel * vec4(aPos, 1.0);
+            vec4 worldPos = (uArmor ? uArmorModels[gl_InstanceID] : uModel) * vec4(aPos, 1.0);
             vec4 viewPos = uView * worldPos;
             gl_Position = uProjection * viewPos;
-            vec2 base = aFace < 0.5 ? uUvFront : (aFace < 1.5 ? uUvSide : uUvTop);
+            vec2 front = uArmor ? uArmorFront[gl_InstanceID] : uUvFront;
+            vec2 side = uArmor ? uArmorSide[gl_InstanceID] : uUvSide;
+            vec2 top = uArmor ? uArmorTop[gl_InstanceID] : uUvTop;
+            vec2 base = aFace < 0.5 ? front : (aFace < 1.5 ? side : top);
             vUv = base + aCorner * uTileSize;
             vFogDist = length(viewPos.xyz);
             vWorld = worldPos.xyz;

@@ -1,0 +1,14 @@
+{
+  "name": "деревянные изделия",
+  "values": [
+    "log",
+    "planks",
+    "stairs",
+    "door",
+    "plank_slab",
+    "fence",
+    "fence_gate",
+    "ladder",
+    "trapdoor"
+  ]
+}

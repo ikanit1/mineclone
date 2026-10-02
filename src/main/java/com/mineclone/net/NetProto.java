@@ -34,9 +34,7 @@ public final class NetProto {
      */
     // v7: persistent player identities/checkpoints and host-executed inventory gestures.
     /**
-     * v8 (the 1.1 cycle, NET-02): raised once, at the first incompatible change,
-     * and not again before the release — later 1.1 changes to v8 bodies land
-     * under the same number. So far: {@code S_PLAYER_HURT} carries the kind of
+     * v8 (NET-02): generator, precise clock and full player records. So far: {@code S_PLAYER_HURT} carries the kind of
      * harm, its dealer, origin and knockback ({@link PlayerHurt}); {@code
      * S_WELCOME} the host's generator and precise clock ({@link Welcome}), after
      * {@code S_GEN_MAP} with the chunks pinned to another version ({@link
@@ -44,7 +42,8 @@ public final class NetProto {
      * The table of every code is {@code docs/NETWORK_PROTOCOL.md}; a test holds
      * it to this file.
      */
-    public static final int VERSION = 8;
+    // v9: C_USE_BLOCK bit 7 distinguishes host-owned farming actions; reject v8 peers that cannot acknowledge them.
+    public static final int VERSION = 12;
 
     /** Сколько раз в секунду уходит кадр сети. */
     public static final float TICK_RATE = 12f;
@@ -133,6 +132,7 @@ public final class NetProto {
     /** Open, execute one gesture, close, and authoritative menu response. */
     public static final int C_OPEN = 62, C_ACTION = 63, C_CLOSE = 64, S_MENU = 65;
     /** Dropping and picking up carry a checkpoint with the ownership change. */
+    public static final int S_EFFECT=73,S_EVENT=75,S_RULES=76;
     public static final int C_DROP = 66, S_DROP_ACK = 67, C_PICKUP = 68, S_PICKUP = 69;
 
     // -------------------------------------------------------------- прочее
@@ -152,6 +152,7 @@ public final class NetProto {
      * it changes comes back as {@code S_BLOCK_SET}.
      */
     public static final int C_USE_BLOCK = 70;
+    public static final int C_USE_MOB=71,S_USE_ACK=72,C_DEATH=77,C_PERSONAL_SPAWN=78,S_ADVANCEMENT=79;
     /** Chunks the host's world generates with another version than its own ({@link GenMap}); before S_WELCOME. */
     public static final int S_GEN_MAP = 74;
 
@@ -176,6 +177,9 @@ public final class NetProto {
             case S_ITEMS -> "ITEMS";
             case C_MOB_HIT -> "MOB_HIT";
             case S_PROJECTILES -> "PROJECTILES";
+            case S_EFFECT -> "EFFECT";
+            case S_EVENT -> "EVENT";
+            case S_RULES -> "RULES";
             case C_SHOOT -> "SHOOT";
             case S_PLAYER_HURT -> "PLAYER_HURT";
             case C_CONTAINER_OPEN -> "CONTAINER_OPEN";
@@ -195,6 +199,11 @@ public final class NetProto {
             case C_ITEM_PICK -> "ITEM_PICK";
             case S_GIVE -> "GIVE";
             case C_USE_BLOCK -> "USE_BLOCK";
+            case C_USE_MOB -> "USE_MOB";
+            case S_USE_ACK -> "USE_ACK";
+            case C_DEATH -> "DEATH_DROP";
+            case S_ADVANCEMENT -> "ADVANCEMENT";
+            case C_PERSONAL_SPAWN -> "PERSONAL_SPAWN";
             case S_GEN_MAP -> "GEN_MAP";
             default -> "code" + code;
         };

@@ -8,7 +8,7 @@ package com.mineclone.item;
  * но блоки уже сейчас должны уметь сказать «мечом меня не копают».
  */
 public enum ToolClass {
-    PICKAXE, AXE, SHOVEL, SWORD;
+    PICKAXE, AXE, SHOVEL, SWORD, HOE;
 
     /** Имя из данных ({@code "pickaxe"}) или {@code null}, если такого класса нет. */
     public static ToolClass byName(String s) {

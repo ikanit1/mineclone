@@ -182,3 +182,26 @@ long frame, a stall, a replaced block, a missing neighbour, an ask for no delay)
 ticks ticks exactly ten times in ten intervals across a save and a fresh game**,
 half an hour and three hours away (capped at two days), a clock behind the save,
 and an edit before the first run keeping the restored origin.
+
+## Construction and farming (2 October 2026)
+
+Block IDs 0–48 stay unchanged; 49–63 append three slabs, fence, gate, ladder,
+trapdoor, farmland, three crops, sapling, grass and two flowers. `BuildingShapes`
+returns collision and selection boxes without allocating per query. Slabs use
+meta 0/1/2 for lower/upper/double; gates use orientation and open bits; trapdoors
+also use upper placement. Fence connections come from loaded neighbours, with
+1.5-block collision height. The mesher dispatches through `MeshKind`; partial
+faces do not hide a full neighbour. Ladder support is validated by behaviour.
+Only ladder contact enables climbing; stairs still require jumping.
+
+`Farming.use` is shared by local interaction and host inventory requests. Hoe
+use wears one durability in survival. `FarmlandBehavior` checks water within four
+horizontal cells every 400 world ticks, sets moisture to seven, or dries one
+level. A fall of at least one block tramples it; chickens are excluded.
+`CropBehavior` uses 3,400 ticks per stage, doubles that on dry soil, requires
+light nine, and bounds late catch-up at stage seven. Breaking support uses the
+same metadata-aware loot path. `SaplingBehavior` validates every loaded cell of
+a `TreeShapes` crown before a deferred observer batch; blocked trees wait.
+
+Tests: `BuildingBlockTests`, `FarmingTests`, `VegetationTests`, plus native
+`run-net-test -Farm` and `run-server-test -Farm` equivalents on Linux.

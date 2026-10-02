@@ -9,6 +9,8 @@
 # Usage: .\run-server-test.ps1
 # Exits non-zero if the server or either client failed.
 
+param([switch]$Farm)
+
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 $out = Join-Path $root 'out'
@@ -82,6 +84,7 @@ function Start-Guest {
         "-Dmineclone.autopilot=$dir\shots",
         "-Dmineclone.savesDir=$dir\saves",
         '-Dmineclone.autopilot.net=server',
+        "-Dmineclone.autopilot.netScenario=$(if ($Farm) { 'farm' } else { '' })",
         "-Dmineclone.autopilot.netPort=$port",
         "-Dmineclone.autopilot.netSlot=$slot",
         '-cp', $cp, 'com.mineclone.Main'
@@ -97,6 +100,21 @@ function Start-Guest {
 # The server has to generate its spawn chunks before it can answer a knock.
 Start-Sleep -Seconds 10
 $guests = @((Start-Guest 0), (Start-Guest 1))
+
+if ($Farm) {
+    $deadline = [DateTime]::UtcNow.AddMinutes(3)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $a = Get-Content (Join-Path $work 'guest0\out.log') -Raw -ErrorAction SilentlyContinue
+        $b = Get-Content (Join-Path $work 'guest1\out.log') -Raw -ErrorAction SilentlyContinue
+        if ($a -match 'farm server READY' -and $b -match 'farm guest READY') {
+            $server.StandardInput.WriteLine('/time add 48')
+            $server.StandardInput.Flush()
+            break
+        }
+        if ($guests[0].HasExited -or $guests[1].HasExited) { break }
+        Start-Sleep -Milliseconds 250
+    }
+}
 
 foreach ($proc in $guests) {
     if (-not $proc.WaitForExit(180000)) {

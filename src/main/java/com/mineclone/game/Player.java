@@ -12,7 +12,21 @@ import com.mineclone.world.shape.BlockShape;
 import com.mineclone.world.shape.Shapes;
 import org.joml.Vector3f;
 
-public class Player implements Damageable {
+public class Player implements com.mineclone.world.effect.StatusEffects.Target {
+    public final com.mineclone.world.Equipment equipment=new com.mineclone.world.Equipment();
+    public int brokenArmor;
+    public com.mineclone.world.WorldRules rules=com.mineclone.world.WorldRules.LEGACY;
+    public float saturation=5,exhaustion,air=300;
+    public float airHudSeconds;
+    private float drownTimer;
+    public final com.mineclone.world.effect.StatusEffects effects=new com.mineclone.world.effect.StatusEffects();
+    public float health(){return health;}
+    public void heal(float amount){if(health>0)health=Math.min(MAX_HEALTH,health+Math.max(0,amount));}
+    public void exhaust(float amount){if(isCreative()||health<=0||!(amount>0)||!Float.isFinite(amount))return;exhaustion+=amount;while(exhaustion>=4){exhaustion-=4;if(saturation>0)saturation=Math.max(0,saturation-1);else hunger=Math.max(0,hunger-1);}saturation=Math.min(saturation,hunger);}
+    public void tickAir(float dt){airHudSeconds=eyeInWater?2:Math.max(0,airHudSeconds-dt);if(isCreative()){air=300;drownTimer=0;return;}if(!eyeInWater){air=Math.min(300,air+dt*100);drownTimer=0;return;}float underwater=Math.max(0,dt-air/20);air=Math.max(0,air-dt*20);if(air==0){drownTimer+=underwater;while(drownTimer>=1){drownTimer-=1;damage(DamageSource.of(DamageType.DROWN),2);}}}
+    public void tickEffects(float dt){effects.tick(dt,this);statusSpeedMultiplier=effects.movementMultiplier();}
+
+
     public final Camera camera = new Camera();
     public final Vector3f velocity = new Vector3f();
     /** Множитель от временных состояний; Game обновляет его до шага физики. */
@@ -86,7 +100,7 @@ public class Player implements Damageable {
     // ---- голод ----
     public static final float MAX_HUNGER = 20f;
     /** Порог сытости, ниже которого здоровье не восстанавливается. */
-    public static final float REGEN_HUNGER_MIN = 14f;
+    public static final float REGEN_HUNGER_MIN = 18f;
     /** Сколько голода уходит за секунду просто от того, что игрок жив. */
     public static final float HUNGER_IDLE_DRAIN = 0.035f;
     /** Во сколько раз быстрее голод уходит на бегу. */
@@ -201,6 +215,13 @@ public class Player implements Damageable {
                 velocity.y = speed;
             if (controlsEnabled && input.down(com.mineclone.core.KeyBindings.Action.DESCEND))
                 velocity.y = -speed;
+        } else if (onLadder(world)) {
+            velocity.x = wish.x * WALK_SPEED;
+            velocity.z = wish.z * WALK_SPEED;
+            velocity.y = controlsEnabled && input.down(com.mineclone.core.KeyBindings.Action.DESCEND) ? -3f
+                    : jumpDown || wish.lengthSquared() > .001f ? 3f : -.15f;
+            fallDistance = 0f;
+            onGround = false;
         } else if (inWater) {
             // Горизонталь: exponential lerp к wish*SWIM_SPEED (инерция воды)
             float hDrag = (float) Math.pow(0.15, dt);
@@ -278,40 +299,28 @@ public class Player implements Damageable {
 
         // Flight and water end the current fall. Include the landing frame's
         // descent, but never carry a previous fall through a flying stop.
-        if (inWater || flying || isCreative())
+        if (inWater || flying || isCreative() || onLadder(world))
             fallDistance = 0f;
         else if (position.y < prevY)
             fallDistance += prevY - position.y;
 
         // Landing: apply fall damage (guard !inWater covers same-frame water+ground)
         if (onGround && !wasOnGround) {
-            if (!inWater && !flying && !isCreative()) {
+            if (!inWater && !flying && !isCreative() && !onLadder(world)) {
                 float dmg = Math.max(0f, fallDistance - 3f);
                 lastFallDamage = dmg;
                 if (dmg > 0f) {
                     damage(DamageSource.of(DamageType.FALL), dmg);
                 }
                 lastFallDistance = fallDistance;
+                com.mineclone.world.behavior.Farming.trample(world,position.x,position.y,position.z,fallDistance,false);
             }
             fallDistance = 0f;
         }
         wasOnGround = onGround;
 
-        tickHunger(dt, controlsEnabled);
-
-        // Медленный реген (~0.5 HP за REGEN_INTERVAL) с паузой после боя и
-        // только на сытый желудок: голод — это и есть цена урона.
-        if (regenDelay > 0f) {
-            regenDelay = Math.max(0f, regenDelay - dt);
-            regenTimer = 0f;
-        } else if (controlsEnabled && canRegen()) {
-            regenTimer += dt;
-            if (regenTimer >= REGEN_INTERVAL) {
-                if (health < MAX_HEALTH)
-                    health = Math.min(MAX_HEALTH, health + 0.5f);
-                regenTimer = 0f;
-            }
-        }
+        if(controlsEnabled && !flying){if(isSprinting)exhaust((float)Math.hypot(velocity.x,velocity.z)*dt*.1f);if(justJumped)exhaust(isSprinting?.2f:.05f);}
+        tickHunger(dt,controlsEnabled);tickAir(dt);tickEffects(dt);tickRegeneration(dt,controlsEnabled);
 
         camera.position.set(position.x, position.y + EYE_HEIGHT, position.z);
     }
@@ -327,16 +336,21 @@ public class Player implements Damageable {
     public void tickHunger(float dt, boolean active) {
         if (!active || isCreative() || flying || health <= 0f)
             return;
-        float drain = HUNGER_IDLE_DRAIN * dt;
-        if (isSprinting)
-            drain *= HUNGER_SPRINT_MUL;
-        hunger = Math.max(0f, hunger - drain);
-        if (hunger <= 0f && health > STARVE_FLOOR) {
-            float left = Math.max(STARVE_FLOOR, health - STARVE_DAMAGE * dt);
+
+        if (hunger <= 0f && health > rules.difficulty().starvationFloor) {
+            float left = Math.max(rules.difficulty().starvationFloor, health - STARVE_DAMAGE * dt);
             // Ровно до пола: вычитание разницы могло бы промахнуться на ulp.
             if (damage(DamageSource.of(DamageType.STARVE), health - left))
                 health = left;
         }
+    }
+
+    public void tickRegeneration(float dt,boolean active){
+        if(regenDelay>0){regenDelay=Math.max(0,regenDelay-dt);regenTimer=0;return;}
+        if(rules.difficulty()==com.mineclone.world.Difficulty.PEACEFUL&&!isCreative()&&health>0){regenTimer+=dt;while(regenTimer>=2){regenTimer-=2;heal(1);}return;}
+        if(!rules.naturalRegeneration()||!active||!canRegen()||health>=MAX_HEALTH||effects.active(com.mineclone.world.effect.StatusEffect.CHILLED)){regenTimer=0;return;}
+        regenTimer+=dt;float interval=saturation>0?.5f:4f;
+        while(regenTimer>=interval&&health<MAX_HEALTH&&canRegen()){regenTimer-=interval;heal(1);exhaust(6);interval=saturation>0?.5f:4;}
     }
 
     /**
@@ -351,6 +365,12 @@ public class Player implements Damageable {
     /** Съесть: поднимает сытость, но не выше предела. */
     public void eat(float nutrition) {
         hunger = Math.min(MAX_HUNGER, hunger + nutrition);
+        saturation=Math.min(hunger,saturation+nutrition*.6f);
+    }
+
+    public void eat(com.mineclone.item.FoodSpec food,java.util.random.RandomGenerator random){
+        hunger=Math.min(MAX_HUNGER,hunger+food.nutrition());saturation=Math.min(hunger,saturation+food.saturation());
+        for(var e:food.effects())if(random.nextFloat()<e.chance())effects.apply(e.effect(),e.amplifier(),e.seconds(),null,false);
     }
 
     /** Есть смысл, только если желудок не полон — иначе еда тратится впустую. */
@@ -509,7 +529,7 @@ public class Player implements Damageable {
         float minZ = position.z - hw, maxZ = position.z + hw;
 
         int x0 = (int) Math.floor(minX), x1 = (int) Math.floor(maxX);
-        int y0 = (int) Math.floor(minY), y1 = (int) Math.floor(maxY);
+        int y0 = (int) Math.floor(minY) - 1, y1 = (int) Math.floor(maxY);
         int z0 = (int) Math.floor(minZ), z1 = (int) Math.floor(maxZ);
 
         for (int x = x0; x <= x1; x++)
@@ -520,10 +540,10 @@ public class Player implements Damageable {
                         continue;
                     // Cell enumeration is only a broad phase. A face touch is not overlap,
                     // and a previous resolution may have moved us out of later candidate cells.
-                    if (maxX <= x || minX >= x + 1 || maxY <= y || minY >= y + 1
+                    BlockShape shape = Shapes.of(b);
+                    if (maxX <= x || minX >= x + 1 || maxY <= y || minY >= y + shape.maxCollisionHeight()
                             || maxZ <= z || minZ >= z + 1)
                         continue;
-                    BlockShape shape = Shapes.of(b);
                     byte meta = Shapes.meta(world, shape, x, y, z);
                     if (shape.fullCube(meta)) {
                         pushOut(x, y, z, x + 1, y + 1, z + 1, dx, dy, dz, previousBottom, previousTop, hw);
@@ -560,14 +580,16 @@ public class Player implements Damageable {
             int xb = (int) Math.floor(position.x + hw - 1e-3);
             int za = (int) Math.floor(position.z - hw + 1e-3);
             int zb = (int) Math.floor(position.z + hw - 1e-3);
-            outer: for (int xi = xa; xi <= xb; xi++)
+            outer: for (int ybScan = yb; ybScan >= yb-1; ybScan--)
+                for (int xi = xa; xi <= xb; xi++)
                 for (int zi = za; zi <= zb; zi++) {
-                    BlockType bl = world.getBlock(xi, yb, zi);
+                    BlockType bl = world.getBlock(xi, ybScan, zi);
                     if (!bl.solid)
                         continue;
                     BlockShape shape = Shapes.of(bl);
-                    byte m = Shapes.meta(world, shape, xi, yb, zi);
-                    if (shape.fullCube(m) || standsOn(shape, m, xi, yb, zi, py, hw)) {
+                    byte m = Shapes.meta(world, shape, xi, ybScan, zi);
+                    if (ybScan==yb ? shape.fullCube(m) || standsOn(shape,m,xi,ybScan,zi,py,hw)
+                            : shape.maxCollisionHeight()>1 && standsOn(shape,m,xi,ybScan,zi,py,hw)) {
                         onGround = true;
                         break outer;
                     }
@@ -626,6 +648,13 @@ public class Player implements Damageable {
         return false;
     }
 
+    public boolean onLadder(World world) {
+        int x=(int)Math.floor(position.x), z=(int)Math.floor(position.z);
+        for(int y=(int)Math.floor(position.y);y<=(int)Math.floor(position.y+HEIGHT);y++)
+            if(Shapes.of(world.getBlock(x,y,z))==Shapes.LADDER)return true;
+        return false;
+    }
+
     /**
      * Единственный путь урона игроку (SURV-01).
      *
@@ -650,7 +679,9 @@ public class Player implements Damageable {
             hurtCooldown = HURT_INVULN_TIME;
             regenDelay = REGEN_DELAY_AFTER_HIT;
         }
-        health = Math.max(0f, health - ArmorMath.afterArmor(amount, source.type(), ArmorView.NONE));
+        health = Math.max(0f, health - ArmorMath.afterArmor(amount, source.type(), equipment.armor()));
+        if(!source.type().bypassesArmor())brokenArmor+=equipment.wear(amount);
+        exhaust(.1f);
         lastDamageSource = source;
         return true;
     }
@@ -668,6 +699,7 @@ public class Player implements Damageable {
     public void respawn(float x, float y, float z) {
         health = MAX_HEALTH;
         hunger = MAX_HUNGER;
+        saturation=5;exhaustion=0;air=300;airHudSeconds=0;drownTimer=0;effects.clear();
         hurtCooldown = 0f;
         lastDamageSource = null;
         fallDistance = 0f;

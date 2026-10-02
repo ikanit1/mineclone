@@ -1,0 +1,11 @@
+{
+  "provider": "OpenAI image_gen",
+  "generatedAt": "2026-10-02",
+  "prompt": "Create a native pixel-art source sprite sheet for an existing Minecraft-like voxel game, transparent background, no text, no captions, no shadows or 3D perspective, no gradients, no antialiasing. STRICT 4 columns by 2 rows, eight equally sized square cells. Each cell represents exactly 32x32 logical pixels displayed by nearest-neighbor scaling. Row 1: (1) wooden ladder, flat front view, two slim vertical oak rails and seven horizontal wooden rungs, transparent gaps; (2) wooden trapdoor, top-down flat square wooden panel with four small square transparent window openings and iron hinge details; (3) oak fence gate, flat front view, two wooden vertical ends, two horizontal wooden beams, transparent gaps; (4) dry farmland tile, full opaque edge-to-edge repeating dark brown soil with straight alternating ridges aligned vertically. Row 2: (1) wet farmland tile, same ridges but darker moist brown with restrained rich earth palette; (2) oak sapling, compact small green leafy tree shoot with short brown stem, transparent outside; (3) spruce sapling, compact dark green pointed conifer shoot with short brown stem, transparent outside; (4) acacia sapling, compact spreading olive-green tree shoot with short brown stem, transparent outside. Style: crisp traditional low-resolution pixel art, warm oak wood tan/brown, earthy natural colors, fine pixel detail, no smooth outlines. Every plant and construction silhouette contained within its cell with a 1 logical-pixel transparent margin. Farmland tiles fill their cells. Output one clean aligned atlas; no extra items.",
+  "layout": {
+    "columns": 4,
+    "rows": 2
+  },
+  "inspection": "Eight aligned cells inspected; hard-alpha, nearest-centre native tile import, farmland opaque interior crop. Original preserved.",
+  "sha256": "2cd7490f38d5f247f5c6bb73550772d1ca4cc3152018ae2432ecad5ce05f5a86"
+}

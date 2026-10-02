@@ -156,6 +156,7 @@ public final class DedicatedServer implements NetContext {
         ledger = save.openLedger(config.worldId, generator, lvl == null ? new float[0][] : new float[][] {
                 { (float) lvl.spawnX, (float) lvl.spawnZ }, { (float) lvl.px, (float) lvl.pz } });
         world = new World(seed, generator.policy(ledger));
+        world.rules=lvl==null?config.rules:lvl.rules;
         loader = new ChunkLoader(world, new ChunkMesher(world), save, config.worldId);
         // Меши сервер не строит: рисовать ему нечем, а восемь потоков,
         // складывающих треугольники в никуда, — это восемь занятых ядер.
@@ -423,6 +424,9 @@ public final class DedicatedServer implements NetContext {
      */
     private final WorldSession.Host sessionHost = new WorldSession.Host() {
         @Override public Vector3f mobFocus() { return spawn; }
+        @Override public void bred(int actor){net.award(actor,"mineclone:breed_animals","Разведите животных");}
+        @Override public void exploded(float x,float y,float z){net.sendExplosion(x,y,z);}
+        @Override public void effectApplied(com.mineclone.sim.Participant target,com.mineclone.world.effect.StatusEffect effect,float seconds){net.sendEffect(target.id(),effect,seconds);}
         @Override public void projectileTargets(List<com.mineclone.world.entity.Hittable> out) { out.addAll(net.players()); }
     };
 
@@ -487,6 +491,7 @@ public final class DedicatedServer implements NetContext {
     private void saveLevel() {
         var sections = new java.util.LinkedHashMap<>(levelExtraSections);
         sections.put(com.mineclone.sim.WorldClock.SAVE_SECTION, worldClock.encode());
+        sections.put(com.mineclone.world.WorldRules.SAVE_SECTION,world.rules.encode());
         // A server has no local owner to recapture. Preserve the checkpoint from
         // the loaded single-player world instead of replacing its inventory,
         // pending cursor stacks and vitals with a fresh empty player.
@@ -531,6 +536,8 @@ public final class DedicatedServer implements NetContext {
     public float gameTime() {
         return worldClock.gameTimeFloat();
     }
+
+    public void addTimeHours(double hours){worldClock.addHours(hours);}
 
     public void setGameTime(float t) {
         worldClock.setGameTime(t);
@@ -578,6 +585,7 @@ public final class DedicatedServer implements NetContext {
         return save.loadGuest(config.worldId,id);
     }
 
+    @Override public long nextMobId(){return worldClock.nextEntityId();}
     @Override public void saveGuest(String id,com.mineclone.net.PlayerData data) {
         save.saveGuest(config.worldId,id,data);
     }

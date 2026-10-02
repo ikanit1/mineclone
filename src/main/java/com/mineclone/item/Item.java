@@ -38,6 +38,7 @@ public final class Item {
     public final ToolSpec tool;
     public final AttackSpec attack;
     public final FoodSpec food;
+    public final ArmorSpec armor;
 
     /**
      * Тайл плоской иконки. У блока, который рисуется кубиком, — {@code -1}:
@@ -52,7 +53,7 @@ public final class Item {
 
     Item(ResourceId id, String name, String category, float mass, int maxStack,
             int durability, boolean hidden, float fuelSeconds,
-            BlockType block, ToolSpec tool, AttackSpec attack, FoodSpec food,
+            BlockType block, ToolSpec tool, AttackSpec attack, FoodSpec food, ArmorSpec armor,
             int iconTile, boolean missing) {
         this.id = id;
         this.name = name;
@@ -66,6 +67,7 @@ public final class Item {
         this.tool = tool;
         this.attack = attack;
         this.food = food;
+        this.armor = armor;
         this.iconTile = iconTile;
         this.missing = missing;
     }

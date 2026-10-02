@@ -45,3 +45,12 @@ Recipes and smelting: [recipes.md](recipes.md). Drops from blocks, mobs and ches
 `run-tests.ps1 -Only core,inventory,save,data` covers recipes, loot, tool wear, missing IDs and item persistence. See [world.md](world.md) for adding a block without renumbering saved IDs.
 
 Knobs: [TUNING.md](../TUNING.md). Entry points: [PROJECT_MAP.md](../PROJECT_MAP.md).
+
+## Armor and food components (2 October 2026)
+
+Strict `armor` parsing validates slot/defense/toughness/knockback resistance; armor
+stack size is one. `food` supports saturation, eat_seconds and bounded effects
+(duration ≤86400 s, amplifier ≤255, chance 0..1). HOE appends to tool classes.
+The runtime atlas now has 205 native tiles; new item/crop/vegetation sprites and
+four armor model sheets retain their source hashes and offline importer receipts.
+See [source provenance](../../assets/textures/source/roadmap-1-1.md).

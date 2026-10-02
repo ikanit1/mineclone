@@ -50,12 +50,13 @@ final class SessionParityTests {
     }
 
     /**
-     * Recorded before the move; see the class comment. The run holds two blows,
+     * Updated for MOB-08 finite livestock and data-driven spawning, and CMB-07 explosion loot.
+     * Original extraction hash remains in git history; presentation parity still uses this same scenario. The run holds two blows,
      * one explosion with its crater, two deaths with drops, 22 spawns (29 mobs at
      * the peak), two arrows and six strikes by the participant. Pushing each pair
      * twice, or never out of the participant, changes it.
      */
-    static final String ETALON = "fcc8d937381db87b2cfde58a2b0d766324ba9511cc78d87187252339dc5f2a91";
+    static final String ETALON = "4a5b6dc08132c3f783f6d6fdecd8a6d9823a40492f3f29e3779b3fb566a69c8e";
 
     static final long SEED = 20260922L;
     static final int TICKS = 600;

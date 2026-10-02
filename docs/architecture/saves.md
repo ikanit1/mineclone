@@ -214,3 +214,25 @@ migration archives, clock validation and section bounds.
 
 Fsync durability, region storage and automatic data repair remain separate
 roadmap tasks.
+
+## New optional sections (2 October 2026)
+
+`rules` in the level is a strict versioned payload. Absent rules migrate to NORMAL
+with inventory retention and commands enabled, preserving legacy behaviour.
+`clock` section version 2 appends the next stable entity ID; version 1 remains
+readable. `entities` version 1 stores persistent mob IDs, type, position, yaw,
+health, age and breeding clocks. Validate a complete batch before publishing.
+Future schemas/type names are kept opaque through the existing chunk-section
+protection and backup mechanism.
+
+Death inventory, equipment and pending stacks become host-owned ground items at
+600-second lifetime. Ordinary items retain 300 seconds. Optional chunk section
+`item_lifetimes` supplements legacy `items` without rewriting its layout; count,
+finite values and limits are validated before publication. Snapshot copies retain
+lifetime. Player equipment preserves opaque future tail cells; known effect names
+accept both legacy bare names and `mineclone:` IDs, unknown effects round-trip.
+
+The save queue's detached snapshot copy also carries lifetime; the five-cycle
+loader regression uses a ten-minute item to cover this boundary. A death while
+an equipment/chest menu is open captures that host-owned cursor/ingredients
+directly instead of returning them to a full inventory and spilling a duplicate.

@@ -42,8 +42,8 @@ final class EquipmentTextureTests {
             String previous = masks.putIfAbsent(item.tool.toolClass(), mask.toString());
             check(previous == null || previous.equals(mask.toString()), item.id + " changes its class silhouette");
         }
-        check(count == 24, "cover all six materials and four tool classes");
-        check(new java.util.HashSet<>(masks.values()).size() == 4, "axe, shovel, pickaxe and sword must differ");
+        check(count == 30, "cover all six materials and five tool classes");
+        check(new java.util.HashSet<>(masks.values()).size() == 5, "axe, shovel, pickaxe, sword and hoe must differ");
         check(TextureAtlas.TILE_NAMES[Items.get().require("copper_shovel").iconTile].equals("copper_shovel"),
                 "copper shovel must not use the solid material swatch");
         for (String name : new String[]{"copper_ingot", "iron_ingot", "gold_ingot", "stick"}) {

@@ -175,3 +175,13 @@ before the move (commit `79318ba`); pushing a pair twice, never pushing mobs out
 of the participant, or changing the sense interval fails it. Wolf kills are not
 reached by the scenario. The same run with a recording `WorldEvents` gives the
 same hash, and the dedicated server's source contains no mob rules of its own.
+
+## Entity lifecycle (2 October 2026)
+
+WorldSession adopts restored persistent entities once per chunk, assigns stable
+clock IDs, updates shared environmental hazards/air/effects, and saves entity and
+item lifetimes before forgetting a chunk. Breeding pairs are evaluated before
+mob brains and appended births cannot invalidate iteration. Peaceful removes
+hostiles immediately. Lightning is a typed radius event from the game's Storm.
+DedicatedServer uses the same lifecycle without importing client/render/audio
+classes. `EntityLifecycleTests` includes server stop/reopen with the same herd ID.

@@ -1,14 +1,11 @@
 package com.mineclone.world.damage;
 
-/**
- * What armor leaves of a hit. There is no armor yet (CMB-01/02): every hit
- * lands whole, and this is the one place that will change when there is.
- * Whatever {@link DamageType#bypassesArmor() bypasses armor} will stay whole.
- */
+/** Shared defense formula for local and remote participants. */
 public final class ArmorMath {
     private ArmorMath() {}
-
-    public static float afterArmor(float amount, DamageType type, ArmorView armor) {
-        return amount;
+    public static float reduce(float amount,float defense,float toughness){
+        float effective=Math.min(20f,Math.max(defense/5f,defense-amount/(2f+toughness/4f)));
+        return amount*(1f-effective/25f);
     }
+    public static float afterArmor(float amount,DamageType type,ArmorView armor){return type.bypassesArmor()?amount:reduce(amount,armor.points(),armor.toughness());}
 }

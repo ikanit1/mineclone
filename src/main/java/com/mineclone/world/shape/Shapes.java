@@ -30,12 +30,14 @@ public final class Shapes {
 
     /** Air and fluids: a body passes, the aim goes through. */
     public static final BlockShape EMPTY = new BlockShape() {
+        @Override public MeshKind meshKind() { return MeshKind.NONE; }
         @Override public int collision(byte meta, float[] out) { return 0; }
         @Override public int outline(byte meta, float[] out) { return 0; }
     };
 
     /** A cube. */
     public static final BlockShape FULL = new BlockShape() {
+        @Override public MeshKind meshKind() { return MeshKind.FULL; }
         @Override public int collision(byte meta, float[] out) { return BlockShape.box(out, 0, 0, 0, 0, 1, 1, 1); }
         @Override public int outline(byte meta, float[] out) { return BlockShape.box(out, 0, 0, 0, 0, 1, 1, 1); }
         @Override public boolean fullCube(byte meta) { return true; }
@@ -49,6 +51,7 @@ public final class Shapes {
 
     /** A torch on the floor or leaning from a wall (meta 1..4), as the mesher tilts it. */
     public static final BlockShape TORCH = new BlockShape() {
+        @Override public MeshKind meshKind() { return MeshKind.CROSS; }
         @Override public int collision(byte meta, float[] out) { return 0; }
 
         @Override
@@ -72,6 +75,7 @@ public final class Shapes {
      * body, and the snow's depth is a slowdown, not a wall.
      */
     public static final BlockShape LAYER = new BlockShape() {
+        @Override public MeshKind meshKind() { return MeshKind.LAYER; }
         @Override public int collision(byte meta, float[] out) { return 0; }
 
         @Override
@@ -85,6 +89,7 @@ public final class Shapes {
      * at low Z, 1 at high X, 2 at high Z, 3 at low X.
      */
     public static final BlockShape STAIRS = new BlockShape() {
+        @Override public MeshKind meshKind() { return MeshKind.STAIRS; }
         @Override public int collision(byte meta, float[] out) { return boxes(meta, out); }
         @Override public int outline(byte meta, float[] out) { return boxes(meta, out); }
 
@@ -103,6 +108,7 @@ public final class Shapes {
 
     /** A closed door fills its cell for a body, but is aimed at and outlined by its panel. */
     public static final BlockShape DOOR_CLOSED = new BlockShape() {
+        @Override public MeshKind meshKind() { return MeshKind.DOOR; }
         @Override public int collision(byte meta, float[] out) { return FULL.collision(meta, out); }
         @Override public int outline(byte meta, float[] out) { return doorPanel(meta, false, out); }
         @Override public boolean fullCube(byte meta) { return true; }
@@ -110,10 +116,22 @@ public final class Shapes {
 
     /** An open door lets a body through; its panel, swung to the side, is still a target. */
     public static final BlockShape DOOR_OPEN = new BlockShape() {
+        @Override public MeshKind meshKind() { return MeshKind.DOOR; }
         @Override public int collision(byte meta, float[] out) { return 0; }
         @Override public int outline(byte meta, float[] out) { return doorPanel(meta, true, out); }
     };
 
+    public static final BlockShape SLAB = BuildingShapes.SLAB, FENCE = BuildingShapes.FENCE,
+            FENCE_GATE = BuildingShapes.GATE, LADDER = BuildingShapes.LADDER, TRAPDOOR = BuildingShapes.TRAPDOOR;
+    public static final BlockShape FARMLAND = new BlockShape() {
+        public int collision(byte m,float[] out){return BlockShape.box(out,0,0,0,0,1,15f/16,1);}
+        public int outline(byte m,float[] out){return collision(m,out);}
+    };
+    public static final BlockShape CROP = new BlockShape() {
+        public MeshKind meshKind(){return MeshKind.CROP;}
+        public int collision(byte m,float[] out){return 0;}
+        public int outline(byte m,float[] out){return BlockShape.box(out,0,0,0,0,1,.25f+(m&7)*.1f,1);}
+    };
     private static final BlockShape[] TABLE = new BlockShape[BlockType.VALUES.length];
 
     static {
@@ -131,11 +149,18 @@ public final class Shapes {
             case AIR, WATER, WATER_FLOW, LAVA -> EMPTY;
             case TORCH -> TORCH;
             case FIRE -> FLAME;
-            case WEB, ROPE, CHAIN, JOURNAL -> CROSS;
+            case TALL_GRASS,FLOWER_RED,FLOWER_YELLOW,SAPLING, WEB, ROPE, CHAIN, JOURNAL -> CROSS;
             case SNOW_LAYER, BEDROLL -> LAYER;
             case STAIRS -> STAIRS;
             case DOOR_CLOSED -> DOOR_CLOSED;
             case DOOR_OPEN -> DOOR_OPEN;
+            case FARMLAND -> FARMLAND;
+            case WHEAT, CARROTS, POTATOES -> CROP;
+            case PLANK_SLAB, COBBLE_SLAB, STONE_SLAB -> SLAB;
+            case FENCE -> FENCE;
+            case FENCE_GATE -> FENCE_GATE;
+            case LADDER -> LADDER;
+            case TRAPDOOR -> TRAPDOOR;
             case GRASS, DIRT, STONE, SAND, WOOD, LEAVES, BEDROCK, COBBLE, PLANKS, GLASS,
                     SNOWY_GRASS, CACTUS, COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE, CHEST,
                     FURNACE, ICE, MUD, ASH, MOSSY_COBBLE, OBSIDIAN, THIN_ICE, CRAFTING_TABLE,
@@ -156,12 +181,24 @@ public final class Shapes {
     }
 
     /** The meta a shape needs; cubes and emptiness do not look at it. */
+    private static final int[][] FENCE_DIRS={{0,1},{0,-1},{1,0},{-1,0}};
     public static byte meta(World world, BlockShape shape, int x, int y, int z) {
+        if (shape == FENCE) {
+            int mask = 0;
+            int[][] dirs = FENCE_DIRS;
+            for(int i=0;i<4;i++) {
+                BlockType next = world.getBlock(x+dirs[i][0],y,z+dirs[i][1]);
+                if(next==BlockType.FENCE || next==BlockType.FENCE_GATE || of(next).fullCube(world.getBlockMeta(x+dirs[i][0],y,z+dirs[i][1])))
+                    mask|=1<<i;
+            }
+            return (byte)mask;
+        }
         return shape == FULL || shape == EMPTY ? 0 : world.getBlockMeta(x, y, z);
     }
 
     private static BlockShape cross(float height) {
         return new BlockShape() {
+            @Override public MeshKind meshKind() { return MeshKind.CROSS; }
             @Override public int collision(byte meta, float[] out) { return 0; }
             @Override public int outline(byte meta, float[] out) { return BlockShape.box(out, 0, 0f, 0f, 0f, 1f, height, 1f); }
         };

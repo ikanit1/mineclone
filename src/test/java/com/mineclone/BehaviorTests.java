@@ -329,7 +329,8 @@ final class BehaviorTests {
                 interactive.add(t);
         }
         check(interactive.equals(EnumSet.of(BlockType.CHEST, BlockType.FURNACE, BlockType.CRAFTING_TABLE,
-                BlockType.BEDROLL, BlockType.DOOR_CLOSED, BlockType.DOOR_OPEN)), "interactive: " + interactive);
+                BlockType.BEDROLL, BlockType.DOOR_CLOSED, BlockType.DOOR_OPEN,
+                BlockType.FENCE_GATE, BlockType.TRAPDOOR)), "interactive: " + interactive);
         World w = flat(3L);
         UseContext who = new UseContext(0);
         check(Behaviors.of(BlockType.CHEST).use(w, 1, 41, 1, (byte) 0, who).menu() == UseResult.Menu.CHEST, "chest");

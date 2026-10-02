@@ -37,6 +37,9 @@ final class CommandProcessor {
     interface CommandTarget {
         /** In a network room a line without a slash is chat. */
         boolean inRoom();
+        default boolean guest(){return false;}
+        default void rulesChanged(){}
+        default boolean guestMode(String name,GameMode mode){return false;}
         void chat(String line);
         Player player();
         World world();
@@ -77,9 +80,16 @@ final class CommandProcessor {
         if (cmd.isEmpty())
             return;
         String[] parts = cmd.split("\\s+");
+        String action=parts[0].toLowerCase(java.util.Locale.ROOT);
+        boolean local=java.util.Set.of("/help","/commands","/music","/debug").contains(action);
+        if(!local&&target.guest()){target.toast("Команды выполняет хозяин");return;}
+        if(!local&&target.world()!=null&&!target.world().rules.allowCommands()){target.toast("Команды отключены правилами мира");return;}
         Player player = target.player();
         try {
-            switch (parts[0]) {
+            switch (action) {
+                case "/difficulty"->{if(parts.length!=2){target.toast("/difficulty peaceful|easy|normal|hard");return;}target.world().rules=target.world().rules.difficulty(com.mineclone.world.Difficulty.valueOf(parts[1].toUpperCase(java.util.Locale.ROOT)));target.rulesChanged();}
+                case "/gamerule"->{if(parts.length!=3||(!parts[2].equals("true")&&!parts[2].equals("false"))){target.toast("/gamerule <name> true|false");return;}target.world().rules=target.world().rules.set(parts[1],Boolean.parseBoolean(parts[2]));target.rulesChanged();}
+                case "/effect"->{if(parts.length==2&&parts[1].equals("clear")){player.effects.clear();return;}if(parts.length<3){target.toast("/effect <name> <seconds> [amplifier]");return;}var effect=com.mineclone.world.effect.StatusEffect.valueOf(parts[1].toUpperCase(java.util.Locale.ROOT));float duration=Float.parseFloat(parts[2]);int amplifier=parts.length>3?Integer.parseInt(parts[3]):0;if(duration<=0||duration>86400)throw new NumberFormatException();player.effects.apply(effect,amplifier,duration,null,false);}
                 case "/time" -> executeTimeCommand(parts);
                 case "/weather" -> executeWeatherCommand(parts);
                 case "/help", "/commands" -> target.showHelp();
@@ -138,6 +148,7 @@ final class CommandProcessor {
                 case "/debug" -> target.toggleDebug();
                 case "/instamine" -> target.toast(target.toggleInstantBreak() ? "Instamine ON" : "Instamine OFF");
                 case "/gamemode", "/gm" -> {
+                    if(parts.length==3){GameMode mode=GameMode.valueOf(parts[2].toUpperCase(java.util.Locale.ROOT));if(!target.guestMode(parts[1],mode))target.toast("Игрок не найден");return;}
                     if (parts.length >= 2) {
                         String m = parts[1].toLowerCase();
                         if (m.equals("creative") || m.equals("c") || m.equals("1")) {
@@ -155,8 +166,9 @@ final class CommandProcessor {
                     }
                 }
             }
-        } catch (NumberFormatException e) {
-            target.toast("Invalid number");
+        } catch (NumberFormatException e){target.toast("Invalid number");
+        } catch (IllegalArgumentException e) {
+            target.toast("Некорректная команда: "+e.getMessage());
         }
     }
 

@@ -4,6 +4,9 @@ package com.mineclone.ui;
 public final class DeathScreen implements Screen {
 
     private float clock;
+    private final String cause,position;private final boolean keep;
+    public DeathScreen(){this(null,0,0,0,true);}
+    public DeathScreen(com.mineclone.world.damage.DamageSource source,float x,float y,float z,boolean keep){this.cause=com.mineclone.world.damage.DeathMessage.text(source);position=String.format(java.util.Locale.ROOT,"Место смерти: %.0f, %.0f, %.0f",x,y,z);this.keep=keep;}
 
     @Override
     public MenuAction draw(MenuTheme t) {
@@ -21,8 +24,8 @@ public final class DeathScreen implements Screen {
         // сама, иначе она выглядит окном в другой, спокойный мир.
         t.quad(px, py, pw, ph, 0.40f, 0.03f, 0.03f, 0.30f);
         t.textCentered("Вы погибли", sw / 2f, py + 52f, MenuTheme.DANGER, 1f);
-        t.smallCentered("Инвентарь остаётся с вами.", sw / 2f, py + 84f, MenuTheme.TEXT_DIM, 1f);
-        t.smallCentered("Возрождение — у точки возрождения мира.", sw / 2f, py + 104f, MenuTheme.TEXT_DIM, 1f);
+        t.smallCentered(cause, sw / 2f, py + 84f, MenuTheme.TEXT_DIM, 1f);
+        t.smallCentered(position+(keep?" · Вещи сохранены":" · Вещи на земле"), sw / 2f, py + 104f, MenuTheme.TEXT_DIM, 1f);
 
         float bw = pw - 48f, bh = 46f;
         MenuAction result = MenuAction.NONE;

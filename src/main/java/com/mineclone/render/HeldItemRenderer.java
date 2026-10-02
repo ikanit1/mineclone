@@ -44,7 +44,11 @@ public final class HeldItemRenderer {
     /** Меши по тайлу: у лука три стадии натяжения и на каждую своя форма. */
     private final Map<Integer, Mesh> stageMeshes = new java.util.HashMap<>();
     /** Текущее натяжение лука 0..1. Ставится игрой перед кадром. */
-    private float bowDraw;
+    private float bowDraw,eating;
+    public void setEating(float progress){eating=progress;}
+    private final ArmorLayer armorLayer=new ArmorLayer();
+    private com.mineclone.world.ItemStack chestArmor;
+    public void setChestArmor(com.mineclone.world.ItemStack stack){chestArmor=stack;}
     private final Map<com.mineclone.item.Item, Mesh> materialMeshes = new java.util.HashMap<>();
     private final int armVao, armVbo;
     private final int armTexture;
@@ -332,6 +336,7 @@ public final class HeldItemRenderer {
             float walkDistance, boolean underwater, boolean viewBobbing,
             float daylight, float brightness, float skyFrac, float blockFrac,
             float linearOut, float inspect, float spin) {
+        if(eating>0){inspect=Math.max(inspect,.85f);swingProgress=.12f+.06f*(float)Math.sin(eating*40);}
         BlockType heldBlock = held == null ? null : held.block();
         // Лук держат как инструмент, хотя инструментальной части у него нет:
         // иначе он рисуется бруском материала, а не луком.
@@ -392,6 +397,8 @@ public final class HeldItemRenderer {
             glBindTexture(GL_TEXTURE_2D, armTexture);
             glBindVertexArray(armVao);
             glDrawArrays(GL_TRIANGLES, 0, MobRenderer.VERTEX_COUNT);
+            int armor=armorLayer.texture(chestArmor);
+            if(armor!=0){glBindTexture(GL_TEXTURE_2D,armor);armShader.setMat4("uModel",armPose(equipProgress,swingProgress,walkDistance,viewBobbing,held!=null,inspect).scale(1.08f));glDrawArrays(GL_TRIANGLES,0,MobRenderer.VERTEX_COUNT);}
             glBindVertexArray(0);
             armShader.unbind();
         }
@@ -702,6 +709,7 @@ public final class HeldItemRenderer {
         blockMeshes.clear();
         glDeleteVertexArrays(armVao);
         glDeleteBuffers(armVbo);
+        armorLayer.close();
         glDeleteTextures(armTexture);
         for (Mesh m : toolMeshes.values())
             m.destroy();

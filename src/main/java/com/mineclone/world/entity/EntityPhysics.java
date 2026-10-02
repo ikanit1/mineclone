@@ -107,7 +107,8 @@ public final class EntityPhysics {
             return false;
         float hw = width / 2f;
         int x0 = (int) Math.floor(pos.x - hw), x1 = (int) Math.floor(pos.x + hw);
-        int y0 = (int) Math.floor(pos.y),      y1 = (int) Math.floor(pos.y + height);
+        int originalY0 = (int) Math.floor(pos.y);
+        int y0 = originalY0-1, y1 = (int) Math.floor(pos.y + height);
         int z0 = (int) Math.floor(pos.z - hw), z1 = (int) Math.floor(pos.z + hw);
         boolean hit = false;
         for (int x = x0; x <= x1; x++)
@@ -116,6 +117,7 @@ public final class EntityPhysics {
                     if (!world.isSolid(x, y, z))
                         continue;
                     BlockShape shape = Shapes.of(world.getBlock(x, y, z));
+                    if(y<originalY0 && (shape.maxCollisionHeight()<=1 || pos.y>=y+shape.maxCollisionHeight()))continue;
                     byte meta = Shapes.meta(world, shape, x, y, z);
                     if (shape.fullCube(meta)) {
                         hit = true;
@@ -151,13 +153,15 @@ public final class EntityPhysics {
         int y = (int) Math.floor(pos.y - 1e-3f);
         int xa = (int) Math.floor(pos.x - hw + 1e-3f), xb = (int) Math.floor(pos.x + hw - 1e-3f);
         int za = (int) Math.floor(pos.z - hw + 1e-3f), zb = (int) Math.floor(pos.z + hw - 1e-3f);
-        for (int x = xa; x <= xb; x++)
+        for (int floorY = y; floorY >= y-1; floorY--)
+          for (int x = xa; x <= xb; x++)
             for (int z = za; z <= zb; z++) {
-                if (!world.isSolid(x, y, z))
+                if (!world.isSolid(x, floorY, z))
                     continue;
-                BlockShape shape = Shapes.of(world.getBlock(x, y, z));
-                byte meta = Shapes.meta(world, shape, x, y, z);
-                if (shape.fullCube(meta) || standsOn(shape, meta, x, y, z, pos, hw))
+                BlockShape shape = Shapes.of(world.getBlock(x, floorY, z));
+                byte meta = Shapes.meta(world, shape, x, floorY, z);
+                if (floorY==y ? shape.fullCube(meta) || standsOn(shape,meta,x,floorY,z,pos,hw)
+                        : shape.maxCollisionHeight()>1 && standsOn(shape,meta,x,floorY,z,pos,hw))
                     return true;
             }
         return false;

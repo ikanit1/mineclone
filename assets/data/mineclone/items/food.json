@@ -1,13 +1,231 @@
-// Еда: мясо с мирных мобов. Жареное вдвое сытнее сырого — ради этой разницы
-// и строится печь.
 {
-  "beef":            { "name": "Сырая говядина",   "category": "food", "mass": 0.3, "icon": "raw_beef",       "food": { "nutrition": 3 } },
-  "porkchop":        { "name": "Сырая свинина",    "category": "food", "mass": 0.3, "icon": "raw_pork",       "food": { "nutrition": 3 } },
-  "chicken":         { "name": "Сырая курятина",   "category": "food", "mass": 0.3, "icon": "raw_chicken",    "food": { "nutrition": 2 } },
-  "mutton":          { "name": "Сырая баранина",   "category": "food", "mass": 0.3, "icon": "raw_mutton",     "food": { "nutrition": 2 } },
-
-  "cooked_beef":     { "name": "Жареная говядина", "category": "food", "mass": 0.3, "icon": "cooked_beef",    "food": { "nutrition": 7 } },
-  "cooked_porkchop": { "name": "Жареная свинина",  "category": "food", "mass": 0.3, "icon": "cooked_pork",    "food": { "nutrition": 7 } },
-  "cooked_chicken":  { "name": "Жареная курятина", "category": "food", "mass": 0.3, "icon": "cooked_chicken", "food": { "nutrition": 5 } },
-  "cooked_mutton":   { "name": "Жареная баранина", "category": "food", "mass": 0.3, "icon": "cooked_mutton",  "food": { "nutrition": 5 } }
+  "beef": {
+    "name": "Сырая говядина",
+    "category": "food",
+    "mass": 0.3,
+    "icon": "raw_beef",
+    "food": {
+      "nutrition": 3,
+      "saturation": 1.8,
+      "eat_seconds": 1.6
+    }
+  },
+  "porkchop": {
+    "name": "Сырая свинина",
+    "category": "food",
+    "mass": 0.3,
+    "icon": "raw_pork",
+    "food": {
+      "nutrition": 3,
+      "saturation": 1.8,
+      "eat_seconds": 1.6
+    }
+  },
+  "chicken": {
+    "name": "Сырая курятина",
+    "category": "food",
+    "mass": 0.3,
+    "icon": "raw_chicken",
+    "food": {
+      "nutrition": 2,
+      "saturation": 1.2,
+      "eat_seconds": 1.6,
+      "effects": [
+        {
+          "effect": "hunger",
+          "seconds": 30,
+          "amplifier": 0,
+          "chance": 0.3
+        }
+      ]
+    }
+  },
+  "mutton": {
+    "name": "Сырая баранина",
+    "category": "food",
+    "mass": 0.3,
+    "icon": "raw_mutton",
+    "food": {
+      "nutrition": 2,
+      "saturation": 1.2,
+      "eat_seconds": 1.6
+    }
+  },
+  "cooked_beef": {
+    "name": "Жареная говядина",
+    "category": "food",
+    "mass": 0.3,
+    "icon": "cooked_beef",
+    "food": {
+      "nutrition": 7,
+      "saturation": 11.2,
+      "eat_seconds": 1.6,
+      "effects": [
+        {
+          "effect": "well_fed",
+          "seconds": 60,
+          "amplifier": 0,
+          "chance": 1
+        }
+      ]
+    }
+  },
+  "cooked_porkchop": {
+    "name": "Жареная свинина",
+    "category": "food",
+    "mass": 0.3,
+    "icon": "cooked_pork",
+    "food": {
+      "nutrition": 7,
+      "saturation": 11.2,
+      "eat_seconds": 1.6,
+      "effects": [
+        {
+          "effect": "well_fed",
+          "seconds": 60,
+          "amplifier": 0,
+          "chance": 1
+        }
+      ]
+    }
+  },
+  "cooked_chicken": {
+    "name": "Жареная курятина",
+    "category": "food",
+    "mass": 0.3,
+    "icon": "cooked_chicken",
+    "food": {
+      "nutrition": 5,
+      "saturation": 6,
+      "eat_seconds": 1.6,
+      "effects": [
+        {
+          "effect": "well_fed",
+          "seconds": 30,
+          "amplifier": 0,
+          "chance": 1
+        }
+      ]
+    }
+  },
+  "cooked_mutton": {
+    "name": "Жареная баранина",
+    "category": "food",
+    "mass": 0.3,
+    "icon": "cooked_mutton",
+    "food": {
+      "nutrition": 5,
+      "saturation": 6,
+      "eat_seconds": 1.6,
+      "effects": [
+        {
+          "effect": "well_fed",
+          "seconds": 30,
+          "amplifier": 0,
+          "chance": 1
+        }
+      ]
+    }
+  },
+  "wheat": {
+    "name": "Пшеница",
+    "category": "materials",
+    "mass": 0.2,
+    "icon": "wheat"
+  },
+  "wheat_seeds": {
+    "name": "Семена пшеницы",
+    "category": "materials",
+    "mass": 0.2,
+    "icon": "wheat_seeds"
+  },
+  "bread": {
+    "name": "Хлеб",
+    "category": "food",
+    "mass": 0.2,
+    "icon": "bread",
+    "food": {
+      "nutrition": 5,
+      "saturation": 6,
+      "eat_seconds": 1.6,
+      "effects": [
+        {
+          "effect": "well_fed",
+          "seconds": 30,
+          "amplifier": 0,
+          "chance": 1
+        }
+      ]
+    }
+  },
+  "carrot": {
+    "name": "Морковь",
+    "category": "food",
+    "mass": 0.2,
+    "icon": "carrot",
+    "food": {
+      "nutrition": 3,
+      "saturation": 3.6,
+      "eat_seconds": 1.6
+    }
+  },
+  "potato": {
+    "name": "Картофель",
+    "category": "food",
+    "mass": 0.2,
+    "icon": "potato",
+    "food": {
+      "nutrition": 1,
+      "saturation": 0.6,
+      "eat_seconds": 1.6
+    }
+  },
+  "baked_potato": {
+    "name": "Печёный картофель",
+    "category": "food",
+    "mass": 0.2,
+    "icon": "baked_potato",
+    "food": {
+      "nutrition": 5,
+      "saturation": 6,
+      "eat_seconds": 1.6,
+      "effects": [
+        {
+          "effect": "well_fed",
+          "seconds": 30,
+          "amplifier": 0,
+          "chance": 1
+        }
+      ]
+    }
+  },
+  "apple": {
+    "name": "Яблоко",
+    "category": "food",
+    "mass": 0.2,
+    "icon": "apple",
+    "food": {
+      "nutrition": 4,
+      "saturation": 2.4,
+      "eat_seconds": 1.6
+    }
+  },
+  "rotten_flesh": {
+    "name": "Гнилая плоть",
+    "category": "food",
+    "icon": "rotten_flesh",
+    "food": {
+      "nutrition": 4,
+      "saturation": 0.8,
+      "eat_seconds": 1.6,
+      "effects": [
+        {
+          "effect": "hunger",
+          "seconds": 30,
+          "amplifier": 0,
+          "chance": 0.8
+        }
+      ]
+    }
+  }
 }

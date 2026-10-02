@@ -39,7 +39,7 @@ public final class ContainerMenu {
     private java.util.function.Consumer<MenuCommand> remote;
 
     public void setRemote(java.util.function.Consumer<MenuCommand> remote) { this.remote=remote; }
-    private boolean dispatch(MenuCommand.Kind kind,SlotRef slot,int argument) {
+    public boolean dispatch(MenuCommand.Kind kind,SlotRef slot,int argument) {
         if(remote==null)return false;
         remote.accept(MenuCommand.of(kind,slot,argument));
         return true;
@@ -320,7 +320,7 @@ public final class ContainerMenu {
             return;
         for (int pass = 0; pass < 2; pass++)
             for (SlotGroup g : groups) {
-                if (g.role.takeOnly() || g.role.isCreativeSource() || g.role == SlotRole.TRASH)
+                if (g.role.takeOnly() || g.role.isCreativeSource() || g.role == SlotRole.TRASH || g.role.isArmor())
                     continue;
                 for (int i = 0; i < g.size() && cursor.count < cursor.maxStack(); i++) {
                     ItemStack in = g.storage.get(i);

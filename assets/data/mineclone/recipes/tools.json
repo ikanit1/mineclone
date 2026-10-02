@@ -466,7 +466,7 @@
     ],
     "key": {
       "A": "mineclone:stick",
-      "B": "mineclone:cobweb"
+      "B": "#mineclone:bowstring"
     },
     "mirrored": false,
     "result": {
@@ -490,6 +490,120 @@
     "result": {
       "item": "mineclone:arrow",
       "count": 2
+    }
+  },
+  "wooden_hoe": {
+    "type": "shaped",
+    "order": 70,
+    "group": "tools",
+    "pattern": [
+      "AA.",
+      ".B.",
+      ".B."
+    ],
+    "key": {
+      "A": "#mineclone:planks",
+      "B": "mineclone:stick"
+    },
+    "mirrored": true,
+    "result": {
+      "item": "mineclone:wooden_hoe",
+      "count": 1
+    }
+  },
+  "stone_hoe": {
+    "type": "shaped",
+    "order": 71,
+    "group": "tools",
+    "pattern": [
+      "AA.",
+      ".B.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:cobblestone",
+      "B": "mineclone:stick"
+    },
+    "mirrored": true,
+    "result": {
+      "item": "mineclone:stone_hoe",
+      "count": 1
+    }
+  },
+  "copper_hoe": {
+    "type": "shaped",
+    "order": 72,
+    "group": "tools",
+    "pattern": [
+      "AA.",
+      ".B.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:copper_ingot",
+      "B": "mineclone:stick"
+    },
+    "mirrored": true,
+    "result": {
+      "item": "mineclone:copper_hoe",
+      "count": 1
+    }
+  },
+  "iron_hoe": {
+    "type": "shaped",
+    "order": 73,
+    "group": "tools",
+    "pattern": [
+      "AA.",
+      ".B.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:iron_ingot",
+      "B": "mineclone:stick"
+    },
+    "mirrored": true,
+    "result": {
+      "item": "mineclone:iron_hoe",
+      "count": 1
+    }
+  },
+  "gold_hoe": {
+    "type": "shaped",
+    "order": 74,
+    "group": "tools",
+    "pattern": [
+      "AA.",
+      ".B.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:gold_ingot",
+      "B": "mineclone:stick"
+    },
+    "mirrored": true,
+    "result": {
+      "item": "mineclone:gold_hoe",
+      "count": 1
+    }
+  },
+  "diamond_hoe": {
+    "type": "shaped",
+    "order": 75,
+    "group": "tools",
+    "pattern": [
+      "AA.",
+      ".B.",
+      ".B."
+    ],
+    "key": {
+      "A": "mineclone:diamond",
+      "B": "mineclone:stick"
+    },
+    "mirrored": true,
+    "result": {
+      "item": "mineclone:diamond_hoe",
+      "count": 1
     }
   }
 }

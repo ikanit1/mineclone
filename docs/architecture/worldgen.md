@@ -244,3 +244,14 @@ sparse structure spacing, biome textures, seams and falling-block conservation;
 CoreTests retains deterministic generation, caves, ores and river invariants.
 Knobs: [TUNING.md](../TUNING.md), `Biome`, `BiomeProvider`, `Caves`, `Rivers`,
 `Structures.REGION_CHUNKS`, `Structures.MIN_CHUNK_GAP`.
+
+## Vegetation and initial herds (2 October 2026)
+
+New V2 worlds enable `vegetation2` and `livestockAtGen` as well as copper. Features
+are stored per world, so older V2/V1 chunks keep their recorded flags. Terrain,
+ore and V1 tree goldens remain unchanged across 120 fixture chunks. `TreeShapes`
+shares the exact old tree placements with sapling growth; species metadata is set
+only with the new vegetation flag. Vegetation is deterministic, biome-specific,
+soil-supported and added after trees. Grass drops wheat seeds with 12.5% probability;
+cold snowfall can replace vegetation with a layer. Herd persistence is in the
+session/chunk section, separate from terrain generation.

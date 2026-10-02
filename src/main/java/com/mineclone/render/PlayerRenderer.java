@@ -64,6 +64,13 @@ public final class PlayerRenderer {
                     MobSkins.T_ACCENT, MobSkins.T_LIMB, MobSkins.T_BODY_TOP, A_ARM_B),
     };
 
+    private final ArmorLayer armorLayer=new ArmorLayer();
+    private final int[] armorTextures=new int[4];
+    private final Matrix4f[] bodyModels={new Matrix4f(),new Matrix4f(),new Matrix4f(),new Matrix4f(),new Matrix4f(),new Matrix4f()};
+    private int lastArmorColorMask,lastArmorShadowMask;
+    private Shader lastArmorShadowShader;
+    private final java.nio.FloatBuffer armorModels=org.lwjgl.BufferUtils.createFloatBuffer(128);
+    private final java.nio.FloatBuffer armorFront=org.lwjgl.BufferUtils.createFloatBuffer(16),armorSide=org.lwjgl.BufferUtils.createFloatBuffer(16),armorTop=org.lwjgl.BufferUtils.createFloatBuffer(16);
     private final int vao, vbo;
     private final int texture;
     private final Shader shader;
@@ -108,6 +115,10 @@ public final class PlayerRenderer {
                        float bodyYaw, float headYaw, float pitch, PlayerAnimation.Pose pose,
                        SceneLighting lighting, float skyVis, float blockVis,
                        TextureAtlas atlas, com.mineclone.world.ItemStack held) {
+        render(proj,view,position,bodyYaw,headYaw,pitch,pose,lighting,skyVis,blockVis,atlas,held,null);
+    }
+    public void render(Matrix4f proj,Matrix4f view,Vector3f position,float bodyYaw,float headYaw,float pitch,PlayerAnimation.Pose pose,
+            SceneLighting lighting,float skyVis,float blockVis,TextureAtlas atlas,com.mineclone.world.ItemStack held,com.mineclone.world.Equipment equipment){
         glDisable(GL_CULL_FACE);
         shader.bind();
         shader.setMat4("uProjection", proj);
@@ -122,8 +133,8 @@ public final class PlayerRenderer {
         glBindTexture(GL_TEXTURE_2D, texture);
         glBindVertexArray(vao);
 
-        for (Part p : BODY) {
-            partMatrix(position, bodyYaw, headYaw, pitch, pose, p, model);
+        for (int part=0;part<BODY.length;part++) {
+            Part p=BODY[part];partMatrix(position, bodyYaw, headYaw, pitch, pose, p,bodyModels[part]);model.set(bodyModels[part]);
             shader.setMat4("uModel", model);
             shader.setVec2("uUvFront", MobRenderer.uvX(p.front()), MobRenderer.uvY(p.front()));
             shader.setVec2("uUvSide", MobRenderer.uvX(p.side()), MobRenderer.uvY(p.side()));
@@ -131,6 +142,7 @@ public final class PlayerRenderer {
             glDrawArrays(GL_TRIANGLES, 0, MobRenderer.VERTEX_COUNT);
         }
 
+        drawArmor(shader,position,bodyYaw,headYaw,pitch,pose,equipment);
         glBindVertexArray(0);
         shader.unbind();
         glEnable(GL_CULL_FACE);
@@ -158,6 +170,10 @@ public final class PlayerRenderer {
     public void renderShadow(Shader shadowShader, Matrix4f lightSpace, Vector3f position,
                              float bodyYaw, float headYaw, float pitch, PlayerAnimation.Pose pose,
                              TextureAtlas atlas, com.mineclone.world.ItemStack held) {
+        renderShadow(shadowShader,lightSpace,position,bodyYaw,headYaw,pitch,pose,atlas,held,null);
+    }
+    public void renderShadow(Shader shadowShader,Matrix4f lightSpace,Vector3f position,float bodyYaw,float headYaw,float pitch,PlayerAnimation.Pose pose,
+            TextureAtlas atlas,com.mineclone.world.ItemStack held,com.mineclone.world.Equipment equipment){
         shadowShader.bind();
         shadowShader.setMat4("uLightSpace", lightSpace);
         shadowShader.setInt("uAtlas", 0);
@@ -165,19 +181,46 @@ public final class PlayerRenderer {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texture);
         glBindVertexArray(vao);
-        for (Part p : BODY) {
-            partMatrix(position, bodyYaw, headYaw, pitch, pose, p, model);
+        for (int part=0;part<BODY.length;part++) {
+            Part p=BODY[part];partMatrix(position, bodyYaw, headYaw, pitch, pose, p,bodyModels[part]);model.set(bodyModels[part]);
             shadowShader.setMat4("uModel", model);
             shadowShader.setVec2("uUvFront", MobRenderer.uvX(p.front()), MobRenderer.uvY(p.front()));
             shadowShader.setVec2("uUvSide", MobRenderer.uvX(p.side()), MobRenderer.uvY(p.side()));
             shadowShader.setVec2("uUvTop", MobRenderer.uvX(p.top()), MobRenderer.uvY(p.top()));
             glDrawArrays(GL_TRIANGLES, 0, MobRenderer.VERTEX_COUNT);
         }
+        drawArmor(shadowShader,position,bodyYaw,headYaw,pitch,pose,equipment);
         glBindVertexArray(0);
         shadowShader.unbind();
         if (held != null)
             heldRenderer.renderShadow(atlas, held,
                     handPose(position, bodyYaw, pose), lightSpace);
+    }
+
+    private void drawArmor(Shader shader,Vector3f position,float bodyYaw,float headYaw,float pitch,PlayerAnimation.Pose pose,com.mineclone.world.Equipment equipment){
+        if(equipment==null)return;
+        boolean color=shader==this.shader;if(!color&&shader!=lastArmorShadowShader){lastArmorShadowShader=shader;lastArmorShadowMask=0;}
+        for(int slot=0;slot<4;slot++)armorTextures[slot]=armorLayer.texture(equipment.get(slot));
+        shader.setInt("uArmor",1);
+        for(int slot=0;slot<4;slot++){
+            int texture=armorTextures[slot];if(texture==0)continue;boolean seen=false;for(int previous=0;previous<slot;previous++)if(armorTextures[previous]==texture)seen=true;if(seen)continue;
+            armorModels.clear();armorFront.clear();armorSide.clear();armorTop.clear();int count=0,mask=0;
+            for(int part=0;part<BODY.length;part++)if(armorTextures[ArmorLayer.slot(part)]==texture){
+                var p=BODY[part];model.set(bodyModels[part]).scale(1.08f);addArmorInstance(p.front,p.side,p.top);count++;mask|=1<<part;
+            }
+            if(armorTextures[com.mineclone.world.Equipment.FEET]==texture)for(int part=2;part<4;part++){
+                model.set(bodyModels[part]).translate(0,-.32f,0).scale(1.12f,.36f,1.12f);addArmorInstance(7,7,7);count++;mask|=1<<(part+4);
+            }
+            armorModels.flip();armorFront.flip();armorSide.flip();armorTop.flip();
+            glBindTexture(GL_TEXTURE_2D,texture);shader.setMat4Array("uArmorModels[0]",armorModels);
+            if(mask!=(color?lastArmorColorMask:lastArmorShadowMask)){shader.setVec2Array("uArmorFront[0]",armorFront);shader.setVec2Array("uArmorSide[0]",armorSide);shader.setVec2Array("uArmorTop[0]",armorTop);if(color)lastArmorColorMask=mask;else lastArmorShadowMask=mask;}
+            org.lwjgl.opengl.GL31.glDrawArraysInstanced(GL_TRIANGLES,0,MobRenderer.VERTEX_COUNT,count);
+        }
+        shader.setInt("uArmor",0);
+    }
+    private void addArmorInstance(int front,int side,int top){
+        int next=armorModels.position()+16;model.get(armorModels);armorModels.position(next);
+        armorFront.put(MobRenderer.uvX(front)).put(MobRenderer.uvY(front));armorSide.put(MobRenderer.uvX(side)).put(MobRenderer.uvY(side));armorTop.put(MobRenderer.uvX(top)).put(MobRenderer.uvY(top));
     }
 
     /** Orthonormal socket taken directly from the right arm's render matrix. */
@@ -267,6 +310,7 @@ public final class PlayerRenderer {
     private static final Vector3f NO_TINT = new Vector3f(1f, 1f, 1f);
 
     public void destroy() {
+        armorLayer.close();
         glDeleteTextures(texture);
         glDeleteBuffers(vbo);
         glDeleteVertexArrays(vao);

@@ -1,0 +1,46 @@
+{
+  "pools": [
+    {
+      "rolls": 1,
+      "conditions": [
+        {
+          "block_meta_min": 0,
+          "block_meta_max": 0
+        }
+      ],
+      "entries": [
+        {
+          "item": "mineclone:oak_sapling"
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "conditions": [
+        {
+          "block_meta_min": 1,
+          "block_meta_max": 1
+        }
+      ],
+      "entries": [
+        {
+          "item": "mineclone:spruce_sapling"
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "conditions": [
+        {
+          "block_meta_min": 2,
+          "block_meta_max": 2
+        }
+      ],
+      "entries": [
+        {
+          "item": "mineclone:acacia_sapling"
+        }
+      ]
+    }
+  ]
+}

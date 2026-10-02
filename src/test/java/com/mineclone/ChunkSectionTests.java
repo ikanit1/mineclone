@@ -34,7 +34,7 @@ final class ChunkSectionTests {
         furnace.output = new ItemStack(BlockType.GLASS, 2);
         furnace.burnLeft = 12.25f; furnace.burnMax = 15f; furnace.cook = 0.625f;
         return new ChunkSnapshot(0, 0, blocks, meta, Map.of(CHEST, slots), Map.of(FURNACE, furnace),
-                List.of(new DroppedItem(ItemStack.of("diamond", 11), 7.25f, 6f, 5.5f, 2.75f)),
+                List.of(new DroppedItem(ItemStack.of("diamond", 11), 7.25f, 6f, 5.5f, 2.75f,600)),
                 Map.of("future:entity", new byte[] { 1, 0, -1, 17, 9 }));
     }
     private static void roundTrips() throws Exception {
@@ -60,7 +60,7 @@ final class ChunkSectionTests {
                     check(Arrays.equals(initial.extra.get("future:entity"), c.copyExtraSections().get("future:entity")), "opaque bytes lost");
                     ChunkSnapshot disk = ((ChunkLoad.Loaded) f.save.readChunk("world", 0, 0)).snapshot();
                     check(disk.items.size() == 1 && disk.items.get(0).stack.count == 11
-                            && disk.items.get(0).x == 7.25f && disk.items.get(0).age == 2.75f, "dropped item lost");
+                            && disk.items.get(0).x == 7.25f && disk.items.get(0).age == 2.75f && disk.items.get(0).lifetime==600, "dropped item lost");
                     c.set(3, 4, 1, BlockType.STONE);
                     f.save.saveChunkAsync("world", new ChunkSnapshot(0, 0, c.copyBlocks(), c.copyMeta(),
                             c.copyChests(), c.copyFurnaces(), disk.items, c.copyExtraSections()));

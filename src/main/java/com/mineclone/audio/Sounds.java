@@ -396,6 +396,12 @@ public final class Sounds {
         return own.isEmpty() ? listMatching(ROOT + "/step", "grass") : own;
     }
 
+    public List<String> eat(){return listMatching(ROOT+"/random","eat");}
+    public List<String> burp(){return listMatching(ROOT+"/random","burp");}
+    public List<String> breath(){return listMatching(ROOT+"/random","breath");}
+    public List<String> armorHit(){return listMatching(ROOT+"/item/armor","equip_iron");}
+    public List<String> armorBreak(){return listMatching(ROOT+"/random","break");}
+
     /** Звук смерти; при отсутствии файлов — боль, затем голос. */
     public List<String> mobDeath(MobType t) {
         List<String> s = listMatching(ROOT + "/mob/" + t.soundDir, "death");

@@ -49,6 +49,9 @@ public final class TestMain {
         suite("combat", "ProjectileTests", r -> ProjectileTests.runAll((n, c) -> r.run(n, c::run)));
         suite("combat", "ExplosionTests", r -> ExplosionTests.runAll((n, c) -> r.run(n, c::run)));
         suite("combat", "DamageTests", DamageTests::runAll);
+        suite("combat","ArmorTests",ArmorTests::runAll);
+        suite("feature","SurvivalRulesTests",SurvivalRulesTests::runAll);
+        suite("sim","EntityLifecycleTests",EntityLifecycleTests::runAll);
         suite("physics", "PlayerPhysicsTests", r -> com.mineclone.game.PlayerPhysicsTests.runAll((n, c) -> r.run(n, c::run)));
         suite("physics", "ShapeTests", ShapeTests::runAll);
         suite("physics", "CollisionParityTests", r -> com.mineclone.game.CollisionParityTests.runAll((n, c) -> r.run(n, c::run)));
@@ -67,8 +70,11 @@ public final class TestMain {
         suite("worldgen", "WorldGenGoldenTests", WorldGenGoldenTests::runAll);
         suite("worldgen", "ChunkLedgerTests", ChunkLedgerTests::runAll);
         suite("worldgen", "WorldGenOpeningTests", WorldGenOpeningTests::runAll);
+        suite("core", "FarmingTests", FarmingTests::runAll);
+        suite("chunk", "BuildingBlockTests", BuildingBlockTests::runAll);
         suite("worldgen", "StructureTests", StructureTests::runAll);
         suite("worldgen", "StructureLootTests", StructureLootTests::runAll);
+        suite("worldgen", "VegetationTests", VegetationTests::runAll);
         suite("worldgen", "CopperOreTests", CopperOreTests::runAll);
         suite("core", "CoreTests", CoreTests::runAll);
         suite("core", "BlockOrdinalTests", BlockOrdinalTests::runAll);

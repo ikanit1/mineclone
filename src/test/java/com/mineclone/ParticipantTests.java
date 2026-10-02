@@ -79,7 +79,7 @@ public final class ParticipantTests {
         check(player.position.x == 0 && participant.position().x() == 4, "simulation used interpolation");
         Vector3fc eye = participant.eye();
         check(eye.y() == 20 + Player.EYE_HEIGHT && eye == participant.eye(), "eye allocation/height");
-        check(participant.id() == 4 && !participant.local() && participant.armor() == ArmorView.NONE, "remote adapter");
+        check(participant.id() == 4 && !participant.local() && participant.armor().equals(ArmorView.NONE), "remote adapter");
         float[] sent = {0};
         player.onHurt = (source, damage) -> sent[0] += damage;
         check(participant.damage(DamageSource.of(DamageType.MELEE), 3) && sent[0] == 3, "hit was not forwarded");
@@ -101,7 +101,7 @@ public final class ParticipantTests {
         LocalParticipant participant = new LocalParticipant(player, () -> actor[0]);
         player.position.set(2, 3, 4);
         check(participant.position() == player.position && participant.eye().y() == 3 + Player.EYE_HEIGHT, "local pose");
-        check(participant.local() && participant.armor() == ArmorView.NONE && participant.id() == 0, "local adapter");
+        check(participant.local() && participant.armor().equals(ArmorView.NONE) && participant.id() == 0, "local adapter");
         actor[0] = 1;
         check(participant.id() == 1, "actor number is not live");
         DamageSource melee = DamageSource.of(DamageType.MELEE);

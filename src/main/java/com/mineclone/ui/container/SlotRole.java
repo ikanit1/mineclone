@@ -27,7 +27,10 @@ public enum SlotRole {
     FURNACE_OUTPUT,
     CREATIVE_SOURCE,
     EDITOR,
-    TRASH;
+    TRASH,
+    ARMOR_HEAD, ARMOR_CHEST, ARMOR_LEGS, ARMOR_FEET;
+
+    public boolean isArmor(){return this==ARMOR || this==ARMOR_HEAD || this==ARMOR_CHEST || this==ARMOR_LEGS || this==ARMOR_FEET;}
 
     /** Из слота можно только забирать: результат крафта и выход печи. */
     public boolean takeOnly() {

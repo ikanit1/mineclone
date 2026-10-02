@@ -4,6 +4,20 @@ Versions below 0.9.0 predate git tags and are reconstructed from the commit hist
 
 ## [Unreleased]
 
+### Added
+- Seven construction forms: lower/upper/double slabs, fences, gates, ladders and trapdoors with shared collision, meshing, interaction and recipes.
+- Six hoes, wet/dry farmland, three crops with scheduled growth and harvest loot, three growing saplings, biome vegetation and grass seeds; farms work on LAN and dedicated servers.
+- Sixteen craftable armor pieces, four equipment slots and offhand, F hand swap (creative flight defaults to G), armor mitigation/wear, first/third-person armor and matching shadows.
+- Action-based exhaustion and saturation, air and drowning, typed environmental hazards, persistent status effects and held-input eating with food effects.
+- Four difficulty levels and world rules in creation/pause menus, host command permissions, typed death causes and conserved ten-minute death drops with personal bed respawn.
+- Persistent finite livestock, stable long entity IDs, feeding/tempting/breeding, growing baby models and data-driven biome spawn/loot tables.
+- Protocol 12: host-executed personal equipment menus, melee/bow intents, feeding/effects/rules/death/bed/advancement events. All peers need the same protocol.
+- Armor, air, effect timers, fire and damage direction share one survival HUD draw layer; native previews and Linux test compilation helper cover the new systems.
+
+### Validation notes
+- Original V1 terrain goldens remain unchanged. Existing worlds keep their recorded generation flags.
+- Software-GL eight-player armor overhead is +0.1653 ms after instancing; the +0.1 ms target and hardware milestone baselines remain open. Functional native LAN/server checks pass.
+
 ### Fixed
 - A chest or furnace spills its contents whatever removes it — a creeper's blast and a `/fill` included — instead of only when broken by hand or by a guest; an open chest window can no longer hand out what already spilled.
 - A guest sleeping in a bedroll no longer jumps its own clock to dawn only to be snapped back: the bedroll sets the guest's respawn point, and the night passes when the host sleeps.

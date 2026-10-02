@@ -1,6 +1,6 @@
 # Developer tools
 
-Inventory updated 2026-09-24. Paths below are relative to the repository root.
+Inventory updated 2026-10-02. Paths below are relative to the repository root.
 Compile current game/test classes first with `.\run-tests.ps1`; Java tools use those
 classes and `libs/*`. GL tools need a usable desktop/OpenGL context even when their
 window is hidden; audio smoke tools need OpenAL. Headless tests are separate.
@@ -46,6 +46,14 @@ writer and its assets, as described in the [fixture reproduction guide](../src/t
 
 | File | Run | Purpose | Output / effects |
 |---|---|---|---|
+| [BenchArmor.java](../tools/BenchArmor.java) | J | Eight-player armor CPU submission before/after under real GL; reports renderer and delta | `console; hardware budget still needs mp-host-3 baseline` |
+| [RenderSurvivalPreview.java](../tools/RenderSurvivalPreview.java) | J | 78 real color captures, armor depth comparisons, baby models, sleeves and eating | `out-test/previews/survival` |
+| [ImportBuildingFarmTextures.java](../tools/ImportBuildingFarmTextures.java) | J | Hash-checked source sheet → eight construction/farm/sapling tiles | `assets/textures/blocks` |
+| [ImportFarmItemTextures.java](../tools/ImportFarmItemTextures.java) | J | Source sheet → sixteen farm/material icons | `assets/textures/blocks` |
+| [ImportVegetationTextures.java](../tools/ImportVegetationTextures.java) | J | Source sheet → grass and flower tiles | `assets/textures/blocks` |
+| [ImportCopperArmorTextures.java](../tools/ImportCopperArmorTextures.java) | J | Source sheet → four copper armor icons | `assets/textures/blocks` |
+| [ImportArmorSheet.java](../tools/ImportArmorSheet.java) | J | Reviewed generated panels → four separate model sheets | `assets/mobs/armor` |
+| [linux/run-tests.sh](../tools/linux/run-tests.sh) | bash | Java 17-bytecode compile and TestMain; needs JDK, libs and rg | `build/linux-test-classes; CLASSES/JAVA_HOME override` |
 | [AnalyzeMusic.java](../tools/AnalyzeMusic.java) | J | Read-only MP3 loudness/catalog analysis | `console` |
 | [BenchChunkPipeline.java](../tools/BenchChunkPipeline.java) | J | Chunk generation/mesh frame cost | `console` |
 | [BenchPathfinder.java](../tools/BenchPathfinder.java) | J | Mob navigation cost | `console` |
@@ -128,3 +136,8 @@ SaveRoundTrip.java.txt is source history only, not a test entry point.
 [tools/server-package](../tools/server-package/README.txt) contains serverZip
 launcher/configuration templates. The compiled archive is written under
 `build/distributions`, and the package smoke extracts to a unique ignored folder.
+
+Farming/construction/armor native acceptance: `.\run-net-test.ps1 -Farm` and
+`.\run-server-test.ps1 -Farm`. Linux equivalents use `NET_SCENARIO=farm` and
+`CLASSES=<compiled current classes>` with `tools/linux/run-net-test.sh` or
+`tools/linux/run-server-test.sh`. They use disposable worlds and real sockets.

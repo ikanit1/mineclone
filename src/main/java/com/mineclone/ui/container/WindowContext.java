@@ -16,6 +16,7 @@ import com.mineclone.world.ItemStack;
 public interface WindowContext {
 
     Inventory inventory();
+    default com.mineclone.world.Equipment equipment(){return new com.mineclone.world.Equipment();}
 
     int selectedSlot();
 

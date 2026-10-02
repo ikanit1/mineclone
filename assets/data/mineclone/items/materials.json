@@ -6,5 +6,12 @@
   "iron_ingot":  { "name": "Железный слиток", "category": "materials", "mass": 0.8, "icon": "iron_ingot" },
   "gold_ingot":  { "name": "Золотой слиток",  "category": "materials", "mass": 0.8, "icon": "gold_ingot" },
   "diamond":     { "name": "Алмаз",           "category": "materials", "mass": 0.2, "icon": "diamond" },
-  "copper_ingot": { "name": "Медный слиток", "category": "materials", "mass": 0.8, "icon": "copper_ingot" }
+  "copper_ingot": { "name": "Медный слиток", "category": "materials", "mass": 0.8, "icon": "copper_ingot" },
+  "leather": {"name": "Кожа", "category": "materials", "icon": "leather"},
+  "bone": {"name": "Кость", "category": "materials", "icon": "bone"},
+  "gunpowder": {"name": "Порох", "category": "materials", "icon": "gunpowder"},
+  "string": {"name": "Нить", "category": "materials", "icon": "string"},
+  "slimeball": {"name": "Сгусток слизи", "category": "materials", "icon": "slimeball"},
+  "feather": {"name": "Перо", "category": "materials", "icon": "feather"},
+  "egg": {"name": "Яйцо", "category": "materials", "icon": "egg"}
 }

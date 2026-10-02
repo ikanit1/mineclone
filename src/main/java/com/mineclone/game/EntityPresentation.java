@@ -52,7 +52,7 @@ final class EntityPresentation implements WorldEvents {
         // сразу понятно, что в лесу кто-то есть.
         if (m.type == MobType.WOLF && !m.isAngry() && stage.daylight() < 0.2f && Math.random() < 0.3)
             voice = sounds.mobHowl(m.type);
-        stage.playOccluded(voice, m.soundPosition(), 0.7f, 0.9f + 0.2f * (float) Math.random());
+        stage.playOccluded(voice, m.soundPosition(), 0.7f, (0.9f + 0.2f * (float) Math.random())*(m.baby()?1.4f:1f));
         // Дуга только от угрозы: мычание коровы за спиной ничего не
         // решает, а рычание зомби — решает.
         if (danger)
@@ -97,7 +97,7 @@ final class EntityPresentation implements WorldEvents {
     public void mobStep(Mob m) {
         stage.playOccluded(sounds.mobStep(m.type),
                 new Vector3f(m.position.x, m.position.y + 0.1f, m.position.z),
-                0.22f, 0.9f + 0.2f * (float) Math.random());
+                0.22f, (0.9f + 0.2f * (float) Math.random())*(m.baby()?1.4f:1f));
         if (m.type.hostile && m.state == Mob.State.CHASE)
             stage.cueSound(m.soundPosition(), 0.55f, true);
         // След моба крупнее или мельче по его габариту: курица и

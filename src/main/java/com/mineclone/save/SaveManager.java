@@ -840,7 +840,7 @@ public final class SaveManager {
         });
         var items = new java.util.ArrayList<com.mineclone.world.DroppedItem>();
         for (var item : source.items)
-            items.add(new com.mineclone.world.DroppedItem(item.stack.copy(), item.x, item.y, item.z, item.age));
+            items.add(new com.mineclone.world.DroppedItem(item.stack.copy(), item.x, item.y, item.z, item.age,item.lifetime));
         return new ChunkSnapshot(source.cx, source.cz, source.blocks.clone(), source.meta.clone(),
                 chests, furnaces, items, source.extra, source.ticksAt, source.ticks.clone());
     }

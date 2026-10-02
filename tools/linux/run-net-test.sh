@@ -10,14 +10,15 @@ rm -rf "$WORK" && mkdir -p "$WORK/host" "$WORK/guest"
 cd "$ROOT"
 echo "net test: via lan, port $PORT"
 NET="-Dmineclone.autopilot.netPort=$PORT"
-game "$WORK/host" -Dmineclone.autopilot.net=host "$NET" -Dmineclone.autopilot.netVia=lan &
+SCENARIO=(-Dmineclone.autopilot.netScenario="${NET_SCENARIO:-}")
+game "$WORK/host" -Dmineclone.autopilot.net=host "$NET" "${SCENARIO[@]}" -Dmineclone.autopilot.netVia=lan &
 HOST=$!
 for _ in $(seq 1 600); do
     grep -q 'autopilot: ok - hosting the room' "$WORK/host/out.log" 2>/dev/null && break
     kill -0 "$HOST" 2>/dev/null || break
     sleep 1
 done
-game "$WORK/guest" -Dmineclone.autopilot.net=join "$NET" -Dmineclone.autopilot.netVia=lan &
+game "$WORK/guest" -Dmineclone.autopilot.net=join "$NET" "${SCENARIO[@]}" -Dmineclone.autopilot.netVia=lan &
 GUEST=$!
 wait "$HOST"; HOST_CODE=$?
 wait "$GUEST"; GUEST_CODE=$?

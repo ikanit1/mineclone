@@ -27,7 +27,7 @@ final class CopperOreTests {
         int copper = 0;
         for (long seed : new long[] {0, 20260922, -77231}) {
             World v1 = new World(seed, GenProfile.NORMAL, GenPolicy.fixed(WorldGenVersion.V1));
-            World v2 = new World(seed, GenProfile.NORMAL, GenPolicy.fixed(WorldGenVersion.V2));
+            World v2 = new World(seed, GenProfile.NORMAL, new WorldGenSettings(WorldGenVersion.V2,new GenFeatures(true,false,false,false,false),0).policy());
             for (int cx = -2; cx <= 2; cx++) for (int cz = -2; cz <= 2; cz++) {
                 Chunk old = v1.generateDetached(cx, cz), added = v2.generateDetached(cx, cz);
                 check(WorldGenGoldenTests.hash(added).equals(WorldGenGoldenTests.hash(v2.generateDetached(cx, cz))), "V2 nondeterministic");

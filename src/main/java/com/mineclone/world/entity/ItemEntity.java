@@ -41,6 +41,7 @@ public final class ItemEntity {
     public final Vector3f position = new Vector3f();
     public final Vector3f velocity = new Vector3f();
     public float age;
+    public float lifetime=DESPAWN_TIME;
     public float pickupDelay;
     public boolean onGround;
     /** Сейчас летит к игроку. */
@@ -67,12 +68,12 @@ public final class ItemEntity {
 
     public static ItemEntity restored(DroppedItem d, Random rnd) {
         ItemEntity e = new ItemEntity(d.stack, d.x, d.y, d.z, 0f, rnd.nextFloat() * 6.28f);
-        e.age = d.age;
+        e.age = d.age;e.lifetime=d.lifetime;
         return e;
     }
 
     public DroppedItem toDropped() {
-        return new DroppedItem(stack, position.x, position.y, position.z, age);
+        return new DroppedItem(stack, position.x, position.y, position.z, age,lifetime);
     }
 
     /**
@@ -138,7 +139,7 @@ public final class ItemEntity {
     }
 
     public boolean expired() {
-        return age >= DESPAWN_TIME || stack.count <= 0;
+        return age >= lifetime || stack.count <= 0;
     }
 
     /** Подъём над землёй для отрисовки: предмет висит и покачивается. */
@@ -190,7 +191,7 @@ public final class ItemEntity {
                 b.stack.count = left;
                 // Слитая стопка берёт возраст младшей: иначе свежий дроп
                 // исчезал бы по таймеру старого.
-                a.age = Math.min(a.age, b.age);
+                float remaining=Math.max(a.lifetime-a.age,b.lifetime-b.age);a.lifetime=Math.max(a.lifetime,b.lifetime);a.age=Math.max(0,a.lifetime-remaining);
                 if (a.stack.isFull())
                     break;
             }

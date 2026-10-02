@@ -54,6 +54,7 @@ public final class ChunkSectionCodec {
                 data.writeFloat(item.x); data.writeFloat(item.y); data.writeFloat(item.z); data.writeFloat(item.age);
             }
         }));
+        sections.put("item_lifetimes",bytes(data->{data.writeByte(1);data.writeInt(snapshot.items.size());for(var item:snapshot.items){if(!Float.isFinite(item.lifetime)||item.lifetime<=0||item.lifetime>600)throw new IOException("invalid item lifetime");data.writeFloat(item.lifetime);}}));
         if (snapshot.ticks.length > 0)
             sections.put(TICKS, bytes(data -> writeTicks(data, snapshot)));
         SectionCodec.write(out, sections);
@@ -151,8 +152,10 @@ public final class ChunkSectionCodec {
             }
             end(data);
         }
+        byte[] lifetimes=sections.remove("item_lifetimes");if(lifetimes!=null)try(var data=new DataInputStream(new java.io.ByteArrayInputStream(lifetimes))){if(data.readUnsignedByte()!=1||data.readInt()!=items.size())throw new IOException("item lifetime schema/count");for(int i=0;i<items.size();i++){float lifetime=finite(data.readFloat());if(lifetime<=0||lifetime>600)throw new IOException("item lifetime bounds");var item=items.get(i);items.set(i,new DroppedItem(item.stack,item.x,item.y,item.z,item.age,lifetime));}end(data);}
         long[] ticksAt = { 0 };
         long[] ticks = readTicks(sections.remove(TICKS), ticksAt);
+        if(sections.containsKey(com.mineclone.sim.EntityPersistence.SECTION))try{com.mineclone.sim.EntityPersistence.decode(sections.get(com.mineclone.sim.EntityPersistence.SECTION));}catch(IllegalArgumentException invalid){throw new IOException("damaged entity section",invalid);}
         return new ChunkSnapshot(cx, cz, blocks, meta, chests, furnaces, items, sections, ticksAt[0], ticks);
     }
 

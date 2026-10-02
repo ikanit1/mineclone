@@ -12,7 +12,7 @@
 # is opt-in; the socket run is the one that gates every change.
 # Exits non-zero if either side failed.
 
-param([switch]$Photon)
+param([switch]$Photon, [switch]$Farm)
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -48,6 +48,7 @@ function Start-Side {
         "-Dmineclone.autopilot=$dir\shots",
         "-Dmineclone.savesDir=$dir\saves",
         "-Dmineclone.autopilot.net=$mode",
+        "-Dmineclone.autopilot.netScenario=$(if ($Farm) { 'farm' } else { '' })",
         "-Dmineclone.autopilot.netPort=$port",
         "-Dmineclone.autopilot.netVia=$via",
         "-Dmineclone.autopilot.netRoom=$room",

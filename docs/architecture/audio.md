@@ -44,3 +44,12 @@ send ровно нулевой. `RoomAcoustics` переводит замер в
 `run-tests.ps1 -Only audio,weather` checks scheduling and mixing rules. `tools/RainAudioSmoke.java` and `tools/StormAudioSmoke.java` exercise playback; use `tools/AnalyzeMusic.java` for PCM/LUFS measurements.
 
 Knobs: [TUNING.md](../TUNING.md). Entry points: [PROJECT_MAP.md](../PROJECT_MAP.md).
+
+## Survival feedback (2 October 2026)
+
+Eating completion uses eat/burp samples, accepted armor impacts use equip-iron,
+breakage uses break plus particles, and surfacing uses random/breath. Baby idle
+voices are pitched 1.4×. Explosion presentation comes from host event 75, including
+blasts which do not destroy blocks. These routes use existing local samples;
+actual audible output was not available in the container. AUD-01/02/03 remain
+separate roadmap tasks.

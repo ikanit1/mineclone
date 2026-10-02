@@ -34,19 +34,10 @@ public final class InventoryScreen extends ContainerScreen {
     }
 
     private static ContainerMenu build(WindowContext ctx, CraftingGrid crafting) {
-        Inventory inv = ctx.inventory();
-        ContainerMenu menu = new ContainerMenu(List.of(
-                new SlotGroup("craft", SlotRole.CRAFT_GRID, crafting.storage(), 2),
-                new SlotGroup("main", SlotRole.MAIN,
-                        new InventoryStorage(inv, Inventory.HOTBAR,
-                                Inventory.SIZE - Inventory.HOTBAR), 9),
-                new SlotGroup("hotbar", SlotRole.HOTBAR,
-                        new InventoryStorage(inv, 0, Inventory.HOTBAR), 9)));
-        menu.route(SlotRole.CRAFT_GRID, SlotRole.MAIN, SlotRole.HOTBAR);
-        menu.route(SlotRole.MAIN, SlotRole.HOTBAR);
-        menu.route(SlotRole.HOTBAR, SlotRole.MAIN);
-        return menu;
+        return ContainerMenus.inventory(ctx.inventory(),ctx.equipment(),crafting.storage());
     }
+
+    public void restoreCraft(ItemStack[] slots){for(int i=0;i<4;i++)crafting.storage().set(i,i+5<slots.length?slots[i+5]:null);}
 
     @Override
     protected String title() {
@@ -58,16 +49,19 @@ public final class InventoryScreen extends ContainerScreen {
         float panelW = gridWidth(9) + 2 * PAD;
         float panelX = theme.width() / 2f - panelW / 2f;
         float craftTop = 64f;
-        float mainTop = craftTop + gridHeight(2) + 45f;
+        float mainTop = craftTop + gridHeight(4) + 45f;
         float hotbarTop = mainTop + gridHeight(3) + 28f;
         float panelH = hotbarTop + SLOT + PAD;
         float panelY = theme.height() / 2f - panelH / 2f;
         float gridX = panelX + PAD;
 
-        craftX = panelX + 104f;
+        craftX = panelX + 160f;
         craftY = panelY + craftTop;
         resultX = craftX + gridWidth(2) + 76f;
         resultY = craftY + (gridHeight(2) - SLOT) / 2f;
+        String[] armor={"head","chestplate","legs","feet"};
+        for(int i=0;i<4;i++)place(menu.group(armor[i]),gridX,craftY+i*(SLOT+GAP));
+        place(menu.group("offhand"),craftX+gridWidth(2)+76f,craftY+gridHeight(2)+12f);
         place(menu.group("craft"), craftX, craftY);
         place(menu.group("main"), gridX, panelY + mainTop);
         place(menu.group("hotbar"), gridX, panelY + hotbarTop);
@@ -89,6 +83,10 @@ public final class InventoryScreen extends ContainerScreen {
         drawCraftResult(theme);
     }
 
+    @Override protected void drawEmptySlot(MenuTheme theme,SlotRef slot,float x,float y,float size){
+        long mask=switch(slot.group().id){case "head"->0x006642427e3c0000L;case "chestplate"->0x003c3c3c7e660000L;case "legs"->0x00666666663c0000L;case "feet"->0x007e666600000000L;case "offhand"->0x00183c3c3c3c1800L;default->0;};
+        for(int py=0;py<8;py++)for(int px=0;px<8;px++)if(((mask>>>(py*8+px))&1)!=0)theme.quad(x+size/2-12+px*3,y+size/2-12+py*3,3,3,.6f,.63f,.68f,.25f);
+    }
     private void drawSelectedHotbar(MenuTheme theme) {
         SlotGroup hotbar = menu.group("hotbar");
         float[] r = slotRect(new SlotRef(hotbar, ctx.selectedSlot()));
@@ -139,6 +137,7 @@ public final class InventoryScreen extends ContainerScreen {
         UiInput in = theme.activeInput();
         if (!hovered || (!in.mousePressed && !in.rightPressed) || out == null)
             return;
+        if(menu.dispatch(in.shift()?MenuCommand.Kind.CRAFT_ALL:MenuCommand.Kind.CRAFT,null,0))return;
         int made;
         if (in.shift())
             made = crafting.craftAll(inv);

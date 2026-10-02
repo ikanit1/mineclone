@@ -38,6 +38,11 @@ public final class Behaviors {
             case TORCH -> TORCH;
             case STAIRS -> STAIRS;
             case SNOW_LAYER -> SNOW;
+            case TALL_GRASS,FLOWER_RED,FLOWER_YELLOW -> new PlantBehavior();
+            case SAPLING -> new SaplingBehavior();
+            case FARMLAND -> new FarmlandBehavior();
+            case WHEAT, CARROTS, POTATOES -> new CropBehavior(type);
+            case PLANK_SLAB, COBBLE_SLAB, STONE_SLAB, FENCE, FENCE_GATE, LADDER, TRAPDOOR -> new BuildingBehavior(type);
             case AIR, GRASS, DIRT, STONE, SAND, WOOD, LEAVES, WATER, BEDROCK, COBBLE, PLANKS, GLASS,
                     WATER_FLOW, SNOWY_GRASS, CACTUS, COAL_ORE, IRON_ORE, GOLD_ORE, DIAMOND_ORE, FIRE, ICE,
                     MUD, ASH, MOSSY_COBBLE, LAVA, OBSIDIAN, THIN_ICE, ROPE, CHAIN, WEB, JOURNAL, PODZOL, PEAT,

@@ -1,0 +1,904 @@
+{
+  "biomes": {
+    "PLAINS": {
+      "herd_chance": 0.32,
+      "livestock": [
+        {
+          "type": "COW",
+          "weight": 4,
+          "min": 2,
+          "max": 4
+        },
+        {
+          "type": "SHEEP",
+          "weight": 3,
+          "min": 2,
+          "max": 4
+        },
+        {
+          "type": "PIG",
+          "weight": 2,
+          "min": 2,
+          "max": 4
+        },
+        {
+          "type": "CHICKEN",
+          "weight": 2,
+          "min": 2,
+          "max": 4
+        }
+      ],
+      "wildlife": [
+        {
+          "type": "BIRD",
+          "weight": 3,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "RABBIT",
+          "weight": 7,
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "hostile_surface": [
+        {
+          "type": "ZOMBIE",
+          "weight": 45,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 18,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 12,
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "hostile_cave": [
+        {
+          "type": "ZOMBIE",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 15,
+          "min": 1,
+          "max": 1
+        }
+      ]
+    },
+    "FOREST": {
+      "herd_chance": 0.15,
+      "livestock": [
+        {
+          "type": "COW",
+          "weight": 4,
+          "min": 2,
+          "max": 4
+        },
+        {
+          "type": "SHEEP",
+          "weight": 3,
+          "min": 2,
+          "max": 4
+        },
+        {
+          "type": "PIG",
+          "weight": 2,
+          "min": 2,
+          "max": 4
+        },
+        {
+          "type": "CHICKEN",
+          "weight": 2,
+          "min": 2,
+          "max": 4
+        }
+      ],
+      "wildlife": [
+        {
+          "type": "WOLF",
+          "weight": 3,
+          "min": 2,
+          "max": 3
+        },
+        {
+          "type": "RABBIT",
+          "weight": 4,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "BIRD",
+          "weight": 3,
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "hostile_surface": [
+        {
+          "type": "ZOMBIE",
+          "weight": 45,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 18,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 12,
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "hostile_cave": [
+        {
+          "type": "ZOMBIE",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 15,
+          "min": 1,
+          "max": 1
+        }
+      ]
+    },
+    "DESERT": {
+      "herd_chance": 0,
+      "livestock": [],
+      "wildlife": [
+        {
+          "type": "RABBIT",
+          "weight": 5,
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "hostile_surface": [
+        {
+          "type": "ZOMBIE",
+          "weight": 45,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 18,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 12,
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "hostile_cave": [
+        {
+          "type": "ZOMBIE",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 15,
+          "min": 1,
+          "max": 1
+        }
+      ]
+    },
+    "TUNDRA": {
+      "herd_chance": 0.15,
+      "livestock": [
+        {
+          "type": "COW",
+          "weight": 4,
+          "min": 2,
+          "max": 4
+        },
+        {
+          "type": "SHEEP",
+          "weight": 3,
+          "min": 2,
+          "max": 4
+        },
+        {
+          "type": "PIG",
+          "weight": 2,
+          "min": 2,
+          "max": 4
+        },
+        {
+          "type": "CHICKEN",
+          "weight": 2,
+          "min": 2,
+          "max": 4
+        }
+      ],
+      "wildlife": [
+        {
+          "type": "WOLF",
+          "weight": 4,
+          "min": 2,
+          "max": 3
+        },
+        {
+          "type": "RABBIT",
+          "weight": 6,
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "hostile_surface": [
+        {
+          "type": "ZOMBIE",
+          "weight": 45,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 18,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 12,
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "hostile_cave": [
+        {
+          "type": "ZOMBIE",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 15,
+          "min": 1,
+          "max": 1
+        }
+      ]
+    },
+    "OCEAN": {
+      "herd_chance": 0,
+      "livestock": [],
+      "wildlife": [],
+      "hostile_surface": [
+        {
+          "type": "ZOMBIE",
+          "weight": 45,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 18,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 12,
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "hostile_cave": [
+        {
+          "type": "ZOMBIE",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 15,
+          "min": 1,
+          "max": 1
+        }
+      ]
+    },
+    "TAIGA": {
+      "herd_chance": 0.15,
+      "livestock": [
+        {
+          "type": "COW",
+          "weight": 4,
+          "min": 2,
+          "max": 4
+        },
+        {
+          "type": "SHEEP",
+          "weight": 3,
+          "min": 2,
+          "max": 4
+        },
+        {
+          "type": "PIG",
+          "weight": 2,
+          "min": 2,
+          "max": 4
+        },
+        {
+          "type": "CHICKEN",
+          "weight": 2,
+          "min": 2,
+          "max": 4
+        }
+      ],
+      "wildlife": [
+        {
+          "type": "WOLF",
+          "weight": 3,
+          "min": 2,
+          "max": 3
+        },
+        {
+          "type": "RABBIT",
+          "weight": 4,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "BIRD",
+          "weight": 3,
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "hostile_surface": [
+        {
+          "type": "ZOMBIE",
+          "weight": 45,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 18,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 12,
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "hostile_cave": [
+        {
+          "type": "ZOMBIE",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 15,
+          "min": 1,
+          "max": 1
+        }
+      ]
+    },
+    "SWAMP": {
+      "herd_chance": 0.15,
+      "livestock": [
+        {
+          "type": "COW",
+          "weight": 4,
+          "min": 2,
+          "max": 4
+        },
+        {
+          "type": "SHEEP",
+          "weight": 3,
+          "min": 2,
+          "max": 4
+        },
+        {
+          "type": "PIG",
+          "weight": 2,
+          "min": 2,
+          "max": 4
+        },
+        {
+          "type": "CHICKEN",
+          "weight": 2,
+          "min": 2,
+          "max": 4
+        }
+      ],
+      "wildlife": [
+        {
+          "type": "WOLF",
+          "weight": 3,
+          "min": 2,
+          "max": 3
+        },
+        {
+          "type": "RABBIT",
+          "weight": 4,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "BIRD",
+          "weight": 3,
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "hostile_surface": [
+        {
+          "type": "ZOMBIE",
+          "weight": 45,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 18,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 12,
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "hostile_cave": [
+        {
+          "type": "ZOMBIE",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 15,
+          "min": 1,
+          "max": 1
+        }
+      ]
+    },
+    "SAVANNA": {
+      "herd_chance": 0.32,
+      "livestock": [
+        {
+          "type": "COW",
+          "weight": 4,
+          "min": 2,
+          "max": 4
+        },
+        {
+          "type": "SHEEP",
+          "weight": 3,
+          "min": 2,
+          "max": 4
+        },
+        {
+          "type": "PIG",
+          "weight": 2,
+          "min": 2,
+          "max": 4
+        },
+        {
+          "type": "CHICKEN",
+          "weight": 2,
+          "min": 2,
+          "max": 4
+        }
+      ],
+      "wildlife": [
+        {
+          "type": "BIRD",
+          "weight": 3,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "RABBIT",
+          "weight": 7,
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "hostile_surface": [
+        {
+          "type": "ZOMBIE",
+          "weight": 45,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 18,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 12,
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "hostile_cave": [
+        {
+          "type": "ZOMBIE",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 15,
+          "min": 1,
+          "max": 1
+        }
+      ]
+    },
+    "BADLANDS": {
+      "herd_chance": 0,
+      "livestock": [],
+      "wildlife": [
+        {
+          "type": "RABBIT",
+          "weight": 5,
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "hostile_surface": [
+        {
+          "type": "ZOMBIE",
+          "weight": 45,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 18,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 12,
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "hostile_cave": [
+        {
+          "type": "ZOMBIE",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 15,
+          "min": 1,
+          "max": 1
+        }
+      ]
+    },
+    "ALPINE": {
+      "herd_chance": 0,
+      "livestock": [],
+      "wildlife": [
+        {
+          "type": "WOLF",
+          "weight": 4,
+          "min": 2,
+          "max": 3
+        },
+        {
+          "type": "RABBIT",
+          "weight": 6,
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "hostile_surface": [
+        {
+          "type": "ZOMBIE",
+          "weight": 45,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 18,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 12,
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "hostile_cave": [
+        {
+          "type": "ZOMBIE",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 15,
+          "min": 1,
+          "max": 1
+        }
+      ]
+    },
+    "VOLCANIC": {
+      "herd_chance": 0,
+      "livestock": [],
+      "wildlife": [],
+      "hostile_surface": [
+        {
+          "type": "ZOMBIE",
+          "weight": 45,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 18,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 12,
+          "min": 1,
+          "max": 1
+        }
+      ],
+      "hostile_cave": [
+        {
+          "type": "ZOMBIE",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SKELETON",
+          "weight": 25,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "SPIDER",
+          "weight": 30,
+          "min": 1,
+          "max": 1
+        },
+        {
+          "type": "CREEPER",
+          "weight": 15,
+          "min": 1,
+          "max": 1
+        }
+      ]
+    }
+  }
+}

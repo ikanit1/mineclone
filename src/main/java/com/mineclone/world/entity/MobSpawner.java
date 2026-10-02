@@ -56,6 +56,9 @@ public class MobSpawner {
     private final Random rnd;
     private final long seed;
     private int spawnIndex;
+    private float livestockTimer=400;
+    private boolean livestockAttempt;
+    public void advance(float seconds){livestockTimer-=seconds;livestockAttempt=livestockTimer<=0;if(livestockAttempt)livestockTimer=400;}
 
     public MobSpawner(long seed) {
         this.seed = seed;
@@ -94,7 +97,7 @@ public class MobSpawner {
         Iterator<Mob> it = mobs.iterator();
         while (it.hasNext()) {
             Mob m = it.next();
-            if (nearestSq(m, centres) > maxSq)
+            if (!m.persistent && nearestSq(m, centres) > maxSq)
                 it.remove();
         }
     }
@@ -120,6 +123,7 @@ public class MobSpawner {
      * восемью стаями. С одним игроком это ровно прежний тик.
      */
     public void trySpawn(World world, List<Mob> mobs, List<? extends Vector3fc> centres, float daylight) {
+        eliteMultiplier=world.rules.difficulty().eliteChance;
         int scale = Math.max(1, Math.min(MAX_CAP_SCALE, centres.size()));
         for (int n = 0; n < centres.size(); n++) {
             Vector3fc centre = centres.get(n);
@@ -145,14 +149,14 @@ public class MobSpawner {
                     if (tryWild(world, mobs, centre, daylight))
                         break;
 
-            if (localPeaceful < PEACEFUL_CAP && peaceful < PEACEFUL_CAP * scale)
+            if (livestockAttempt && mobs.stream().filter(m->m.type.temper==MobType.Temper.PASSIVE&&!m.dead&&m.position.distanceSquared(centre.x(),centre.y(),centre.z())<64*64).count()<4 && peaceful < PEACEFUL_CAP * scale)
                 for (int i = 0; i < ATTEMPTS; i++)
                     if (tryOne(world, mobs, centre, false, daylight))
                         break;
 
             // Ночного гейта здесь больше нет: темнота проверяется в самой точке,
             // и днём на поверхности она не выполняется, а в пещере — выполняется.
-            if (localHostile < HOSTILE_CAP && hostile < HOSTILE_CAP * scale)
+            if (world.rules.difficulty()!=com.mineclone.world.Difficulty.PEACEFUL && localHostile < HOSTILE_CAP && hostile < HOSTILE_CAP * scale)
                 for (int i = 0; i < ATTEMPTS; i++)
                     if (tryOne(world, mobs, centre, true, daylight))
                         break;
@@ -180,8 +184,8 @@ public class MobSpawner {
         if (!zombie && !peacefulSurfaceOk(surface))
             return false;
 
-        MobType type = zombie ? hostileFor(y, rnd.nextFloat())
-                : MobType.PEACEFUL[rnd.nextInt(MobType.PEACEFUL.length)];
+        var entry=SpawnTable.get().choose(world.biomes.biomeAt(x,z),zombie?(y<UNDERGROUND_Y?"hostile_cave":"hostile_surface"):"livestock",rnd);
+        if(entry==null)return false;MobType type=entry.type();
         mobs.add(create(type, x + 0.5f, y + 1.001f, z + 0.5f));
         return true;
     }
@@ -200,15 +204,16 @@ public class MobSpawner {
         int y = findSurfaceY(world, x, z);
         if (y < 0)
             return false;
-        MobType type = wildTypeFor(world.biomes.biomeAt(x, z), world.getBlock(x, y, z), daylight,
-                rnd.nextFloat());
+        if(!world.getBlock(x,y,z).isSoil()&&world.getBlock(x,y,z)!=BlockType.SAND&&world.getBlock(x,y,z)!=BlockType.RED_SAND&&world.getBlock(x,y,z)!=BlockType.SNOWY_GRASS)return false;
+        var entry=SpawnTable.get().choose(world.biomes.biomeAt(x,z),"wildlife",rnd);
+        MobType type=entry==null?null:entry.type();if(type==MobType.BIRD&&daylight<=NIGHT_DAYLIGHT)return false;
         if (type == null)
             return false;
         int count = type == MobType.WOLF ? PACK_MIN + rnd.nextInt(PACK_MAX - PACK_MIN + 1) : 1;
         for (int i = 0; i < count; i++) {
             float ox = i == 0 ? 0f : (rnd.nextFloat() - 0.5f) * 3f;
             float oz = i == 0 ? 0f : (rnd.nextFloat() - 0.5f) * 3f;
-            mobs.add(create(type, x + 0.5f + ox, y + 1.001f, z + 0.5f + oz));
+            var wild=create(type,x+.5f+ox,y+1.001f,z+.5f+oz);wild.persistent=false;mobs.add(wild);
         }
         return true;
     }
@@ -234,9 +239,10 @@ public class MobSpawner {
         return MobType.CREEPER;
     }
 
+    private float eliteMultiplier=1f;
     private Mob create(MobType type, float x, float y, float z) {
         Mob mob = new Mob(type, x, y, z, new Random(rnd.nextLong()));
-        mob.elite = MobTactics.eliteFor(seed, spawnIndex++, type.hostile);
+        mob.elite = MobTactics.eliteFor(seed, spawnIndex++, type.hostile,eliteMultiplier);
         return mob;
     }
 

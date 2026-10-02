@@ -1,0 +1,7 @@
+{
+  "date": "2026-10-02",
+  "provider": "image_gen",
+  "prompt_summary": "8 columns x 4 material rows: leather, copper, iron, diamond armor UV paintings; helmet front/open face, side, top, body, cap, sleeves, leggings. Crisp logical 16px tiles; transparent face/sleeve ends.",
+  "sha256": "a232a0857ad19341a93ad0d2a61c21f8e9e31f3de068abe8b1e7e624036be7d4",
+  "inspection": "Inspected source; model returned panel silhouettes instead of fully rectangular UVs. Import crops opaque center regions for side, top, torso and leg panels; helmet front and sleeves retain source alpha."
+}

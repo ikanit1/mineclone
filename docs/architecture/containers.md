@@ -66,3 +66,20 @@ stacks / missing / failures` и возвращает 1 при любом отк�
 `run-tests.ps1 -Only inventory,save,net` includes gesture conservation, reconnect ownership, container destruction and actual TCP transfers. `tools/ContainerBreakSmoke.java` verifies the graphical Game host as well as S_ITEMS delivery.
 
 Knobs: [TUNING.md](../TUNING.md). Entry points: [PROJECT_MAP.md](../PROJECT_MAP.md).
+
+## Equipment menus (2 October 2026)
+
+Personal inventory uses the same host-executed gestures as shared containers.
+`SlotRole` appends armor roles; Shift routes armor into its empty matching slot,
+non-armor is rejected, and double-click gathering skips equipment. Four empty
+armor silhouettes and offhand are drawn left of the 2×2 crafting area. Personal
+`S_MENU` kind 2 carries five equipment cells and four ingredients. Future equipment
+tail cells in the original player record survive saving an open menu.
+`SWAP_HANDS` defaults to F; flight now defaults to G. Older saved bindings retain
+user choices. Offhand stores items; this batch does not add offhand item-use rules.
+
+Death snapshots an open host menu directly, including its cursor and crafting
+inputs. It does not invoke ordinary menu closing first: returning a cursor into
+a full inventory could spill an item and then include the same pending stack in
+death drops. The full-inventory regression verifies conservation and the
+600-second lifetime for every resulting stack.

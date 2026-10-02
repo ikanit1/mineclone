@@ -88,3 +88,13 @@ see [save safety](saves.md).
 `run-tests.ps1 -Only menu,creative,inventory` checks menu behavior. Actual navigation, focus, scrolling and screenshots require a running game. Container UI is described in [containers.md](containers.md).
 
 Knobs: [TUNING.md](../TUNING.md). Entry points: [PROJECT_MAP.md](../PROJECT_MAP.md).
+
+## Creation and world rules (2 October 2026)
+
+World creation carries difficulty and keepInventory/allowCommands through
+`WorldSettings` into the saved rules section. The expandable More panel retains
+keyboard focus handling and fits 1280×720. Pause opens `WorldRulesScreen`: local
+and host players edit all five rules; guests see the same values read-only.
+Changes broadcast authoritative rules; personal game mode is separately addressed
+by the host. `DeathScreen` shows typed cause, coordinates and retention state.
+The GL menu previews cover collapsed/expanded creation, host/guest rules and death.

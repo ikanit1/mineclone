@@ -14,7 +14,10 @@ import com.mineclone.world.gen.WorldGenSettings;
  * mode, f32 spawn x, y, z, bytes generator (WorldGenSettings.encode, 16)}.
  */
 public record Welcome(long seed, String name, double gameTime, long worldTicks, int mode,
-                      float spawnX, float spawnY, float spawnZ, byte[] generator) {
+                      float spawnX, float spawnY, float spawnZ, byte[] generator,byte[] rules) {
+    public Welcome(long seed,String name,double gameTime,long worldTicks,int mode,float x,float y,float z,byte[] generator){this(seed,name,gameTime,worldTicks,mode,x,y,z,generator,com.mineclone.world.WorldRules.LEGACY.encode());}
+    public Welcome rules(com.mineclone.world.WorldRules value){return new Welcome(seed,name,gameTime,worldTicks,mode,spawnX,spawnY,spawnZ,generator,value.encode());}
+    public com.mineclone.world.WorldRules worldRules(){try{return com.mineclone.world.WorldRules.decode(rules);}catch(IllegalArgumentException invalid){return null;}}
     /** Longer than any name a world list shows. */
     public static final int NAME_LIMIT = 256;
 
@@ -25,17 +28,17 @@ public record Welcome(long seed, String name, double gameTime, long worldTicks, 
 
     public void write(PacketBuf b) {
         b.i64(seed).str(name).i64(Double.doubleToLongBits(gameTime)).i64(worldTicks).u8(mode)
-                .f32(spawnX).f32(spawnY).f32(spawnZ).bytes(generator);
+                .f32(spawnX).f32(spawnY).f32(spawnZ).bytes(generator).bytes(rules);
     }
 
     public static Welcome read(PacketBuf b) {
         return new Welcome(b.readI64(), b.readStr(), Double.longBitsToDouble(b.readI64()), b.readI64(), b.readU8(),
-                b.readF32(), b.readF32(), b.readF32(), b.readBytes());
+                b.readF32(), b.readF32(), b.readF32(), b.readBytes(),b.readBytes());
     }
 
     /** Whether the numbers make a world; a generator this build does not know is {@link #settings()}' null. */
     public boolean valid() {
-        return name != null && name.length() <= NAME_LIMIT && Double.isFinite(gameTime) && worldTicks >= 0
+        return worldRules()!=null && name != null && name.length() <= NAME_LIMIT && Double.isFinite(gameTime) && worldTicks >= 0
                 && mode >= 0 && mode < GameMode.values().length
                 && Float.isFinite(spawnX) && Float.isFinite(spawnY) && Float.isFinite(spawnZ)
                 && Math.abs(spawnX) <= 1e7f && Math.abs(spawnY) <= 1e7f && Math.abs(spawnZ) <= 1e7f;

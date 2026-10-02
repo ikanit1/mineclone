@@ -45,3 +45,25 @@ reviewed equipment pack, mapped to a three-stop copper ramp by
 Remaining RND-09 work includes armor model sheets, other item icons, construction,
 farmland, saplings, ground vegetation and status icons. This note does not imply
 that armor or farming gameplay has been implemented.
+
+## Integrated construction, farm and armor sources — 2 October 2026
+
+Five original built-in image_gen sheets and adjacent SHA-256 receipts are retained:
+
+| Source | Offline importer | Runtime content |
+|---|---|---|
+| building-farm-2026-10-02 | ImportBuildingFarmTextures | tiles 174–181: ladder, trapdoor, gate, dry/wet soil, 3 saplings |
+| farm-items-2026-10-02 | ImportFarmItemTextures | tiles 182–197: food/material inventory icons |
+| vegetation-2026-10-02 | ImportVegetationTextures | tiles 198–200: grass, yellow/red flowers |
+| copper-armor-2026-10-02 | ImportCopperArmorTextures | tiles 201–204: copper equipment icons |
+| armor-models-2026-10-02 | ImportArmorSheet | four separate 64×32 model textures in assets/mobs/armor |
+
+Receipts labelled prompt_summary preserve a summary rather than claiming a verbatim
+prompt. Import samples logical pixel centres, makes alpha binary, keeps silhouette
+margins, and explicitly normalizes the generated model panels into the existing
+skin UV layout. No network service is used at runtime. Source sheets, normalized
+model views (four materials, sixteen directions), baby models, first-person sleeves,
+and day/night construction/farm captures were inspected. Color and shadow geometry
+share the same transforms. The runtime atlas remains 512×512 with 205 native tiles.
+Armor/farming gameplay is now integrated by this batch; RND-09 remains open for
+art required by later roadmap content.

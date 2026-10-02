@@ -84,3 +84,13 @@ recipe or smelting results after GEN-08 added copper ore. A new gap fails the
 test rather than joining an allowlist. A
 sampled generation over three seeds checks that the natural-block roots include
 everything the generator actually places.
+
+## Metadata, adults and explosions (2 October 2026)
+
+`LootContext` adds block metadata and `isAdult`, with compatibility constructors.
+Crop stage and leaf species conditions select authored drops. Mob tables require
+adult status; cow leather and rotten flesh are reachable, and the bow accepts
+`#mineclone:bowstring` (cobweb/string). `MobType.drop` is removed. Explosions roll
+block loot at 30%; container removal spills contents independently of that roll.
+TCP scenarios verify all stacks arrive at the guest even when an explosion removes
+the chest, and griefing-disabled blasts leave its contents intact.

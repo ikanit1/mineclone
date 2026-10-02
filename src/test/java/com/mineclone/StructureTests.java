@@ -260,7 +260,7 @@ final class StructureTests {
      * {@code WorldGenSettings}, which rightly refuses a flag V2 does not have yet.
      */
     private static final GenPolicy WITH_STRUCTURES = new GenPolicy() {
-        final GenFeatures features = new GenFeatures(GenFeatures.V2.copperOre(), false, true, false, false);
+        final GenFeatures features = new GenFeatures(GenFeatures.V2.copperOre(), GenFeatures.V2.vegetation2(), true, false, false);
 
         @Override public WorldGenVersion versionAt(int cx, int cz) { return WorldGenVersion.V2; }
         @Override public GenFeatures featuresAt(int cx, int cz) { return features; }

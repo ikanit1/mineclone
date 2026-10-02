@@ -14,6 +14,8 @@ public final class PauseScreen implements Screen {
     private final String worldName;
     private final SettingsModel settings;
     private float savedTimer;
+    private Screen rules;
+    public PauseScreen(String worldName,SettingsModel settings,Screen rules){this(worldName,settings);this.rules=rules;}
 
     public PauseScreen(String worldName, SettingsModel settings) {
         this.worldName = worldName == null ? "" : worldName;
@@ -27,7 +29,7 @@ public final class PauseScreen implements Screen {
         t.dim(0.28f);
 
         float bw = Math.min(340f, sw - 96f), bh = 46f, gap = 10f;
-        float pw = bw + 48f, ph = 88f + 5 * (bh + gap) + 34f;
+        float pw = bw + 48f, ph = 88f + (rules==null?5:6) * (bh + gap) + 34f;
         float px = (sw - pw) / 2f, py = Math.max(16f, (sh - ph) / 2f);
         t.panel(px, py, pw, ph);
         t.textCentered("Пауза", sw / 2f, py + 42f, MenuTheme.HEADER, 1f);
@@ -47,6 +49,7 @@ public final class PauseScreen implements Screen {
         if (t.button("pause.settings", bx, by, bw, bh, "Настройки"))
             result = MenuAction.push(new SettingsScreen(settings));
         by += bh + gap;
+        if(rules!=null){if(t.button("pause.rules",bx,by,bw,bh,"Правила мира"))result=MenuAction.push(rules);by+=bh+gap;}
         if (t.button("pause.menu", bx, by, bw, bh, "В главное меню"))
             result = MenuAction.of(MenuAction.Kind.MAIN_MENU);
         by += bh + gap;

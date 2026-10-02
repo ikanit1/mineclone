@@ -38,4 +38,5 @@ public interface Participant extends Damageable {
 
     /** True for the player of this process; false for a guest's mirror. */
     boolean local();
+    default com.mineclone.world.ItemStack heldItem(){return null;}
 }

@@ -9,6 +9,8 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class World {
+    public WorldRules rules=WorldRules.LEGACY;
+
     public static final int SEA_LEVEL = 50;
 
     private final Map<Long, Chunk> chunks = new ConcurrentHashMap<>();
@@ -126,8 +128,20 @@ public class World {
      * обязана уехать остальным игрокам. Ловить их по всем вызывающим было бы
      * ошибкой на каждый новый вызов {@code setBlock}, а тут воронка одна.
      */
+    public record BlockChange(int x,int y,int z,BlockType old,BlockType now,byte meta){}
     public interface BlockObserver {
         void changed(int wx, int wy, int wz, BlockType old, BlockType now, byte meta);
+        default void batch(List<BlockChange> changes){for(var c:changes)changed(c.x(),c.y(),c.z(),c.old(),c.now(),c.meta());}
+    }
+    private List<BlockChange> batchedChanges;
+    private float simulationDaylight=1;
+    public void setSimulationDaylight(float value){simulationDaylight=Math.max(0,Math.min(1,value));}
+    public int plantLight(int x,int y,int z){return Math.max(Math.round(getSkyLight(x,y,z)*simulationDaylight),getBlockLightWorld(x,y,z));}
+    public void batchBlocks(Runnable action){
+        if(batchedChanges!=null){action.run();return;}
+        batchedChanges=new ArrayList<>();
+        try {action.run();}
+        finally {var changed=List.copyOf(batchedChanges);batchedChanges=null;if(observer!=null&&!changed.isEmpty())observer.batch(changed);}
     }
 
     private BlockObserver observer;
@@ -146,8 +160,8 @@ public class World {
     }
 
     private void notifyChanged(int wx, int wy, int wz, BlockType old, BlockType now, byte meta) {
-        if (observer != null)
-            observer.changed(wx, wy, wz, old, now, meta);
+        if(batchedChanges!=null)batchedChanges.add(new BlockChange(wx,wy,wz,old,now,meta));
+        else if (observer != null)observer.changed(wx, wy, wz, old, now, meta);
     }
 
 
@@ -405,16 +419,17 @@ public class World {
                 if (caves.isCave(wx, height, wz))
                     continue;
                 switch (biome.treeType) {
-                    case OAK    -> placeOak(c, x, height, z, h);
-                    case SPRUCE -> placeSpruce(c, x, height, z, h);
+                    case OAK    -> placeOak(c, x, height, z, h,features.vegetation2());
+                    case SPRUCE -> placeSpruce(c, x, height, z, h,features.vegetation2());
                     case CACTUS -> placeCactus(c, x, height, z, h);
-                    case ACACIA -> placeAcacia(c, x, height, z, h);
+                    case ACACIA -> placeAcacia(c, x, height, z, h,features.vegetation2());
                     case NONE   -> { }
                 }
             }
         }
 
         // Pass 4: постройки — последними, на заранее зарезервированной площадке.
+        com.mineclone.world.gen.Vegetation.place(c,biomes,seed,features);
         Structures.place(c, site, seed);
         // Pass 5 (GEN-03): multi-chunk structures, each chunk writing its own cut.
         // Only where the chunk's generator has them: V1 comes out as 1.0 made it.
@@ -430,107 +445,13 @@ public class World {
         return c;
     }
 
-    private static void placeAcacia(Chunk c, int x, int height, int z, long h) {
-        int top = height + 5 + (int) ((h >>> 8) & 1);
-        if (top + 2 >= Chunk.SIZE_Y) return;
-        for (int y = height + 1; y <= top; y++) if (c.inBounds(x, y, z))
-            c.set(x, y, z, BlockType.WOOD);
-        leafDisc(c, x, top, z, 3, h);
-        leafDisc(c, x, top + 1, z, 2, h >>> 4);
-    }
-
-    /**
-     * Лиственное дерево: ствол и округлая крона в пять слоёв.
-     *
-     * Прежняя крона была ромбом в три слоя и не доставала даже до середины
-     * ствола — дерево читалось палкой с комком на конце. Здесь крона шире
-     * ствола втрое и опускается на три блока ниже вершины, так что ствол
-     * виден ровно настолько, насколько он и должен быть виден у взрослого
-     * дерева: нижней третью.
-     *
-     * Форма кроны — круг, а не ромб: у ромба углы срезаны по диагоналям, и
-     * сверху он выдаёт сетку. Каждое дерево дополнительно обкусывается по
-     * углам своим же хэшем, поэтому подряд стоящие деревья не выглядят
-     * отштампованными.
-     */
-    private static void placeOak(Chunk c, int x, int height, int z, long h) {
-        // Ствол не ниже шести: крона начинается на три блока ниже вершины, а
-        // листва в движке твёрдая. У пятиблочного ствола крона садилась на
-        // высоту роста, и сквозь лес было не пройти.
-        int th = 6 + (int) ((h >>> 7) & 0x3);            // 6..9
-        int top = height + th;
-        if (top + 2 >= Chunk.SIZE_Y)
-            return;
-        for (int i = 1; i <= th; i++)
-            if (c.inBounds(x, height + i, z))
-                c.set(x, height + i, z, BlockType.WOOD);
-
-        // Радиусы снизу вверх: узкое основание, широкая середина, шапка.
-        int[] radii = { 2, 3, 3, 2, 1 };
-        for (int level = 0; level < radii.length; level++)
-            leafDisc(c, x, top - 3 + level, z, radii[level], h + level * 31L);
-    }
-
-    /**
-     * Хвойное: ярусы от самого низа ствола к вершине, через один поджатые.
-     *
-     * Ель — это юбка, а не шар: крона начинается у земли и сужается кверху.
-     * Через ярус радиус уменьшается на единицу — отсюда ступенчатый силуэт,
-     * по которому хвойное отличается от лиственного с любого расстояния.
-     */
-    private static void placeSpruce(Chunk c, int x, int height, int z, long h) {
-        int th = 7 + (int) ((h >>> 7) & 0x3);            // 7..10
-        int top = height + th;
-        if (top + 2 >= Chunk.SIZE_Y)
-            return;
-        for (int i = 1; i <= th; i++)
-            if (c.inBounds(x, height + i, z))
-                c.set(x, height + i, z, BlockType.WOOD);
-
-        // Юбка начинается примерно с трети ствола: у самой земли она
-        // превращала бы одно дерево в стену семь на семь — листва твёрдая.
-        int bottom = height + 1 + th / 3;
-        int span = Math.max(1, top - bottom);
-        for (int y = bottom; y <= top; y++) {
-            float t = (y - bottom) / (float) span;       // 0 внизу юбки, 1 у вершины
-            int rad = Math.round(2.4f * (1f - t));
-            if (((y - bottom) & 1) == 1)
-                rad--;                                   // поджатый ярус
-            if (rad < 0)
-                continue;
-            leafDisc(c, x, y, z, rad, h + y * 17L);
-        }
-        if (c.inBounds(x, top + 1, z) && c.get(x, top + 1, z) == BlockType.AIR)
-            c.set(x, top + 1, z, BlockType.LEAVES);
-    }
-
-    /**
-     * Один слой кроны: круг радиуса rad с обкусанными углами.
-     *
-     * Допуск {@code +0.2 * rad} расширяет круг ровно настолько, чтобы на
-     * малых радиусах он не вырождался в крест. Углы отбрасываются по битам
-     * хэша — это и даёт разнообразие, и не стоит ни одного вызова генератора
-     * случайных чисел.
-     */
-    private static void leafDisc(Chunk c, int x, int y, int z, int rad, long h) {
-        if (rad < 0)
-            return;
-        float limit = rad * rad + rad * 0.2f;
-        int bit = 0;
-        for (int dx = -rad; dx <= rad; dx++)
-            for (int dz = -rad; dz <= rad; dz++) {
-                int d2 = dx * dx + dz * dz;
-                if (d2 > limit)
-                    continue;
-                // Обкусываем только самый край и только у широких слоёв:
-                // дырки в середине кроны видны насквозь.
-                if (rad >= 2 && d2 >= (rad - 0.5f) * (rad - 0.5f)
-                        && ((h >>> (bit++ & 31)) & 1L) == 0L)
-                    continue;
-                int lx = x + dx, lz = z + dz;
-                if (c.inBounds(lx, y, lz) && c.get(lx, y, lz) == BlockType.AIR)
-                    c.set(lx, y, lz, BlockType.LEAVES);
-            }
+    private static void placeAcacia(Chunk c,int x,int height,int z,long h,boolean speciesMeta){placeTree(c,2,x,height,z,h,speciesMeta);}
+    private static void placeOak(Chunk c,int x,int height,int z,long h,boolean speciesMeta){placeTree(c,0,x,height,z,h,speciesMeta);}
+    private static void placeSpruce(Chunk c,int x,int height,int z,long h,boolean speciesMeta){placeTree(c,1,x,height,z,h,speciesMeta);}
+    private static void placeTree(Chunk c,int species,int x,int height,int z,long hash,boolean speciesMeta){
+        for(var cell:com.mineclone.world.gen.TreeShapes.cells(species,x,height,z,hash))
+            if(c.inBounds(cell.x(),cell.y(),cell.z())&&(cell.block()==BlockType.WOOD||c.get(cell.x(),cell.y(),cell.z())==BlockType.AIR))
+                {c.set(cell.x(),cell.y(),cell.z(),cell.block());if(cell.block()==BlockType.LEAVES&&speciesMeta)c.setMeta(cell.x(),cell.y(),cell.z(),(byte)species);}
     }
 
     private static void placeCactus(Chunk c, int x, int height, int z, long h) {
@@ -977,6 +898,8 @@ public class World {
     }
 
     /** The world tick scheduled ticks last ran at — what {@link #scheduleTick} counts from. */
+    public com.mineclone.world.behavior.DropSink dropSink(){return drops;}
+
     public long scheduledTickTime() {
         return scheduled == null ? 0 : scheduled.now();
     }
@@ -1127,7 +1050,9 @@ public class World {
         Chunk c = getChunkIfExists(cx, cz);
         if (c == null)
             return;
+        byte previousMeta=c.getMeta(Math.floorMod(wx,Chunk.SIZE_X),wy,Math.floorMod(wz,Chunk.SIZE_Z));
         c.setMeta(Math.floorMod(wx, Chunk.SIZE_X), wy, Math.floorMod(wz, Chunk.SIZE_Z), meta);
+        if(previousMeta!=meta)c.modified=true;
         if (isWater(t)) WaterSimulator.activateAround(this, wx, wz);
         if (t == BlockType.LAVA) LavaSimulator.activateAround(this, wx, wz);
         // Блок мог не измениться — а meta изменилась: дверь, ступень,

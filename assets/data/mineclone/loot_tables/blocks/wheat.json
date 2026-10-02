@@ -1,0 +1,49 @@
+{
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "item": "mineclone:wheat_seeds",
+          "count": 1
+        }
+      ],
+      "conditions": [
+        {
+          "block_meta_max": 6
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "item": "mineclone:wheat",
+          "count": 1
+        }
+      ],
+      "conditions": [
+        {
+          "block_meta_min": 7
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "item": "mineclone:wheat_seeds",
+          "count": [
+            1,
+            3
+          ]
+        }
+      ],
+      "conditions": [
+        {
+          "block_meta_min": 7
+        }
+      ]
+    }
+  ]
+}

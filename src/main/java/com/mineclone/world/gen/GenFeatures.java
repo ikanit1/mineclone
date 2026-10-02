@@ -19,7 +19,7 @@ public record GenFeatures(boolean copperOre, boolean vegetation2, boolean struct
      * The 1.1 changes this build actually implements. Switch a flag on here in the
      * commit that implements it, never before: worlds record this set.
      */
-    public static final GenFeatures V2 = new GenFeatures(true, false, false, false, false);
+    public static final GenFeatures V2 = new GenFeatures(true, true, false, false, true);
 
     public static GenFeatures of(WorldGenVersion version) {
         return switch (version) {

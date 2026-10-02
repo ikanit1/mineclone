@@ -2,6 +2,9 @@
   "conditions": [
     {
       "not_creative": true
+    },
+    {
+      "is_adult": true
     }
   ],
   "pools": [
@@ -10,7 +13,22 @@
       "entries": [
         {
           "item": "mineclone:beef",
-          "count": 2
+          "count": [
+            1,
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "item": "mineclone:leather",
+          "count": [
+            0,
+            2
+          ]
         }
       ]
     }

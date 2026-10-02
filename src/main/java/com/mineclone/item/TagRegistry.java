@@ -37,6 +37,7 @@ public final class TagRegistry {
             "durable", i -> i.durability > 0,
             "fuel", i -> i.fuelSeconds > 0f,
             "food", i -> i.food != null,
+            "armor", i -> i.armor != null,
             "flammable", i -> i.block != null && i.block.isFlammable());
 
     private final Map<ResourceId, Tag> tags;

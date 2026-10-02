@@ -71,6 +71,8 @@ public class Shader {
     public void setVec3(String name, float x, float y, float z) { glUniform3f(loc(name), x, y, z); }
     public void setVec4(String name, Vector4f v) { glUniform4f(loc(name), v.x, v.y, v.z, v.w); }
     public void setVec4(String name, float x, float y, float z, float w) { glUniform4f(loc(name), x, y, z, w); }
+    public void setMat4Array(String name,FloatBuffer data){glUniformMatrix4fv(loc(name),false,data);}
+    public void setVec2Array(String name,FloatBuffer data){glUniform2fv(loc(name),data);}
     public void setMat4(String name, Matrix4f m) {
         try (MemoryStack stack = MemoryStack.stackPush()) {
             FloatBuffer fb = stack.mallocFloat(16);

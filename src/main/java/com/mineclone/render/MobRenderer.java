@@ -412,6 +412,7 @@ public class MobRenderer {
         out.identity().translate(m.position);
         if (m.dead) out.rotate(m.topple, m.deathAxisX, 0f, m.deathAxisZ);
         out.rotateY(m.yaw);
+        out.scale(m.growthScale());
         float hip = m.type.height * 0.5f;
         out.translate(0, hip, 0).rotateX(MobAnimation.bodyPitch(m))
                 .rotateZ(MobAnimation.bodyRoll(m)).translate(0, -hip, 0);
@@ -424,7 +425,7 @@ public class MobRenderer {
                 out.scale(1, MobAnimation.legLength(m, front, right, p.sy()), 1);
             }
             case TAIL -> out.rotateY(MobAnimation.tail(m));
-            case HEAD -> out.rotateY(MobAnimation.headYaw(m)).rotateX(MobAnimation.headPitch(m));
+            case HEAD -> {out.rotateY(MobAnimation.headYaw(m)).rotateX(MobAnimation.headPitch(m));if(m.baby())out.scale(1.5f-.5f*(1+m.age/1200));}
             case ARM -> out.rotateX(MobAnimation.arm(m, p.pivX() > 0));
             case WING -> out.rotateZ(Math.signum(p.pivX()) * MobAnimation.wing(m));
             case NONE -> {

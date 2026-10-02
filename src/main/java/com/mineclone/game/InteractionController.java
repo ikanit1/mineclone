@@ -63,7 +63,9 @@ final class InteractionController {
         /** A left click at nothing: the tool whooshes. */
         void swingAtAir();
         /** Eat what is held; true when the right click went into eating. */
+        default void harvested(BlockType block,int meta){}
         boolean tryEat();
+        default boolean tryFeed(Vector3f origin,Vector3f dir,Raycaster.Hit hit){return false;}
         void swing();
         boolean occupiedByPlayer(int x, int y, int z);
         void wearHeldTool();
@@ -153,7 +155,9 @@ final class InteractionController {
         // to the block behind it.
         boolean mobAimed = host.attack(origin, dir, dt, hit);
 
-        if (input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT) && host.tryEat())
+        if(input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_RIGHT)&&host.tryFeed(origin,dir,hit))return;
+        if (input.mouseDown(GLFW.GLFW_MOUSE_BUTTON_RIGHT)
+                && !(hit!=null && com.mineclone.world.behavior.Farming.canUse(world,hit.x,hit.y,hit.z,hit.ny,host.inventory().get(host.selectedSlot()))) && host.tryEat())
             return;
 
         if (hit == null) {
@@ -192,7 +196,7 @@ final class InteractionController {
             if (!mode.canBreak(target)) {
                 resetBreak();
             } else if (breakX == hit.x && breakY == hit.y && breakZ == hit.z) {
-                breakProgress += dt * miningSpeed(target) / target.hardness;
+                breakProgress = target.hardness==0?1:breakProgress+dt*miningSpeed(target)/target.hardness;
                 breakDigTimer -= dt;
                 if (breakDigTimer <= 0f) {
                     host.swing();
@@ -223,6 +227,8 @@ final class InteractionController {
     void breakBlock(World world, int x, int y, int z, BlockType target) {
         GameMode mode = host.gameMode();
         boolean harvest = LootRegistry.canHarvest(target, heldTool());
+        int removedMeta = world.getBlockMeta(x,y,z)&255;
+        if(mode==GameMode.SURVIVAL&&(target==BlockType.WHEAT||target==BlockType.CARROTS||target==BlockType.POTATOES)&&removedMeta>=7)host.harvested(target,removedMeta);
         host.swing();
         net.noteBlockAction(target, true, x, y, z);
         // Broken ice comes back as water: a frozen lake would otherwise become
@@ -230,8 +236,9 @@ final class InteractionController {
         world.setBlock(x, y, z, target == BlockType.ICE && mode == GameMode.SURVIVAL
                 ? BlockType.WATER : BlockType.AIR);
         if (mode == GameMode.SURVIVAL) {
+            host.player().exhaust(.005f);
             if (harvest) {
-                var context = new LootContext(world.seed, x, y, z, heldTool(), true, mode, host.itemRandom());
+                var context = new LootContext(world.seed, x, y, z, heldTool(), true, mode, host.itemRandom(), removedMeta);
                 for (var drop : Items.get().loot().blockDrops(target, context))
                     host.drop(drop, x + 0.5f, y + 0.3f, z + 0.5f);
             }
@@ -263,6 +270,14 @@ final class InteractionController {
         boolean interact = !input.down(KeyBindings.Action.DESCEND);
         host.swing();
         BlockType target = world.getBlock(hit.x, hit.y, hit.z);
+        if(com.mineclone.world.behavior.Farming.canUse(world,hit.x,hit.y,hit.z,hit.ny,host.inventory().get(host.selectedSlot()))){
+            if(net.isClient()){
+                net.beginItemUse();
+                float t=Math.max(0,hit.distance);
+                net.requestFarm(hit.x,hit.y,hit.z,hit.nx,hit.ny,hit.nz,origin.x+dir.x*t-hit.x,origin.y+dir.y*t-hit.y,origin.z+dir.z*t-hit.z);
+            } else com.mineclone.world.behavior.Farming.use(world,hit.x,hit.y,hit.z,hit.ny,host.inventory(),host.selectedSlot(),host.gameMode());
+            return;
+        }
         BlockBehavior behavior = Behaviors.of(target);
         if (interact && behavior.interactive()) {
             // A held button repeats placement, never a use: a door would flap.
@@ -302,6 +317,13 @@ final class InteractionController {
 
     private void place(World world, Player player, BlockType target) {
         int px = hit.x + hit.nx, py = hit.y + hit.ny, pz = hit.z + hit.nz;
+        ItemStack selected = host.inventory().get(host.selectedSlot());
+        BlockType selectedBlock=selected==null?null:selected.block();
+        boolean merging=selectedBlock==target && com.mineclone.world.shape.Shapes.of(target)==com.mineclone.world.shape.Shapes.SLAB
+                && (world.getBlockMeta(hit.x,hit.y,hit.z)&2)==0
+                && (hit.ny==1 && (world.getBlockMeta(hit.x,hit.y,hit.z)&1)==0
+                    || hit.ny==-1 && (world.getBlockMeta(hit.x,hit.y,hit.z)&1)!=0);
+        if(merging){px=hit.x;py=hit.y;pz=hit.z;}
         // A film of snow gives way to the new block instead of carrying it.
         if (target == BlockType.SNOW_LAYER && (world.getBlockMeta(hit.x, hit.y, hit.z) & 0x7) == 0) {
             px = hit.x;
@@ -311,7 +333,7 @@ final class InteractionController {
         if (py < 0 || py >= Chunk.SIZE_Y
                 || world.getChunkIfExists(Math.floorDiv(px, Chunk.SIZE_X), Math.floorDiv(pz, Chunk.SIZE_Z)) == null)
             return;
-        if (!replaceable(world.getBlock(px, py, pz)) || host.occupiedByPlayer(px, py, pz))
+        if ((!merging && !replaceable(world.getBlock(px, py, pz))) || host.occupiedByPlayer(px, py, pz))
             return;
         Inventory inventory = host.inventory();
         int slot = host.selectedSlot();
@@ -325,13 +347,13 @@ final class InteractionController {
         BlockState carried = held.get(Components.BLOCK_STATE);
         Vector3f look = player.camera.forward();
         PlaceContext ctx = new PlaceContext(hit.nx, hit.ny, hit.nz, look.x, look.z,
-                carried == null ? PlaceContext.NO_META : carried.meta() & 0xFF);
+                carried == null ? PlaceContext.NO_META : carried.meta() & 0xFF, origin.y+dir.y*hit.distance-hit.y);
         BlockBehavior behavior = Behaviors.of(placing);
         if (!behavior.canPlaceAt(world, px, py, pz, ctx))
             return;
         if (twoTall(placing) && host.occupiedByPlayer(px, py + 1, pz))
             return;
-        byte meta = behavior.placementMeta(ctx);
+        byte meta = merging ? 2 : behavior.placementMeta(ctx);
         world.setBlock(px, py, pz, placing, meta);
         net.noteBlockAction(placing, false, px, py, pz);
         behavior.onPlaced(world, px, py, pz, meta);

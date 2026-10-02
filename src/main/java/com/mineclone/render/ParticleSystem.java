@@ -471,6 +471,34 @@ public class ParticleSystem {
      * Струйка серого дыма от горящего на солнце моба.
      * Зовётся выборочно (не каждый кадр) — иначе дым забивает буфер частиц.
      */
+    public void emitLoveHeart(float x, float y, float z) {
+        if (this.count >= budget)
+            return;
+        float[] uvP = TextureAtlas.uv(35);
+        int p = acquire();
+        this.x[p] = x + (rnd.nextFloat() - 0.5f) * 0.5f;
+        this.y[p] = y + rnd.nextFloat() * 0.5f;
+        this.z[p] = z + (rnd.nextFloat() - 0.5f) * 0.5f;
+        this.vx[p] = (rnd.nextFloat() - 0.5f) * 0.2f;
+        this.vy[p] = 0.5f + rnd.nextFloat() * 0.4f;
+        this.vz[p] = (rnd.nextFloat() - 0.5f) * 0.2f;
+        this.life[p] = this.maxLife[p] = 0.6f + rnd.nextFloat() * 0.4f;
+        this.size[p]=.2f;
+        this.gravityScale[p] = 0f;
+        this.growRate[p] = 0.06f;
+        this.windScale[p] = 0.5f;
+        float grey=1;
+        this.cr[p] = grey;
+        this.cg[p] = grey;
+        this.cb[p] = grey;
+        this.baseAlpha[p]=1;
+        this.u0[p] = uvP[0];
+        this.v0[p] = uvP[1];
+        this.u1[p] = uvP[2];
+        this.v1[p] = uvP[3];
+
+    }
+
     public void emitMobSmoke(float x, float y, float z) {
         if (this.count >= budget)
             return;

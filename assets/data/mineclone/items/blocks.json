@@ -51,5 +51,111 @@
   "terracotta":       { "name": "Терракота",           "category": "building", "mass": 2.0, "block": "terracotta" },
   "limestone":        { "name": "Известняк",           "category": "building", "mass": 2.2, "block": "limestone" },
   "basalt":           { "name": "Базальт",             "category": "building", "mass": 3.0, "block": "basalt" },
-  "gravel":           { "name": "Гравий",              "category": "building", "mass": 1.8, "block": "gravel" }
+  "gravel":           { "name": "Гравий",              "category": "building", "mass": 1.8, "block": "gravel" },
+  "plank_slab": {
+    "name": "Полублок из досок",
+    "category": "building",
+    "mass": 1,
+    "block": "plank_slab"
+  },
+  "cobble_slab": {
+    "name": "Булыжный полублок",
+    "category": "building",
+    "mass": 1,
+    "block": "cobble_slab"
+  },
+  "stone_slab": {
+    "name": "Каменный полублок",
+    "category": "building",
+    "mass": 1,
+    "block": "stone_slab"
+  },
+  "fence": {
+    "name": "Забор",
+    "category": "building",
+    "mass": 1,
+    "block": "fence"
+  },
+  "fence_gate": {
+    "name": "Калитка",
+    "category": "building",
+    "mass": 1,
+    "block": "fence_gate"
+  },
+  "ladder": {
+    "name": "Лестница",
+    "category": "building",
+    "mass": 1,
+    "block": "ladder"
+  },
+  "trapdoor": {
+    "name": "Люк",
+    "category": "building",
+    "mass": 1,
+    "block": "trapdoor"
+  },
+  "farmland": {
+    "name": "Пашня",
+    "category": "building",
+    "mass": 1,
+    "block": "farmland"
+  },
+  "wheat_crop": {
+    "name": "Посев пшеницы",
+    "category": "decor",
+    "mass": 0.1,
+    "block": "wheat",
+    "hidden": true
+  },
+  "carrot_crop": {
+    "name": "Посев моркови",
+    "category": "decor",
+    "mass": 0.1,
+    "block": "carrots",
+    "hidden": true
+  },
+  "potato_crop": {
+    "name": "Посев картофеля",
+    "category": "decor",
+    "mass": 0.1,
+    "block": "potatoes",
+    "hidden": true
+  },
+  "oak_sapling": {
+    "name": "Саженец дуба",
+    "category": "decor",
+    "mass": 0.1,
+    "icon": "oak_sapling",
+    "block": "sapling"
+  },
+  "spruce_sapling": {
+    "name": "Саженец ели",
+    "category": "decor",
+    "mass": 0.1,
+    "icon": "spruce_sapling"
+  },
+  "acacia_sapling": {
+    "name": "Саженец акации",
+    "category": "decor",
+    "mass": 0.1,
+    "icon": "acacia_sapling"
+  },
+  "tall_grass": {
+    "name": "Высокая трава",
+    "category": "decor",
+    "mass": 0.1,
+    "block": "tall_grass"
+  },
+  "flower_red": {
+    "name": "Мак",
+    "category": "decor",
+    "mass": 0.1,
+    "block": "flower_red"
+  },
+  "flower_yellow": {
+    "name": "Одуванчик",
+    "category": "decor",
+    "mass": 0.1,
+    "block": "flower_yellow"
+  }
 }
