@@ -109,6 +109,10 @@ public final class TestMain {
         suite("ecology", "EcologyBreedingTests", EcologyBreedingTests::runAll);
         suite("ecology", "EcologyPendingMigrationTests", EcologyPendingMigrationTests::runAll);
         suite("ecology", "FieldHabitatTests", FieldHabitatTests::runAll);
+        suite("ecology", "LairTests", LairTests::runAll);
+        suite("ecology", "LairRuntimeTests", LairRuntimeTests::runAll);
+        suite("ecology", "NestBlockTests", NestBlockTests::runAll);
+        suite("ecology", "ColonizerTests", ColonizerTests::runAll);
         suite("ecology", "WeatherHearingTests", WeatherHearingTests::runAll);
         suite("ecology", "RabbitRaidTests", RabbitRaidTests::runAll);
         suite("ecology", "StoryARaidTests", StoryARaidTests::runAll);

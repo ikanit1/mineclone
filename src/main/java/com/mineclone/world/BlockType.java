@@ -104,7 +104,9 @@ public enum BlockType {
     SAPLING (false,true,true,179,179,179,.20f,.47f,.16f,0,0f),
     TALL_GRASS (false,true,true,198,198,198,.30f,.60f,.15f,0,0f),
     FLOWER_YELLOW (false,true,true,199,199,199,.90f,.80f,.10f,0,0f),
-    FLOWER_RED (false,true,true,200,200,200,.85f,.15f,.10f,0,0f);
+    FLOWER_RED (false,true,true,200,200,200,.85f,.15f,.10f,0,0f),
+    // Append only: ordinal 64 is the saved and network block ID (LW-04).
+    SPIDER_NEST (true,false,false,205,205,205,.30f,.24f,.18f,0,3.5f);
 
     public final boolean solid;
     public final boolean transparent;

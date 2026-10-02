@@ -30,6 +30,7 @@ public final class Ecology implements Materializer.Populations {
     private final Map<Long, EcologyRegion> regions = new LinkedHashMap<>();
     private final Map<Long, EcologyCodec.Reservation> reservations = new LinkedHashMap<>();
     private final Materializer materializer;
+    private final LairRuntime lairs;
     private static final ResourceId RABBIT = ResourceId.of("rabbit");
     private FieldHabitat fields = new FieldHabitat();
     private byte[] opaqueFields;
@@ -43,16 +44,24 @@ public final class Ecology implements Materializer.Populations {
         this.world = world; this.clock = clock; this.entities = entities; this.participants = participants;
         entities.bindClock(clock);
         materializer = new Materializer(world.seed ^ 0x4C5745434FL);
+        lairs = new LairRuntime(world, clock, entities, participants);
     }
 
     public boolean enabled() { return enabled && supported; }
     public boolean supported() { return supported; }
+    public LairRuntime lairs() { return lairs; }
+    public void retired(Mob mob) { if (supported) lairs.fold(mob); }
+    public void tickLairs(float dt, boolean spawnAllowed) {
+        if (enabled()) lairs.tick(regions.values(), dt, spawnAllowed);
+        else for (Mob mob : entities.mobs) mob.lairDestination = null;
+    }
     public String recoveryMessage() { return recovery; }
     private SpeciesTable table() { if (species == null) species = SpeciesTable.get(); return species; }
     public static long day(double gameTime) { return Math.max(0, (long) Math.floor(gameTime / (Math.PI * 2))); }
 
     /** Restore before any chunk adoption. Newer layouts stay opaque; bad bytes need durable evidence first. */
     public void restore(Map<String, byte[]> sections, Consumer<byte[]> preserveEvidence) {
+        lairs.clear(); world.setLivingWorldEnabled(false);
         regions.clear(); reservations.clear(); sectionTail = new byte[0]; opaqueSection = null;
         fields = new FieldHabitat(); opaqueFields = null;
         enabled = false; supported = true; ruleWritten = false; recovery = ""; lastTickDay = Long.MIN_VALUE;
@@ -75,6 +84,7 @@ public final class Ecology implements Materializer.Populations {
             reservations.putAll(saved.reservations());
             for (long id : reservations.keySet()) entities.reserveId(id);
             sectionTail = saved.tail();
+            lairs.restore(regions.values(), reservations.keySet());
             var allSpecies = new java.util.HashSet<ResourceId>();
             for (var definition : table().definitions()) allSpecies.add(definition.id());
             for (var region : regions.values()) allSpecies.addAll(region.populations().keySet());
@@ -85,12 +95,13 @@ public final class Ecology implements Materializer.Populations {
                 return;
             }
             refreshProtection();
-        } catch (EcologyCodec.NewerVersionException newer) {
+        } catch (EcologyCodec.NewerVersionException | Lair.NewerVersionException | Lair.UnsupportedDefinitionException newer) {
             opaqueSection = bytes.clone(); supported = false;
             recovery = "Living World data are newer; preserved unchanged";
         } catch (IOException | IllegalArgumentException corrupt) {
             try {
                 preserveEvidence.accept(bytes.clone());
+                regions.clear(); reservations.clear(); lairs.clear(); sectionTail = new byte[0];
                 recovery = "Damaged ecology preserved separately; populations rebuilt";
             } catch (RuntimeException failed) {
                 opaqueSection = bytes.clone(); supported = false;
@@ -102,8 +113,8 @@ public final class Ecology implements Materializer.Populations {
 
     private void restoreFields(Map<String, byte[]> sections, Consumer<byte[]> preserveEvidence) {
         byte[] bytes = sections.get(FieldHabitat.SECTION);
-        if (bytes == null) return;
-        if (!supported) { opaqueFields = bytes.clone(); return; }
+        if (bytes == null) { world.setLivingWorldEnabled(enabled()); return; }
+        if (!supported) { opaqueFields = bytes.clone(); world.setLivingWorldEnabled(false); return; }
         try { fields = FieldHabitat.decode(bytes); }
         catch (FieldHabitat.NewerVersionException newer) {
             opaqueFields = bytes.clone(); supported = false;
@@ -120,11 +131,13 @@ public final class Ecology implements Materializer.Populations {
                 recovery = "Cannot preserve damaged field habitat; Living World disabled";
             }
         }
+        world.setLivingWorldEnabled(enabled());
     }
 
     public void setEnabled(boolean value) {
         requireSupported();
         enabled = value; ruleWritten = true;
+        world.setLivingWorldEnabled(enabled());
         if (value) {
             seedAroundParticipants(); registerLivingBodies(); registerPendingBodies();
             catchUp(day(clock.gameTime()));
@@ -136,11 +149,13 @@ public final class Ecology implements Materializer.Populations {
         requireSupported();
         if (days < 1 || days > 60) throw new IllegalArgumentException("Ecology advance must be 1..60 days");
         seedAroundParticipants(); registerLivingBodies();
+        lairs.refreshHearts();
         clock.addHours(24.0 * days);
         catchUp(day(clock.gameTime()));
     }
 
     public void tick() {
+        world.setLivingWorldEnabled(enabled());
         if (!enabled()) return;
         seedAroundParticipants(); registerLivingBodies();
         long now = day(clock.gameTime());
@@ -153,6 +168,7 @@ public final class Ecology implements Materializer.Populations {
             for (int i = 0; i < participants.size(); i++)
                 if (m.position.distanceSquared(participants.get(i).position()) <= 128f * 128f) return false;
             var held = reservations.remove(m.id);
+            lairs.fold(m);
             if (held != null) {
                 EcologyRegion region = regions.get(held.regionKey());
                 if (region != null) region.protectedCount(held.species(), Math.max(0, region.protectedCount(held.species()) - 1));
@@ -206,6 +222,7 @@ public final class Ecology implements Materializer.Populations {
         first = Math.max(first, target - 60);
         for (long next = first; next < target; ) {
             ++next;
+            if (enabled()) lairs.stepDay(regions.values(), next);
             List<EcologyRegion> result = EcologyModel.step(regions.values(), table(), next, world.seed);
             regions.clear(); for (var region : result) regions.put(region.key(), region);
         }
@@ -267,6 +284,7 @@ public final class Ecology implements Materializer.Populations {
     /** Exactly once at death, including a predator bite, player attack, fire or fall. */
     public void died(Mob mob) {
         if (!supported || !mob.persistent()) return;
+        lairs.died(mob);
         EcologyCodec.Reservation held = reservations.remove(mob.id);
         if (held == null) return;
         EcologyRegion region = regions.get(EcologyRegion.key(held.regionX(), held.regionZ()));
@@ -326,6 +344,7 @@ public final class Ecology implements Materializer.Populations {
         // normally at deathEffectsDone and the later died call is idempotent.
         for (Mob mob : entities.mobs) if (mob.dead) died(mob);
         if (enabled()) { registerLivingBodies(); refreshFields(); }
+        if (supported) { lairs.refreshHearts(); lairs.flush(regions.values()); }
         if (opaqueFields != null) into.put(FieldHabitat.SECTION, opaqueFields.clone());
         else if (!fields.empty()) {
             try { into.put(FieldHabitat.SECTION, fields.encode()); }
@@ -362,9 +381,25 @@ public final class Ecology implements Materializer.Populations {
         }
         lines.add("Fields: " + fields.crops(region.key()) + " crop estimate | rabbit food +" + region.foodBonus(RABBIT));
         lines.add("Lairs: " + region.lairs().size() + " | burn scars: " + region.scars().size());
+        for (Lair lair : lairs.lairs(region.key())) lines.add("Spider nest " + lair.x() + "," + lair.y() + "," + lair.z()
+                + (lair.alive() ? " alive" : " destroyed") + " | spiders " + lair.population() + "/" + lair.capacity()
+                + " | outside " + lair.bodyIds().size());
         lines.add("Losses: hunt " + region.lossCount(EcologyRegion.LossCause.PLAYER) + ", predators "
                 + region.lossCount(EcologyRegion.LossCause.PREDATOR) + ", fire " + region.lossCount(EcologyRegion.LossCause.FIRE));
         if (!recovery.isEmpty()) lines.add(recovery);
+        return lines.toArray(String[]::new);
+    }
+
+    public String[] lairInfo(float x, float z) {
+        if (!supported) return new String[] { "Ecology unavailable", recovery };
+        EcologyRegion region = regionAt(x, z);
+        if (region == null) return new String[] { "Ecology: region limit reached" };
+        var lines = new ArrayList<String>();
+        lines.add("Spider lairs | region " + region.x() + "," + region.z());
+        for (Lair lair : lairs.lairs(region.key())) lines.add("Nest " + lair.x() + "," + lair.y() + "," + lair.z()
+                + (lair.alive() ? " alive" : " destroyed day " + lair.destroyedDay())
+                + " | spiders " + lair.population() + "/" + lair.capacity() + " | outside " + lair.bodyIds().size());
+        if (lines.size() == 1) lines.add("No known spider nest in this region");
         return lines.toArray(String[]::new);
     }
 

@@ -186,13 +186,18 @@ public class MobSpawner {
             }
             if (local >= HOSTILE_CAP || total >= HOSTILE_CAP * scale) continue;
             for (int i = 0; i < ATTEMPTS; i++)
-                if (tryOne(world, mobs, centre, true, daylight))
+                if (tryOne(world, mobs, centre, true, daylight, true))
                     break;
         }
     }
 
     private boolean tryOne(World world, List<Mob> mobs, Vector3fc playerPos, boolean zombie,
                            float daylight) {
+        return tryOne(world, mobs, playerPos, zombie, daylight, false);
+    }
+
+    private boolean tryOne(World world, List<Mob> mobs, Vector3fc playerPos, boolean zombie,
+                           float daylight, boolean lairSpiders) {
         double angle = rnd.nextDouble() * Math.PI * 2;
         double dist = MIN_RADIUS + rnd.nextDouble() * (MAX_RADIUS - MIN_RADIUS);
         int x = (int) Math.floor(playerPos.x() + Math.cos(angle) * dist);
@@ -214,6 +219,7 @@ public class MobSpawner {
 
         var entry=SpawnTable.get().choose(world.biomes.biomeAt(x,z),zombie?(y<UNDERGROUND_Y?"hostile_cave":"hostile_surface"):"livestock",rnd);
         if(entry==null)return false;MobType type=entry.type();
+        if (lairSpiders && type == MobType.SPIDER) return false;
         mobs.add(create(type, x + 0.5f, y + 1.001f, z + 0.5f));
         return true;
     }

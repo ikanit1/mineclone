@@ -1054,7 +1054,8 @@ public final class SaveManager {
             }
             requireEnd(in);
             return new ChunkLoad.Loaded(new ChunkSnapshot(cx, cz, blocks, meta, chests, furnaces, items));
-        } catch (com.mineclone.sim.ecology.Trample.UnsupportedVersion | SavedMobCodec.UnsupportedVersion newer) {
+        } catch (com.mineclone.sim.ecology.Trample.UnsupportedVersion | SavedMobCodec.UnsupportedVersion
+                 | com.mineclone.sim.ecology.LairSpots.NewerVersionException newer) {
             // This build cannot simulate the newer section layout. Keep the source read-only.
             return new ChunkLoad.TooNew(SaveFormat.CHUNK_VERSION + 1, SaveFormat.CHUNK_VERSION);
         } catch (IOException | IllegalArgumentException | SecurityException e) {

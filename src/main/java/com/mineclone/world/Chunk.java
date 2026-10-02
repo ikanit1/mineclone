@@ -42,6 +42,22 @@ public class Chunk {
     /** Derived sparse crop index, rebuilt from restored blocks before publication. */
     private int[] cropCells = new int[8];
     private int cropCount;
+    private final SparseCells nests = new SparseCells(), bases = new SparseCells();
+    private static final class SparseCells {
+        private int[] cells = new int[8];
+        private int size;
+        void add(int value) {
+            if (size == cells.length) cells = java.util.Arrays.copyOf(cells, size * 2);
+            cells[size++] = value;
+        }
+        void remove(int value) {
+            for (int n = 0; n < size; n++) if (cells[n] == value) { cells[n] = cells[--size]; return; }
+        }
+        int at(int index) {
+            if (index < 0 || index >= size) throw new IndexOutOfBoundsException(index);
+            return cells[index];
+        }
+    }
     private final long[] solidMask = new long[SIZE_X * SIZE_Y * SIZE_Z / 64];
     /**
      * Пропускает ли ячейка небесный свет. Та же идея, что у {@code solidMask},
@@ -179,6 +195,10 @@ public class Chunk {
         BlockType old = BlockType.byId(blocks.get(i));
         if (old == t) return;
         blocks.set(i, (byte) t.ordinal());
+        if (t == BlockType.SPIDER_NEST) nests.add(i);
+        else if (old == BlockType.SPIDER_NEST) nests.remove(i);
+        if (base(t) && !base(old)) bases.add(i);
+        else if (base(old) && !base(t)) bases.remove(i);
         if (!crop(old) && crop(t)) addCrop(i);
         else if (crop(old) && !crop(t)) {
             for (int n = 0; n < cropCount; n++) if (cropCells[n] == i) {
@@ -321,6 +341,10 @@ public class Chunk {
         if (!inBounds(x, y, z))
             return MAX_LIGHT;
         return skyLight[idx(x, y, z)] & 0xFF;
+    }
+    /** Unblurred skylight, for an exact underground darkness check. */
+    public int getSkyRaw(int x, int y, int z) {
+        return inBounds(x, y, z) ? skyRaw[idx(x, y, z)] & 0xFF : MAX_LIGHT;
     }
 
     public int getBlockLight(int x, int y, int z) {
@@ -854,6 +878,20 @@ public class Chunk {
      */
     private java.util.List<DroppedItem> pendingItems = java.util.List.of();
     private final java.util.Map<String, byte[]> extraSections = new java.util.LinkedHashMap<>();
+    public byte[] extraSection(String name) {
+        assertMainThread();
+        byte[] value = extraSections.get(name);
+        return value == null ? null : value.clone();
+    }
+    /** Replace one optional section without disturbing restored ticks or other data. */
+    public void setExtraSection(String name, byte[] value) {
+        assertMainThread();
+        if (readOnly) return;
+        byte[] old = extraSections.get(name);
+        if (java.util.Arrays.equals(old, value)) return;
+        if (value == null) extraSections.remove(name); else extraSections.put(name, value.clone());
+        modified = true;
+    }
     private com.mineclone.sim.ecology.Trample trample;
 
     public com.mineclone.sim.ecology.Trample trampleOrNull() {
@@ -1030,6 +1068,14 @@ public class Chunk {
         return cropCells[index];
     }
     public int[] cropIndices() { return java.util.Arrays.copyOf(cropCells, cropCount); }
+    public int nestCellCount() { return nests.size; }
+    public int nestCellAt(int index) { return nests.at(index); }
+    public int baseCellCount() { return bases.size; }
+    public int baseCellAt(int index) { return bases.at(index); }
+    private static boolean base(BlockType block) {
+        return block == BlockType.CHEST || block == BlockType.FURNACE
+                || block == BlockType.BEDROLL;
+    }
 
     private static boolean crop(BlockType block) {
         return block == BlockType.WHEAT || block == BlockType.CARROTS || block == BlockType.POTATOES;
@@ -1060,8 +1106,11 @@ public class Chunk {
         waterCount = 0;
         lavaCount = 0;
         cropCount = 0;
+        nests.size = bases.size = 0;
         for (int i = 0; i < srcBlocks.length; i++) {
             BlockType bt = BlockType.byId(srcBlocks[i]);
+            if (bt == BlockType.SPIDER_NEST) nests.add(i);
+            if (base(bt)) bases.add(i);
             if (crop(bt)) addCrop(i);
             if (bt == BlockType.WATER || bt == BlockType.WATER_FLOW) {
                 if (waterCount == waterCells.length) waterCells = java.util.Arrays.copyOf(waterCells, waterCount * 2);

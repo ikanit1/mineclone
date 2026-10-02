@@ -10,12 +10,16 @@
 #        .\run-net-test.ps1 -LivingWorld - enabled ecology and real guest refusal
 #        .\run-net-test.ps1 -Farm       - farm actions and growth through the host
 #        .\run-net-test.ps1 -Farm -LivingWorld - both scenarios together
+#        .\run-net-test.ps1 -Lairs     - finite nests, normal combat and recolonization
 #
 # Photon costs two of the free concurrent slots and needs the internet, so it
 # is opt-in; the socket run is the one that gates every change.
 # Exits non-zero if either side failed.
 
-param([switch]$Photon, [switch]$LivingWorld, [switch]$Farm)
+param([switch]$Photon, [switch]$LivingWorld, [switch]$Farm, [switch]$Lairs)
+
+if ($Farm -and $Lairs) { throw 'Farm and Lairs are separate acceptance scenarios' }
+if ($Lairs) { $LivingWorld = $true }
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -51,7 +55,7 @@ function Start-Side {
         "-Dmineclone.autopilot=$dir\shots",
         "-Dmineclone.savesDir=$dir\saves",
         "-Dmineclone.autopilot.net=$mode",
-        "-Dmineclone.autopilot.netScenario=$(if ($Farm) { 'farm' } else { '' })",
+        "-Dmineclone.autopilot.netScenario=$(if ($Lairs) { 'lair' } elseif ($Farm) { 'farm' } else { '' })",
         "-Dmineclone.autopilot.netPort=$port",
         "-Dmineclone.autopilot.netVia=$via",
         "-Dmineclone.autopilot.netRoom=$room"
@@ -126,7 +130,21 @@ if ($LivingWorld) {
         }
     }
     $guestMarkers = @('living world guest command refused', 'all checks passed')
-    if (-not $Farm) { $guestMarkers += 'all mob species replicated with valid poses' }
+    if (-not $Farm -and -not $Lairs) { $guestMarkers += 'all mob species replicated with valid poses' }
+    if ($Lairs) {
+        $lairCommon = @('lair initial IDs=', 'lair dead pose observed id=', 'lair original wanderer died through ordinary combat and mirrored',
+                'lair old territory stayed closed next night',
+                'lair other cave colonized after actual ten-day command and heart mirrored')
+        foreach ($marker in (@('lair host saw nest64 and four finite emitted IDs',
+                'lair heart AIR propagated and original wanderers survived', 'lair non-attacker witnessed authoritative dead pose') + $lairCommon)) {
+            if ($hostLog -notmatch [regex]::Escape($marker)) { Write-Host "net test: missing lair owner proof: $marker"; $code = 1 }
+        }
+        $guestMarkers += @('lair guest saw nest64 and four emitted S_MOBS IDs with ecology absent',
+                'lair heart broken through ordinary input') + $lairCommon
+        $hostIds = [regex]::Match($hostLog, 'lair initial IDs=([0-9,]+)').Groups[1].Value
+        $guestIds = [regex]::Match($guestLog, 'lair initial IDs=([0-9,]+)').Groups[1].Value
+        if (-not $hostIds -or $hostIds -ne $guestIds) { Write-Host 'net test: emitted lair IDs differ between host and actual S_MOBS guest'; $code = 1 }
+    }
     if ($Farm) {
         foreach ($marker in @('raid host saw mature crop stage7', 'raid host released two finite natural rabbits',
                 'raid host rabbit consumed stage7 to0', 'raid protected crop stayed stage7')) {
@@ -146,6 +164,7 @@ if ($LivingWorld) {
     }
     if ($code -eq 0) { Write-Host 'net test: Living World owner, guest authority and S_MOBS checks passed' }
     if ($code -eq 0 -and $Farm) { Write-Host 'net test: natural host rabbit raid, guest crop replication and protected field passed' }
+    if ($code -eq 0 -and $Lairs) { Write-Host 'net test: finite lair IDs, ordinary guest heart/combat, later-night closure and other-cave colony passed' }
 }
 if ($code -eq 0) { Write-Host ""; Write-Host "net test: both sides passed" }
 exit $code

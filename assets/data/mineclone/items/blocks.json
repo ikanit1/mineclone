@@ -152,6 +152,12 @@
     "mass": 0.1,
     "block": "flower_red"
   },
+  "spider_nest": {
+    "name": "Паучье гнездо",
+    "category": "decor",
+    "mass": 2,
+    "block": "spider_nest"
+  },
   "flower_yellow": {
     "name": "Одуванчик",
     "category": "decor",

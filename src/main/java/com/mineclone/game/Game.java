@@ -4825,6 +4825,14 @@ public class Game {
 
     /** Мост автопилота к игре: только то, что нужно прогону. */
     private final class PilotDriver implements Autopilot.Driver {
+        private int[] lairFixtureAnchor;
+        @Override public int[] lairAnchor() {
+            if (lairFixtureAnchor == null) lairFixtureAnchor = new int[]{
+                    Math.floorDiv((int) Math.floor(worldSpawn.x), 256) * 256 + 70,
+                    Math.min(116, (int) Math.floor(worldSpawn.y) + 20) + 1,
+                    Math.floorDiv((int) Math.floor(worldSpawn.z), 256) * 256 + 70};
+            return lairFixtureAnchor.clone();
+        }
         @Override
         public String state() {
             return state.name();
@@ -5021,6 +5029,76 @@ public class Game {
                 throw new IllegalStateException("No finite rabbit population is available for the raid fixture");
             mobs.add(rabbit);
             return rabbit.id;
+        }
+
+        @Override public double gameTime() { return worldClock.gameTime(); }
+        @Override public boolean sawChat(String text) { return netChat.stream().anyMatch(line -> line.contains(text)); }
+
+        @Override public void prepareLairArena() {
+            if (net.isClient() || !"lair".equals(System.getProperty("mineclone.autopilot.netScenario", "")))
+                throw new IllegalStateException("Lair preparation belongs to the disposable owner scenario");
+            int[] anchor = lairAnchor(); int x = anchor[0], z = anchor[2], floor = anchor[1] - 1;
+            for (int centre : new int[]{x, x + 80}) {
+                for (int cx = Math.floorDiv(centre - 7, 16); cx <= Math.floorDiv(centre + 7, 16); cx++)
+                    for (int cz = Math.floorDiv(z - 7, 16); cz <= Math.floorDiv(z + 7, 16); cz++) loader.loadNow(cx, cz);
+                for (int y = floor; y <= floor + 5; y++) for (int dz = -7; dz <= 7; dz++) for (int dx = -7; dx <= 7; dx++)
+                    world.setBlock(centre + dx, y, z + dz,
+                            y == floor || y == floor + 5 || Math.abs(dx) == 7 || Math.abs(dz) == 7 ? BlockType.STONE : BlockType.AIR);
+                for (int cx = Math.floorDiv(centre - 7, 16); cx <= Math.floorDiv(centre + 7, 16); cx++)
+                    for (int cz = Math.floorDiv(z - 7, 16); cz <= Math.floorDiv(z + 7, 16); cz++) world.getChunkIfExists(cx, cz).computeSkyLight();
+                Chunk chunk = world.getChunkIfExists(Math.floorDiv(centre, 16), Math.floorDiv(z, 16));
+                int cell = Chunk.idx(Math.floorMod(centre, 16), floor + 1, Math.floorMod(z, 16));
+                if (!com.mineclone.sim.ecology.LairSpots.eligible(world, chunk, cell))
+                    throw new IllegalStateException("Disposable lair chamber is not a dark supported cavity");
+                try { chunk.setExtraSection(com.mineclone.sim.ecology.LairSpots.SECTION,
+                        new com.mineclone.sim.ecology.LairSpots(new int[]{cell}).encode()); }
+                catch (java.io.IOException impossible) { throw new IllegalStateException(impossible); }
+            }
+            world.setBlock(x, floor + 1, z, BlockType.SPIDER_NEST);
+            com.mineclone.world.behavior.Behaviors.of(BlockType.SPIDER_NEST).onPlaced(world, x, floor + 1, z, (byte) 0);
+            session.ecology().regionAt(x, z);
+        }
+
+        @Override public long[] spiderIdsNear(float x, float y, float z, float radius) {
+            float limit = radius * radius;
+            return mobs.stream().filter(m -> m.type == com.mineclone.world.entity.MobType.SPIDER && !m.dead && m.id > 0)
+                    .filter(m -> m.position.distanceSquared(x, y, z) <= limit).mapToLong(m -> m.id).sorted().toArray();
+        }
+
+        @Override public float[] mobPose(long id) {
+            for (var mob : mobs) if (mob.id == id)
+                return new float[]{mob.position.x, mob.position.y, mob.position.z, mob.health, mob.dead ? 1f : 0f};
+            return null;
+        }
+
+        @Override public int[] otherNest(int oldX, int oldY, int oldZ) {
+            int[] found = null;
+            for (Chunk chunk : world.getLoadedChunks()) {
+                if (Math.floorDiv(chunk.cx, 16) != Math.floorDiv(oldX, 256)
+                        || Math.floorDiv(chunk.cz, 16) != Math.floorDiv(oldZ, 256)) continue;
+                for (int n = 0; n < chunk.nestCellCount(); n++) {
+                    int cell = chunk.nestCellAt(n), x = chunk.cx * 16 + cell % 16, y = cell / 256, z = chunk.cz * 16 + cell / 16 % 16;
+                    long dx = (long) x - oldX, dz = (long) z - oldZ;
+                    if (dx * dx + dz * dz < 48 * 48 || x == oldX && y == oldY && z == oldZ) continue;
+                    if (found == null || x < found[0] || x == found[0] && (z < found[2] || z == found[2] && y < found[1])) found = new int[]{x, y, z};
+                }
+            }
+            return found;
+        }
+
+        @Override public boolean aimAtMob(long id) {
+            for (var mob : mobs) if (mob.id == id && !mob.dead) {
+                float y = lairAnchor()[1] + .001f;
+                for (int n = 0; n < 8; n++) {
+                    double angle = n * Math.PI / 4;
+                    float x = mob.position.x + (float) Math.cos(angle) * 2.2f;
+                    float z = mob.position.z + (float) Math.sin(angle) * 2.2f;
+                    if (com.mineclone.world.shape.BodyCollision.overlaps(world, x, y, z, Player.WIDTH, Player.HEIGHT)) continue;
+                    teleport(x, y, z); lookAt(mob.position.x, mob.position.y + mob.type.height * .5f, mob.position.z);
+                    return true;
+                }
+            }
+            return false;
         }
 
         @Override

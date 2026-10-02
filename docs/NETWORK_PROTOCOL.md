@@ -1,9 +1,12 @@
-# Network protocol v12
+# Network protocol v13
 
 The wire format between a host (the game that opened the world, or the
 dedicated server) and its guests. `com.mineclone.net.NetProto` is the source;
 `ProtocolTests` fails when the code table below and the constants there
 disagree. Architecture: [architecture/network.md](architecture/network.md).
+
+Version 13 requires peers that know the appended SPIDER_NEST block ID 64.
+Existing packet layouts are unchanged; older peers are refused before world deltas.
 
 ## Messages and packets
 

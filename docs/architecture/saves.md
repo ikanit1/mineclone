@@ -1,7 +1,7 @@
 # Save opening and preservation
 
-The current writer uses `level.dat` version 11 and chunks version 8 with minimum
-chunk reader 8. Level versions 1–10 and chunk versions 1–7 remain readable.
+The current writer uses `level.dat` version 11 and chunks version 9 with minimum
+chunk reader 9. Level versions 1–10 and chunk versions 1–8 remain readable.
 Opening an older world schedules an original-byte `*-migration.zip` backup
 before the first mutation or write.
 
@@ -25,6 +25,33 @@ the session backup, writes a unique evidence file and forces it to disk. Failure
 leaves the section opaque and the feature disabled. Evidence files never replace
 the original world. Body reservation accounting is described in
 [simulation.md](simulation.md).
+
+### Typed spider lairs (LW-04/05)
+
+`Lair` uses an existing region lair-record slot; the outer `EcologyCodec` layout
+and level header are unchanged. A record is at most 1024 bytes, including its
+opaque suffix. Schema 1 stores `i32 LAIR magic, u8 version, UTF ResourceId,
+UTF MobType`, integer heart coordinates, the last absolute day, population,
+capacity, daily growth, emission limit and radius, then the alive flag, destroyed
+day, a byte body count and positive `long` body IDs. Capacity and body count are
+bounded at 32; body count also cannot exceed population or emission limit.
+Reserved IDs are unique within the record and across known lairs and the animal
+reservation ledger. Restore reserves them in the shared clock allocator before
+chunk bodies are adopted, including bodies still parked in unloaded chunks.
+
+Unknown magic remains an opaque blob; a known schema preserves its remaining
+suffix through growth, claims, returns and saves. Newer schemas and valid types
+or lair definitions this build cannot simulate disable Living World and preserve
+the whole original ecology section and rules. Malformed known layouts, duplicate
+body ownership and hearts stored in the wrong region take the damaged-data path:
+the complete ecology bytes must be preserved before rebuilding. Failed evidence
+preservation keeps them opaque. A dead body is accounted before saving even if
+its normal session death event has not run yet.
+
+Persistent emitted spiders use the existing chunk `entities` records. The lair's
+ID set links those bodies to their finite population; no extra mob-record field
+is needed. Dawn returns release a body ID without a loss, while deaths remove
+one member once. Destroying the heart preserves surviving body reservations.
 
 `ecology_fields` (LW-06) is an additional optional level section: FHLD magic,
 version 1, region count, then signed region coordinates and sparse per-chunk
@@ -217,8 +244,24 @@ older readers return `TooNew` before interpreting the body, never quarantine it
 as corruption, and never overwrite its terrain. Every newly written chunk gets
 this header, including one containing only an empty generation spawn receipt.
 Historical version-7 files still load; future additive envelopes remain readable
-when their minimum reader is at most 8.
+by a version-8 reader when their minimum reader is at most 8.
 The extras travel through `ChunkSnapshot` and `Chunk` across load/unload cycles.
+
+Version 9 retains the same terrain, metadata, entity codec and section envelope,
+but writes minimum reader 9 for every new chunk. This protects appended block
+ID 64, `SPIDER_NEST`, from an older build that would interpret it as air and
+rewrite it. Such readers must return `TooNew` and keep the source read-only.
+Version-8 files remain migration inputs; an additive future envelope is readable
+by this build only when its minimum reader is at most 9.
+
+`lair_spots` (LW-05, optional) stores `i32 LSPT magic, u8 version 1, u8 count`,
+then at most 16 distinct unsigned-short cell indices in the chunk's 32768 cells
+and an opaque suffix of at most 1024 bytes. It records candidate cave anchors,
+not live nests. Missing data is discovered only on loaded writable host terrain;
+founding rechecks the live cavity and light. `ChunkSectionCodec` validates the
+section before publication and writing. Damaged data fails the whole chunk read
+under normal quarantine policy; a newer section makes the source `TooNew` and
+read-only. Candidate indices and suffixes survive chunk save/reload.
 
 `trample` (LW-07, optional) stores version 1, the last simulated absolute game
 day, and at most 4096 sorted `(cell index, pressure byte)` entries. It is absent
@@ -266,8 +309,9 @@ save, as chunks with lying items already were.
 The legacy level section `entity_ids` (MOB-02) holds the next mob id as one
 `VarLong`. It is bridged into the shared `clock` schema-2 allocator before
 ecology reservations or saved bodies are adopted. IDs are positive `long`s;
-protocol 12 `S_MOBS` carries them as `VarLong`. Both counters are captured after
-new bodies receive IDs. Details: [simulation](simulation.md#mobs-stay-where-they-were-mob-01-mob-02).
+protocol 13 `S_MOBS` retains the `VarLong` IDs introduced in protocol 12. Both
+counters are captured after new bodies receive IDs. Details:
+[simulation](simulation.md#mobs-stay-where-they-were-mob-01-mob-02).
 
 `chunks/ledger.dat` (GEN-02) records which generator made each chunk; its format
 and meaning are in [worldgen.md](worldgen.md#chunk-ledger-gen-02). For saving it
@@ -313,9 +357,10 @@ with inventory retention and commands enabled, preserving legacy behaviour.
 readable. `entity_ids` bridges the earlier next-id counter into that clock before
 adoption/materialization/breeding, so both branches share one long allocator.
 An older build supporting only clock version 1 may refuse world initialization
-even though the outer level remains version 11. The chunk-8 gate protects terrain
-when an older reader encounters it; it does not guarantee that the complete world
-can be opened or played in an older build.
+even though the outer level remains version 11. The earlier chunk-8 gate protected
+the entity layout; the current chunk-9 gate also protects the nest block ID.
+These gates do not guarantee that the complete world can be opened or played in
+an older build.
 Canonical `entities` version 2 stores persistent mob IDs, type, position, yaw,
 health, age and breeding clocks in bounded length-delimited records. Both the
 original headerless records and the generation branch's byte-version-1 layout

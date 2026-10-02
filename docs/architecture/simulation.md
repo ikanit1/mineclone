@@ -76,9 +76,71 @@ Returning participants adopt them once; disabling the rule wakes parked records.
 Read-only or full chunks keep the body live. With the rule off, the legacy spawn
 path and recorded simulation trajectory remain unchanged.
 
-Owners use `/ecology on|off|info|advance <1–60>`; F3+G selects diagnostics.
-Spider nests, burn-scar behaviour and the LW-12 performance budget
-remain later work. See [change evidence](../changes/living-populations/validation.md).
+Owners use `/ecology on|off|info|lair|advance <1–60>`; F3+G selects diagnostics.
+Burn-scar behaviour and the LW-12 performance budget remain later work.
+See [population evidence](../changes/living-populations/validation.md).
+
+## Finite spider lairs and founding (LW-04/05)
+
+`Ecology.lairs()` owns `LairRuntime` in the same `WorldSession` used by the game
+host and dedicated server. The opt-in rule controls adoption, founding, growth,
+emission and home routes. Loaded writable hearts are adopted from the chunk's
+sparse nest index. The default data definition starts with six spiders, capacity
+eight, growth one per day, at most four emitted bodies and a 24-block territory.
+An emitted spider represents an existing member and receives a persistent ID;
+it never adds another member to the total.
+
+`tickMobs` runs lair residency before mob brains. At night, an alive loaded heart
+can emit onto a clear, fully supported spider footprint. Emission shares the
+ordinary hostile limits with undead: eight within 128 blocks of a participant
+and a global limit scaled by participant count, up to four times eight. At dawn,
+the brain walks a surviving spider towards the heart; only a body physically
+near home retires into the lair, releasing its reservation without death or
+loot. Bodies outside the territory also receive a home route. A session death
+consumes one reserved member once, including a death immediately before saving.
+
+Breaking the heart marks the lair destroyed. Growth, home returns and new
+emission stop; wandering bodies retain their IDs and finite accounting until
+death or normal saved residency. Distant emitted bodies park and re-adopt through
+the existing persistent-entity path. With Living World off, lair routes are
+cleared, lair simulation and web growth stop, and the original mixed spawner runs.
+Peaceful retirement releases a living body representation without a population
+loss. A body killed before switching difficulty is accounted as a death before
+peaceful removal, so its member cannot be restored by the change.
+Heart checks also run before each lair tick, before saving and before
+`/ecology advance` moves the clock. Destruction immediately before either
+boundary keeps the actual destruction day and cannot delay reseeding on reload.
+
+The ordinary daily step and `/ecology advance` run the same lair growth and
+founding sequence, bounded to the final 60 elapsed days. Discovery uses the
+logical replay day, so a newly observed placed heart has the same history in
+ordinary play and advancement. `LairSpots` discovers up to 16 saved anchors per
+loaded chunk: a supported 2×2 cavity, an opaque roof and zero sky/block light.
+`Colonizer` rechecks candidates, excludes nearby participants and bases, other
+lair territories and line of sight from recent participant paths. Those path
+samples are transient, bounded at 256 and retained for three days.
+
+A newly observed or founded heart schedules its first silk callback one world
+day after its logical birth tick. Daily replay uses `World.scheduleTickAt`,
+because the block dispatcher may still be at the tick before the clock advance.
+A heart founded on the target replay day waits its full first day; one founded
+on an earlier replay day may already be due and uses normal bounded late-tick
+growth. The existing chunk `ticks` section preserves that due time on save and
+reload.
+
+A region with no known lair history can found its initial nest after loaded
+habitat discovery. Otherwise a region without a live nest uses deterministic
+daily opportunities; after destruction, the delay is three to ten days and the
+old territory remains excluded. Reopening destroyed history never skips this
+delay. Eligible loaded terrain is required; the runtime does not generate a
+remote cave to satisfy a deadline. Web growth stays in scheduled block ticks.
+Typed records, unsupported definitions and reserved IDs follow the protected
+save policy in [saves](saves.md#typed-spider-lairs-lw-0405).
+
+`LairTests`, `LairRuntimeTests`, `ColonizerTests` and `NestBlockTests` cover model,
+shared-session and block persistence boundaries. Render/input and multiplayer
+acceptance are tracked separately in
+[spider-lairs validation](../changes/spider-lairs/validation.md).
 
 ## Fields and rain (LW-06, LW-09)
 

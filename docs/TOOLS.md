@@ -154,7 +154,25 @@ behind gates; verification reads the actual saved crop stages before the later
 ten-day command can regrow them. It refuses paths outside this checkout's
 `out-test` directory. Linux scripts retain their earlier farm scenario scope.
 
+## Spider-lair acceptance and authoring
+
+`tools/LairGameSmoke.java` runs the disposable native nest lifecycle with six actual
+captures, ordinary heart-breaking input, three cleared nights and save/reopen.
+`run-net-test.ps1 -Lairs` / `run-server-test.ps1 -Lairs` run matching LAN peers and
+a NORMAL dedicated host with two real guests; `tools/LairSaveAcceptance.java`
+prepares and verifies only fresh fixtures below this checkout's `out-test` directory.
+
+`tools/LairReaderCompatibility.java write|rewrite|verify <out-test/fixture>` checks
+an actual reader-8 classpath followed by the current reader-9 classpath. It preserves
+typed/opaque lair records and suffixes through an older level rewrite, attempts a
+blocked terrain write after `TooNew`, then verifies block 64, spider ID and cave hints.
+The rewrite phase refuses a current classpath. Save old compiled classes before
+building the newer source; it never edits an existing fixture or user save.
+`tools/DrawSpiderNestTexture.java` is the offline original texture authoring source;
+provenance is in `assets/textures/source/spider-nest.md`.
+
 ## Historical generators
+
 
 [tools/legacy](../tools/legacy/README.md) preserves the moved root generators:
 HeartSpriteGen.java, WaterParticleGen.java and WaterTextureGen.java. Read their

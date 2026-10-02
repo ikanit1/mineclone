@@ -32,7 +32,7 @@ final class CommandProcessor {
             "/fill <block> [radius]",
             "/instamine",
             "/music [next] - what plays, or a fitting track now",
-            "/ecology [info|on|off|advance <1-60>] - world owner",
+            "/ecology [info|lair|on|off|advance <1-60>] - world owner",
             "/debug",
             "/gamemode <creative|survival> - Switch game mode"
     };
@@ -194,7 +194,7 @@ final class CommandProcessor {
             target.toast("Ecology commands are available to the world owner only");
             return;
         }
-        String usage = "Usage: /ecology [info|on|off|advance <1-60>]";
+        String usage = "Usage: /ecology [info|lair|on|off|advance <1-60>]";
         String operation = parts.length > 1 ? parts[1].toLowerCase(Locale.ROOT) : "info";
         int days = 0;
         if (operation.equals("advance")) {
@@ -221,7 +221,10 @@ final class CommandProcessor {
                 Vector3f position = target.player().position;
                 target.showEcology(ecology.info(position.x, position.z));
             }
-            case "lair" -> target.toast("Lairs are not implemented yet (LW-04)");
+            case "lair" -> {
+                Vector3f position = target.player().position;
+                target.showEcology(ecology.lairInfo(position.x, position.z));
+            }
             case "on", "off" -> {
                 boolean enabled = operation.equals("on");
                 ecology.setEnabled(enabled);

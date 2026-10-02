@@ -243,6 +243,31 @@ weather overrides and blending; the dedicated server samples the same world-seed
 front at `WorldClock.frontSeconds()`. The original mob hearing rules then process
 the adjusted radius. This changes neither weather nor audible playback volume.
 
+## Spider lairs (LW-04/05)
+
+While Living World is enabled, the shared host `LairRuntime` supplies finite
+spiders from alive `SPIDER_NEST` hearts. Ordinary hostile rolls exclude spiders;
+undead keep their prior spawning rules. A lair starts at six members and emits
+at most four persistent bodies, subject to the shared local/global hostile caps.
+Loaded writable terrain must support the spider's complete 1.1-block footprint
+and provide clear body space. It cannot emit into an unloaded or protected cell.
+
+The host reconstructs `Mob.lairDestination` from the lair's reserved IDs. At dawn
+or beyond the 24-block territory it supplies a normal navigation goal; the spider
+walks through existing collision/pathfinding. A living body near the heart
+returns without loot or population loss. Dead bodies skip that return path and
+are consumed once by the session death guard; saving accounts for a death that
+occurred before the next tick. Breaking the heart stops new bodies and growth
+while surviving scouts remain ordinary combat targets with their reservations.
+
+Turning the rule off clears the route and keeps the legacy hostile brain and
+mixed spawner path. Peaceful difficulty folds emitted bodies without counting a
+kill. Persistent spiders save, park at distance and re-adopt with the same IDs,
+using the existing entity lifecycle. The finite budget and daily reseeding rules
+are described in [simulation](simulation.md#finite-spider-lairs-and-founding-lw-0405);
+the current validation record is
+[spider-lairs validation](../changes/spider-lairs/validation.md).
+
 ## Checks and tuning
 
 With Living World enabled, regional totals include each live or saved animal.
@@ -282,7 +307,8 @@ stale client checkpoint.
 Initial V2 herds are deterministic and persistent, written even when empty so
 killed herds do not respawn on reload. Existing saved chunks do not acquire a
 herd. Rare replenishment attempts run once per 400 seconds per participant only
-below four nearby livestock. Wildlife and hostiles remain transient. Difficulty
+below four nearby livestock. Legacy wildlife and hostiles remain transient;
+finite Living World bodies, including emitted lair spiders, are persistent. Difficulty
 scales elite probability and peaceful removes hostiles before their tick.
 
 Mob IDs are `long`, saved with health, age and breeding clocks in `entities`.

@@ -120,6 +120,18 @@ final class Autopilot {
         /** Claim a finite rabbit body on the owner; its ordinary brain performs the raid. */
         long spawnRaidRabbit(float x, float y, float z);
 
+        /** Build a new disposable two-cave fixture; never alters a verification result. */
+        void prepareLairArena();
+        int[] lairAnchor();
+        long[] spiderIdsNear(float x, float y, float z, float radius);
+        /** Current authoritative or S_MOBS pose: x/y/z/health/dead, or null. */
+        float[] mobPose(long id);
+        /** Aim and stand in reach, leaving damage to the ordinary mouse attack path. */
+        boolean aimAtMob(long id);
+        int[] otherNest(int oldX, int oldY, int oldZ);
+        double gameTime();
+        boolean sawChat(String text);
+
         /** Скот — коровы, свиньи, овцы — в ряд рядом с точкой появления; ни хищников, ни добычи. */
         void spawnAnimals();
 
@@ -256,6 +268,7 @@ final class Autopilot {
     private static final String NET_MODE = System.getProperty("mineclone.autopilot.net", "");
     private static final boolean TRAIL_MODE = Boolean.getBoolean("mineclone.autopilot.trail");
     private static final boolean ECOLOGY_MODE = Boolean.getBoolean("mineclone.autopilot.ecology");
+    private static final boolean LAIR_MODE = "lair".equals(System.getProperty("mineclone.autopilot.netScenario", ""));
     private static final int NET_PORT =
             Integer.getInteger("mineclone.autopilot.netPort", com.mineclone.net.LanTransport.DEFAULT_PORT);
     /**
@@ -633,6 +646,139 @@ final class Autopilot {
         List<Step> out = new java.util.ArrayList<>(a);
         out.addAll(b);
         return List.copyOf(out);
+    }
+
+    private long[] lairInitialIds;
+    private long lairInitialDay;
+    private boolean lairAttacking;
+    private boolean lairWatchingClosed;
+    private boolean lairDeathWitness;
+    private float lairAttackClock;
+    private int[] lairNewCell;
+    private static int[] lairCell(Driver d, boolean second) {
+        int[] anchor = d.lairAnchor(); if (second) anchor[0] += 80; return anchor;
+    }
+    private static long lairDay(Driver d) { return com.mineclone.sim.ecology.Ecology.day(d.gameTime()); }
+    private static long[] lairSpiders(Driver d, boolean second) {
+        int[] p = lairCell(d, second); return d.spiderIdsNear(p[0] + .5f, p[1], p[2] + .5f, 24);
+    }
+    private static void standAtLair(Driver d, boolean midpoint) {
+        int[] p = lairCell(d, false); d.flyInCreative();
+        d.teleport(p[0] + (midpoint ? 40.5f : 3.5f), p[1] + 2f, p[2] + 4.5f);
+        d.lookAt(p[0] + .5f, p[1] + .5f, p[2] + .5f);
+    }
+    private static boolean lairMark(Driver d, int slot, boolean death) {
+        return d.sawChat(lairSignal(slot, death));
+    }
+    private static void putLairMark(Driver d, int slot, boolean death) {
+        d.executeCommand(lairSignal(slot, death));
+    }
+    private static String lairSignal(int slot, boolean death) { return "[lair-" + (death ? "dead-" : "ready-") + slot + "]"; }
+    private boolean lairDead(Driver d, long id) {
+        float[] pose = d.mobPose(id); return lairDeathWitness && (pose == null || pose[3] <= 0 || pose[4] != 0);
+    }
+    private void oldLairClosed(Driver d, boolean requireDeath) {
+        int[] p = lairCell(d, false);
+        if (!"AIR".equals(d.blockAt(p[0], p[1], p[2]))) throw new IllegalStateException("Destroyed lair heart reappeared");
+        long[] current = lairSpiders(d, false);
+        for (long id : current) if (java.util.Arrays.binarySearch(lairInitialIds, id) < 0)
+            throw new IllegalStateException("Destroyed territory emitted a new spider identity " + id);
+        if (requireDeath && (!lairDead(d, lairInitialIds[0]) || current.length != lairInitialIds.length - 1))
+            throw new IllegalStateException("Ordinary spider death did not leave exactly the other original wanderers");
+    }
+    private List<Step> lairSteps(String role) {
+        boolean owner = role.equals("host"), attacker = !owner && (!role.equals("server") || NET_SLOT == 0);
+        int slot = owner ? 1 : role.equals("server") ? NET_SLOT : 0;
+        var route = new java.util.ArrayList<Step>();
+        if (owner) {
+            route.add(step("create disposable lair room", 1f, d -> d.act(MenuAction.create(new WorldSettings("Lair net room", 20260921L, GameMode.CREATIVE)))));
+            route.add(when("lair owner world loaded", .5f, d -> in(d, "PLAYING"), d -> {
+                d.prepareLairArena(); enableEcologyIfRequested(d); standAtLair(d, false);
+            }));
+            route.add(step("open disposable lair room", .3f, d -> {
+                var worlds = d.save().listWorlds(false);
+                if (worlds.isEmpty()) throw new IllegalStateException("Lair owner world is absent");
+                d.act(MenuAction.netHost(worlds.get(0).id, netSettings("")));
+            }));
+            route.add(when("lair owner room opened", .5f, d -> in(d, "PLAYING") && d.netIsHost(), d -> {
+                if (!d.ecologyEnabled()) throw new IllegalStateException("Living World was lost opening the lair room");
+                ok("living world rule survived room opening"); System.out.println("autopilot: room=" + d.netRoomName());
+                standAtLair(d, false); d.executeCommand("/time set night");
+                if (com.mineclone.sim.WorldClock.daylightAt(d.gameTime()) >= com.mineclone.world.entity.MobSpawner.NIGHT_DAYLIGHT)
+                    throw new IllegalStateException("Actual owner night command did not set night");
+            }));
+            route.add(when("lair guest joined", .3f, d -> d.netPlayers() >= 1, d -> ok("lair actual guest joined")));
+        } else {
+            route.add(step("join actual lair owner", 1.5f, d -> d.act(MenuAction.netJoin(netSettings("127.0.0.1:" + NET_PORT)))));
+            route.add(when("lair guest world loaded", .5f, d -> in(d, "PLAYING"), d -> {
+                if (d.netIsHost() || d.ecologyEnabled()) throw new IllegalStateException("Lair guest owns simulation");
+                rejectGuestEcologyIfRequested(d); d.equipItem("iron_sword"); standAtLair(d, false);
+            }));
+        }
+        route.add(when("actual nest and four emitted bodies arrived", .5f, d -> {
+            int[] p = lairCell(d, false); return "SPIDER_NEST".equals(d.blockAt(p[0], p[1], p[2])) && lairSpiders(d, false).length == 4;
+        }, d -> {
+            lairInitialIds = lairSpiders(d, false); lairInitialDay = lairDay(d);
+            for (long id : lairInitialIds) {
+                float[] pose = d.mobPose(id);
+                if (id <= 0 || pose == null || pose[3] <= 0) throw new IllegalStateException("Invalid emitted spider snapshot");
+            }
+            System.out.println("autopilot: lair initial IDs=" + java.util.Arrays.stream(lairInitialIds).mapToObj(Long::toString).collect(java.util.stream.Collectors.joining(",")));
+            ok(owner ? "lair host saw nest64 and four finite emitted IDs" : "lair guest saw nest64 and four emitted S_MOBS IDs with ecology absent");
+            putLairMark(d, slot, false); d.shot("lair-initial-" + role + "-" + slot);
+        }));
+        route.add(when("both peers acknowledged actual lair bodies", .3f, d -> lairMark(d, 0, false) && lairMark(d, 1, false), d -> {}));
+        if (attacker) {
+            route.add(step("aim at the real lair heart", .2f, d -> {
+                int[] p = lairCell(d, false); d.teleport(p[0] + .6f, p[1] + 2f, p[2] + .5f);
+                d.lookAt(p[0] + .5f, p[1] + .5f, p[2] + .5f);
+            }));
+            route.add(step("break heart with ordinary left input", .2f, d -> d.mouseButton(0, true)));
+            route.add(step("release heart input", .15f, d -> d.mouseButton(0, false)));
+        }
+        route.add(when("host heart destruction reached each peer", .7f, d -> {
+            int[] p = lairCell(d, false); return "AIR".equals(d.blockAt(p[0], p[1], p[2]));
+        }, d -> {
+            oldLairClosed(d, false);
+            lairWatchingClosed = true;
+            if (lairSpiders(d, false).length != 4) throw new IllegalStateException("Breaking the heart deleted an original wanderer");
+            ok(attacker ? "lair heart broken through ordinary input" : "lair heart AIR propagated and original wanderers survived");
+            d.shot("lair-broken-" + role + "-" + slot);
+        }));
+        if (attacker) route.add(step("attack one original wanderer through input", .2f, d -> { lairAttackClock = 0; lairAttacking = true; }));
+        route.add(when("ordinary combat death reached each peer", .5f, d -> lairDead(d, lairInitialIds[0]), d -> {
+            lairAttacking = false; d.mouseButton(0, false); oldLairClosed(d, true); standAtLair(d, false);
+            putLairMark(d, slot, true); ok("lair original wanderer died through ordinary combat and mirrored");
+            if (!attacker) ok("lair non-attacker witnessed authoritative dead pose");
+        }));
+        route.add(when("both peers confirmed the wanderer death", .5f, d -> lairMark(d, 0, true) && lairMark(d, 1, true), d -> {
+            standAtLair(d, owner || slot == 1); ok("lair READY next night");
+            if (owner) d.executeCommand("/time add 24");
+        }));
+        route.add(when("actual later night synchronized", .5f, d -> lairDay(d) >= lairInitialDay + 1, d -> {}));
+        route.add(step("observe destroyed territory throughout later night", 5f, d -> {
+            oldLairClosed(d, true); ok("lair old territory stayed closed next night"); ok("lair READY colonization");
+            if (owner) d.executeCommand("/ecology advance 10");
+        }));
+        route.add(when("real other cave colonized", .7f, d -> {
+            int[] p = lairCell(d, false); return lairDay(d) >= lairInitialDay + 11 && d.otherNest(p[0], p[1], p[2]) != null;
+        }, d -> {
+            int[] p = lairCell(d, false); lairNewCell = d.otherNest(p[0], p[1], p[2]);
+            if (!attacker) { d.teleport(lairNewCell[0] + 3.5f, 128.1f, lairNewCell[2] + 4.5f); d.lookAt(lairNewCell[0] + .5f, lairNewCell[1] + .5f, lairNewCell[2] + .5f); }
+        }));
+        route.add(step("observe the real new colony under normal hostile caps", 3f, d -> {
+            oldLairClosed(d, true);
+            int[] p = lairNewCell;
+            long[] newIds = d.spiderIdsNear(p[0] + .5f, p[1], p[2] + .5f, 24);
+            if (newIds.length > 4) throw new IllegalStateException("New colony exceeded its finite emission bound");
+            for (long id : newIds) if (java.util.Arrays.binarySearch(lairInitialIds, id) >= 0)
+                throw new IllegalStateException("New cave reused an old spider identity");
+            System.out.println("autopilot: lair replacement heart=" + p[0] + "," + p[1] + "," + p[2] + " emittedIDs=" + java.util.Arrays.toString(newIds));
+            ok("lair other cave colonized after actual ten-day command and heart mirrored");
+            d.shot("lair-colonized-" + role + "-" + slot);
+        }));
+        route.add(step("hold actual lair room for peer", owner ? 8f : 3f, d -> oldLairClosed(d, true)));
+        return List.copyOf(route);
     }
 
     private static final String[] FORMS={"PLANK_SLAB","COBBLE_SLAB","STONE_SLAB","FENCE","FENCE_GATE","LADDER","TRAPDOOR"};
@@ -1049,7 +1195,7 @@ final class Autopilot {
         this.d = driver;
         boolean farm="farm".equals(System.getProperty("mineclone.autopilot.netScenario",""))||NET_MODE.equals("farm");
         String role=NET_MODE.equals("farm")?System.getProperty("mineclone.autopilot.farmRole","host"):NET_MODE;
-        this.steps = TRAIL_MODE ? trailSteps() : switch (role) {
+        this.steps = TRAIL_MODE ? trailSteps() : LAIR_MODE ? lairSteps(role) : switch (role) {
             case "host" -> farm?concat(hostSteps,concat(hostFormsSteps,concat(farmHostSteps,ECOLOGY_MODE?raidHostSteps():List.of()))):hostSteps;
             case "join" -> farm?concat(guestSteps,concat(guestFormsSteps,concat(farmGuestSteps,ECOLOGY_MODE?raidGuestSteps(false):List.of()))):guestSteps;
             case "server" -> farm?concat(serverGuestSteps,NET_SLOT==0?concat(hostFormsSteps,concat(farmServerTillerSteps,ECOLOGY_MODE?raidGuestSteps(true):List.of())):concat(guestFormsSteps,concat(farmGuestSteps,ECOLOGY_MODE?raidGuestSteps(false):List.of()))):serverGuestSteps;
@@ -1060,6 +1206,21 @@ final class Autopilot {
     void update(float dt) {
         if (finished)
             return;
+        if (lairInitialIds != null && !lairDeathWitness && in(d, "PLAYING")) {
+            float[] pose = d.mobPose(lairInitialIds[0]);
+            if (pose != null && (pose[3] <= 0 || pose[4] != 0)) {
+                lairDeathWitness = true;
+                System.out.println("autopilot: lair dead pose observed id=" + lairInitialIds[0] + " health=" + pose[3] + " dead=" + pose[4]);
+            }
+        }
+        if (lairWatchingClosed && in(d, "PLAYING")) {
+            try { oldLairClosed(d, false); }
+            catch (IllegalStateException invalid) { fail(invalid.getMessage()); return; }
+        }
+        if (lairAttacking && lairInitialIds != null && in(d, "PLAYING")) {
+            lairAttackClock += dt;
+            d.mouseButton(0, d.aimAtMob(lairInitialIds[0]) && lairAttackClock % .9f < .09f);
+        }
         clock += dt;
         if (clock > TIMEOUT) {
             fail("timeout at step '" + (index < steps.size() ? steps.get(index).name() : "end")

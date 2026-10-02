@@ -42,8 +42,12 @@ final class TickScheduler {
     }
 
     boolean schedule(Chunk c, int index, BlockType kind, long delay) {
+        return scheduleAt(c, index, kind, now + Math.max(1, delay));
+    }
+
+    boolean scheduleAt(Chunk c, int index, BlockType kind, long due) {
         adopt(c);
-        if (!c.scheduledTicks().schedule(index, kind.ordinal(), now + Math.max(1, delay)))
+        if (!c.scheduledTicks().schedule(index, kind.ordinal(), due))
             return false;
         c.modified = true;
         list(c);

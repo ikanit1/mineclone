@@ -32,7 +32,7 @@ public record BlockProps(boolean cross, boolean layered, boolean gravity, boolea
             case BEDROCK -> p(0, 1f, 1f, ToolClass.PICKAXE, 0);
             case SAND, RED_SAND, GRAVEL -> p(GRAVITY, 1f, 1f, ToolClass.SHOVEL, 0);
             case ASH -> p(GRAVITY, 1f, .9f, ToolClass.SHOVEL, 0);
-            case WOOD, PLANKS, LEAVES, CRAFTING_TABLE, PLANK_SLAB, FENCE, FENCE_GATE, LADDER, TRAPDOOR -> p(FLAMMABLE, 1f, 1f, ToolClass.AXE, 0);
+            case WOOD, PLANKS, LEAVES, CRAFTING_TABLE, PLANK_SLAB, FENCE, FENCE_GATE, LADDER, TRAPDOOR, SPIDER_NEST -> p(FLAMMABLE, 1f, 1f, ToolClass.AXE, 0);
             case DOOR_CLOSED, DOOR_OPEN, STAIRS -> p(0, 1f, 1f, ToolClass.AXE, 0);
             case TALL_GRASS,FLOWER_RED,FLOWER_YELLOW,SAPLING -> p(CROSS|FLAMMABLE,1f,1f,null,0);
             case WHEAT, CARROTS, POTATOES, TORCH, FIRE, WEB -> p(CROSS, 1f, 1f, null, 0);
