@@ -36,6 +36,14 @@ public final class RemoteParticipant implements Participant {
         return eye.set(at.x(), at.y() + Player.EYE_HEIGHT, at.z());
     }
 
+    @Override
+    public Vector3f viewDirection(Vector3f target) {
+        float yaw = player.acceptedYaw(), pitch = player.acceptedPitch();
+        float horizontal = (float) Math.cos(pitch);
+        return target.set(horizontal * (float) Math.sin(yaw), -(float) Math.sin(pitch),
+                -horizontal * (float) Math.cos(yaw));
+    }
+
     @Override public GameMode mode() { return GameMode.byOrdinalSafe(player.gameMode); }
 
     @Override

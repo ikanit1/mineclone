@@ -160,7 +160,9 @@ public final class Multiplayer implements NetTransport.Listener {
     private final Set<Long> requestedChunks = new HashSet<>();
     private final Deque<Long> chunkQueue = new ArrayDeque<>();
 
-    // ---- хозяин: нумерация существ и фоновой расчёт дельт ----
+    // ---- хозяин: нумерация предметов и фоновой расчёт дельт ----
+    // Мобы идут под своими мировыми id (MOB-02): корова, которую хозяин выгрузил
+    // и загрузил снова, остаётся для участника той же коровой.
     private final Map<ItemEntity, Integer> itemIds = new IdentityHashMap<>();
     private int nextEntityId = 1;
     private ExecutorService deltaWorker;
@@ -1383,10 +1385,17 @@ public final class Multiplayer implements NetTransport.Listener {
     private void sendMobs() {
         List<Mob> mobs = ctx.mobs();
         if (mobs == null) return;
+        ctx.assignMobIds();
+        int sendable = 0;
+        for (Mob m : mobs) {
+            if (m.id == 0) m.id = ctx.nextMobId();
+            if (m.id > 0) sendable++;
+        }
         PacketBuf b = channel.packet(NetProto.S_MOBS, false, NetChannel.ALL);
-        b.i64(++mobSequence).varInt(mobs.size());
-        for(Mob m:mobs){if(m.id==0)m.id=ctx.nextMobId();MobSnapshot.capture(m.id,m).write(b);}
-
+        b.i64(++mobSequence).varInt(sendable);
+        for (Mob m : mobs)
+            if (m.id > 0)
+                MobSnapshot.capture(m.id, m).write(b);
     }
 
     private void onMobs(int from, PacketBuf in) {
@@ -1559,18 +1568,31 @@ public final class Multiplayer implements NetTransport.Listener {
      * и поправляется следующим снимком: ждать ответа сервера, чтобы меч
      * зазвенел, значит превратить бой в переписку.
      */
-    private void hostMobHit(int from,long id,int limb,int flags,int readiness){
-        var limbs=com.mineclone.world.entity.LimbDamage.Limb.values();
-        RemotePlayer p=playerOf(from);if(p==null||!p.placed()||limb>=limbs.length||(flags&~3)!=0||p.isDead())return;
-        var held=p.heldItem==null?null:p.heldItem.item;
-        float cooldown=com.mineclone.item.Combat.cooldown(held);
-        if(combatTime-lastMelee.getOrDefault(from,-100d)<cooldown*.8f)return;
-        for(Mob m:ctx.mobs())if(m.id==id){if(m.dead||p.acceptedPosition().distance(m.position)>6f)return;
-            lastMelee.put(from,combatTime);
-            boolean crit=(flags&1)!=0&&(p.flags&(RemotePlayer.F_ON_GROUND|RemotePlayer.F_FLYING))==0;boolean sprint=(flags&2)!=0;
-            float damage=com.mineclone.item.Combat.damage(held,readiness/255f,crit);
-            var source=com.mineclone.world.damage.DamageSource.byPlayer(com.mineclone.world.damage.DamageType.MELEE,from,p.acceptedPosition().x(),p.acceptedPosition().y(),p.acceptedPosition().z(),com.mineclone.item.Combat.knockback(sprint)).onLimb(limbs[limb]);
-            m.damage(source,damage);return;
+    private void hostMobHit(int from, long id, int limb, int flags, int readiness) {
+        var limbs = com.mineclone.world.entity.LimbDamage.Limb.values();
+        List<Mob> mobs = ctx.mobs();
+        RemotePlayer p = playerOf(from);
+        if (mobs == null || id <= 0 || p == null || !p.placed() || p.isDead()
+                || limb < 0 || limb >= limbs.length || (flags & ~3) != 0
+                || readiness < 0 || readiness > 255)
+            return;
+        var held = p.heldItem == null ? null : p.heldItem.item;
+        float cooldown = com.mineclone.item.Combat.cooldown(held);
+        if (combatTime - lastMelee.getOrDefault(from, -100d) < cooldown * .8f)
+            return;
+        for (Mob m : mobs) {
+            if (m.id != id) continue;
+            if (m.dead || p.acceptedPosition().distance(m.position) > 6f) return;
+            lastMelee.put(from, combatTime);
+            boolean crit = (flags & 1) != 0 && (p.flags & (RemotePlayer.F_ON_GROUND | RemotePlayer.F_FLYING)) == 0;
+            boolean sprint = (flags & 2) != 0;
+            float damage = com.mineclone.item.Combat.damage(held, readiness / 255f, crit);
+            var at = p.acceptedPosition();
+            var source = com.mineclone.world.damage.DamageSource.byPlayer(
+                    com.mineclone.world.damage.DamageType.MELEE, from, at.x(), at.y(), at.z(),
+                    com.mineclone.item.Combat.knockback(sprint)).onLimb(limbs[limb]);
+            m.damage(source, damage);
+            return;
         }
     }
 

@@ -35,6 +35,12 @@ public final class RainAudioSmoke {
             int buffer=AL10.alGetSourcei(id,AL10.AL_BUFFER);
             check(AL10.alGetSourcei(id,AL10.AL_LOOPING)==AL10.AL_TRUE,"loop enabled");
             check(AL10.alGetSourcei(id,AL10.AL_SOURCE_RELATIVE)==AL10.AL_TRUE,"rain follows listener");
+            // One two-second recording looped audibly dipped every turn; the bed stitches all eight.
+            float seconds=AL10.alGetBufferi(buffer,AL10.AL_SIZE)/(float)(AL10.alGetBufferi(buffer,AL10.AL_BITS)/8
+                    *AL10.alGetBufferi(buffer,AL10.AL_CHANNELS))/AL10.alGetBufferi(buffer,AL10.AL_FREQUENCY);
+            check(seconds>=10,"rain loops one "+seconds+" s recording instead of a stitched bed");
+            // Start half a second before the end so the wrap is crossed within the frames below.
+            AL10.alSourcef(id,org.lwjgl.openal.AL11.AL_SEC_OFFSET,seconds-.5f);
             float offset=-1;boolean wrapped=false;
             for(int frame=0;frame<190;frame++) {
                 rain.update(1f/60,.8f,15,false);sound.tick();Thread.sleep(16);
@@ -54,7 +60,8 @@ public final class RainAudioSmoke {
             check(source(sound)<0,"clear weather stops rain");
             rain.update(.05f,1,15,false);rain.reset();check(source(sound)<0,"leaving world stops rain");
             check(AL10.alGetError()==AL10.AL_NO_ERROR,"no OpenAL errors");
-            System.out.println("PASS: 8 Vorbis assets, cold decode, continuous OpenAL loop through sample boundary, volume sliders, underwater/clear/reset; no AL errors");
+            System.out.println("PASS: 8 Vorbis assets stitched into a "+String.format(java.util.Locale.ROOT,"%.1f",seconds)
+                    +" s bed, cold decode, continuous OpenAL loop through the wrap, volume sliders, underwater/clear/reset; no AL errors");
         } finally {sound.destroy();}
     }
 }

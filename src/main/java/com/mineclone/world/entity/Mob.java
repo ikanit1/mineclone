@@ -159,6 +159,13 @@ public class Mob implements Hittable, com.mineclone.world.effect.StatusEffects.T
     private static final float SHELTER_HOLD = 5f;
 
     public final MobType type;
+    /**
+     * World id (MOB-02): positive, unique among the world's mobs, kept for life and
+     * across unload and reload; 0 until {@code EntityStore.assignIds} gives one.
+     */
+    public long id;
+    /** Bytes a newer build appended to this mob's saved record; written back unchanged. */
+    public byte[] savedTail;
     public final Vector3f position = new Vector3f();
     public final Vector3f velocity = new Vector3f();
     /** Facing direction: (-sin yaw, 0, -cos yaw). */
@@ -168,7 +175,6 @@ public class Mob implements Hittable, com.mineclone.world.effect.StatusEffects.T
 
     public boolean onGround;
     public boolean hitWall;
-    public long id;
     public boolean persistent;
     private final EntityHazards hazards=new EntityHazards();
     public int breedingOwner=-1;
@@ -1519,6 +1525,14 @@ public class Mob implements Hittable, com.mineclone.world.effect.StatusEffects.T
     /** Идёт ли моб сейчас проверять шум. */
     public boolean isInvestigating() {
         return state == State.INVESTIGATE;
+    }
+
+    /**
+     * Животное живёт в мире, а не вокруг игрока (MOB-01): оно пишется с чанком и
+     * не исчезает по дальности. Враждебные — нет.
+     */
+    public boolean persistent() {
+        return persistent || type.temper != MobType.Temper.HOSTILE;
     }
 
     /** Урон удара этого моба по игроку. */

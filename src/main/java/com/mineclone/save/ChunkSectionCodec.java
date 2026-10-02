@@ -10,7 +10,7 @@ import com.mineclone.world.ScheduledTicks;
 import java.io.*;
 import java.util.*;
 
-/** Version 7 chunk body: RLE terrain followed by bounded, extensible sections. */
+/** Chunk versions 7 and 8: RLE terrain followed by bounded, extensible sections. */
 public final class ChunkSectionCodec {
     private ChunkSectionCodec() {}
     @FunctionalInterface private interface Writer { void write(DataOutputStream out) throws IOException; }
@@ -21,6 +21,8 @@ public final class ChunkSectionCodec {
         RunLengthCodec.write(out, snapshot.blocks);
         RunLengthCodec.write(out, snapshot.meta);
         Map<String, byte[]> sections = new LinkedHashMap<>(snapshot.extra);
+        byte[] trample = sections.get(com.mineclone.sim.ecology.Trample.SECTION);
+        if (trample != null) com.mineclone.sim.ecology.Trample.decode(trample);
         sections.put("chests", bytes(data -> {
             data.writeInt(count(snapshot.chests.size()));
             for (var entry : snapshot.chests.entrySet()) {
@@ -57,8 +59,19 @@ public final class ChunkSectionCodec {
         sections.put("item_lifetimes",bytes(data->{data.writeByte(1);data.writeInt(snapshot.items.size());for(var item:snapshot.items){if(!Float.isFinite(item.lifetime)||item.lifetime<=0||item.lifetime>600)throw new IOException("invalid item lifetime");data.writeFloat(item.lifetime);}}));
         if (snapshot.ticks.length > 0)
             sections.put(TICKS, bytes(data -> writeTicks(data, snapshot)));
+        if (!snapshot.mobs.isEmpty() || sections.containsKey(com.mineclone.sim.EntityPersistence.SPAWN_RECEIPT))
+            sections.put(ENTITIES, SavedMobCodec.encode(snapshot.mobs));
         SectionCodec.write(out, sections);
     }
+
+    /**
+     * Persistent mobs (MOB-01/04), unified by {@link SavedMobCodec}: both historical
+     * layouts are read, the versioned writer preserves age, breeding clocks and opaque
+     * record tails. An explicit empty spawn receipt prevents generation from respawning
+     * a herd after every animal has died.
+     */
+    static final String ENTITIES = "entities";
+    public static final int MAX_MOB_RECORDS = 256;
 
     /**
      * Scheduled ticks (BLK-04): {@code VarLong writtenAt, VarInt count}, then
@@ -113,6 +126,8 @@ public final class ChunkSectionCodec {
         RunLengthCodec.read(in, blocks);
         RunLengthCodec.read(in, meta);
         Map<String, byte[]> sections = SectionCodec.read(in);
+        byte[] trample = sections.get(com.mineclone.sim.ecology.Trample.SECTION);
+        if (trample != null) com.mineclone.sim.ecology.Trample.decode(trample);
         Map<Integer, ItemStack[]> chests = new LinkedHashMap<>();
         try (DataInputStream data = section(sections, "chests")) {
             int count = count(data.readInt());
@@ -155,8 +170,11 @@ public final class ChunkSectionCodec {
         byte[] lifetimes=sections.remove("item_lifetimes");if(lifetimes!=null)try(var data=new DataInputStream(new java.io.ByteArrayInputStream(lifetimes))){if(data.readUnsignedByte()!=1||data.readInt()!=items.size())throw new IOException("item lifetime schema/count");for(int i=0;i<items.size();i++){float lifetime=finite(data.readFloat());if(lifetime<=0||lifetime>600)throw new IOException("item lifetime bounds");var item=items.get(i);items.set(i,new DroppedItem(item.stack,item.x,item.y,item.z,item.age,lifetime));}end(data);}
         long[] ticksAt = { 0 };
         long[] ticks = readTicks(sections.remove(TICKS), ticksAt);
-        if(sections.containsKey(com.mineclone.sim.EntityPersistence.SECTION))try{com.mineclone.sim.EntityPersistence.decode(sections.get(com.mineclone.sim.EntityPersistence.SECTION));}catch(IllegalArgumentException invalid){throw new IOException("damaged entity section",invalid);}
-        return new ChunkSnapshot(cx, cz, blocks, meta, chests, furnaces, items, sections, ticksAt[0], ticks);
+        byte[] savedEntities = sections.remove(ENTITIES);
+        List<SavedMob> mobs = SavedMobCodec.decode(savedEntities);
+        if (savedEntities != null)
+            sections.put(com.mineclone.sim.EntityPersistence.SPAWN_RECEIPT, new byte[] { 1 });
+        return new ChunkSnapshot(cx, cz, blocks, meta, chests, furnaces, items, sections, ticksAt[0], ticks, mobs);
     }
 
     private static byte[] bytes(Writer writer) throws IOException {

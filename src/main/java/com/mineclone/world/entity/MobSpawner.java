@@ -13,8 +13,8 @@ import java.util.Random;
 /**
  * Спавн и деспавн мобов вокруг игрока.
  *
- * Мобы не сохраняются в сейв: после перезахода мир заселяется заново, поэтому
- * спавнеру не нужна персистентность — только капы и правила размещения.
+ * Животные сохраняются с чанком; в обычном режиме стада закладываются при
+ * генерации и пополняются редко. Экология материализует своих животных отдельно.
  */
 public class MobSpawner {
     /** Как часто Game зовёт trySpawn, секунды. */
@@ -97,7 +97,8 @@ public class MobSpawner {
         Iterator<Mob> it = mobs.iterator();
         while (it.hasNext()) {
             Mob m = it.next();
-            if (!m.persistent && nearestSq(m, centres) > maxSq)
+            // Animals stay where they were (MOB-01): they leave with their chunk.
+            if (!m.persistent() && nearestSq(m, centres) > maxSq)
                 it.remove();
         }
     }
@@ -160,6 +161,33 @@ public class MobSpawner {
                 for (int i = 0; i < ATTEMPTS; i++)
                     if (tryOne(world, mobs, centre, true, daylight))
                         break;
+        }
+    }
+
+    /**
+     * Living-world mode supplies finite animals through the materializer; undead
+     * keep the existing light, depth and participant caps without animal rolls.
+     * The legacy mixed path above keeps its random sequence unchanged.
+     */
+    public void trySpawnHostiles(World world, List<Mob> mobs, List<? extends Vector3fc> centres,
+                                 float daylight) {
+        if (world.rules.difficulty() == com.mineclone.world.Difficulty.PEACEFUL) return;
+        eliteMultiplier = world.rules.difficulty().eliteChance;
+        int scale = Math.max(1, Math.min(MAX_CAP_SCALE, centres.size()));
+        for (int n = 0; n < centres.size(); n++) {
+            Vector3fc centre = centres.get(n);
+            int total = 0, local = 0;
+            for (Mob mob : mobs) {
+                if (!mob.type.hostile) continue;
+                total++;
+                if (mob.position.distanceSquared(centre.x(), centre.y(), centre.z())
+                        <= LOCAL_RANGE * LOCAL_RANGE)
+                    local++;
+            }
+            if (local >= HOSTILE_CAP || total >= HOSTILE_CAP * scale) continue;
+            for (int i = 0; i < ATTEMPTS; i++)
+                if (tryOne(world, mobs, centre, true, daylight))
+                    break;
         }
     }
 

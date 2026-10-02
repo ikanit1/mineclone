@@ -28,6 +28,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [MusicTrack](../src/main/java/com/mineclone/audio/MusicTrack.java) | Трек каталога: где лежит, на что откликается и насколько его приглушить. |
 | [RainAmbience](../src/main/java/com/mineclone/audio/RainAmbience.java) | Continuous rain bed, independent of the timers for thunder and other ambient cues. |
 | [RoomAcoustics](../src/main/java/com/mineclone/audio/RoomAcoustics.java) | Во что превращается замеренное пространство: влажность, хвост, глухота. |
+| [SeamlessLoop](../src/main/java/com/mineclone/audio/SeamlessLoop.java) | Склеивает короткие записи в одну петлю без провала громкости на стыках. |
 | [SoundEngine](../src/main/java/com/mineclone/audio/SoundEngine.java) | Minimal OpenAL wrapper: load OGG via stb_vorbis, fire one-shots, GC finished sources. |
 | [SoundOcclusion](../src/main/java/com/mineclone/audio/SoundOcclusion.java) | Насколько геометрия глушит звук по пути от источника к уху. |
 | [Sounds](../src/main/java/com/mineclone/audio/Sounds.java) | Maps BlockType -> material -> list of file paths under assets/sounds. |
@@ -253,6 +254,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [TextureAtlas](../src/main/java/com/mineclone/render/TextureAtlas.java) | Texture atlas assembled purely from PNG sprites on disk. |
 | [ThirdPersonItemRenderer](../src/main/java/com/mineclone/render/ThirdPersonItemRenderer.java) | World-space held items: shared tool silhouettes, real depth, lighting and shadows. |
 | [Thumbnail](../src/main/java/com/mineclone/render/Thumbnail.java) | Превью мира для списка миров: уменьшенный кадр без интерфейса. |
+| [TrailRenderer](../src/main/java/com/mineclone/render/TrailRenderer.java) | One instanced draw of persistent, pixel-edged soil wear above exposed grass. |
 | [TrajectoryRenderer](../src/main/java/com/mineclone/render/TrajectoryRenderer.java) | Пунктирный предпросмотр баллистической дуги заряжаемого броска. |
 | [UiRenderer](../src/main/java/com/mineclone/render/UiRenderer.java) | Пакетный рисовальщик интерфейса в экранных пикселях (начало — левый верх). |
 
@@ -261,7 +263,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | Type | Purpose |
 |---|---|
 | [ChunkLoad](../src/main/java/com/mineclone/save/ChunkLoad.java) | Typed chunk read; inspection never renames or replaces the source file. |
-| [ChunkSectionCodec](../src/main/java/com/mineclone/save/ChunkSectionCodec.java) | Version 7 chunk body: RLE terrain followed by bounded, extensible sections. |
+| [ChunkSectionCodec](../src/main/java/com/mineclone/save/ChunkSectionCodec.java) | Chunk versions 7 and 8: RLE terrain followed by bounded, extensible sections. |
 | [ChunkSnapshot](../src/main/java/com/mineclone/save/ChunkSnapshot.java) | Снимок чанка: блоки, meta, сундуки и печи. |
 | [ItemStackCodec](../src/main/java/com/mineclone/save/ItemStackCodec.java) | Стопка на диске: новый формат и чтение старого. |
 | [LedgerLoad](../src/main/java/com/mineclone/save/LedgerLoad.java) | Typed chunk-ledger read (GEN-02); reading never renames or replaces the file. |
@@ -273,6 +275,8 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [RunLengthCodec](../src/main/java/com/mineclone/save/RunLengthCodec.java) | Bounded byte runs; the enclosing save stream also applies GZIP. |
 | [SaveFormat](../src/main/java/com/mineclone/save/SaveFormat.java) | Single source of truth for the on-disk save format. |
 | [SaveManager](../src/main/java/com/mineclone/save/SaveManager.java) | All save-file I/O. |
+| [SavedMob](../src/main/java/com/mineclone/save/SavedMob.java) | A persistent mob as its chunk's entities section holds it (MOB-01). |
+| [SavedMobCodec](../src/main/java/com/mineclone/save/SavedMobCodec.java) | One bounded entity representation for both historical branches. |
 | [WorldBackups](../src/main/java/com/mineclone/save/WorldBackups.java) | ZIP snapshots and restore-to-copy; callers serialize this with world writes. |
 | [WorldOpenPolicy](../src/main/java/com/mineclone/save/WorldOpenPolicy.java) | Shared, side-effect-free opening policy for the game and dedicated server. |
 | [WorldWarning](../src/main/java/com/mineclone/save/WorldWarning.java) | Delivered from generation workers to the main-thread toast/log consumer. |
@@ -291,7 +295,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | Type | Purpose |
 |---|---|
 | [DeathDrops](../src/main/java/com/mineclone/sim/DeathDrops.java) | One death checkpoint and its inventory/equipment/cursor contents, preserving stack components. |
-| [EntityPersistence](../src/main/java/com/mineclone/sim/EntityPersistence.java) | Bounded chunk entity section. |
+| [EntityPersistence](../src/main/java/com/mineclone/sim/EntityPersistence.java) | Compatibility API for the unified, bounded chunk animal records. |
 | [EntityStore](../src/main/java/com/mineclone/sim/EntityStore.java) | The entities of one world. |
 | [Participant](../src/main/java/com/mineclone/sim/Participant.java) | Someone the world is simulated for: the host's own player or an accepted guest. |
 | [Participants](../src/main/java/com/mineclone/sim/Participants.java) | The live list of participants, kept in ascending id order. |
@@ -299,6 +303,18 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [WorldClock](../src/main/java/com/mineclone/sim/WorldClock.java) | World time and a monotonic 20 Hz simulation clock, independent of rendering. |
 | [WorldEvents](../src/main/java/com/mineclone/sim/WorldEvents.java) | What the simulation tells whoever shows it: sounds, particles, footprints, sound cues. |
 | [WorldSession](../src/main/java/com/mineclone/sim/WorldSession.java) | The simulation of one open world, run by the game's host and the dedicated server alike, so neither keeps its own copy of the rules. |
+
+## com.mineclone.sim.ecology
+
+| Type | Purpose |
+|---|---|
+| [Ecology](../src/main/java/com/mineclone/sim/ecology/Ecology.java) | Host-owned finite populations. |
+| [EcologyCodec](../src/main/java/com/mineclone/sim/ecology/EcologyCodec.java) | Bounded level ecology snapshots preserving unknown species and future lair/scar payloads. |
+| [EcologyModel](../src/main/java/com/mineclone/sim/ecology/EcologyModel.java) | Pure deterministic daily births, predation and simultaneous cardinal-neighbour migration. |
+| [EcologyRegion](../src/main/java/com/mineclone/sim/ecology/EcologyRegion.java) | One 256-block region's population snapshot, including bodies reserved in saved chunks. |
+| [Materializer](../src/main/java/com/mineclone/sim/ecology/Materializer.java) | Places finite regional animals on loaded terrain outside every living participant's view. |
+| [SpeciesTable](../src/main/java/com/mineclone/sim/ecology/SpeciesTable.java) | Strict data-driven capacities, reproduction and food chains for finite wildlife. |
+| [Trample](../src/main/java/com/mineclone/sim/ecology/Trample.java) | Bounded, saved pressure on ground cells; an absent section means untouched land. |
 
 ## com.mineclone.ui
 
@@ -498,6 +514,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | Type | Purpose |
 |---|---|
 | [BlockShape](../src/main/java/com/mineclone/world/shape/BlockShape.java) | What a block is made of, as boxes in its own cell (0..1 on each axis): what a body collides with, and what the aim and the outline see (AC-05). |
+| [BodyCollision](../src/main/java/com/mineclone/world/shape/BodyCollision.java) | Finds a nearby horizontal, collision-free pose for a body clipped by a block edit or crowd. |
 | [BuildingShapes](../src/main/java/com/mineclone/world/shape/BuildingShapes.java) | Slabs, dynamic fence arms and hinged panels; persisted meta stores only placement state. |
 | [MeshKind](../src/main/java/com/mineclone/world/shape/MeshKind.java) | Geometry dispatch shared by block forms and the chunk mesher. |
 | [Shapes](../src/main/java/com/mineclone/world/shape/Shapes.java) | The shape of every block (BLK-02): one registry that collision, the aim, the outline and the mesher read instead of five places that knew stairs apart. |
@@ -516,4 +533,4 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [StructureTypes](../src/main/java/com/mineclone/world/structure/StructureTypes.java) | The structure types of the 1.1 generator (GEN-03). |
 | [StructureWriter](../src/main/java/com/mineclone/world/structure/StructureWriter.java) | Where a structure piece puts its blocks, in world coordinates: the chunk being generated (ChunkWriter) or, in tests, one large buffer. |
 
-Top-level declarations: 380.
+Top-level declarations: 392.

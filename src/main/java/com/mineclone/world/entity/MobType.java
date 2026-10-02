@@ -27,6 +27,14 @@ public enum MobType {
     // Крипер не бьёт — он подходит и взрывается.
     CREEPER(0.6f, 1.7f, 18f, 0.8f, 1.15f, true, false, -55f, "creeper", 0.35f, 0.62f, 0.31f, Temper.HOSTILE, false, "say", "step");
 
+    /** Вид по имени из сейва; {@code null} — вида нет в этой сборке. */
+    public static MobType byName(String name) {
+        for (MobType t : values())
+            if (t.name().equals(name))
+                return t;
+        return null;
+    }
+
     /** Как вид относится к игроку и другим мобам. */
     public enum Temper {
         /** Скотина: гуляет стадом, бежит только от удара. */

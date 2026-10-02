@@ -154,7 +154,12 @@ final class WorldAroundEveryoneTests {
         WorldSession session = new WorldSession(world, night, new MobSpawner(99L), entities, players, host,
                 WorldEvents.NONE);
         // A mob by the second player is nobody's to despawn: it is near someone.
-        Mob kept = new Mob(MobType.COW, second.at.x + 3f, second.at.y, second.at.z, new Random(1));
+        // This is real sloping terrain: the neighbouring column may be higher
+        // than the player's. Keep the distance fixture above its own ground.
+        float cowX = second.at.x + 3f;
+        Mob kept = new Mob(MobType.COW, cowX, surface(world, cowX, second.at.z), second.at.z, new Random(1));
+        check(!com.mineclone.world.shape.BodyCollision.overlaps(world, kept.position.x, kept.position.y,
+                kept.position.z, kept.type.width, kept.type.height), "distance fixture starts inside terrain");
         entities.mobs.add(kept);
         for (int i = 0; i < 20 * 20; i++)
             session.tickMobs(0.05f);

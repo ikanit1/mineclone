@@ -13,7 +13,8 @@ $settings = [IO.File]::ReadAllText($config).Replace('port=25565', "port=$port").
 [IO.File]::WriteAllText($config, $settings, [Text.UTF8Encoding]::new($false))
 $psi = [Diagnostics.ProcessStartInfo]::new()
 $psi.FileName = 'cmd.exe'
-$psi.Arguments = '/c start-server.bat'
+# Explicit .\ : with NoDefaultCurrentDirectoryInExePath set, cmd does not look in the working directory.
+$psi.Arguments = '/c .\start-server.bat'
 $psi.WorkingDirectory = $serverDir
 $psi.UseShellExecute = $false
 $psi.CreateNoWindow = $true

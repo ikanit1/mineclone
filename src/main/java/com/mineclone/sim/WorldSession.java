@@ -2,7 +2,9 @@ package com.mineclone.sim;
 
 import com.mineclone.item.Items;
 import com.mineclone.item.loot.LootContext;
+import com.mineclone.save.ChunkSectionCodec;
 import com.mineclone.save.ChunkSnapshot;
+import com.mineclone.save.SavedMob;
 import com.mineclone.world.BlockType;
 import com.mineclone.world.Chunk;
 import com.mineclone.world.DroppedItem;
@@ -126,6 +128,7 @@ public final class WorldSession {
 
     private final World world;
     private final WorldClock clock;
+    private final com.mineclone.sim.ecology.Ecology ecology;
     private final MobSpawner spawner;
     private final EntityStore entities;
     private final Participants participants;
@@ -143,11 +146,15 @@ public final class WorldSession {
     private final Vector3f aim = new Vector3f();
     /** This tick's centres of life; rebuilt by {@link #centres()}. */
     private final List<org.joml.Vector3fc> centres = new ArrayList<>();
+    private final java.util.Map<Participant, TrailPosition> playerTrailPositions = new java.util.WeakHashMap<>();
+    private final java.util.Map<Mob, TrailPosition> animalTrailPositions = new java.util.WeakHashMap<>();
     private final java.util.Set<Chunk> adoptedChunks=java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
     private final com.mineclone.world.entity.Breeding breeding=new com.mineclone.world.entity.Breeding();
     private float senseTimer;
     private float spawnTimer;
     private float mergeTimer;
+    private float residencyTimer;
+    private boolean hadLivingResidency;
 
     public WorldSession(World world, WorldClock clock, MobSpawner spawner, EntityStore entities,
                         Participants participants, Host host, WorldEvents events) {
@@ -161,14 +168,18 @@ public final class WorldSession {
         breeding.bred=host::bred;
         this.random = new Random(world.seed ^ 0x1735_D40BL);
         this.shots = entities.projectiles::add;
+        this.ecology = new com.mineclone.sim.ecology.Ecology(world, clock, entities, participants);
+        breeding.born = ecology::born;
         // A session means this world is the real one: whatever takes a chest
         // away spills it here, and blocks that lose their support fall.
         world.simulate(this::dropStack, clock.worldTicks());
+        world.setTrampleDay(com.mineclone.sim.ecology.Trample.day(clock.gameTime()));
     }
 
     public World world() { return world; }
 
     public EntityStore entities() { return entities; }
+    public com.mineclone.sim.ecology.Ecology ecology() { return ecology; }
 
     // ----------------------------------------------------------------- mobs
 
@@ -177,7 +188,11 @@ public final class WorldSession {
      * what came of it, collisions, then spawning.
      */
     public void tickMobs(float dt) {
+        ecology.tick();
+        updateAnimalResidency(dt);
         List<Mob> mobs = entities.mobs;
+        // Whoever added a mob (spawner, command, autopilot) left its id to us (MOB-02).
+        entities.assignIds();
         Vector3f focus = host.mobFocus();
         float daylight = clock.daylight();
 
@@ -234,6 +249,7 @@ public final class WorldSession {
             // Once at the moment of death; the corpse topples for a while and
             // only then leaves the list.
             if (m.dead && !m.deathEffectsDone) {
+                ecology.died(m);
                 m.deathEffectsDone = true;
                 MobTactics.leaderFell(mobs, m);
                 dropLoot(m);
@@ -248,6 +264,7 @@ public final class WorldSession {
 
         breeding.tick(world,mobs,participants,dt,clock::nextEntityId);
         separate(mobs, focus);
+        trackFootsteps(mobs);
 
         // Mobs live around everyone: despawned only far from all, spawned
         // around each.
@@ -257,8 +274,49 @@ public final class WorldSession {
         if (host.spawnMobs() && spawnTimer <= 0f) {
             spawnTimer = MobSpawner.TICK_INTERVAL;
             spawner.advance(MobSpawner.TICK_INTERVAL);
-            spawner.trySpawn(world, mobs, around, daylight);
+            if (ecology.enabled()) {
+                ecology.materialize(daylight);
+                spawner.trySpawnHostiles(world, mobs, around, daylight);
+            } else spawner.trySpawn(world, mobs, around, daylight);
         }
+    }
+
+    /** Host-only footsteps: guests see the resulting block changes through the existing channel. */
+    private void trackFootsteps(List<Mob> mobs) {
+        long day = com.mineclone.sim.ecology.Trample.day(clock.gameTime());
+        world.setTrampleDay(day);
+        for (int i = 0; i < participants.size(); i++) {
+            Participant p = participants.get(i);
+            if (!p.alive()) {
+                playerTrailPositions.remove(p);
+                continue;
+            }
+            var position = p.position();
+            TrailPosition previous = playerTrailPositions.get(p);
+            if (previous == null) playerTrailPositions.put(p, new TrailPosition(position));
+            else previous.walk(world, position, day);
+        }
+        for (Mob mob : mobs) {
+            if (mob.dead || !mob.persistent() || !mob.onGround) continue;
+            TrailPosition previous = animalTrailPositions.get(mob);
+            if (previous == null) animalTrailPositions.put(mob, new TrailPosition(mob.position));
+            else previous.walk(world, mob.position, day);
+        }
+    }
+
+    /** Suppresses teleport tracks and records only newly entered ground cells. */
+    private static final class TrailPosition {
+        private float x, y, z;
+        TrailPosition(org.joml.Vector3fc at) { set(at); }
+        void walk(World world, org.joml.Vector3fc at, long day) {
+            float dx = at.x() - x, dy = at.y() - y, dz = at.z() - z;
+            if (dx * dx + dy * dy + dz * dz <= 9f
+                    && ((int) Math.floor(at.x()) != (int) Math.floor(x)
+                    || (int) Math.floor(at.z()) != (int) Math.floor(z)))
+                com.mineclone.sim.ecology.Trample.step(world, at.x(), at.y(), at.z(), day);
+            set(at);
+        }
+        private void set(org.joml.Vector3fc at) { x = at.x(); y = at.y(); z = at.z(); }
     }
 
     /**
@@ -290,11 +348,11 @@ public final class WorldSession {
                 Mob b = near.get(k);
                 if (b == a || MobSpatialGrid.order(b) <= i)
                     continue;
-                EntityPhysics.separate(a.position, a.type.width, a.type.height, 0.25f,
+                EntityPhysics.separate(world, a.position, a.type.width, a.type.height, 0.25f,
                         b.position, b.type.width, b.type.height, 0.25f);
             }
             if (body)
-                EntityPhysics.separate(focus, Participant.BODY_WIDTH, Participant.BODY_HEIGHT, 0f,
+                EntityPhysics.separate(world, focus, Participant.BODY_WIDTH, Participant.BODY_HEIGHT, 0f,
                         a.position, a.type.width, a.type.height, 0.5f);
         }
     }
@@ -384,22 +442,139 @@ public final class WorldSession {
         addItem(ItemEntity.popped(stack, x, y, z, random));
     }
 
-    /** Items restored with a chunk enter the world once the chunk is live. */
+    /**
+     * The items and mobs standing in these chunks leave the world — after the chunks
+     * were written: animals are in the write (MOB-01), hostile mobs simply go, as
+     * distance would have taken them anyway. One pass for the whole eviction.
+     */
+    public void releaseEntitiesIn(java.util.Set<Long> chunkKeys) {
+        if (chunkKeys.isEmpty())
+            return;
+        entities.items.removeIf(e -> chunkKeys.contains(chunkKey(e.position)));
+        entities.mobs.removeIf(m -> chunkKeys.contains(chunkKey(m.position)));
+    }
+
+    private static long chunkKey(Vector3f p) {
+        return World.key(Math.floorDiv((int) Math.floor(p.x), Chunk.SIZE_X),
+                Math.floorDiv((int) Math.floor(p.z), Chunk.SIZE_Z));
+    }
+
+    /**
+     * Items and mobs restored with a chunk enter the world once the chunk is live. A
+     * mob of a type this build does not know stays with the chunk and is written back;
+     * a mob whose id is already live does not enter twice (MOB-02).
+     */
     public void adoptChunkItems(Chunk chunk) {
-        if(!adoptedChunks.add(chunk))return;
-        var saved=chunk.copyExtraSections().get(EntityPersistence.SECTION);
-        if(saved==null&&!chunk.restoredFromSave&&world.genPolicy().featuresAt(chunk.cx,chunk.cz).livestockAtGen()){
-            var herd=com.mineclone.world.entity.SpawnTable.get().initialHerd(world,chunk);for(var mob:herd){mob.id=clock.nextEntityId();entities.mobs.add(mob);}chunk.modified=true;
-        }
-        if(saved!=null)for(var m:EntityPersistence.decode(saved)){
-            clock.observeEntityId(m.id);
-            if(entities.mobs.stream().noneMatch(live->live.id==m.id))entities.mobs.add(m);
+        if (ecology.enabled()) hadLivingResidency = true;
+        if (adoptedChunks.add(chunk)) {
+            var sections = chunk.copyExtraSections();
+            byte[] saved = sections.remove(EntityPersistence.SECTION);
+            boolean receipt = sections.containsKey(EntityPersistence.SPAWN_RECEIPT);
+            if (saved != null) {
+                // Detached snapshots historically exposed entities in extra. Normal
+                // disk loading already moved them to pending, so merge by identity.
+                List<SavedMob> pending = chunk.copyPendingMobs();
+                var ids = new java.util.HashSet<Long>();
+                for (SavedMob record : pending) ids.add(record.id());
+                for (SavedMob record : EntityPersistence.decodeRecords(saved))
+                    if (ids.add(record.id())) pending.add(record);
+                chunk.setPendingMobs(pending);
+                receipt = true;
+            }
+            boolean initialHerd = saved == null && !receipt && chunk.savedMobs == 0
+                    && chunk.copyPendingMobs().isEmpty() && !chunk.restoredFromSave
+                    && world.genPolicy().featuresAt(chunk.cx, chunk.cz).livestockAtGen();
+            if (initialHerd && !ecology.enabled()) {
+                for (Mob mob : com.mineclone.world.entity.SpawnTable.get().initialHerd(world, chunk)) {
+                    mob.id = clock.nextEntityId();
+                    if (entities.adopt(mob)) ecology.adopted(mob);
+                }
+            }
+            if (saved != null || initialHerd) {
+                sections.put(EntityPersistence.SPAWN_RECEIPT, new byte[] { 1 });
+                chunk.restoreExtraSections(sections);
+                chunk.modified = true;
+            }
         }
         for (DroppedItem d : chunk.takePendingItems())
             entities.items.add(ItemEntity.restored(d, random));
+        List<SavedMob> unknown = null;
+        for (SavedMob saved : chunk.takePendingMobs()) {
+            entities.reserveId(saved.id());
+            ecology.adopted(saved);
+            MobType type = MobType.byName(saved.type());
+            if (type == null || (ecology.enabled() && !nearLivingParticipant(saved.x(), saved.y(), saved.z()))) {
+                if (unknown == null)
+                    unknown = new ArrayList<>();
+                unknown.add(saved);
+                continue;
+            }
+            Mob m = saved.toMob(random);
+            if (entities.adopt(m)) ecology.adopted(m);
+        }
+        if (unknown != null)
+            chunk.returnPendingMobs(unknown);
     }
 
-    public void forgetChunk(Chunk chunk){adoptedChunks.remove(chunk);entities.mobs.removeIf(m->EntityPersistence.belongs(m,chunk));}
+    /** Distant saved animals keep their identity and reservation without using an active mob slot. */
+    private void updateAnimalResidency(float dt) {
+        if (!ecology.enabled()) {
+            if (hadLivingResidency)
+                for (Chunk chunk : world.getLoadedChunks()) adoptChunkItems(chunk);
+            hadLivingResidency = false;
+            residencyTimer = 0;
+            return;
+        }
+        hadLivingResidency = true;
+        residencyTimer -= dt;
+        if (residencyTimer > 0) return;
+        residencyTimer = MobSpawner.TICK_INTERVAL;
+        for (Iterator<Mob> it = entities.mobs.iterator(); it.hasNext(); ) {
+            Mob mob = it.next();
+            if (!mob.persistent() || mob.dead || !(mob.health > 0) || mob.id <= 0
+                    || nearLivingParticipant(mob.position.x, mob.position.y, mob.position.z)) continue;
+            Chunk chunk = world.getChunkIfExists(Math.floorDiv((int) Math.floor(mob.position.x), Chunk.SIZE_X),
+                    Math.floorDiv((int) Math.floor(mob.position.z), Chunk.SIZE_Z));
+            if (chunk == null || chunk.isReadOnly()) continue;
+            List<SavedMob> pending = chunk.copyPendingMobs();
+            if (pending.size() >= ChunkSectionCodec.MAX_MOB_RECORDS
+                    || pending.stream().anyMatch(saved -> saved.id() == mob.id)) continue;
+            pending.add(SavedMob.from(mob));
+            chunk.returnPendingMobs(pending);
+            chunk.modified = true;
+            animalTrailPositions.remove(mob);
+            it.remove();
+        }
+        for (Chunk chunk : world.getLoadedChunks())
+            if (chunkNearLivingParticipant(chunk)) adoptChunkItems(chunk);
+    }
+
+    private boolean nearLivingParticipant(float x, float y, float z) {
+        float rangeSq = MobSpawner.LOCAL_RANGE * MobSpawner.LOCAL_RANGE;
+        for (int i = 0; i < participants.size(); i++) {
+            Participant participant = participants.get(i);
+            if (participant.alive() && participant.position().distanceSquared(x, y, z) <= rangeSq) return true;
+        }
+        return false;
+    }
+
+    private boolean chunkNearLivingParticipant(Chunk chunk) {
+        float minX = chunk.cx * (float) Chunk.SIZE_X, maxX = minX + Chunk.SIZE_X;
+        float minZ = chunk.cz * (float) Chunk.SIZE_Z, maxZ = minZ + Chunk.SIZE_Z;
+        float rangeSq = MobSpawner.LOCAL_RANGE * MobSpawner.LOCAL_RANGE;
+        for (int i = 0; i < participants.size(); i++) {
+            Participant participant = participants.get(i);
+            if (!participant.alive()) continue;
+            var at = participant.position();
+            float dx = at.x() - Math.max(minX, Math.min(maxX, at.x()));
+            float dz = at.z() - Math.max(minZ, Math.min(maxZ, at.z()));
+            if (dx * dx + dz * dz <= rangeSq) return true;
+        }
+        return false;
+    }
+
+    /** Eviction clears adoption state; releaseEntitiesIn removes bodies after every snapshot succeeds. */
+    public void forgetChunk(Chunk chunk) { adoptedChunks.remove(chunk); }
 
     /** What falling blocks broke on landing: a torch under sand drops as an item. */
     public void adoptFallingDrops() {
@@ -458,6 +633,7 @@ public final class WorldSession {
      * @return ticks run
      */
     public int tickScheduled() {
+        world.setTrampleDay(com.mineclone.sim.ecology.Trample.day(clock.gameTime()));
         world.setSimulationDaylight(clock.daylight());
         return world.runScheduledTicks(clock.worldTicks(), TICK_BUDGET, MAX_TICK_LATENESS);
     }
@@ -501,7 +677,8 @@ public final class WorldSession {
         if (c.isReadOnly())
             return null;
         List<DroppedItem> dropped = itemsInChunk(c);
-        if (!c.modified && dropped.isEmpty() && c.savedItems == 0 && entities.mobs.stream().noneMatch(m->m.persistent&&EntityPersistence.belongs(m,c)) && !c.copyExtraSections().containsKey(EntityPersistence.SECTION))
+        List<SavedMob> animals = mobsInChunk(c);
+        if (!c.modified && dropped.isEmpty() && c.savedItems == 0 && animals.isEmpty() && c.savedMobs == 0)
             return null;
         byte[] blocks = c.copyBlocks(), meta = c.copyMeta();
         world.falling.snapshot(c, blocks, meta, dropped);
@@ -513,14 +690,40 @@ public final class WorldSession {
             ticksAt = origin == com.mineclone.world.ScheduledTicks.ADOPTED ? ticksAt : origin;
             ticks = c.scheduledTicks().entries();
         }
-        for(var m:entities.mobs)if(m.id==0)m.id=clock.nextEntityId();
-        var sections=new java.util.LinkedHashMap<>(c.copyExtraSections());sections.put(EntityPersistence.SECTION,EntityPersistence.snapshot(entities.mobs,c));
+        var sections = new java.util.LinkedHashMap<>(c.copyExtraSections());
+        sections.put(EntityPersistence.SECTION, EntityPersistence.encodeRecords(animals));
+        sections.put(EntityPersistence.SPAWN_RECEIPT, new byte[] { 1 });
         ChunkSnapshot snapshot = new ChunkSnapshot(c.cx, c.cz, blocks, meta, c.copyChests(), c.copyFurnaces(),
-                dropped, sections, ticksAt, ticks);
-        c.restoreExtraSections(sections);
+                dropped, sections, ticksAt, ticks, animals);
         c.savedItems = dropped.size();
+        c.savedMobs = animals.size();
         c.modified = false;
         return snapshot;
+    }
+
+    /**
+     * The persistent mobs standing in a chunk — restored ones not yet adopted and
+     * records of unknown types first — as records for a write on another thread. The
+     * section holds at most {@link com.mineclone.save.SavedMobCodec#MAX_RECORDS}.
+     * An over-limit snapshot fails before any record or live body can be discarded.
+     */
+    private List<SavedMob> mobsInChunk(Chunk c) {
+        List<SavedMob> out = c.copyPendingMobs();
+        java.util.Set<Long> recorded = new java.util.HashSet<>();
+        for (SavedMob saved : out) recorded.add(saved.id());
+        entities.assignIds();
+        for (Mob m : entities.mobs) {
+            if (!m.persistent() || m.dead || !(m.health > 0f) || m.id <= 0 || recorded.contains(m.id))
+                continue;
+            if (Math.floorDiv((int) Math.floor(m.position.x), Chunk.SIZE_X) != c.cx
+                    || Math.floorDiv((int) Math.floor(m.position.z), Chunk.SIZE_Z) != c.cz)
+                continue;
+            out.add(SavedMob.from(m));
+            recorded.add(m.id);
+        }
+        if (out.size() > com.mineclone.save.SavedMobCodec.MAX_RECORDS)
+            throw new IllegalStateException("too many persistent mobs in chunk " + c.cx + "," + c.cz);
+        return out;
     }
 
     /** Copies of the items lying in a chunk, for a write on another thread. */

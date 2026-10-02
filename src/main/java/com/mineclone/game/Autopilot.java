@@ -93,6 +93,17 @@ final class Autopilot {
         /** Поставить игрока в точку мира. */
         void teleport(float x, float y, float z);
 
+        /** Skip whole days through the live world clock for a terrain recovery check. */
+        void advanceDays(int days);
+
+        /** Use the actual console command path and inspect its player-visible answer. */
+        void executeCommand(String command);
+
+        String commandToast();
+
+        /** The host's authoritative rule; guests have no Ecology instance. */
+        boolean ecologyEnabled();
+
         /** Повернуть взгляд на точку мира. */
         void lookAt(float x, float y, float z);
 
@@ -106,6 +117,18 @@ final class Autopilot {
 
         void spawnAnimationMobs();
 
+        /** Скот — коровы, свиньи, овцы — в ряд рядом с точкой появления; ни хищников, ни добычи. */
+        void spawnAnimals();
+
+        /** Id живых животных в радиусе от точки по горизонтали, по возрастанию (MOB-01, MOB-02). */
+        long[] animalIdsNear(float x, float z, float radius);
+
+        /** Творческий режим с полётом: дальний телепорт не кончится падением. */
+        void flyInCreative();
+
+        /** Обратно в выживание, на ноги. */
+        void walkInSurvival();
+
         int mobTypeMask();
 
         void equipItem(String id);
@@ -117,6 +140,9 @@ final class Autopilot {
 
         /** Имя блока в мире или пусто, если мира нет. */
         String blockAt(int x, int y, int z);
+
+        /** Visible wear stage stored in the ground metadata. */
+        int blockMetaAt(int x, int y, int z);
 
         /** Поставить блок напрямую — как это сделал бы игрок. */
         void setBlockAt(int x, int y, int z, String block);
@@ -145,7 +171,6 @@ final class Autopilot {
         /** Переключить режим в творческий — окно креатива открывается только в нём. */
         void setCreative();
         void setSurvival();
-        int blockMetaAt(int x,int y,int z);
         void command(String command);
         void setBlockMeta(int x,int y,int z,int meta);
         void wearArmor(String material);
@@ -226,6 +251,8 @@ final class Autopilot {
      * применяет чужую правку.
      */
     private static final String NET_MODE = System.getProperty("mineclone.autopilot.net", "");
+    private static final boolean TRAIL_MODE = Boolean.getBoolean("mineclone.autopilot.trail");
+    private static final boolean ECOLOGY_MODE = Boolean.getBoolean("mineclone.autopilot.ecology");
     private static final int NET_PORT =
             Integer.getInteger("mineclone.autopilot.netPort", com.mineclone.net.LanTransport.DEFAULT_PORT);
     /**
@@ -343,6 +370,27 @@ final class Autopilot {
     /** Высота игрока перед тем, как он пошёл в стену. */
     private static float wallStartY;
 
+    /** Where the herd stands and which ids it had before the long walk (MOB-01, MOB-02). */
+    private static final float HERD_RADIUS = 24f;
+    private static float[] herdAt;
+    private static long[] herdIds;
+
+    private static boolean herdHere(Driver d) {
+        long[] here = d.animalIdsNear(herdAt[0], herdAt[1], HERD_RADIUS);
+        for (long id : herdIds)
+            if (java.util.Arrays.binarySearch(here, id) < 0)
+                return false;
+        return true;
+    }
+
+    private static boolean herdGone(Driver d) {
+        long[] here = d.animalIdsNear(herdAt[0], herdAt[1], HERD_RADIUS);
+        for (long id : herdIds)
+            if (java.util.Arrays.binarySearch(here, id) >= 0)
+                return false;
+        return true;
+    }
+
     /**
      * Площадка со стеной в два блока прямо по курсу.
      *
@@ -388,10 +436,29 @@ final class Autopilot {
         System.out.println("autopilot: ok - " + what);
     }
 
+    private static void enableEcologyIfRequested(Driver driver) {
+        if (!ECOLOGY_MODE) return;
+        driver.executeCommand("/ecology on");
+        if (!driver.ecologyEnabled() || !"Ecology ON".equals(driver.commandToast()))
+            throw new IllegalStateException("The actual owner command did not enable Living World");
+        ok("living world owner enabled ecology");
+    }
+
+    private static void rejectGuestEcologyIfRequested(Driver driver) {
+        if (!ECOLOGY_MODE) return;
+        driver.executeCommand("/ecology on");
+        if (!"Команды выполняет хозяин".equals(driver.commandToast()))
+            throw new IllegalStateException("The actual guest ecology command did not show the owner-only refusal");
+        ok("living world guest command refused");
+    }
+
     private final List<Step> hostSteps = List.of(
             step("create a world for the room", 1.0f, d -> d.act(MenuAction.create(
                     new WorldSettings("Net room", 20260921L, GameMode.CREATIVE)))),
-            when("the world is loaded", 0.5f, d -> in(d, "PLAYING"), d -> ok("world loaded")),
+            when("the world is loaded", 0.5f, d -> in(d, "PLAYING"), d -> {
+                ok("world loaded");
+                enableEcologyIfRequested(d);
+            }),
             step("open the room", 0.3f, d -> {
                 java.util.List<com.mineclone.save.SaveManager.WorldInfo> worlds =
                         d.save().listWorlds(false);
@@ -401,6 +468,11 @@ final class Autopilot {
             }),
             when("the room is open", 0.5f, d -> in(d, "PLAYING") && d.netIsHost(),
                     d -> {
+                        if (ECOLOGY_MODE) {
+                            if (!d.ecologyEnabled())
+                                throw new IllegalStateException("Living World rule was lost while opening the room");
+                            ok("living world rule survived room opening");
+                        }
                         d.equipItem("iron_pickaxe");
                         ok("hosting the room");
                         System.out.println("autopilot: room=" + d.netRoomName());
@@ -431,7 +503,10 @@ final class Autopilot {
             step("join the room", 1.5f,
                     d -> d.act(MenuAction.netJoin(netSettings("127.0.0.1:" + NET_PORT)))),
             when("the host's world is loaded", 0.5f, d -> in(d, "PLAYING"),
-                    d -> { d.equipItem("diamond_axe"); ok("joined the world"); }),
+                    d -> {
+                        d.equipItem("diamond_axe"); ok("joined the world");
+                        rejectGuestEcologyIfRequested(d);
+                    }),
             when("the host is visible", 0.5f, d -> d.netPlayers() >= 1 && !d.netIsHost(),
                     d -> ok("the host is visible")),
             when("all mob species arrived", 0.2f,
@@ -473,7 +548,9 @@ final class Autopilot {
                     d -> d.act(MenuAction.netJoin(netSettings("127.0.0.1:" + NET_PORT)))),
             when("the server's world is loaded", 0.5f, d -> in(d, "PLAYING"),
                     d -> { d.equipItem(NET_SLOT == 0 ? "iron_pickaxe" : "diamond_axe");
-                        ok("joined the server's world"); }),
+                        ok("joined the server's world");
+                        rejectGuestEcologyIfRequested(d);
+                    }),
             when("we are a guest, not a host", 0.3f, d -> !d.netIsHost(),
                     d -> ok("the server owns the world")),
             // Площадку строит гость: у сервера нет рук. Хватает одного слоя
@@ -670,6 +747,32 @@ final class Autopilot {
                             "walking into a wall lifted the player by " + rose + " blocks");
                 ok("a wall stops the player instead of lifting them");
             }),
+            // Животные остаются на месте (MOB-01) и остаются собой (MOB-02): стадо
+            // у точки появления переживает уход за 600 блоков — выгрузку своих
+            // чанков — и возвращение, с теми же id. Путь настоящий: выгрузка игры,
+            // запись, загрузчик и приём ожившего чанка.
+            step("place a herd by the spawn", 0.3f, Driver::spawnAnimals),
+            step("remember the herd", 1.5f, d -> {
+                int[] home = d.spawnBlock();
+                herdAt = new float[] { home[0] + 0.5f, home[2] - 7.5f };   // x, z of the row's middle
+                herdIds = d.animalIdsNear(herdAt[0], herdAt[1], 12f);
+                if (herdIds.length < 4)
+                    throw new IllegalStateException("only " + herdIds.length + " animals stood by the spawn");
+                ok("a herd of " + herdIds.length + " animals by the spawn");
+            }),
+            step("walk 600 blocks away", 0.2f, d -> {
+                d.flyInCreative();
+                d.teleport(herdAt[0] + 600f, d.spawnBlock()[1] + 31f, herdAt[1]);
+            }),
+            when("the herd leaves the world with its chunks", 0.5f, Autopilot::herdGone,
+                    d -> ok("the herd left the world with its chunks")),
+            step("come back", 0.5f, d -> {
+                int[] home = d.spawnBlock();
+                d.teleport(home[0] + 0.5f, home[1] + 1f, home[2] + 0.5f);
+                d.walkInSurvival();
+            }),
+            when("the herd comes back", 0.5f, Autopilot::herdHere,
+                    d -> ok("the herd came back after a 600-block walk with the same " + herdIds.length + " ids")),
             step("Esc", 0.2f, d -> d.pressKey(GLFW_KEY_ESCAPE)),
             expect("Esc opens the pause and it stays open", 0.6f, "PAUSED"),
             step("Esc", 0.1f, d -> d.pressKey(GLFW_KEY_ESCAPE)),
@@ -702,6 +805,8 @@ final class Autopilot {
             when("the same world loads a second time", 8f,
                     d -> in(d, "PLAYING"),
                     d -> System.out.println("autopilot: ok - same world loaded a second time")),
+            when("the herd survived leaving and reopening the world", 0.5f, Autopilot::herdHere,
+                    d -> ok("the herd survived leaving and reopening the world with its ids")),
             step("pause after re-entry", 0.2f, d -> d.pressKey(GLFW_KEY_ESCAPE)),
             expect("pause opens after re-entry", 0.6f, "PAUSED"),
             step("return to menu again", 0.2f,
@@ -783,6 +888,72 @@ final class Autopilot {
             step("Esc closes creative", 0.3f, d -> d.pressKey(GLFW_KEY_ESCAPE)),
             expect("Esc leaves the creative window", 0.6f, "PLAYING")));
 
+    /** Native movement and rendered before/after frames for the Living World trail. */
+    private List<Step> trailSteps() {
+        List<Step> route = new java.util.ArrayList<>();
+        route.add(step("create a trail test world", 0.2f, d -> d.act(MenuAction.create(
+                new WorldSettings("Trail smoke", 20260930L, GameMode.SURVIVAL)))));
+        route.add(when("trail world loaded", 0.5f, d -> in(d, "PLAYING"), d -> ok("trail world loaded")));
+        route.add(step("prepare a lit grass lane", 0.3f, d -> {
+            for (int dx = -1; dx <= 10; dx++)
+                for (int dz = -1; dz <= 1; dz++) {
+                    int[] at = floorAt(d, dx, dz);
+                    d.setBlockAt(at[0], at[1], at[2], "GRASS");
+                    for (int y = at[1] + 1; y < 128; y++) d.setBlockAt(at[0], y, at[2], "AIR");
+                    if (dx == -1 || dx == 10) {
+                        d.setBlockAt(at[0], at[1] + 1, at[2], "STONE");
+                        d.setBlockAt(at[0], at[1] + 2, at[2], "STONE");
+                    }
+                }
+            int[] start = floorAt(d, 0, 0), end = floorAt(d, 9, 0);
+            d.teleport(start[0] + 0.5f, start[1] + 1.001f, start[2] + 0.5f);
+            d.lookAt(end[0] + 0.5f, end[1] + 2.62f, end[2] + 0.5f);
+            if (!"GRASS".equals(d.blockAt(start[0] + 5, start[1], start[2])))
+                throw new IllegalStateException("grass lane was not placed in the loaded world");
+        }));
+        for (int pass = 0; pass < 10; pass++) {
+            route.add(step("walk trail outward " + pass, 0.1f, d -> d.holdKey(GLFW_KEY_W, true)));
+            route.add(step("turn back on trail " + pass, 2.3f, d -> {
+                d.holdKey(GLFW_KEY_W, false);
+                int[] start = floorAt(d, 0, 0);
+                d.lookAt(start[0] - 2.5f, start[1] + 2.62f, start[2] + 0.5f);
+            }));
+            route.add(step("walk trail home " + pass, 0.1f, d -> d.holdKey(GLFW_KEY_W, true)));
+            route.add(step("turn toward trail " + pass, 2.3f, d -> {
+                d.holdKey(GLFW_KEY_W, false);
+                int[] end = floorAt(d, 9, 0);
+                d.lookAt(end[0] + 2.5f, end[1] + 2.62f, end[2] + 0.5f);
+            }));
+            if (pass == 1) {
+                route.add(step("verify the growing trail", 0.3f, d -> {
+                    int[] at = floorAt(d, 5, 0);
+                    int stage = d.blockMetaAt(at[0], at[1], at[2]);
+                    if (!"GRASS".equals(d.blockAt(at[0], at[1], at[2])) || stage < 1 || stage >= 5)
+                        throw new IllegalStateException("the early trail did not gradually mark grass: " + stage);
+                    ok("native walking began a surface trail without replacing grass");
+                }));
+                route.add(step("capture the growing trail", 0.5f, d -> d.shot("trail-growing")));
+            }
+        }
+        route.add(step("verify the walked trail", 0.3f, d -> {
+            int[] at = floorAt(d, 5, 0);
+            if (!"GRASS".equals(d.blockAt(at[0], at[1], at[2]))
+                    || d.blockMetaAt(at[0], at[1], at[2]) != 5)
+                throw new IllegalStateException("native walking did not deepen the surface trail");
+            ok("native walking formed a full surface trail");
+        }));
+        route.add(step("capture the used trail", 0.5f, d -> d.shot("trail-used")));
+        route.add(step("leave the trail for ten days", 0.5f, d -> d.advanceDays(10)));
+        route.add(when("the abandoned trail regrows", 0.5f, d -> {
+            int[] at = floorAt(d, 5, 0);
+            return "GRASS".equals(d.blockAt(at[0], at[1], at[2]))
+                    && d.blockMetaAt(at[0], at[1], at[2]) == 0;
+        }, d -> ok("the abandoned native trail regrew")));
+        route.add(step("let passing particles clear", 3.0f, d -> {}));
+        route.add(step("capture the regrown trail", 0.5f, d -> d.shot("trail-regrown")));
+        return route;
+    }
+
     private final Driver d;
     private final List<Step> steps;
     private float clock;
@@ -794,7 +965,7 @@ final class Autopilot {
         this.d = driver;
         boolean farm="farm".equals(System.getProperty("mineclone.autopilot.netScenario",""))||NET_MODE.equals("farm");
         String role=NET_MODE.equals("farm")?System.getProperty("mineclone.autopilot.farmRole","host"):NET_MODE;
-        this.steps = switch (role) {
+        this.steps = TRAIL_MODE ? trailSteps() : switch (role) {
             case "host" -> farm?concat(hostSteps,concat(hostFormsSteps,farmHostSteps)):hostSteps;
             case "join" -> farm?concat(guestSteps,concat(guestFormsSteps,farmGuestSteps)):guestSteps;
             case "server" -> farm?concat(serverGuestSteps,NET_SLOT==0?concat(hostFormsSteps,farmServerTillerSteps):concat(guestFormsSteps,farmGuestSteps)):serverGuestSteps;

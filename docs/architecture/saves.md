@@ -1,8 +1,30 @@
 # Save opening and preservation
 
-The current writer uses `level.dat` version 11 and chunks version 7. Level versions
-1–10 and chunk versions 1–6 remain readable. Opening an older world schedules an
-original-byte `*-migration.zip` backup before the first mutation or write.
+The current writer uses `level.dat` version 11 and chunks version 8 with minimum
+chunk reader 8. Level versions 1–10 and chunk versions 1–7 remain readable.
+Opening an older world schedules an original-byte `*-migration.zip` backup
+before the first mutation or write.
+
+## Optional ecology state (LW-02)
+
+The bounded level `ecology` section stores regions, species ResourceIds, daily
+trends, loss counters and reservations of existing animal ids. Limits are 4 MiB,
+4096 regions, 16 species, 65536 reservations, 4 opaque lair records and 16 opaque
+scar records per region. Unknown species and record tails survive rewriting.
+The `livingWorld` flag appends an LWR1/version/boolean footer to `rules`, preserving
+all earlier rule bytes. It starts off until LW-13.
+
+Game and dedicated-server opening restore these sections before adopting chunk
+animals; a reservation advances the world id counter before any new body can
+claim an id. Saving writes ecology before the updated `entity_ids` snapshot.
+Missing ecology initializes lazily. Newer layouts, rules or a combined species
+table beyond the reader's bound disable ecology and preserve raw bytes.
+
+Damaged bytes rebuild only after `preserveSectionEvidence` completes: it queues
+the session backup, writes a unique evidence file and forces it to disk. Failure
+leaves the section opaque and the feature disabled. Evidence files never replace
+the original world. Body reservation accounting is described in
+[simulation.md](simulation.md).
 
 ## Opening a world
 
@@ -163,9 +185,29 @@ and sections the guest's build may not know (`InventoryNetworkTests`).
 missing sections, too-new files, v1 migration with its backup, opaque sections
 over five saves, host/guest byte identity and the recordless M0 level.
 
-Chunk version 7 adds minimum reader 7, keeps RLE blocks/meta, then writes the
-same section envelope with `chests`, `furnaces`, `items`, and opaque extras.
+Chunk version 7 introduced the minimum-reader header and section envelope.
+Version 8 keeps the same RLE blocks/meta and envelope with `chests`, `furnaces`,
+`items`, and opaque extras, but writes minimum reader 8. This gate protects
+the canonical `entities` format from both incompatible version-7 branch codecs:
+older readers return `TooNew` before interpreting the body, never quarantine it
+as corruption, and never overwrite its terrain. Every newly written chunk gets
+this header, including one containing only an empty generation spawn receipt.
+Historical version-7 files still load; future additive envelopes remain readable
+when their minimum reader is at most 8.
 The extras travel through `ChunkSnapshot` and `Chunk` across load/unload cycles.
+
+`trample` (LW-07, optional) stores version 1, the last simulated absolute game
+day, and at most 4096 sorted `(cell index, pressure byte)` entries. It is absent
+for untouched chunks. A damaged section fails the chunk read; its source is
+preserved under the normal quarantine policy. A section version from a newer
+build makes the chunk read-only instead. Pressure decays only on the host's
+simulation thread after publication; the save writer receives a copied byte
+array, and a pressure-only change still marks the chunk for saving. Grass meta
+mirrors only visual stage 0–5, so existing block updates and chunk deltas show
+the same path to guests; the section remains the exact host pressure. Loading
+an older LW-07 chunk with pressure and zeroed grass meta reconstructs its
+visual stage before publication. Older dirt-block paths are preserved and
+regrow under the original rule when their pressure expires.
 
 `ticks` (BLK-04, optional — written only when a block asked for a tick) is
 `VarLong writtenAt, VarInt count`, then per tick `VarInt index, u8 kind,
@@ -178,6 +220,30 @@ bytes. A kind the build does not know is kept and written back. An incompatible
 layout would take a new section name; `ticks` is never reinterpreted. What the
 dues mean after a load — lateness, the two-day cap, a clock behind the save — is
 in [blocks](blocks.md#scheduled-ticks-blk-04).
+
+`entities` (MOB-01/04, optional) uses canonical schema 2:
+`i32 0xD94D4F42, u8 version, VarInt count` (≤ 1024), then per mob
+`VarInt length` (≤ 2048) and that many bytes:
+`UTF type, VarLong id, f32 x, y, z, yaw, health, age, boolean persistent,
+f32 loveCooldown, love`, followed by an opaque record tail. The original
+headerless MOB-01 records (≤ 256, record length ≤ 1024) and the generation
+branch's `u8 version1, i32 count` layout migrate on read. The tail is kept on
+the mob and written back; an unknown type stays with its chunk as a pending
+record, never enters the world and is written back unchanged. Invalid bounds,
+duplicate IDs, non-finite values or trailing section bytes fail the read.
+A future entity schema returns `TooNew` and keeps the source read-only.
+An explicit empty `entities` section records that the generated herd was
+already adopted, so dead or departed animals are not generated again. A chunk
+without the section has no saved mobs. Only persistent mobs are written; a
+chunk that held mobs at its last write is written again, so a herd that walked
+away leaves no copy behind, and every chunk with animals is rewritten at each
+save, as chunks with lying items already were.
+
+The legacy level section `entity_ids` (MOB-02) holds the next mob id as one
+`VarLong`. It is bridged into the shared `clock` schema-2 allocator before
+ecology reservations or saved bodies are adopted. IDs are positive `long`s;
+protocol 12 `S_MOBS` carries them as `VarLong`. Both counters are captured after
+new bodies receive IDs. Details: [simulation](simulation.md#mobs-stay-where-they-were-mob-01-mob-02).
 
 `chunks/ledger.dat` (GEN-02) records which generator made each chunk; its format
 and meaning are in [worldgen.md](worldgen.md#chunk-ledger-gen-02). For saving it
@@ -217,11 +283,19 @@ roadmap tasks.
 
 ## New optional sections (2 October 2026)
 
-`rules` in the level is a strict versioned payload. Absent rules migrate to NORMAL
+`mineclone:rules` in the level is a strict versioned payload. Absent rules migrate to NORMAL
 with inventory retention and commands enabled, preserving legacy behaviour.
-`clock` section version 2 appends the next stable entity ID; version 1 remains
-readable. `entities` version 1 stores persistent mob IDs, type, position, yaw,
-health, age and breeding clocks. Validate a complete batch before publishing.
+`clock` section version 2 appends the last allocated stable entity ID; version 1 remains
+readable. `entity_ids` bridges the earlier next-id counter into that clock before
+adoption/materialization/breeding, so both branches share one long allocator.
+An older build supporting only clock version 1 may refuse world initialization
+even though the outer level remains version 11. The chunk-8 gate protects terrain
+when an older reader encounters it; it does not guarantee that the complete world
+can be opened or played in an older build.
+Canonical `entities` version 2 stores persistent mob IDs, type, position, yaw,
+health, age and breeding clocks in bounded length-delimited records. Both the
+original headerless records and the generation branch's byte-version-1 layout
+migrate on read; unknown record tails stay intact. Validate a complete batch before publishing.
 Future schemas/type names are kept opaque through the existing chunk-section
 protection and backup mechanism.
 

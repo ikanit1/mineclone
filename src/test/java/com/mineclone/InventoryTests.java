@@ -261,6 +261,10 @@ final class InventoryTests {
                 com.mineclone.game.DebugKeys.Action.CYCLE_META, meta.get(0));
         assertTrue("and release stays silent", k.update(false, false, false).isEmpty());
 
+        List<com.mineclone.game.DebugKeys.Action> ecology = k.update(true, false, false, true);
+        assertEq("G selects ecology", com.mineclone.game.DebugKeys.Action.SHOW_ECOLOGY, ecology.get(0));
+        assertTrue("ecology combo release stays silent", k.update(false, false, false, false).isEmpty());
+
         // Следующее одиночное нажатие снова включает отладку.
         k.update(true, false, false);
         assertEq("a plain press still works", 1, k.update(false, false, false).size());

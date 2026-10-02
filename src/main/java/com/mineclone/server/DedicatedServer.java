@@ -168,8 +168,12 @@ public final class DedicatedServer implements NetContext {
         if (lvl != null)
             worldClock = com.mineclone.sim.WorldClock.fromSaved(lvl.timeOfDay,
                     lvl.extraSections.get(com.mineclone.sim.WorldClock.SAVE_SECTION));
+        // Before any chunk loads: mobs restored with their chunks keep their ids (MOB-02).
+        entities.restoreIds(lvl != null ? lvl.extraSections.get(EntityStore.IDS_SECTION) : null);
         session = new WorldSession(world, worldClock, new MobSpawner(seed ^ 0x51E7B0BL), entities,
                 net.participants(), sessionHost, WorldEvents.NONE);
+        session.ecology().restore(lvl == null ? java.util.Map.of() : lvl.extraSections,
+                bytes -> save.preserveSectionEvidence(config.worldId, "ecology", bytes).join());
         loader.setChunkLiveListener(session::adoptChunkItems);
 
         // Площадка появления: она же центр мира, когда участников нет.
@@ -489,9 +493,15 @@ public final class DedicatedServer implements NetContext {
     }
 
     private void saveLevel() {
+        // This also covers bodies created since the last tick while ecology is off.
+        entities.assignIds();
         var sections = new java.util.LinkedHashMap<>(levelExtraSections);
-        sections.put(com.mineclone.sim.WorldClock.SAVE_SECTION, worldClock.encode());
+        if (session != null) session.ecology().writeSections(sections);
+        sections.put(EntityStore.IDS_SECTION, entities.encodeIds());
         sections.put(com.mineclone.world.WorldRules.SAVE_SECTION,world.rules.encode());
+        // Population and id snapshots may reserve newly added bodies. Encode the
+        // shared clock last so its allocator resumes beyond every saved identity.
+        sections.put(com.mineclone.sim.WorldClock.SAVE_SECTION, worldClock.encode());
         // A server has no local owner to recapture. Preserve the checkpoint from
         // the loaded single-player world instead of replacing its inventory,
         // pending cursor stacks and vitals with a fresh empty player.
@@ -520,6 +530,9 @@ public final class DedicatedServer implements NetContext {
         }
         return out;
     }
+
+    /** Owner console facade; the server's guests never execute these commands. */
+    public com.mineclone.sim.ecology.Ecology ecology() { return session.ecology(); }
 
     public Multiplayer net() {
         return net;
@@ -666,6 +679,11 @@ public final class DedicatedServer implements NetContext {
     @Override
     public List<Mob> mobs() {
         return entities.mobs;
+    }
+
+    @Override
+    public void assignMobIds() {
+        entities.assignIds();
     }
 
     @Override

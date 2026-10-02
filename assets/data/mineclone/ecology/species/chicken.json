@@ -1,0 +1,18 @@
+{
+  "id": "mineclone:chicken",
+  "type": "CHICKEN",
+  "capacity": {
+    "plains": 40,
+    "forest": 36,
+    "taiga": 16,
+    "swamp": 24,
+    "savanna": 28
+  },
+  "birthRate": 0.25,
+  "migrationRate": 0.3,
+  "prey": [],
+  "predationRate": 0,
+  "groupMin": 2,
+  "groupMax": 4,
+  "minimum": 2
+}

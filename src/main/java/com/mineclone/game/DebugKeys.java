@@ -17,7 +17,7 @@ import java.util.List;
  */
 public final class DebugKeys {
 
-    public enum Action { TOGGLE_DEBUG, TOGGLE_ADVANCED_TOOLTIPS, CYCLE_META }
+    public enum Action { TOGGLE_DEBUG, TOGGLE_ADVANCED_TOOLTIPS, CYCLE_META, SHOW_ECOLOGY }
 
     private boolean wasDown;
     private boolean comboUsed;
@@ -28,6 +28,10 @@ public final class DebugKeys {
      * @param middlePressed нажата ли средняя кнопка в этом кадре
      */
     public List<Action> update(boolean f3Down, boolean hPressed, boolean middlePressed) {
+        return update(f3Down, hPressed, middlePressed, false);
+    }
+
+    public List<Action> update(boolean f3Down, boolean hPressed, boolean middlePressed, boolean gPressed) {
         List<Action> out = new ArrayList<>(1);
         if (f3Down && !wasDown)
             comboUsed = false;
@@ -38,6 +42,10 @@ public final class DebugKeys {
             }
             if (middlePressed) {
                 out.add(Action.CYCLE_META);
+                comboUsed = true;
+            }
+            if (gPressed) {
+                out.add(Action.SHOW_ECOLOGY);
                 comboUsed = true;
             }
         } else if (wasDown && !comboUsed) {

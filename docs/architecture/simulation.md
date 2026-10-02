@@ -48,6 +48,58 @@ the game speaks it since SURV-01 — see [combat-mobs.md](combat-mobs.md#damage-
 Their consumers: mobs choose targets among participants (SIM-07), and block
 ticks, furnaces, spawning and despawning run around every participant (SIM-05).
 
+## Finite wildlife (LW-01…03; LW-10 diagnostics)
+
+`WorldSession.ecology()` owns the opt-in Living World state for the host and
+dedicated server. Guests mirror ordinary mob snapshots. `Participant.viewDirection`
+reads the local camera or last accepted remote angles; an unknown direction fails
+closed when testing spawn visibility.
+
+`EcologyModel` copies regional snapshots and applies deterministic daily births,
+abstract wolf predation, and simultaneous migration between cardinal neighbours.
+Regions are 256×256 blocks and start lazily at 70% of climate capacity. Loaded
+terrain refreshes their greenery estimate without generating new chunks. Catch-up
+uses at most the final 60 elapsed days and never rewinds a newer regional day.
+
+Population includes live and saved bodies. Reservations by world mob id protect
+those bodies from abstract deaths and migrations. Materialization consumes only
+unreserved animals, on loaded terrain at least 32 blocks from every living player
+and outside their views. A session death releases one reservation and removes one
+animal, with player/predator/fire/other counters. Existing bodies are retained when
+an older world first enables the rule. Actual breeding calls `Ecology.born` after
+assigning the child its shared clock id, adding exactly one animal and reservation.
+Saving and returning a child retain its age and breeding state.
+
+Every two seconds, animals over 128 blocks from every living participant park in
+writable loaded chunk records with their identity, health and opaque tail intact.
+Returning participants adopt them once; disabling the rule wakes parked records.
+Read-only or full chunks keep the body live. With the rule off, the legacy spawn
+path and recorded simulation trajectory remain unchanged.
+
+Owners use `/ecology on|off|info|advance <1–60>`; F3+G selects diagnostics.
+Spider nests, field raids, burn-scar behaviour and the LW-12 performance budget
+remain later work. See [change evidence](../changes/living-populations/validation.md).
+
+## Ground trails (LW-07)
+
+The host's `WorldSession` samples a participant or persistent animal only when it
+enters a new ground cell. A jump over the ground or a teleport longer than three
+blocks does not stamp all intervening cells. After repeated crossings, `Trample`
+deepens a five-stage soil-wear pattern on grass without changing its block type;
+snow layers are physically pressed down. Guests receive the quantized stage in
+ordinary block-metadata updates; the guest's simulation does not create trails. The same session
+runs on the dedicated server. The position bookkeeping is transient; the pressure
+belongs to the chunk and is saved there.
+
+`BlockTicker` asks loaded chunks to fade pressure once per elapsed absolute game
+day, including days while they were unloaded. The rendered stage recedes only
+when it crosses a visual threshold, so most footsteps and day ticks avoid a
+network update and never rebuild the terrain mesh. While pressure remains,
+snowfall cannot cover the path. On expiration, legacy dirt paths get an
+immediate chance at the existing grass-spread rule; snowfall can cover it again.
+The world clock's absolute day includes sleep, while
+setting time backwards never reverses a fade.
+
 ## World session: mobs (SIM-03)
 
 `sim.WorldSession` is the simulation of one open world; the game's host and the
@@ -153,9 +205,41 @@ exposes them. The session ticks both for the host and the server:
   guest's `C_MOB_HIT` (`Mob.hurtBy`) and an arrow's owner
   (`Hittable.participantId`) pass it. A guest reads as creative until it
   announces its mode, so its kills in the first two seconds drop nothing.
-- **Saving** (`snapshotChunk`): blocks, containers and the items lying in the
-  chunk — live ones and restored ones not yet adopted — in one snapshot, or null
-  when nothing changed. The game and the server call the same method.
+- **Saving** (`snapshotChunk`): blocks, containers, the items lying in the
+  chunk and the animals standing in it — live ones and restored ones not yet
+  adopted — in one snapshot, or null when nothing changed. The game and the
+  server call the same method.
+
+## Mobs stay where they were (MOB-01, MOB-02)
+
+A mob whose temper is not `HOSTILE` is persistent (`Mob.persistent()`): it is
+written with the chunk it stands in (chunk section `entities`, see
+[saves](saves.md)), `MobSpawner.despawnFar` never removes it, and it leaves the
+world only with its chunk. The game's `evictDistantChunks` writes the doomed
+chunks and then calls `WorldSession.releaseEntitiesIn`, which drops their items
+and mobs in one pass — animals are in the write, hostiles simply go. A loaded
+chunk keeps its mob records as pending; `adoptChunkItems` — already the door for
+restored items — brings them into the world when the chunk is live. The
+dedicated server never evicts, so its animals stay while their chunks do;
+LW-03 will fold distant animals back into regional counts.
+
+Every mob carries a world id (`Mob.id`): `EntityStore.assignIds` gives one to
+every mob that has none, from a counter saved in the level section
+`entity_ids`. The session calls it at the start of its mob tick and before a
+chunk snapshot, and the host's network context before `S_MOBS`, so no path
+that adds a mob (spawner, command, autopilot, test) needs to know about ids.
+`EntityStore.adopt` lets a saved mob in with its id and moves the counter past
+it; a record whose id is already live — one mob written into two chunks by a
+crash between their writes — stays out. `S_MOBS` carries the world id in its
+existing `VarInt`, so ids stay positive `int`s (the counter wraps and skips
+live ids past `Integer.MAX_VALUE`) and the protocol is unchanged; a guest keeps
+the same mob across the host's unload and reload, and `C_MOB_HIT` names the mob
+by it.
+
+`MobPersistenceTests` (MP-1…MP-9, ID-1…ID-4) and `NetworkTests` (ID-5, ID-6)
+trace the scenarios of `docs/changes/mob-persistence`; the single-player
+autopilot walks 600 blocks away and back and reopens the world, and checks the
+herd by the spawn comes back with the same ids both times.
 
 `ServerSimulationTests` drives the real server tick: an item on the ground
 (which used to throw out of the tick), items saved in a chunk surviving a server

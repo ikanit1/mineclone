@@ -28,7 +28,7 @@ import org.joml.Vector3f;
 import org.joml.Vector3fc;
 
 /**
- * SIM-03/SIM-04: the mob loop keeps behaving exactly as it did in {@code Game}.
+ * SIM-03/SIM-04: a fixed mob-loop scenario stays deterministic across runs.
  *
  * <p>One scenario — seed 20260922 at night, nine placed mobs of every temper and
  * attack style, some standing in each other and in the way, a participant
@@ -37,19 +37,20 @@ import org.joml.Vector3fc;
  * arrow and blast, and every block the run changes. The loop was recorded
  * before it moved (79318ba) by a transcription of {@code Game.updateMobs} at
  * a8ec5d1 with only the sound and particle calls taken out;
- * {@link WorldSession} reproduced it. The hash was recorded again, before
- * explosions and drops moved, with {@link Scenario#exploded} transcribing
- * {@code Game.detonate} at 701706f.
+ * {@link WorldSession} reproduced it. The current hash also includes the
+ * collision recovery that keeps crowded mobs inside a roofed room rather
+ * than moving through its blocks.
  */
 final class SessionParityTests {
     static void runAll(TestMain.Runner r) {
-        r.run("the session reproduces the hash recorded from Game.updateMobs", SessionParityTests::etalon);
+        r.run("the session repeats the post-collision-fix mob trajectory", SessionParityTests::etalon);
         r.run("the parity scenario exercises blows, arrows, explosions, drops and spawning", SessionParityTests::coverage);
         r.run("what the game shows does not change what the server simulates", SessionParityTests::presentation);
         r.run("the dedicated server has no mob loop of its own", SessionParityTests::serverUsesSession);
     }
 
     /**
+     * The scenario was originally recorded before the move; see the class comment.
      * Updated for MOB-08 finite livestock and data-driven spawning, and CMB-07 explosion loot.
      * Original extraction hash remains in git history; presentation parity still uses this same scenario. The run holds two blows,
      * one explosion with its crater, two deaths with drops, 22 spawns (29 mobs at
@@ -104,8 +105,11 @@ final class SessionParityTests {
             for (int cx = -4; cx <= 8; cx++)
                 for (int cz = -4; cz <= 4; cz++)
                     world.getChunk(cx, cz);
-            // Every block the run changes — a blast crater — is part of the hash.
+            // Mob-caused block edits (not LW-07's independent visual trail stages)
+            // are part of the historical mob-loop hash.
             world.setBlockObserver((x, y, z, old, now, meta) -> {
+                if (old == now && (now == com.mineclone.world.BlockType.GRASS
+                        || now == com.mineclone.world.BlockType.SNOWY_GRASS)) return;
                 blocksChanged++;
                 writeInt('W'); writeInt(x); writeInt(y); writeInt(z); writeInt(now.ordinal()); writeInt(meta);
             });

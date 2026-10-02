@@ -42,6 +42,9 @@ public final class TestMain {
         tests.clear();
         suite("creative", "CreativeModeTests", r -> CreativeModeTests.runAll((n, c) -> r.run(n, c::run)));
         suite("audio", "RainAudioTests", r -> RainAudioTests.runAll((n, c) -> r.run(n, c::run)));
+        suite("audio", "SeamlessLoopTests", r -> SeamlessLoopTests.runAll((n, c) -> r.run(n, c::run)));
+        suite("sim", "MobPersistenceTests", r -> MobPersistenceTests.runAll((n, c) -> r.run(n, c::run)));
+        suite("sim", "TrailTests", TrailTests::runAll);
         suite("audio", "RoomAcousticsTests", r -> RoomAcousticsTests.runAll((n, c) -> r.run(n, c::run)));
         suite("weather", "LightningTests", r -> LightningTests.runAll((n, c) -> r.run(n, c::run)));
         suite("weather", "StormTests", r -> StormTests.runAll((n, c) -> r.run(n, c::run)));
@@ -88,6 +91,7 @@ public final class TestMain {
         suite("save", "LevelFormatTests", LevelFormatTests::runAll);
         suite("save", "SaveMigrationTests", SaveMigrationTests::runAll);
         suite("save", "ChunkSectionTests", ChunkSectionTests::runAll);
+        suite("save", "SavedMobCodecTests", SavedMobCodecTests::runAll);
         suite("save", "QueuedChunkSaveTests", QueuedChunkSaveTests::runAll);
         suite("save", "PlayerRecordTests", PlayerRecordTests::runAll);
         suite("chunk", "ChunkPublicationTests", ChunkPublicationTests::runAll);
@@ -97,6 +101,13 @@ public final class TestMain {
         suite("sim", "ServerSimulationTests", ServerSimulationTests::runAll);
         suite("sim", "TargetSelectionTests", TargetSelectionTests::runAll);
         suite("sim", "WorldAroundEveryoneTests", WorldAroundEveryoneTests::runAll);
+        suite("ecology", "EcologyModelTests", EcologyModelTests::runAll);
+        suite("ecology", "EcologyCodecTests", EcologyCodecTests::runAll);
+        suite("ecology", "MaterializerTests", MaterializerTests::runAll);
+        suite("ecology", "LivingPopulationTests", LivingPopulationTests::runAll);
+        suite("ecology", "EcologyTravelTests", EcologyTravelTests::runAll);
+        suite("ecology", "EcologyBreedingTests", EcologyBreedingTests::runAll);
+        suite("ecology", "EcologyPendingMigrationTests", EcologyPendingMigrationTests::runAll);
         suite("render", "GpuTimersRingTests", GpuTimersRingTests::runAll);
         suite("perf", "BenchMetricsTests", BenchMetricsTests::runAll);
         suite("feature", "FeatureTests", r -> FeatureTests.runAll((n, c) -> r.run(n, c::run)));

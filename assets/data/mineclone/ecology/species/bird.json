@@ -1,0 +1,18 @@
+{
+  "id": "mineclone:bird",
+  "type": "BIRD",
+  "capacity": {
+    "plains": 28,
+    "forest": 36,
+    "taiga": 24,
+    "swamp": 28,
+    "savanna": 20
+  },
+  "birthRate": 0.22,
+  "migrationRate": 0.35,
+  "prey": [],
+  "predationRate": 0,
+  "groupMin": 1,
+  "groupMax": 3,
+  "minimum": 2
+}

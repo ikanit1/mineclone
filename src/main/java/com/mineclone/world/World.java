@@ -37,6 +37,10 @@ public class World {
     private NeighbourUpdates neighbours;
     /** Scheduled ticks (BLK-04); null while nobody simulates this world. */
     private TickScheduler scheduled;
+    /** Absolute game day seen by the host simulation; trails fade when chunks are next ticked. */
+    private volatile long trampleDay;
+    public long trampleDay() { return trampleDay; }
+    public void setTrampleDay(long day) { trampleDay = Math.max(0, day); }
     /** Restored chunks that brought scheduled ticks, from the publishing worker to the simulation. */
     final java.util.concurrent.ConcurrentLinkedQueue<Chunk> tickArrivals = new java.util.concurrent.ConcurrentLinkedQueue<>();
 

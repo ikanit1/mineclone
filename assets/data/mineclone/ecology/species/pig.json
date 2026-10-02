@@ -1,0 +1,18 @@
+{
+  "id": "mineclone:pig",
+  "type": "PIG",
+  "capacity": {
+    "plains": 28,
+    "forest": 32,
+    "taiga": 12,
+    "swamp": 24,
+    "savanna": 20
+  },
+  "birthRate": 0.16,
+  "migrationRate": 0.25,
+  "prey": [],
+  "predationRate": 0,
+  "groupMin": 2,
+  "groupMax": 4,
+  "minimum": 2
+}

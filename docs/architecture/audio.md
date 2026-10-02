@@ -1,6 +1,6 @@
 # Sound and acoustic space
 
-Updated: 2026-09-24. Paths in backticks are relative to the repository root.
+Updated: 2026-09-27. Paths in backticks are relative to the repository root.
 
 `audio/SoundEngine.java` owns OpenAL, while acoustic scheduling and gain rules are
 plain Java. Rain, thunder, material sounds, occlusion and EFX room reverb must be
@@ -23,6 +23,27 @@ headless path; it must not prevent deterministic tests.
 (≤ 3 — тишина, ≥ 12 — полностью). Без этого ливень наверху звучал в глубине
 пещеры и перебивал её фон (`knowledge/bugs/rain-heard-in-caves.md`).
 
+**Шум дождя и ветер грозы — сшитые петли, а не одна запись** (`RainAmbience`,
+`StormAmbience`, `SoundEngine.updateLoopAllOf`, `SeamlessLoop`). Каждая запись
+входит из тишины и уходит в тишину. Закольцованная сама по себе, она
+проваливалась на каждом круге: дождь (восемь `rain*.ogg` по ~2 с) — на 30 дБ
+каждые 2 с, ветер (четыре стерео `wind*.ogg` по 7,6–11,4 с, каждая один порыв)
+— в 2–3 с затишья, треть круга тише −6 дБ. Фоновый декодер режет у всех
+записей вход и выход (окна 10 мс не тише медианы на 1 дБ), выравнивает тела по
+громкости и сшивает их равномощными кроссфейдами, включая шов конца с началом;
+каналы сохраняются.
+
+- Дождь: швы по 100 мс, петля 12,4 с, сборка 16 мс. Швы по громкости
+  неотличимы от самого дождя: худший 1,7 дБ против 2,6 дБ естественной
+  неровности записей.
+- Ветер: швы по 0,5 с (короткий шов на медленном гуле слышен сменой тембра),
+  стереопетля 22,1 с, порывы сохранены (до +5,2 дБ над медианой). Швы садятся
+  в ложбины между порывами: там ветер на полсекунды стихает на 5–7 дБ, как
+  естественное затишье, а тише −6 дБ он лишь 4 % времени вместо трети.
+
+Разбор: `knowledge/bugs/rain-loop-pulsed.md`. Отдельные порывы вне грозы
+(`AmbientSound`, событие `WIND`) по-прежнему играют записи ветра разово.
+
 `AcousticProbe` шестью лучами по осям отдаёт **две** величины, `Room(closed,
 size)`, и разделять их обязательно: реверберация зависит от них независимо.
 Замкнутость решает, сколько звука вернётся, размер — как долго он затухает.
@@ -41,7 +62,7 @@ send ровно нулевой. `RoomAcoustics` переводит замер в
 
 ## Checks and tuning
 
-`run-tests.ps1 -Only audio,weather` checks scheduling and mixing rules. `tools/RainAudioSmoke.java` and `tools/StormAudioSmoke.java` exercise playback; use `tools/AnalyzeMusic.java` for PCM/LUFS measurements.
+`run-tests.ps1 -Only audio,weather` checks scheduling and mixing rules; `SeamlessLoopTests` measures loudness around the whole rain and wind loops, wrap included. `tools/RainAudioSmoke.java` and `tools/StormAudioSmoke.java` exercise playback (both also check that OpenAL loops the stitched bed, not one recording, and crosses its end without stopping); use `tools/AnalyzeMusic.java` for PCM/LUFS measurements.
 
 Knobs: [TUNING.md](../TUNING.md). Entry points: [PROJECT_MAP.md](../PROJECT_MAP.md).
 

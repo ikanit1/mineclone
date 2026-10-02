@@ -10,6 +10,8 @@ import org.joml.Vector3f;
 public final class Breeding {
     private record Pair(long first,long second){}
     public java.util.function.IntConsumer bred=actor->{};
+    /** Called once for each real child, after identity and state are set and it joins the world. */
+    public java.util.function.Consumer<Mob> born=child->{};
     private final Map<Pair,Float> closeTime=new HashMap<>();
     public static boolean food(MobType type,ItemStack stack){if(stack==null||stack.count<=0)return false;String id=stack.item.id.path();return switch(type){
         case COW,SHEEP->id.equals("wheat");case PIG->id.equals("carrot")||id.equals("potato");case CHICKEN->id.equals("wheat_seeds");default->false;};}
@@ -30,5 +32,6 @@ public final class Breeding {
             float seconds=best<4?closeTime.getOrDefault(pair,0f)+dt:0;closeTime.put(pair,seconds);
             if(seconds>=3){var child=new Mob(m.type,(m.position.x+partner.position.x)/2,m.position.y,(m.position.z+partner.position.z)/2,new Random(m.id^partner.id));child.id=ids.getAsLong();bred.accept(m.breedingOwner);if(partner.breedingOwner!=m.breedingOwner)bred.accept(partner.breedingOwner);child.age=-1200;child.persistent=true;births.add(child);m.love=partner.love=0;m.loveCooldown=partner.loveCooldown=300;closeTime.remove(pair);}
         }closeTime.keySet().retainAll(active);mobs.addAll(births);
+        for (Mob child : births) born.accept(child);
     }
 }

@@ -180,12 +180,25 @@ and `Hittable` (what an arrow can hit) extends it.
 разных сторон (`flankSide`), так что стая берёт в кольцо, а не встаёт в
 колонну.
 
+`WorldSession.separate` checks each crowd displacement against terrain shapes.
+If a wall blocks the push, that mob keeps its previous pose. On the next
+physics step `BodyCollision` can resolve a small existing overlap horizontally;
+`EntityPhysics` never treats a pre-existing side overlap as a vertical contact.
+This prevents a packed room from ejecting a mob through its roof.
+
 **Замер маршрутов:** `java -cp "out;libs/*" tools\BenchPathfinder.java` — A* по
 настоящей сгенерированной местности. На машине разработки: среднее 0.20 мс,
 худший случай 1.9 мс, стая из восьми — 2.6 мс/с. ADR:
 `knowledge/decisions/mob-navigation.md`.
 
 ## Checks and tuning
+
+With Living World enabled, regional totals include each live or saved animal.
+The existing session death-effects guard accounts for a loss once and records its
+cause. Wolves can consume abstract rabbits/chickens between visits; protected
+physical bodies still die through actual combat. See
+[simulation](simulation.md) for spawning
+and distant herd residency.
 
 `run-tests.ps1 -Only combat,physics,animation,core,net` covers hit windows, projectile walls, explosions, mob behavior and remote state. Relevant visual reviews are under `docs/rendering/`.
 

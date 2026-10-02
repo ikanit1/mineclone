@@ -205,6 +205,11 @@ final class GameNetContext implements NetContext {
     }
 
     @Override
+    public void assignMobIds() {
+        g.assignMobIds();
+    }
+
+    @Override
     public List<ItemEntity> groundItems() {
         return g.world == null ? null : g.items;
     }

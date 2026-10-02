@@ -1,0 +1,18 @@
+{
+  "id": "mineclone:cow",
+  "type": "COW",
+  "capacity": {
+    "plains": 36,
+    "forest": 24,
+    "taiga": 16,
+    "swamp": 16,
+    "savanna": 28
+  },
+  "birthRate": 0.14,
+  "migrationRate": 0.25,
+  "prey": [],
+  "predationRate": 0,
+  "groupMin": 2,
+  "groupMax": 4,
+  "minimum": 2
+}

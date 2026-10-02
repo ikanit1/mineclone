@@ -16,6 +16,7 @@ public final class WorldClock {
     private static final int SECTION_BYTES = Integer.BYTES + Double.BYTES + Long.BYTES + Double.BYTES + Long.BYTES;
 
     private long entityCounter;
+    public long entityCounter(){return entityCounter;}
     public long nextEntityId(){if(entityCounter==Long.MAX_VALUE)throw new IllegalStateException("entity ids exhausted");return ++entityCounter;}
     public void observeEntityId(long id){if(id<=0)throw new IllegalArgumentException("invalid entity id");entityCounter=Math.max(entityCounter,id);}
     private double gameTime;

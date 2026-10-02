@@ -60,6 +60,8 @@ Moved from the pre-foundation CLAUDE.md on 2026-09-24; structure placement corre
 | `Structures` | `REGION_CHUNKS / MIN_CHUNK_GAP / candidateKind()` | Один кандидат на регион 10x10 с шансом 3/4, минимум 7 чанков между кандидатами |
 | `BlockTicker` | `TICK_INTERVAL / SAMPLES_PER_CHUNK / RADIUS_CHUNKS` | Темп жизни мира (0.25 с, 3 позиции, 4 чанка) |
 | `BlockTicker` | `GRASS_LIGHT_MIN` | Свет, при котором трава живёт и расползается |
+| `Trample` | `PATH_THRESHOLD / DAILY_FADE / MAX_ENTRIES / visualStage()` | Six crossings reach visible stage 3 without replacing grass; pressure fades by two per game day; at most 4096 tracked cells per chunk |
+| `TrailRenderer` | `RADIUS / MAX_VISIBLE` | Draw persistent surface wear within 28 blocks in one batch, capped at 4096 visible cells |
 | `BlockTicker` | `LEAF_SUPPORT_RANGE` | На каком расстоянии листва держится за ствол |
 | `BlockTicker` | `RAIN_EXTINGUISH / SNOWFALL_MIN` | Пороги осадков для тушения огня и снегопада |
 | `BlockTicker` | `SNOW_MAX_LEVEL` | Предельная толщина покрова (7 = почти полный блок) |
@@ -103,6 +105,8 @@ Moved from the pre-foundation CLAUDE.md on 2026-09-24; structure placement corre
 | Location | Constant | Effect |
 |---|---|---|
 | `AmbientSound` | `WIND_THRESHOLD / WIND_MIN / WIND_MAX` | С какого ветра слышны порывы и как часто |
+| `RainAmbience` / `StormAmbience` | `CROSSFADE_SECONDS` | Длина швов сшитой петли: дождь 0,1 с, ветер 0,5 с |
+| `SeamlessLoop` | `BODY_THRESHOLD_DB` | Где у записи кончается вход из тишины и начинается выход в неё |
 | `RoomAcoustics` | `DECAY_MIN / DECAY_SPAN` | Хвост в закутке и насколько он удлиняется к пещере |
 | `RoomAcoustics` | `SEND_MAX / WET_MIN / WET_SPAN / DAMP_*` | Влажность эха по замкнутости и глушение верха по размеру |
 | `AcousticProbe` | `Room(closed, size)` | Замкнутость ведёт влажность, размер — время затухания |
@@ -216,4 +220,7 @@ Moved from the pre-foundation CLAUDE.md on 2026-09-24; structure placement corre
 | `MenuBackground` | `UPLOADS_HURRY / UPLOADS_CALM / RELEASE_PER_FRAME` | Бюджеты выгрузки мешей и освобождения чанков |
 | `SurvivalProgress` | `SAVE_SECTION` | Своя секция сейва: формат уровня из-за целей не поднимается |
 | `StressFlight` | `-Dmineclone.stress` | Сколько секунд бежать в замере рывков |
+| `ecology/species/*.json` | capacities, birthRate, predationRate, migrationRate, minimum, groupMin/Max | Семь видов; строгие границы параметров. Регион 256×256, начальная численность 70% ёмкости |
+| `Materializer` | MIN_DISTANCE / VIEW_HALF_ANGLE / ATTEMPTS | Не ближе 32 блоков к каждому живому участнику, вне его взгляда, ограниченный поиск только загруженных чанков |
+| `WorldSession` | living residency interval / distance | Раз в 2 секунды сохраняет далёкие тела (>128 блоков) в загруженные чанки; лимиты и закрытые чанки не теряют животных |
 | `Game` | `LOADING_TAIL_ALLOWANCE / loadingRadius()` | Сколько чанков достраивается уже в игре и какой радиус загрузка закрывает |

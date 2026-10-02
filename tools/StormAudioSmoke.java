@@ -34,12 +34,24 @@ public final class StormAudioSmoke {
             int id = source(engine); check(id >= 0, "cold asynchronous load starts wind");
             int buffer = AL10.alGetSourcei(id, AL10.AL_BUFFER);
             check(AL10.alGetSourcei(id, AL10.AL_LOOPING) == AL10.AL_TRUE, "wind uses looping source");
+            // Each recording is one gust from silence to silence; looped alone it fell into a lull every turn.
+            float seconds = AL10.alGetBufferi(buffer, AL10.AL_SIZE) / (float) (AL10.alGetBufferi(buffer, AL10.AL_BITS) / 8
+                    * AL10.alGetBufferi(buffer, AL10.AL_CHANNELS)) / AL10.alGetBufferi(buffer, AL10.AL_FREQUENCY);
+            check(seconds >= 20, "wind loops one " + seconds + " s gust instead of a stitched bed");
+            check(AL10.alGetBufferi(buffer, AL10.AL_CHANNELS) == 2, "stitched wind keeps its stereo width");
+            // Start just before the end so the wrap is crossed within the frames below.
+            AL10.alSourcef(id, org.lwjgl.openal.AL11.AL_SEC_OFFSET, seconds - .3f);
+            float offset = -1; boolean wrapped = false;
             for (int i = 0; i < 60; i++) {
                 wind.update(1f / 60, 1, 1, 4 + (float) Math.sin(i * .1), 15, true, false);
                 engine.tick(); Thread.sleep(10);
                 check(source(engine) == id && AL10.alGetSourcei(id, AL10.AL_BUFFER) == buffer, "gusts do not restart sound");
                 check(AL10.alGetSourcei(id, AL10.AL_SOURCE_STATE) == AL10.AL_PLAYING, "wind remains playing");
+                float current = AL10.alGetSourcef(id, org.lwjgl.openal.AL11.AL_SEC_OFFSET);
+                if (current < offset) wrapped = true;
+                offset = current;
             }
+            check(wrapped, "playback crossed the end of the wind bed without stopping");
             engine.setEffectsVolume(0); check(AL10.alGetSourcef(id, AL10.AL_GAIN) == 0, "effects slider mutes wind");
             engine.setEffectsVolume(1); check(AL10.alGetSourcef(id, AL10.AL_GAIN) > 0, "effects slider restores wind");
             for (int i = 0; i < 180; i++) wind.update(1f / 60, 1, 1, 6, 15, true, true);
@@ -50,7 +62,8 @@ public final class StormAudioSmoke {
             wind.update(.05f, 1, 0, 6, 15, true, false); wind.reset();
             check(source(engine) < 0, "world exit stops storm wind");
             check(AL10.alGetError() == AL10.AL_NO_ERROR, "OpenAL has no errors");
-            System.out.println("PASS: " + samples.size() + " Vorbis wind clips, continuous gusting OpenAL loop, volume slider, underwater/clear/reset");
+            System.out.println("PASS: " + samples.size() + " Vorbis wind clips stitched into a "
+                    + String.format(java.util.Locale.ROOT, "%.1f", seconds) + " s stereo bed, continuous gusting OpenAL loop through the wrap, volume slider, underwater/clear/reset");
         } finally { engine.destroy(); }
     }
     static void check(boolean ok, String message) { if (!ok) throw new AssertionError(message); }

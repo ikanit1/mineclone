@@ -178,6 +178,7 @@ public class Game {
 
     State state = State.MENU;
     private boolean showDebug = false;
+    private boolean debugEcology = false;
     private final DebugKeys debugKeys = new DebugKeys();
 
     com.mineclone.sim.WorldClock worldClock = new com.mineclone.sim.WorldClock();
@@ -198,6 +199,7 @@ public class Game {
     private final FrameProfiler profiler = new FrameProfiler();
 
     DecalRenderer decals;
+    private TrailRenderer trails;
 
     /** Открытый сундук: его слоты и координаты блока. */
     private com.mineclone.world.ItemStack[] openChest;
@@ -492,6 +494,7 @@ public class Game {
     private String commandToast = "";
     private float commandToastTimer = 0f;
     private float commandHelpTimer = 0f;
+    private String[] commandPanel = CommandProcessor.HELP;
     private float loadingTimer = 0f;
     /**
      * Eat mouseDown/mouseClicked until the user releases LMB. Prevents the
@@ -867,10 +870,14 @@ public class Game {
         // worldId у него пустой именно поэтому.
         if (world == null || worldId == null)
             return;
+        // Chunk snapshots must never allocate identities beyond the level checkpoint.
+        entities.assignIds();
         java.util.LinkedHashMap<String, byte[]> savedSections =
                 new java.util.LinkedHashMap<>(levelExtraSections);
+        if (session != null) session.ecology().writeSections(savedSections);
+        savedSections.put(com.mineclone.sim.EntityStore.IDS_SECTION, entities.encodeIds());
         savedSections.put(com.mineclone.sim.WorldClock.SAVE_SECTION, worldClock.encode());
-        savedSections.put(com.mineclone.world.WorldRules.SAVE_SECTION,world.rules.encode());
+        savedSections.put(com.mineclone.world.WorldRules.SAVE_SECTION, world.rules.encode());
         var loaded = loadedLevelTemplate;
         com.mineclone.save.LevelData d = new com.mineclone.save.LevelData(
                 worldDisplayName,
@@ -890,6 +897,12 @@ public class Game {
     }
 
     /** Чанк и лежащие в нём предметы — той же записью, что у выделенного сервера. */
+    /** The host gives new mobs their world ids before it sends them (MOB-02); a guest has none to give. */
+    void assignMobIds() {
+        if (session != null)
+            entities.assignIds();
+    }
+
     private void saveChunkIfModified(Chunk c) {
         if (session == null) return;
         var snapshot = session.snapshotChunk(c);
@@ -930,6 +943,7 @@ public class Game {
         ui.setAtlas(atlas.getTextureId());
         ui.registerFonts(font, smallFont);
         decals = new DecalRenderer();
+        trails = new TrailRenderer();
         precipitation = new PrecipitationRenderer();
         backdrop = new Backdrop();
         menuDissolve = new com.mineclone.render.MenuDissolve();
@@ -1249,6 +1263,8 @@ public class Game {
         setGameMode(gameMode);
 
         mobs.clear();
+        // Before any chunk loads: mobs restored with their chunks keep their ids (MOB-02).
+        entities.restoreIds(levelExtraSections.get(com.mineclone.sim.EntityStore.IDS_SECTION));
         playerStructures.clear();
         ropeRenderer.clear();
         items.clear();
@@ -1261,6 +1277,8 @@ public class Game {
         session = new com.mineclone.sim.WorldSession(world, worldClock,
                 new com.mineclone.world.entity.MobSpawner(world.seed ^ 0x51E7B0BL), entities,
                 net.participants(), sessionHost, entityPresentation);
+        session.ecology().restore(levelExtraSections,
+                bytes -> save.preserveSectionEvidence(worldId, "ecology", bytes).join());
         simulation = new WorldSimulation(world.seed);
         atmosphere.snap();
         storm.reset();
@@ -1438,9 +1456,10 @@ public class Game {
         }
         for (DebugKeys.Action a : debugKeys.update(input.keyDown(GLFW.GLFW_KEY_F3),
                 input.keyPressed(GLFW.GLFW_KEY_H),
-                input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_MIDDLE))) {
+                input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_MIDDLE), input.keyPressed(GLFW.GLFW_KEY_G))) {
             switch (a) {
-                case TOGGLE_DEBUG -> showDebug = !showDebug;
+                case TOGGLE_DEBUG -> { showDebug = !showDebug; debugEcology = false; }
+                case SHOW_ECOLOGY -> { showDebug = true; debugEcology = !debugEcology; }
                 case TOGGLE_ADVANCED_TOOLTIPS -> {
                     advancedTooltips = !advancedTooltips;
                     showCommandToast("Расширенные подсказки: "
@@ -2355,12 +2374,15 @@ public class Game {
             saveChunkIfModified(c);
             if(session!=null)session.forgetChunk(c);
         }
-        // Один проход по предметам на всю выгрузку. Прежний removeIf стоял
-        // внутри цикла по чанкам, то есть список предметов перебирался столько
-        // раз, сколько чанков выгружается за раз.
-        items.removeIf(e -> doomedKeys.contains(World.key(
-                Math.floorDiv((int) Math.floor(e.position.x), Chunk.SIZE_X),
-                Math.floorDiv((int) Math.floor(e.position.z), Chunk.SIZE_Z))));
+        // Один проход по предметам и мобам на всю выгрузку, уже после записи:
+        // животные ушли в неё (MOB-01). Прежний removeIf стоял внутри цикла по
+        // чанкам, то есть список перебирался столько раз, сколько чанков уходит.
+        if (session != null)
+            session.releaseEntitiesIn(doomedKeys);
+        else
+            items.removeIf(e -> doomedKeys.contains(World.key(
+                    Math.floorDiv((int) Math.floor(e.position.x), Chunk.SIZE_X),
+                    Math.floorDiv((int) Math.floor(e.position.z), Chunk.SIZE_Z))));
 
         for (Chunk c : doomed) {
             long key = World.key(c.cx, c.cz);
@@ -3049,7 +3071,7 @@ public class Game {
         @Override public void teleported() { musicSense.reset(); }
         @Override public String musicStatus() { return music.status(musicPlayer.position()); }
         @Override public void nextTrack() { music.requestNext(); }
-        @Override public void toggleDebug() { showDebug = !showDebug; }
+        @Override public void toggleDebug() { showDebug = !showDebug; debugEcology = false; }
         @Override public boolean toggleInstantBreak() {
             instantBreak = !instantBreak;
             interaction.resetBreak();
@@ -3057,6 +3079,9 @@ public class Game {
         }
         @Override public void toast(String message) { showCommandToast(message); }
         @Override public void showHelp() { showCommandHelp(); }
+        @Override public boolean canManageEcology() { return !net.isClient() && session != null; }
+        @Override public com.mineclone.sim.ecology.Ecology ecology() { return session == null ? null : session.ecology(); }
+        @Override public void showEcology(String[] lines) { commandPanel = lines; commandHelpTimer = 12f; }
     });
 
     void setGameMode(com.mineclone.world.GameMode mode) {
@@ -3076,6 +3101,7 @@ public class Game {
     }
 
     private void showCommandHelp() {
+        commandPanel = CommandProcessor.HELP;
         commandHelpTimer = 6.0f;
         showCommandToast("Showing command help");
     }
@@ -3612,6 +3638,8 @@ public class Game {
         if (!projectiles.isEmpty())
             projectileRenderer.render(proj, view, projectiles, world, atlas, lighting, daylight);
 
+        if (trails != null)
+            trails.render(proj, view, world, player.camera.position, atlas, lighting);
         if (decals != null)
             decals.render(proj, view, atlas.getTextureId(), hdr);
 
@@ -4565,6 +4593,9 @@ public class Game {
                 if (!showDebug)
                     hud.drawFps(vw, vh, fpsCurrent, profiler.worstMillis(), gameOpts.fpsDisplay());
                 if (showDebug) {
+                    if (debugEcology && session != null) {
+                        hud.drawEcology(vw, vh, session.ecology().info(player.position.x, player.position.z));
+                    } else {
                     int pcx = (int) Math.floor(player.position.x / Chunk.SIZE_X);
                     int pcz = (int) Math.floor(player.position.z / Chunk.SIZE_Z);
                     Raycaster.Hit lastHit = interaction.hit();
@@ -4580,6 +4611,7 @@ public class Game {
                             world.biomes.biomeAt(bx, bz).name(), mobs.size(),
                             profiler, loader.pendingMeshCount() + loader.pendingGenCount(),
                             music.status(musicPlayer.position()), net.debugLine());
+                    }
                 }
                 if (consoleOpen)
                     hud.drawConsole(vw, vh, consoleLine.toString());
@@ -4851,6 +4883,10 @@ public class Game {
             return showDebug;
         }
 
+        @Override public void executeCommand(String value) { Game.this.executeCommand(value); }
+        @Override public String commandToast() { return Game.this.commandToast; }
+        @Override public boolean ecologyEnabled() { return session != null && session.ecology().enabled(); }
+
         @Override
         public boolean advancedTooltips() {
             return advancedTooltips;
@@ -4858,7 +4894,6 @@ public class Game {
 
         @Override
         public void setSurvival(){Game.this.setGameMode(GameMode.SURVIVAL);}
-        public int blockMetaAt(int x,int y,int z){return world==null?0:world.getBlockMeta(x,y,z)&255;}
         public void command(String command){commands.execute(command);}
         public void setBlockMeta(int x,int y,int z,int meta){world.setBlock(x,y,z,world.getBlock(x,y,z),(byte)meta);}
         public void lookAtOtherPlayer(){for(var p:net.players())if(p.placed()){var at=p.acceptedPosition();lookAt(at.x(),at.y()+1.4f,at.z());return;}}
@@ -4925,6 +4960,11 @@ public class Game {
         }
 
         @Override
+        public void advanceDays(int days) {
+            worldClock.addHours(days * 24.0);
+        }
+
+        @Override
         public void lookAt(float x, float y, float z) {
             float dx = x - player.camera.position.x;
             float dy = y - player.camera.position.y;
@@ -4968,6 +5008,45 @@ public class Game {
         }
 
         @Override
+        public void spawnAnimals() {
+            com.mineclone.world.entity.MobType[] herd = {
+                    com.mineclone.world.entity.MobType.COW, com.mineclone.world.entity.MobType.PIG,
+                    com.mineclone.world.entity.MobType.SHEEP };
+            for (int i = 0; i < 6; i++) {
+                float x = worldSpawn.x + (i - 2.5f) * 3f;
+                float z = worldSpawn.z - 8;
+                int y = Chunk.SIZE_Y - 2;
+                while (y > 1 && !world.getBlock((int) Math.floor(x), y - 1, (int) Math.floor(z)).solid) y--;
+                mobs.add(new com.mineclone.world.entity.Mob(herd[i % 3], x, y + 0.05f, z,
+                        new java.util.Random(100 + i)));
+            }
+        }
+
+        @Override
+        public long[] animalIdsNear(float x, float z, float radius) {
+            float r2 = radius * radius;
+            return mobs.stream()
+                    .filter(m -> m.persistent() && !m.dead && m.id > 0)
+                    .filter(m -> {
+                        float dx = m.position.x - x, dz = m.position.z - z;
+                        return dx * dx + dz * dz <= r2;
+                    })
+                    .mapToLong(m -> m.id).sorted().toArray();
+        }
+
+        @Override
+        public void flyInCreative() {
+            gameMode = com.mineclone.world.GameMode.CREATIVE;
+            player.flying = true;
+        }
+
+        @Override
+        public void walkInSurvival() {
+            gameMode = com.mineclone.world.GameMode.SURVIVAL;
+            player.flying = false;
+        }
+
+        @Override
         public void equipItem(String id) {
             inventory.set(selectedSlot, com.mineclone.world.ItemStack.of(id));
         }
@@ -5000,6 +5079,11 @@ public class Game {
         @Override
         public String blockAt(int x, int y, int z) {
             return world == null ? "" : world.getBlock(x, y, z).name();
+        }
+
+        @Override
+        public int blockMetaAt(int x, int y, int z) {
+            return world == null ? 0 : Byte.toUnsignedInt(world.getBlockMeta(x, y, z));
         }
 
         @Override
@@ -5409,7 +5493,7 @@ public class Game {
     }
 
     private void drawCommandHelp(int w, int h) {
-        String[] lines = CommandProcessor.HELP;
+        String[] lines = commandPanel;
         float lineH = font.getPixelHeight() + 5f;
         float panelW = 0f;
         for (String line : lines)
@@ -5496,6 +5580,8 @@ public class Game {
                 smallFont.destroy();
             if (decals != null)
                 decals.destroy();
+            if (trails != null)
+                trails.destroy();
             if (precipitation != null)
                 precipitation.destroy();
             if (backdrop != null)

@@ -26,6 +26,9 @@ Core categories include `core`, `save`, `chunk`, `worldgen`, `optimization`, `au
 `weather`, `combat`, `physics`, `animation`, `creative`, `menu`, `inventory`, `net`
 and `feature`. M0 also adds `data`, `clock`, `render` and `perf`. More categories
 may be registered as the roadmap proceeds.
+`ecology` covers strict species data, deterministic daily dynamics, bounded
+codecs, corruption/future-layout preservation, finite materialization and
+save/travel body ownership. `sim` retains the disabled-rule parity fixture.
 Unknown categories/arguments, missing values and an empty selected set exit 2;
 an assertion/test or report-write failure exits 1. A valid all-passing run exits 0.
 `--only` explicitly overrides `MINECLONE_TEST_ONLY`; `--skip` then removes categories.
@@ -53,6 +56,9 @@ Photon cloud slots. `OptimizationGlSmoke` is a separate main outside the default
 .\run.ps1 -CompileOnly
 .\run-net-test.ps1       # two graphical game processes over real LAN sockets
 .\run-server-test.ps1    # headless server plus real clients
+.\run-net-test.ps1 -LivingWorld    # host enables ecology; guest command is refused
+.\run-server-test.ps1 -LivingWorld # console enables/advances ecology; two real guests
+java -cp 'out;libs/*' tools/PopulationGameSmoke.java # actual Game/F3+G/death/save/reopen
 .\gradlew.bat serverZip
 .\tools\TestServerPackage.ps1
 javac --release 17 -encoding UTF-8 -d out-test -cp 'out-test;libs/*' tools/ContainerBreakSmoke.java
