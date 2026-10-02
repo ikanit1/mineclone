@@ -220,4 +220,7 @@ Moved from the pre-foundation CLAUDE.md on 2026-09-24; structure placement corre
 | `MenuBackground` | `UPLOADS_HURRY / UPLOADS_CALM / RELEASE_PER_FRAME` | Бюджеты выгрузки мешей и освобождения чанков |
 | `SurvivalProgress` | `SAVE_SECTION` | Своя секция сейва: формат уровня из-за целей не поднимается |
 | `StressFlight` | `-Dmineclone.stress` | Сколько секунд бежать в замере рывков |
+| `ecology/species/*.json` | capacities, birthRate, predationRate, migrationRate, minimum, groupMin/Max | Семь видов; строгие границы параметров. Регион 256×256, начальная численность 70% ёмкости |
+| `Materializer` | MIN_DISTANCE / VIEW_DOT / ATTEMPTS_PER_CENTRE | Не ближе 32 блоков к каждому живому участнику, вне его взгляда, ограниченный поиск только загруженных чанков |
+| `WorldSession` | living residency interval / distance | Раз в 2 секунды сохраняет далёкие тела (>128 блоков) в загруженные чанки; лимиты и закрытые чанки не теряют животных |
 | `Game` | `LOADING_TAIL_ALLOWANCE / loadingRadius()` | Сколько чанков достраивается уже в игре и какой радиус загрузка закрывает |

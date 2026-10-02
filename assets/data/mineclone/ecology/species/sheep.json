@@ -1,0 +1,19 @@
+{
+  "id": "mineclone:sheep",
+  "type": "SHEEP",
+  "capacity": {
+    "plains": 36,
+    "forest": 20,
+    "taiga": 24,
+    "tundra": 18,
+    "savanna": 24,
+    "alpine": 14
+  },
+  "birthRate": 0.14,
+  "migrationRate": 0.25,
+  "prey": [],
+  "predationRate": 0,
+  "groupMin": 2,
+  "groupMax": 4,
+  "minimum": 2
+}

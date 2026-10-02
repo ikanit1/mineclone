@@ -3,6 +3,7 @@ package com.mineclone.sim;
 import com.mineclone.world.GameMode;
 import com.mineclone.world.damage.ArmorView;
 import com.mineclone.world.damage.Damageable;
+import org.joml.Vector3f;
 import org.joml.Vector3fc;
 
 /**
@@ -29,6 +30,13 @@ public interface Participant extends Damageable {
 
     /** Eye position; the returned view may be reused by the next call. */
     Vector3fc eye();
+
+    /**
+     * Last accepted camera direction, written into the caller's scratch vector.
+     * A zero vector means this adapter has no view information: placement treats
+     * it conservatively as visible rather than materializing in an unknown view.
+     */
+    default Vector3f viewDirection(Vector3f target) { return target.zero(); }
 
     GameMode mode();
 

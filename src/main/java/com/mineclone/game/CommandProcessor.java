@@ -1,6 +1,7 @@
 package com.mineclone.game;
 
 import com.mineclone.sim.WorldClock;
+import com.mineclone.sim.ecology.Ecology;
 import com.mineclone.world.BlockType;
 import com.mineclone.world.GameMode;
 import com.mineclone.world.Weather;
@@ -31,6 +32,7 @@ final class CommandProcessor {
             "/fill <block> [radius]",
             "/instamine",
             "/music [next] - what plays, or a fitting track now",
+            "/ecology [info|on|off|advance <1-60>] - world owner",
             "/debug",
             "/gamemode <creative|survival> - Switch game mode"
     };
@@ -61,6 +63,12 @@ final class CommandProcessor {
         boolean toggleInstantBreak();
         void toast(String message);
         void showHelp();
+        /** The authoritative world model; a guest has none. */
+        default Ecology ecology() { return null; }
+        /** Evaluated before any model lookup, including read-only diagnostics. */
+        default boolean canManageEcology() { return false; }
+        /** A readable multi-line report rather than a sequence of replaced toasts. */
+        default void showEcology(String[] lines) { toast(String.join(" | ", lines)); }
     }
 
     private final CommandTarget target;
@@ -84,6 +92,7 @@ final class CommandProcessor {
             switch (parts[0]) {
                 case "/time" -> executeTimeCommand(parts);
                 case "/weather" -> executeWeatherCommand(parts);
+                case "/ecology" -> executeEcologyCommand(parts);
                 case "/help", "/commands" -> target.showHelp();
                 case "/speed" -> {
                     if (parts.length >= 2) {
@@ -159,6 +168,54 @@ final class CommandProcessor {
             }
         } catch (NumberFormatException e) {
             target.toast("Invalid number");
+        }
+    }
+
+    private void executeEcologyCommand(String[] parts) {
+        if (!target.canManageEcology()) {
+            target.toast("Ecology commands are available to the world owner only");
+            return;
+        }
+        String usage = "Usage: /ecology [info|on|off|advance <1-60>]";
+        String operation = parts.length > 1 ? parts[1].toLowerCase(Locale.ROOT) : "info";
+        int days = 0;
+        if (operation.equals("advance")) {
+            try {
+                if (parts.length != 3) throw new NumberFormatException();
+                days = Integer.parseInt(parts[2]);
+                if (days < 1 || days > 60) throw new NumberFormatException();
+            } catch (NumberFormatException invalid) {
+                target.toast(usage);
+                return;
+            }
+        } else if (parts.length > 2 || !(operation.equals("info") || operation.equals("lair")
+                || operation.equals("on") || operation.equals("off"))) {
+            target.toast(usage);
+            return;
+        }
+        Ecology ecology = target.ecology();
+        if (ecology == null || !ecology.supported()) {
+            target.toast("Ecology is unavailable in this world");
+            return;
+        }
+        switch (operation) {
+            case "info" -> {
+                Vector3f position = target.player().position;
+                target.showEcology(ecology.info(position.x, position.z));
+            }
+            case "lair" -> target.toast("Lairs are not implemented yet (LW-04)");
+            case "on", "off" -> {
+                boolean enabled = operation.equals("on");
+                ecology.setEnabled(enabled);
+                target.saveAll();
+                target.toast(enabled ? "Ecology ON" : "Ecology OFF");
+            }
+            case "advance" -> {
+                ecology.advanceDays(days);
+                target.timeChanged();
+                target.saveAll();
+                target.toast("Ecology advanced " + days + " day(s)");
+            }
         }
     }
 

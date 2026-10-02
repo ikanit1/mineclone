@@ -302,4 +302,10 @@ public final class RemotePlayer implements com.mineclone.world.entity.Hittable {
         return to;
     }
 
+    /** Camera yaw in the latest accepted snapshot, before visual interpolation. */
+    public float acceptedYaw() { return yawTo; }
+
+    /** Camera pitch in the latest accepted snapshot, before visual interpolation. */
+    public float acceptedPitch() { return pitchTo; }
+
 }

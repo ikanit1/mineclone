@@ -112,6 +112,15 @@ they consume `out-test` and write to `out-test/net` and `out-test/server`.
 See [TESTING](TESTING.md) for passing markers, filters and artifact paths, and
 [benchmark methodology](perf/README.md) for suite options and provenance limits.
 
+## Living population verification
+
+`java -cp 'out;libs/*' tools/PopulationGameSmoke.java` drives the actual Game:
+owner commands, finite herds, one real death and loot, ten days, F3+G input,
+save/menu/reopen and identity checks. Screenshots/logs use `out-test/population-game`.
+`run-net-test.ps1 -LivingWorld` enables the host rule and checks guest rejection;
+`run-server-test.ps1 -LivingWorld` enables and advances through the server console.
+Default and Photon paths retain their existing opt-in behaviour.
+
 ## Historical generators
 
 [tools/legacy](../tools/legacy/README.md) preserves the moved root generators:

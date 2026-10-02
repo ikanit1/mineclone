@@ -96,6 +96,14 @@ final class Autopilot {
         /** Skip whole days through the live world clock for a terrain recovery check. */
         void advanceDays(int days);
 
+        /** Use the actual console command path and inspect its player-visible answer. */
+        void executeCommand(String command);
+
+        String commandToast();
+
+        /** The host's authoritative rule; guests have no Ecology instance. */
+        boolean ecologyEnabled();
+
         /** Повернуть взгляд на точку мира. */
         void lookAt(float x, float y, float z);
 
@@ -238,6 +246,7 @@ final class Autopilot {
      */
     private static final String NET_MODE = System.getProperty("mineclone.autopilot.net", "");
     private static final boolean TRAIL_MODE = Boolean.getBoolean("mineclone.autopilot.trail");
+    private static final boolean ECOLOGY_MODE = Boolean.getBoolean("mineclone.autopilot.ecology");
     private static final int NET_PORT =
             Integer.getInteger("mineclone.autopilot.netPort", com.mineclone.net.LanTransport.DEFAULT_PORT);
     /**
@@ -421,10 +430,29 @@ final class Autopilot {
         System.out.println("autopilot: ok - " + what);
     }
 
+    private static void enableEcologyIfRequested(Driver driver) {
+        if (!ECOLOGY_MODE) return;
+        driver.executeCommand("/ecology on");
+        if (!driver.ecologyEnabled() || !"Ecology ON".equals(driver.commandToast()))
+            throw new IllegalStateException("The actual owner command did not enable Living World");
+        ok("living world owner enabled ecology");
+    }
+
+    private static void rejectGuestEcologyIfRequested(Driver driver) {
+        if (!ECOLOGY_MODE) return;
+        driver.executeCommand("/ecology on");
+        if (!"Ecology commands are available to the world owner only".equals(driver.commandToast()))
+            throw new IllegalStateException("The actual guest ecology command did not show the owner-only refusal");
+        ok("living world guest command refused");
+    }
+
     private final List<Step> hostSteps = List.of(
             step("create a world for the room", 1.0f, d -> d.act(MenuAction.create(
                     new WorldSettings("Net room", 20260921L, GameMode.CREATIVE)))),
-            when("the world is loaded", 0.5f, d -> in(d, "PLAYING"), d -> ok("world loaded")),
+            when("the world is loaded", 0.5f, d -> in(d, "PLAYING"), d -> {
+                ok("world loaded");
+                enableEcologyIfRequested(d);
+            }),
             step("open the room", 0.3f, d -> {
                 java.util.List<com.mineclone.save.SaveManager.WorldInfo> worlds =
                         d.save().listWorlds(false);
@@ -434,6 +462,11 @@ final class Autopilot {
             }),
             when("the room is open", 0.5f, d -> in(d, "PLAYING") && d.netIsHost(),
                     d -> {
+                        if (ECOLOGY_MODE) {
+                            if (!d.ecologyEnabled())
+                                throw new IllegalStateException("Living World rule was lost while opening the room");
+                            ok("living world rule survived room opening");
+                        }
                         d.equipItem("iron_pickaxe");
                         ok("hosting the room");
                         System.out.println("autopilot: room=" + d.netRoomName());
@@ -464,7 +497,10 @@ final class Autopilot {
             step("join the room", 1.5f,
                     d -> d.act(MenuAction.netJoin(netSettings("127.0.0.1:" + NET_PORT)))),
             when("the host's world is loaded", 0.5f, d -> in(d, "PLAYING"),
-                    d -> { d.equipItem("diamond_axe"); ok("joined the world"); }),
+                    d -> {
+                        d.equipItem("diamond_axe"); ok("joined the world");
+                        rejectGuestEcologyIfRequested(d);
+                    }),
             when("the host is visible", 0.5f, d -> d.netPlayers() >= 1 && !d.netIsHost(),
                     d -> ok("the host is visible")),
             when("all mob species arrived", 0.2f,
@@ -506,7 +542,9 @@ final class Autopilot {
                     d -> d.act(MenuAction.netJoin(netSettings("127.0.0.1:" + NET_PORT)))),
             when("the server's world is loaded", 0.5f, d -> in(d, "PLAYING"),
                     d -> { d.equipItem(NET_SLOT == 0 ? "iron_pickaxe" : "diamond_axe");
-                        ok("joined the server's world"); }),
+                        ok("joined the server's world");
+                        rejectGuestEcologyIfRequested(d);
+                    }),
             when("we are a guest, not a host", 0.3f, d -> !d.netIsHost(),
                     d -> ok("the server owns the world")),
             // Площадку строит гость: у сервера нет рук. Хватает одного слоя

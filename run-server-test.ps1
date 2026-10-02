@@ -7,7 +7,10 @@
 # through the server.
 #
 # Usage: .\run-server-test.ps1
+#        .\run-server-test.ps1 -LivingWorld
 # Exits non-zero if the server or either client failed.
+
+param([switch]$LivingWorld)
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -83,9 +86,10 @@ function Start-Guest {
         "-Dmineclone.savesDir=$dir\saves",
         '-Dmineclone.autopilot.net=server',
         "-Dmineclone.autopilot.netPort=$port",
-        "-Dmineclone.autopilot.netSlot=$slot",
-        '-cp', $cp, 'com.mineclone.Main'
+        "-Dmineclone.autopilot.netSlot=$slot"
     )
+    if ($LivingWorld) { $a += '-Dmineclone.autopilot.ecology=true' }
+    $a += @('-cp', $cp, 'com.mineclone.Main')
     $proc = Start-Process -FilePath 'java' -ArgumentList $a -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput "$dir\out.log" -RedirectStandardError "$dir\err.log"
     # Touching Handle caches it; without that, Windows PowerShell hands back an
@@ -96,6 +100,11 @@ function Start-Guest {
 
 # The server has to generate its spawn chunks before it can answer a knock.
 Start-Sleep -Seconds 10
+if ($LivingWorld) {
+    $server.StandardInput.WriteLine('/ecology on')
+    $server.StandardInput.WriteLine('/ecology info')
+    $server.StandardInput.Flush()
+}
 $guests = @((Start-Guest 0), (Start-Guest 1))
 
 foreach ($proc in $guests) {
@@ -114,6 +123,11 @@ Write-Host 'server test: both clients finished'
 Write-Host 'server test: asking the server to stop'
 $stoppedCleanly = $true
 try {
+    if ($LivingWorld) {
+        $server.StandardInput.WriteLine('/ecology advance 10')
+        $server.StandardInput.WriteLine('/ecology info')
+        $server.StandardInput.WriteLine('/save')
+    }
     $server.StandardInput.WriteLine('/stop')
     $server.StandardInput.Flush()
     $server.StandardInput.Close()
@@ -151,6 +165,17 @@ if ($serverOut -notmatch 'stopped') {
     Write-Host 'server test: the server never reported a clean shutdown'
     $code = 1
 }
+if ($LivingWorld) {
+    foreach ($pattern in @('\[server\] ecology on', '\[server\] ecology advanced 10 day\(s\)',
+            '\[server\] Ecology ON \| region .+ \| day 10\b',
+            '\[server\] Species: total / capacity \| bodies \| change over 3 days',
+            '\[server\] saved [1-9][0-9]* chunks')) {
+        if ($serverOut -notmatch $pattern) {
+            Write-Host "server test: missing authoritative ecology proof: $pattern"
+            $code = 1
+        }
+    }
+}
 
 # Redirected files are flushed when the handle closes; give Windows a moment
 # before reading them back.
@@ -168,6 +193,15 @@ foreach ($slot in 0, 1) {
         Write-Host "server test: guest $slot failed ($($guests[$slot].ExitCode))"
         $code = 1
     }
+    if ($LivingWorld) {
+        $guestLog = if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Raw } else { '' }
+        foreach ($marker in @('living world guest command refused', 'all checks passed')) {
+            if ($guestLog -notmatch [regex]::Escape($marker)) {
+                Write-Host "server test: guest $slot lacks ecology proof: $marker"
+                $code = 1
+            }
+        }
+    }
 }
 
 # The world has to be on disk: a server that forgets what was built is worse
@@ -181,5 +215,8 @@ if (-not (Test-Path $chunks) -or ((Get-ChildItem $chunks -File).Count -eq 0)) {
     Write-Host "server test: $((Get-ChildItem $chunks -File).Count) chunks on disk"
 }
 
-if ($code -eq 0) { Write-Host ''; Write-Host 'server test: the server and both clients passed' }
+if ($code -eq 0) {
+    if ($LivingWorld) { Write-Host 'server test: Living World commands, ten-day advance and guest authority passed' }
+    Write-Host ''; Write-Host 'server test: the server and both clients passed'
+}
 exit $code

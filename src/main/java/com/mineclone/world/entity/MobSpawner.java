@@ -160,6 +160,31 @@ public class MobSpawner {
         }
     }
 
+    /**
+     * Living-world mode supplies finite animals through the materializer; undead
+     * keep the existing light, depth and participant caps without animal rolls.
+     * The legacy mixed path above keeps its random sequence unchanged.
+     */
+    public void trySpawnHostiles(World world, List<Mob> mobs, List<? extends Vector3fc> centres,
+                                 float daylight) {
+        int scale = Math.max(1, Math.min(MAX_CAP_SCALE, centres.size()));
+        for (int n = 0; n < centres.size(); n++) {
+            Vector3fc centre = centres.get(n);
+            int total = 0, local = 0;
+            for (Mob mob : mobs) {
+                if (!mob.type.hostile) continue;
+                total++;
+                if (mob.position.distanceSquared(centre.x(), centre.y(), centre.z())
+                        <= LOCAL_RANGE * LOCAL_RANGE)
+                    local++;
+            }
+            if (local >= HOSTILE_CAP || total >= HOSTILE_CAP * scale) continue;
+            for (int i = 0; i < ATTEMPTS; i++)
+                if (tryOne(world, mobs, centre, true, daylight))
+                    break;
+        }
+    }
+
     private boolean tryOne(World world, List<Mob> mobs, Vector3fc playerPos, boolean zombie,
                            float daylight) {
         double angle = rnd.nextDouble() * Math.PI * 2;

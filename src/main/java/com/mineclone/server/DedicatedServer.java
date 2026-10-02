@@ -159,6 +159,8 @@ public final class DedicatedServer implements NetContext {
         entities.restoreIds(lvl != null ? lvl.extraSections.get(EntityStore.IDS_SECTION) : null);
         session = new WorldSession(world, worldClock, new MobSpawner(seed ^ 0x51E7B0BL), entities,
                 net.participants(), sessionHost, WorldEvents.NONE);
+        session.ecology().restore(lvl == null ? java.util.Map.of() : lvl.extraSections,
+                bytes -> save.preserveSectionEvidence(config.worldId, "ecology", bytes).join());
         loader.setChunkLiveListener(session::adoptChunkItems);
 
         // Площадка появления: она же центр мира, когда участников нет.
@@ -477,6 +479,7 @@ public final class DedicatedServer implements NetContext {
     private void saveLevel() {
         var sections = new java.util.LinkedHashMap<>(levelExtraSections);
         sections.put(com.mineclone.sim.WorldClock.SAVE_SECTION, worldClock.encode());
+        if (session != null) session.ecology().writeSections(sections);
         sections.put(EntityStore.IDS_SECTION, entities.encodeIds());
         // A server has no local owner to recapture. Preserve the checkpoint from
         // the loaded single-player world instead of replacing its inventory,
@@ -506,6 +509,9 @@ public final class DedicatedServer implements NetContext {
         }
         return out;
     }
+
+    /** Owner console facade; the server's guests never execute these commands. */
+    public com.mineclone.sim.ecology.Ecology ecology() { return session.ecology(); }
 
     public Multiplayer net() {
         return net;

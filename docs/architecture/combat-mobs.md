@@ -193,6 +193,13 @@ This prevents a packed room from ejecting a mob through its roof.
 
 ## Checks and tuning
 
+With Living World enabled, regional totals include each live or saved animal.
+The existing session death-effects guard accounts for a loss once and records its
+cause. Wolves can consume abstract rabbits/chickens between visits; protected
+physical bodies still die through actual combat. See
+[simulation](simulation.md) for spawning
+and distant herd residency.
+
 `run-tests.ps1 -Only combat,physics,animation,core,net` covers hit windows, projectile walls, explosions, mob behavior and remote state. Relevant visual reviews are under `docs/rendering/`.
 
 Knobs: [TUNING.md](../TUNING.md). Entry points: [PROJECT_MAP.md](../PROJECT_MAP.md).

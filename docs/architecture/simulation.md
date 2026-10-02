@@ -48,6 +48,36 @@ the game speaks it since SURV-01 — see [combat-mobs.md](combat-mobs.md#damage-
 Their consumers: mobs choose targets among participants (SIM-07), and block
 ticks, furnaces, spawning and despawning run around every participant (SIM-05).
 
+## Finite wildlife (LW-01…03; LW-10 diagnostics)
+
+`WorldSession.ecology()` owns the opt-in Living World state for the host and
+dedicated server. Guests mirror ordinary mob snapshots. `Participant.viewDirection`
+reads the local camera or last accepted remote angles; an unknown direction fails
+closed when testing spawn visibility.
+
+`EcologyModel` copies regional snapshots and applies deterministic daily births,
+abstract wolf predation, and simultaneous migration between cardinal neighbours.
+Regions are 256×256 blocks and start lazily at 70% of climate capacity. Loaded
+terrain refreshes their greenery estimate without generating new chunks. Catch-up
+uses at most the final 60 elapsed days and never rewinds a newer regional day.
+
+Population includes live and saved bodies. Reservations by world mob id protect
+those bodies from abstract deaths and migrations. Materialization consumes only
+unreserved animals, on loaded terrain at least 32 blocks from every living player
+and outside their views. A session death releases one reservation and removes one
+animal, with player/predator/fire/other counters. Existing bodies are retained when
+an older world first enables the rule.
+
+Every two seconds, animals over 128 blocks from every living participant park in
+writable loaded chunk records with their identity, health and opaque tail intact.
+Returning participants adopt them once; disabling the rule wakes parked records.
+Read-only or full chunks keep the body live. With the rule off, the legacy spawn
+path and recorded simulation trajectory remain unchanged.
+
+Owners use `/ecology on|off|info|advance <1–60>`; F3+G selects diagnostics.
+Spider nests, field raids, burn-scar behaviour and the LW-12 performance budget
+remain later work. See [change evidence](../changes/living-populations/validation.md).
+
 ## Ground trails (LW-07)
 
 The host's `WorldSession` samples a participant or persistent animal only when it

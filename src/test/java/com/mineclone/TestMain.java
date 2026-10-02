@@ -91,6 +91,11 @@ public final class TestMain {
         suite("sim", "ServerSimulationTests", ServerSimulationTests::runAll);
         suite("sim", "TargetSelectionTests", TargetSelectionTests::runAll);
         suite("sim", "WorldAroundEveryoneTests", WorldAroundEveryoneTests::runAll);
+        suite("ecology", "EcologyModelTests", EcologyModelTests::runAll);
+        suite("ecology", "EcologyCodecTests", EcologyCodecTests::runAll);
+        suite("ecology", "MaterializerTests", MaterializerTests::runAll);
+        suite("ecology", "LivingPopulationTests", LivingPopulationTests::runAll);
+        suite("ecology", "EcologyTravelTests", EcologyTravelTests::runAll);
         suite("render", "GpuTimersRingTests", GpuTimersRingTests::runAll);
         suite("perf", "BenchMetricsTests", BenchMetricsTests::runAll);
         suite("feature", "FeatureTests", r -> FeatureTests.runAll((n, c) -> r.run(n, c::run)));

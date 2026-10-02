@@ -4,6 +4,27 @@ The current writer uses `level.dat` version 11 and chunks version 7. Level versi
 1–10 and chunk versions 1–6 remain readable. Opening an older world schedules an
 original-byte `*-migration.zip` backup before the first mutation or write.
 
+## Optional ecology state (LW-02)
+
+The bounded level `ecology` section stores regions, species ResourceIds, daily
+trends, loss counters and reservations of existing animal ids. Limits are 4 MiB,
+4096 regions, 16 species, 65536 reservations, 4 opaque lair records and 16 opaque
+scar records per region. Unknown species and record tails survive rewriting.
+The `livingWorld` flag appends an LWR1/version/boolean footer to `rules`, preserving
+all earlier rule bytes. It starts off until LW-13.
+
+Game and dedicated-server opening restore these sections before adopting chunk
+animals; a reservation advances the world id counter before any new body can
+claim an id. Saving writes ecology before the updated `entity_ids` snapshot.
+Missing ecology initializes lazily. Newer layouts, rules or a combined species
+table beyond the reader's bound disable ecology and preserve raw bytes.
+
+Damaged bytes rebuild only after `preserveSectionEvidence` completes: it queues
+the session backup, writes a unique evidence file and forces it to disk. Failure
+leaves the section opaque and the feature disabled. Evidence files never replace
+the original world. Body reservation accounting is described in
+[simulation.md](simulation.md).
+
 ## Opening a world
 
 `SaveManager.readLevel(id)` returns a sealed `LevelLoad` result:

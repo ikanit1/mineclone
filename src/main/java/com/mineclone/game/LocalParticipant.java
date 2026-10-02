@@ -34,6 +34,14 @@ public final class LocalParticipant implements Participant {
         return eye.set(player.position.x, player.position.y + Player.EYE_HEIGHT, player.position.z);
     }
 
+    @Override
+    public Vector3f viewDirection(Vector3f target) {
+        float yaw = player.camera.yaw, pitch = player.camera.pitch;
+        float horizontal = (float) Math.cos(pitch);
+        return target.set(horizontal * (float) Math.sin(yaw), -(float) Math.sin(pitch),
+                -horizontal * (float) Math.cos(yaw));
+    }
+
     @Override public GameMode mode() { return player.isCreative() ? GameMode.CREATIVE : GameMode.SURVIVAL; }
     @Override public boolean alive() { return !player.isDead(); }
     @Override public ArmorView armor() { return ArmorView.NONE; }

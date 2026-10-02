@@ -7,12 +7,13 @@
 #
 # Usage: .\run-net-test.ps1            - over a local TCP socket
 #        .\run-net-test.ps1 -Photon    - over Photon Cloud, the real thing
+#        .\run-net-test.ps1 -LivingWorld - enabled ecology and real guest refusal
 #
 # Photon costs two of the free concurrent slots and needs the internet, so it
 # is opt-in; the socket run is the one that gates every change.
 # Exits non-zero if either side failed.
 
-param([switch]$Photon)
+param([switch]$Photon, [switch]$LivingWorld)
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -50,9 +51,10 @@ function Start-Side {
         "-Dmineclone.autopilot.net=$mode",
         "-Dmineclone.autopilot.netPort=$port",
         "-Dmineclone.autopilot.netVia=$via",
-        "-Dmineclone.autopilot.netRoom=$room",
-        '-cp', $cp, 'com.mineclone.Main'
+        "-Dmineclone.autopilot.netRoom=$room"
     )
+    if ($LivingWorld) { $args += '-Dmineclone.autopilot.ecology=true' }
+    $args += @('-cp', $cp, 'com.mineclone.Main')
     $proc = Start-Process -FilePath 'java' -ArgumentList $args -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput "$dir\out.log" -RedirectStandardError "$dir\err.log"
     # Touching Handle caches it; without that, Windows PowerShell hands back an
@@ -110,5 +112,24 @@ foreach ($side in @('host', 'guest')) {
 $code = 0
 if ($host_.ExitCode -ne 0) { Write-Host "net test: host failed ($($host_.ExitCode))"; $code = 1 }
 if ($guest.ExitCode -ne 0) { Write-Host "net test: guest failed ($($guest.ExitCode))"; $code = 1 }
+if ($LivingWorld) {
+    $hostLog = Get-Content -LiteralPath (Join-Path $work 'host\out.log') -Raw
+    $guestLog = Get-Content -LiteralPath (Join-Path $work 'guest\out.log') -Raw
+    foreach ($marker in @('living world owner enabled ecology', 'living world rule survived room opening',
+            'all checks passed')) {
+        if ($hostLog -notmatch [regex]::Escape($marker)) {
+            Write-Host "net test: missing host ecology proof: $marker"
+            $code = 1
+        }
+    }
+    foreach ($marker in @('living world guest command refused', 'all mob species replicated with valid poses',
+            'all checks passed')) {
+        if ($guestLog -notmatch [regex]::Escape($marker)) {
+            Write-Host "net test: missing guest ecology proof: $marker"
+            $code = 1
+        }
+    }
+    if ($code -eq 0) { Write-Host 'net test: Living World owner, guest authority and S_MOBS checks passed' }
+}
 if ($code -eq 0) { Write-Host ""; Write-Host "net test: both sides passed" }
 exit $code

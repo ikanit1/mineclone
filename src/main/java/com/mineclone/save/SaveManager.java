@@ -335,6 +335,24 @@ public final class SaveManager {
 
     private File worldDir(String id) { return new File(savesRoot, id); }
     private File levelFile(String id) { return new File(worldDir(id), SaveFormat.LEVEL_FILE); }
+
+    /** Preserve an optional damaged section after the session backup, before rebuilding it. */
+    public java.util.concurrent.CompletableFuture<Void> preserveSectionEvidence(String id, String section, byte[] bytes) {
+        if (!section.matches("[a-z_]+")) throw new IllegalArgumentException("invalid evidence section name");
+        byte[] detached = bytes.clone();
+        var backup = sessionBackup(id);
+        return backup.thenRunAsync(() -> {
+            try {
+                var dir = worldDir(id).toPath();
+                Files.createDirectories(dir);
+                var target = Files.createTempFile(dir, section + ".corrupt-", ".bin");
+                Files.write(target, detached);
+                try (var channel = java.nio.channels.FileChannel.open(target, java.nio.file.StandardOpenOption.WRITE)) {
+                    channel.force(true);
+                }
+            } catch (IOException failure) { throw new java.util.concurrent.CompletionException(failure); }
+        }, chunkWriter);
+    }
     private File chunksDir(String id) { return new File(worldDir(id), SaveFormat.CHUNKS_DIR); }
     private File chunkFile(String id, int cx, int cz) {
         return new File(chunksDir(id), SaveFormat.chunkFileName(cx, cz));

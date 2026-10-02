@@ -1,0 +1,21 @@
+{
+  "id": "mineclone:wolf",
+  "type": "WOLF",
+  "capacity": {
+    "forest": 5,
+    "taiga": 5,
+    "tundra": 5,
+    "alpine": 3,
+    "swamp": 3
+  },
+  "birthRate": 0.08,
+  "migrationRate": 0.4,
+  "prey": [
+    "mineclone:rabbit",
+    "mineclone:chicken"
+  ],
+  "predationRate": 1.1,
+  "groupMin": 2,
+  "groupMax": 3,
+  "minimum": 1
+}

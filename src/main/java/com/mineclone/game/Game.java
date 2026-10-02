@@ -174,6 +174,7 @@ public class Game {
 
     State state = State.MENU;
     private boolean showDebug = false;
+    private boolean debugEcology = false;
     private final DebugKeys debugKeys = new DebugKeys();
 
     com.mineclone.sim.WorldClock worldClock = new com.mineclone.sim.WorldClock();
@@ -486,6 +487,7 @@ public class Game {
     private String commandToast = "";
     private float commandToastTimer = 0f;
     private float commandHelpTimer = 0f;
+    private String[] commandPanel = CommandProcessor.HELP;
     private float loadingTimer = 0f;
     /**
      * Eat mouseDown/mouseClicked until the user releases LMB. Prevents the
@@ -863,6 +865,7 @@ public class Game {
         java.util.LinkedHashMap<String, byte[]> savedSections =
                 new java.util.LinkedHashMap<>(levelExtraSections);
         savedSections.put(com.mineclone.sim.WorldClock.SAVE_SECTION, worldClock.encode());
+        if (session != null) session.ecology().writeSections(savedSections);
         savedSections.put(com.mineclone.sim.EntityStore.IDS_SECTION, entities.encodeIds());
         var loaded = loadedLevelTemplate;
         com.mineclone.save.LevelData d = new com.mineclone.save.LevelData(
@@ -1258,6 +1261,8 @@ public class Game {
         session = new com.mineclone.sim.WorldSession(world, worldClock,
                 new com.mineclone.world.entity.MobSpawner(world.seed ^ 0x51E7B0BL), entities,
                 net.participants(), sessionHost, entityPresentation);
+        session.ecology().restore(levelExtraSections,
+                bytes -> save.preserveSectionEvidence(worldId, "ecology", bytes).join());
         simulation = new WorldSimulation(world.seed);
         atmosphere.snap();
         storm.reset();
@@ -1432,9 +1437,10 @@ public class Game {
         }
         for (DebugKeys.Action a : debugKeys.update(input.keyDown(GLFW.GLFW_KEY_F3),
                 input.keyPressed(GLFW.GLFW_KEY_H),
-                input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_MIDDLE))) {
+                input.mousePressed(GLFW.GLFW_MOUSE_BUTTON_MIDDLE), input.keyPressed(GLFW.GLFW_KEY_G))) {
             switch (a) {
-                case TOGGLE_DEBUG -> showDebug = !showDebug;
+                case TOGGLE_DEBUG -> { showDebug = !showDebug; debugEcology = false; }
+                case SHOW_ECOLOGY -> { showDebug = true; debugEcology = !debugEcology; }
                 case TOGGLE_ADVANCED_TOOLTIPS -> {
                     advancedTooltips = !advancedTooltips;
                     showCommandToast("Расширенные подсказки: "
@@ -3021,7 +3027,7 @@ public class Game {
         @Override public void teleported() { musicSense.reset(); }
         @Override public String musicStatus() { return music.status(musicPlayer.position()); }
         @Override public void nextTrack() { music.requestNext(); }
-        @Override public void toggleDebug() { showDebug = !showDebug; }
+        @Override public void toggleDebug() { showDebug = !showDebug; debugEcology = false; }
         @Override public boolean toggleInstantBreak() {
             instantBreak = !instantBreak;
             interaction.resetBreak();
@@ -3029,6 +3035,9 @@ public class Game {
         }
         @Override public void toast(String message) { showCommandToast(message); }
         @Override public void showHelp() { showCommandHelp(); }
+        @Override public boolean canManageEcology() { return !net.isClient() && session != null; }
+        @Override public com.mineclone.sim.ecology.Ecology ecology() { return session == null ? null : session.ecology(); }
+        @Override public void showEcology(String[] lines) { commandPanel = lines; commandHelpTimer = 12f; }
     });
 
     private void setGameMode(com.mineclone.world.GameMode mode) {
@@ -3048,6 +3057,7 @@ public class Game {
     }
 
     private void showCommandHelp() {
+        commandPanel = CommandProcessor.HELP;
         commandHelpTimer = 6.0f;
         showCommandToast("Showing command help");
     }
@@ -4542,6 +4552,9 @@ public class Game {
                 if (!showDebug)
                     hud.drawFps(vw, vh, fpsCurrent, profiler.worstMillis(), gameOpts.fpsDisplay());
                 if (showDebug) {
+                    if (debugEcology && session != null) {
+                        hud.drawEcology(vw, vh, session.ecology().info(player.position.x, player.position.z));
+                    } else {
                     int pcx = (int) Math.floor(player.position.x / Chunk.SIZE_X);
                     int pcz = (int) Math.floor(player.position.z / Chunk.SIZE_Z);
                     Raycaster.Hit lastHit = interaction.hit();
@@ -4557,6 +4570,7 @@ public class Game {
                             world.biomes.biomeAt(bx, bz).name(), mobs.size(),
                             profiler, loader.pendingMeshCount() + loader.pendingGenCount(),
                             music.status(musicPlayer.position()), net.debugLine());
+                    }
                 }
                 if (consoleOpen)
                     hud.drawConsole(vw, vh, consoleLine.toString());
@@ -4823,6 +4837,10 @@ public class Game {
         public boolean debugShown() {
             return showDebug;
         }
+
+        @Override public void executeCommand(String value) { Game.this.executeCommand(value); }
+        @Override public String commandToast() { return Game.this.commandToast; }
+        @Override public boolean ecologyEnabled() { return session != null && session.ecology().enabled(); }
 
         @Override
         public boolean advancedTooltips() {
@@ -5420,7 +5438,7 @@ public class Game {
     }
 
     private void drawCommandHelp(int w, int h) {
-        String[] lines = CommandProcessor.HELP;
+        String[] lines = commandPanel;
         float lineH = font.getPixelHeight() + 5f;
         float panelW = 0f;
         for (String line : lines)

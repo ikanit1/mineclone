@@ -1,0 +1,22 @@
+{
+  "id": "mineclone:rabbit",
+  "type": "RABBIT",
+  "capacity": {
+    "plains": 60,
+    "forest": 72,
+    "taiga": 56,
+    "tundra": 48,
+    "savanna": 64,
+    "desert": 32,
+    "badlands": 24,
+    "alpine": 24,
+    "swamp": 40
+  },
+  "birthRate": 0.4,
+  "migrationRate": 0.35,
+  "prey": [],
+  "predationRate": 0,
+  "groupMin": 1,
+  "groupMax": 3,
+  "minimum": 2
+}

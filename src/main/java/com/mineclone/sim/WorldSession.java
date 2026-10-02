@@ -124,6 +124,7 @@ public final class WorldSession {
 
     private final World world;
     private final WorldClock clock;
+    private final com.mineclone.sim.ecology.Ecology ecology;
     private final MobSpawner spawner;
     private final EntityStore entities;
     private final Participants participants;
@@ -146,6 +147,8 @@ public final class WorldSession {
     private float senseTimer;
     private float spawnTimer;
     private float mergeTimer;
+    private float residencyTimer;
+    private boolean hadLivingResidency;
 
     public WorldSession(World world, WorldClock clock, MobSpawner spawner, EntityStore entities,
                         Participants participants, Host host, WorldEvents events) {
@@ -158,6 +161,7 @@ public final class WorldSession {
         this.events = Objects.requireNonNull(events, "events");
         this.random = new Random(world.seed ^ 0x1735_D40BL);
         this.shots = entities.projectiles::add;
+        this.ecology = new com.mineclone.sim.ecology.Ecology(world, clock, entities, participants);
         // A session means this world is the real one: whatever takes a chest
         // away spills it here, and blocks that lose their support fall.
         world.simulate(this::dropStack, clock.worldTicks());
@@ -167,6 +171,7 @@ public final class WorldSession {
     public World world() { return world; }
 
     public EntityStore entities() { return entities; }
+    public com.mineclone.sim.ecology.Ecology ecology() { return ecology; }
 
     // ----------------------------------------------------------------- mobs
 
@@ -175,6 +180,8 @@ public final class WorldSession {
      * what came of it, collisions, then spawning.
      */
     public void tickMobs(float dt) {
+        ecology.tick();
+        updateAnimalResidency(dt);
         List<Mob> mobs = entities.mobs;
         // Whoever added a mob (spawner, command, autopilot) left its id to us (MOB-02).
         entities.assignIds();
@@ -227,6 +234,7 @@ public final class WorldSession {
             // Once at the moment of death; the corpse topples for a while and
             // only then leaves the list.
             if (m.dead && !m.deathEffectsDone) {
+                ecology.died(m);
                 m.deathEffectsDone = true;
                 MobTactics.leaderFell(mobs, m);
                 dropLoot(m);
@@ -249,7 +257,10 @@ public final class WorldSession {
         spawnTimer -= dt;
         if (host.spawnMobs() && spawnTimer <= 0f) {
             spawnTimer = MobSpawner.TICK_INTERVAL;
-            spawner.trySpawn(world, mobs, around, daylight);
+            if (ecology.enabled()) {
+                ecology.materialize(daylight);
+                spawner.trySpawnHostiles(world, mobs, around, daylight);
+            } else spawner.trySpawn(world, mobs, around, daylight);
         }
     }
 
@@ -430,12 +441,13 @@ public final class WorldSession {
      * a mob whose id is already live does not enter twice (MOB-02).
      */
     public void adoptChunkItems(Chunk chunk) {
+        if (ecology.enabled()) hadLivingResidency = true;
         for (DroppedItem d : chunk.takePendingItems())
             entities.items.add(ItemEntity.restored(d, random));
         List<SavedMob> unknown = null;
         for (SavedMob saved : chunk.takePendingMobs()) {
             MobType type = MobType.byName(saved.type());
-            if (type == null) {
+            if (type == null || (ecology.enabled() && !nearLivingParticipant(saved.x(), saved.y(), saved.z()))) {
                 if (unknown == null)
                     unknown = new ArrayList<>();
                 unknown.add(saved);
@@ -447,10 +459,68 @@ public final class WorldSession {
             m.health = Math.min(saved.health(), type.maxHealth);
             byte[] tail = saved.tail();
             m.savedTail = tail.length == 0 ? null : tail;
-            entities.adopt(m);
+            if (entities.adopt(m)) ecology.adopted(m);
         }
         if (unknown != null)
             chunk.returnPendingMobs(unknown);
+    }
+
+    /** Distant saved animals keep their identity and reservation without using an active mob slot. */
+    private void updateAnimalResidency(float dt) {
+        if (!ecology.enabled()) {
+            if (hadLivingResidency)
+                for (Chunk chunk : world.getLoadedChunks()) adoptChunkItems(chunk);
+            hadLivingResidency = false;
+            residencyTimer = 0;
+            return;
+        }
+        hadLivingResidency = true;
+        residencyTimer -= dt;
+        if (residencyTimer > 0) return;
+        residencyTimer = MobSpawner.TICK_INTERVAL;
+        for (Iterator<Mob> it = entities.mobs.iterator(); it.hasNext(); ) {
+            Mob mob = it.next();
+            if (!mob.persistent() || mob.dead || !(mob.health > 0) || mob.id <= 0
+                    || nearLivingParticipant(mob.position.x, mob.position.y, mob.position.z)) continue;
+            Chunk chunk = world.getChunkIfExists(Math.floorDiv((int) Math.floor(mob.position.x), Chunk.SIZE_X),
+                    Math.floorDiv((int) Math.floor(mob.position.z), Chunk.SIZE_Z));
+            if (chunk == null || chunk.isReadOnly()) continue;
+            List<SavedMob> pending = chunk.copyPendingMobs();
+            if (pending.size() >= ChunkSectionCodec.MAX_MOB_RECORDS
+                    || pending.stream().anyMatch(saved -> saved.id() == mob.id)) continue;
+            pending.add(new SavedMob(mob.type.name(), mob.id, mob.position.x, mob.position.y, mob.position.z,
+                    mob.yaw, mob.health, mob.savedTail));
+            chunk.returnPendingMobs(pending);
+            chunk.modified = true;
+            animalTrailPositions.remove(mob);
+            it.remove();
+        }
+        for (Chunk chunk : world.getLoadedChunks())
+            if (chunkNearLivingParticipant(chunk)) adoptChunkItems(chunk);
+    }
+
+    private boolean nearLivingParticipant(float x, float y, float z) {
+        float rangeSq = MobSpawner.LOCAL_RANGE * MobSpawner.LOCAL_RANGE;
+        for (int i = 0; i < participants.size(); i++) {
+            Participant participant = participants.get(i);
+            if (participant.alive() && participant.position().distanceSquared(x, y, z) <= rangeSq) return true;
+        }
+        return false;
+    }
+
+    private boolean chunkNearLivingParticipant(Chunk chunk) {
+        float minX = chunk.cx * (float) Chunk.SIZE_X, maxX = minX + Chunk.SIZE_X;
+        float minZ = chunk.cz * (float) Chunk.SIZE_Z, maxZ = minZ + Chunk.SIZE_Z;
+        float rangeSq = MobSpawner.LOCAL_RANGE * MobSpawner.LOCAL_RANGE;
+        for (int i = 0; i < participants.size(); i++) {
+            Participant participant = participants.get(i);
+            if (!participant.alive()) continue;
+            var at = participant.position();
+            float dx = at.x() - Math.max(minX, Math.min(maxX, at.x()));
+            float dz = at.z() - Math.max(minZ, Math.min(maxZ, at.z()));
+            if (dx * dx + dz * dz <= rangeSq) return true;
+        }
+        return false;
     }
 
     /** What falling blocks broke on landing: a torch under sand drops as an item. */
@@ -582,17 +652,20 @@ public final class WorldSession {
      */
     private List<SavedMob> mobsInChunk(Chunk c) {
         List<SavedMob> out = c.copyPendingMobs();
+        java.util.Set<Long> recorded = new java.util.HashSet<>();
+        for (SavedMob saved : out) recorded.add(saved.id());
         entities.assignIds();
         for (Mob m : entities.mobs) {
             if (out.size() >= ChunkSectionCodec.MAX_MOB_RECORDS)
                 break;
-            if (!m.persistent() || m.dead || !(m.health > 0f) || m.id <= 0)
+            if (!m.persistent() || m.dead || !(m.health > 0f) || m.id <= 0 || recorded.contains(m.id))
                 continue;
             if (Math.floorDiv((int) Math.floor(m.position.x), Chunk.SIZE_X) != c.cx
                     || Math.floorDiv((int) Math.floor(m.position.z), Chunk.SIZE_Z) != c.cz)
                 continue;
             out.add(new SavedMob(m.type.name(), m.id, m.position.x, m.position.y, m.position.z, m.yaw, m.health,
                     m.savedTail));
+            recorded.add(m.id);
         }
         return out;
     }

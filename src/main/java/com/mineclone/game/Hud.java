@@ -83,6 +83,41 @@ public class Hud {
         ui.end();
     }
 
+    /**
+     * Authoritative ecology diagnostics (LW-10). Kept in a separate panel so
+     * population rows never run through the frame/network debug text.
+     * F3+G selects this page instead of the regular F3 column.
+     */
+    public void drawEcology(int screenW, int screenH, String[] lines) {
+        if (lines == null || lines.length == 0) return;
+        float lineH = small.getPixelHeight() + 3f;
+        float panelW = 0f;
+        for (String line : lines)
+            panelW = Math.max(panelW, small.textWidth(line));
+        panelW = Math.min(screenW - 24f, panelW + 24f);
+        float x = Math.max(8f, screenW - panelW - 8f);
+        float y = small.getPixelHeight() + 8f;
+        int visible = Math.min(lines.length, Math.max(1, (int) ((screenH - y - 28f) / lineH)));
+        float panelH = visible * lineH + 20f;
+        ui.begin(screenW, screenH);
+        ui.quad(x, y - small.getPixelHeight(), panelW, panelH, 0.025f, 0.06f, 0.045f, 0.82f);
+        ui.quad(x, y - small.getPixelHeight(), 2f, panelH, 0.35f, 0.68f, 0.43f, 0.85f);
+        ui.end();
+        for (int i = 0; i < visible; i++) {
+            String line = fitEcologyLine(lines[i], panelW - 24f);
+            text.drawShadowed(small, line, x + 12f, y + i * lineH,
+                    screenW, screenH, i == 0 ? 0.85f : 0.9f, 0.96f, i == 0 ? 0.6f : 0.92f);
+        }
+    }
+
+    private String fitEcologyLine(String line, float width) {
+        if (small.textWidth(line) <= width) return line;
+        int end = line.length();
+        while (end > 0 && small.textWidth(line.substring(0, end) + "…") > width)
+            end--;
+        return line.substring(0, end) + "…";
+    }
+
     // ---------------- Water overlay ----------------
 
     public void drawWaterOverlay(int screenW, int screenH) {

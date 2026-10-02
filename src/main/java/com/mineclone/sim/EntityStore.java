@@ -45,6 +45,11 @@ public final class EntityStore {
                 m.id = allocate();
     }
 
+    /** Reserve an id before a population body enters the list. */
+    public void assignId(Mob mob) { if (mob.id == 0) mob.id = allocate(); }
+    /** A body saved outside the loaded terrain still owns its id. */
+    public void reserveId(long id) { if (id >= nextMobId && id < Integer.MAX_VALUE) nextMobId = id + 1; }
+
     private long allocate() {
         while (true) {
             if (nextMobId > Integer.MAX_VALUE || nextMobId < 1) {

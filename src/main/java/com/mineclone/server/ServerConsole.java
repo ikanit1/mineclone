@@ -79,6 +79,7 @@ public final class ServerConsole {
             case "/list", "list" -> list();
             case "/say", "say" -> say(rest);
             case "/time", "time" -> time(rest);
+            case "/ecology", "ecology" -> ecology(rest);
             case "/seed", "seed" -> DedicatedServer.log(
                     server.world() == null ? "no world" : "seed " + server.world().seed);
             case "/room", "room" -> room();
@@ -145,6 +146,51 @@ public final class ServerConsole {
         return candidate;
     }
 
+    /** The console belongs to the host; ecology changes run on its simulation thread. */
+    private void ecology(String rest) {
+        String usage = "usage: /ecology [info|on|off|advance <1-60>]";
+        String[] args = rest.isEmpty() ? new String[0] : rest.split("\\s+");
+        String operation = args.length == 0 ? "info" : args[0].toLowerCase(java.util.Locale.ROOT);
+        int days = 0;
+        if (operation.equals("advance")) {
+            try {
+                if (args.length != 2) throw new NumberFormatException();
+                days = Integer.parseInt(args[1]);
+                if (days < 1 || days > 60) throw new NumberFormatException();
+            } catch (NumberFormatException invalid) {
+                DedicatedServer.log(usage);
+                return;
+            }
+        } else if (args.length > 1 || !(operation.equals("info") || operation.equals("lair")
+                || operation.equals("on") || operation.equals("off"))) {
+            DedicatedServer.log(usage);
+            return;
+        }
+        var model = server.ecology();
+        if (model == null || !model.supported()) {
+            DedicatedServer.log("ecology is unavailable in this world");
+            return;
+        }
+        switch (operation) {
+            case "info" -> {
+                var spawn = server.spawn();
+                for (String line : model.info(spawn.x, spawn.z))
+                    DedicatedServer.log(line);
+            }
+            case "lair" -> DedicatedServer.log("lairs are not implemented yet (LW-04)");
+            case "on", "off" -> {
+                model.setEnabled(operation.equals("on"));
+                server.saveWorld();
+                DedicatedServer.log("ecology " + operation);
+            }
+            case "advance" -> {
+                model.advanceDays(days);
+                server.saveWorld();
+                DedicatedServer.log("ecology advanced " + days + " day(s)");
+            }
+        }
+    }
+
     private void room() {
         RoomCode code = server.roomCode();
         if (code == null) {
@@ -161,6 +207,7 @@ public final class ServerConsole {
         System.out.println("  /save            write the world to disk");
         System.out.println("  /backup          save and create a manual world backup");
         System.out.println("  /time [day|noon|night|<radians>]");
+        System.out.println("  /ecology [info|on|off|advance <1-60>]");
         System.out.println("  /room            show the room code");
         System.out.println("  /seed            show the world seed");
         System.out.println("  /stop            save and shut down");
