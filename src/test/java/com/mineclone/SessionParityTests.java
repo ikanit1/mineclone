@@ -104,8 +104,11 @@ final class SessionParityTests {
             for (int cx = -4; cx <= 8; cx++)
                 for (int cz = -4; cz <= 4; cz++)
                     world.getChunk(cx, cz);
-            // Every block the run changes — a blast crater — is part of the hash.
+            // Mob-caused block edits (not LW-07's independent visual trail stages)
+            // are part of the historical mob-loop hash.
             world.setBlockObserver((x, y, z, old, now, meta) -> {
+                if (old == now && (now == com.mineclone.world.BlockType.GRASS
+                        || now == com.mineclone.world.BlockType.SNOWY_GRASS)) return;
                 blocksChanged++;
                 writeInt('W'); writeInt(x); writeInt(y); writeInt(z); writeInt(now.ordinal()); writeInt(meta);
             });

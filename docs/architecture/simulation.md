@@ -48,6 +48,26 @@ the game speaks it since SURV-01 — see [combat-mobs.md](combat-mobs.md#damage-
 Their consumers: mobs choose targets among participants (SIM-07), and block
 ticks, furnaces, spawning and despawning run around every participant (SIM-05).
 
+## Ground trails (LW-07)
+
+The host's `WorldSession` samples a participant or persistent animal only when it
+enters a new ground cell. A jump over the ground or a teleport longer than three
+blocks does not stamp all intervening cells. After repeated crossings, `Trample`
+deepens a five-stage soil-wear pattern on grass without changing its block type;
+snow layers are physically pressed down. Guests receive the quantized stage in
+ordinary block-metadata updates; the guest's simulation does not create trails. The same session
+runs on the dedicated server. The position bookkeeping is transient; the pressure
+belongs to the chunk and is saved there.
+
+`BlockTicker` asks loaded chunks to fade pressure once per elapsed absolute game
+day, including days while they were unloaded. The rendered stage recedes only
+when it crosses a visual threshold, so most footsteps and day ticks avoid a
+network update and never rebuild the terrain mesh. While pressure remains,
+snowfall cannot cover the path. On expiration, legacy dirt paths get an
+immediate chance at the existing grass-spread rule; snowfall can cover it again.
+The world clock's absolute day includes sleep, while
+setting time backwards never reverses a fade.
+
 ## World session: mobs (SIM-03)
 
 `sim.WorldSession` is the simulation of one open world; the game's host and the

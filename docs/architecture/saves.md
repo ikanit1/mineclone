@@ -160,6 +160,19 @@ Chunk version 7 adds minimum reader 7, keeps RLE blocks/meta, then writes the
 same section envelope with `chests`, `furnaces`, `items`, and opaque extras.
 The extras travel through `ChunkSnapshot` and `Chunk` across load/unload cycles.
 
+`trample` (LW-07, optional) stores version 1, the last simulated absolute game
+day, and at most 4096 sorted `(cell index, pressure byte)` entries. It is absent
+for untouched chunks. A damaged section fails the chunk read; its source is
+preserved under the normal quarantine policy. A section version from a newer
+build makes the chunk read-only instead. Pressure decays only on the host's
+simulation thread after publication; the save writer receives a copied byte
+array, and a pressure-only change still marks the chunk for saving. Grass meta
+mirrors only visual stage 0–5, so existing block updates and chunk deltas show
+the same path to guests; the section remains the exact host pressure. Loading
+an older LW-07 chunk with pressure and zeroed grass meta reconstructs its
+visual stage before publication. Older dirt-block paths are preserved and
+regrow under the original rule when their pressure expires.
+
 `ticks` (BLK-04, optional — written only when a block asked for a tick) is
 `VarLong writtenAt, VarInt count`, then per tick `VarInt index, u8 kind,
 VarLong zigzag(due - writtenAt)`: dues relative to the world tick of the write,

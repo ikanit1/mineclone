@@ -44,6 +44,7 @@ public final class TestMain {
         suite("audio", "RainAudioTests", r -> RainAudioTests.runAll((n, c) -> r.run(n, c::run)));
         suite("audio", "SeamlessLoopTests", r -> SeamlessLoopTests.runAll((n, c) -> r.run(n, c::run)));
         suite("sim", "MobPersistenceTests", r -> MobPersistenceTests.runAll((n, c) -> r.run(n, c::run)));
+        suite("sim", "TrailTests", TrailTests::runAll);
         suite("audio", "RoomAcousticsTests", r -> RoomAcousticsTests.runAll((n, c) -> r.run(n, c::run)));
         suite("weather", "LightningTests", r -> LightningTests.runAll((n, c) -> r.run(n, c::run)));
         suite("weather", "StormTests", r -> StormTests.runAll((n, c) -> r.run(n, c::run)));

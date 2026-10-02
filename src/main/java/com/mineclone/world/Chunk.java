@@ -17,6 +17,24 @@ public class Chunk {
         markDirty();
     }
     private final PaletteStorage blocks = new PaletteStorage(SIZE_X * SIZE_Y * SIZE_Z);
+    /** Sparse visual stages; the exact pressure lives in the optional trample section. */
+    private final java.util.TreeMap<Integer, Byte> trailVisuals = new java.util.TreeMap<>();
+    private final java.util.Map<Integer, Byte> trailVisualView =
+            java.util.Collections.unmodifiableMap(trailVisuals);
+
+    public java.util.Map<Integer, Byte> trailVisuals() {
+        assertMainThread();
+        return trailVisualView;
+    }
+
+    private static boolean trailSurface(BlockType type) {
+        return type == BlockType.GRASS || type == BlockType.SNOWY_GRASS;
+    }
+
+    private void updateTrailVisual(int index, BlockType type, byte stage) {
+        if (trailSurface(type) && stage > 0 && stage <= 5) trailVisuals.put(index, stage);
+        else trailVisuals.remove(index);
+    }
     private int[] waterCells = new int[64];
     private int waterCount;
     private int[] lavaCells = new int[32];
@@ -156,6 +174,8 @@ public class Chunk {
         BlockType old = BlockType.byId(blocks.get(i));
         if (old == t) return;
         blocks.set(i, (byte) t.ordinal());
+        if (trailSurface(t) && !trailSurface(old)) meta[i] = 0;
+        updateTrailVisual(i, t, meta[i]);
         boolean oldWater = old == BlockType.WATER || old == BlockType.WATER_FLOW;
         boolean newWater = t == BlockType.WATER || t == BlockType.WATER_FLOW;
         if (!oldWater && newWater) {
@@ -365,8 +385,13 @@ public class Chunk {
             return;
         int i = idx(x, y, z);
         if (meta[i] == val) return;
+        byte previous = meta[i];
         meta[i] = val;
-        markDirty();
+        BlockType type = BlockType.byId(blocks.get(i));
+        updateTrailVisual(i, type, val);
+        modified = true;
+        if (!trailSurface(type) || previous < 0 || previous > 5 || val < 0 || val > 5)
+            markDirty();
     }
 
     /**
@@ -818,17 +843,45 @@ public class Chunk {
      */
     private java.util.List<DroppedItem> pendingItems = java.util.List.of();
     private final java.util.Map<String, byte[]> extraSections = new java.util.LinkedHashMap<>();
+    private com.mineclone.sim.ecology.Trample trample;
+
+    public com.mineclone.sim.ecology.Trample trampleOrNull() {
+        assertMainThread();
+        return trample;
+    }
+
+    public com.mineclone.sim.ecology.Trample trample(long day) {
+        assertMainThread();
+        if (trample == null) trample = new com.mineclone.sim.ecology.Trample(day);
+        return trample;
+    }
 
     public void restoreExtraSections(java.util.Map<String, byte[]> sections) {
         assertMainThread();
         extraSections.clear();
         sections.forEach((key, value) -> extraSections.put(key, value.clone()));
+        byte[] saved = extraSections.remove(com.mineclone.sim.ecology.Trample.SECTION);
+        try {
+            trample = saved == null ? null : com.mineclone.sim.ecology.Trample.decode(saved);
+        } catch (java.io.IOException invalid) {
+            throw new IllegalArgumentException("invalid validated trample section", invalid);
+        }
+        // Older LW-07 saves held pressure but no visual stage in block metadata.
+        if (trample != null) trample.forEach((index, count) -> {
+            BlockType type = BlockType.byId(blocks.get(index));
+            if (trailSurface(type)) {
+                meta[index] = (byte) com.mineclone.sim.ecology.Trample.visualStage(count);
+                updateTrailVisual(index, type, meta[index]);
+            }
+        });
     }
 
     public java.util.Map<String, byte[]> copyExtraSections() {
         assertMainThread();
         java.util.Map<String, byte[]> copy = new java.util.LinkedHashMap<>();
         extraSections.forEach((key, value) -> copy.put(key, value.clone()));
+        if (trample != null && trample.size() > 0)
+            copy.put(com.mineclone.sim.ecology.Trample.SECTION, trample.encode());
         return copy;
     }
     /** Сколько предметов ушло в последнюю запись: был хоть один — запись обязательна. */
@@ -1000,6 +1053,10 @@ public class Chunk {
             if (transparent(bt)) clearMask[i >>> 6] |= 1L << (i & 63);
         }
         System.arraycopy(srcMeta, 0, meta, 0, meta.length);
+        trailVisuals.clear();
+        for (int i = 0; i < meta.length; i++)
+            if (meta[i] > 0 && meta[i] <= 5)
+                updateTrailVisual(i, BlockType.byId(blocks.get(i)), meta[i]);
         // Блоки пришли массивом мимо set(), инкрементальный учёт их не видел.
         rebuildEmitters();
         markDirty();

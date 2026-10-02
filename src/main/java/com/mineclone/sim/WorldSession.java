@@ -141,6 +141,8 @@ public final class WorldSession {
     private final Vector3f aim = new Vector3f();
     /** This tick's centres of life; rebuilt by {@link #centres()}. */
     private final List<org.joml.Vector3fc> centres = new ArrayList<>();
+    private final java.util.Map<Participant, TrailPosition> playerTrailPositions = new java.util.WeakHashMap<>();
+    private final java.util.Map<Mob, TrailPosition> animalTrailPositions = new java.util.WeakHashMap<>();
     private float senseTimer;
     private float spawnTimer;
     private float mergeTimer;
@@ -159,6 +161,7 @@ public final class WorldSession {
         // A session means this world is the real one: whatever takes a chest
         // away spills it here, and blocks that lose their support fall.
         world.simulate(this::dropStack, clock.worldTicks());
+        world.setTrampleDay(com.mineclone.sim.ecology.Trample.day(clock.gameTime()));
     }
 
     public World world() { return world; }
@@ -237,6 +240,7 @@ public final class WorldSession {
         fed.clear();
 
         separate(mobs, focus);
+        trackFootsteps(mobs);
 
         // Mobs live around everyone: despawned only far from all, spawned
         // around each.
@@ -247,6 +251,44 @@ public final class WorldSession {
             spawnTimer = MobSpawner.TICK_INTERVAL;
             spawner.trySpawn(world, mobs, around, daylight);
         }
+    }
+
+    /** Host-only footsteps: guests see the resulting block changes through the existing channel. */
+    private void trackFootsteps(List<Mob> mobs) {
+        long day = com.mineclone.sim.ecology.Trample.day(clock.gameTime());
+        world.setTrampleDay(day);
+        for (int i = 0; i < participants.size(); i++) {
+            Participant p = participants.get(i);
+            if (!p.alive()) {
+                playerTrailPositions.remove(p);
+                continue;
+            }
+            var position = p.position();
+            TrailPosition previous = playerTrailPositions.get(p);
+            if (previous == null) playerTrailPositions.put(p, new TrailPosition(position));
+            else previous.walk(world, position, day);
+        }
+        for (Mob mob : mobs) {
+            if (mob.dead || !mob.persistent() || !mob.onGround) continue;
+            TrailPosition previous = animalTrailPositions.get(mob);
+            if (previous == null) animalTrailPositions.put(mob, new TrailPosition(mob.position));
+            else previous.walk(world, mob.position, day);
+        }
+    }
+
+    /** Suppresses teleport tracks and records only newly entered ground cells. */
+    private static final class TrailPosition {
+        private float x, y, z;
+        TrailPosition(org.joml.Vector3fc at) { set(at); }
+        void walk(World world, org.joml.Vector3fc at, long day) {
+            float dx = at.x() - x, dy = at.y() - y, dz = at.z() - z;
+            if (dx * dx + dy * dy + dz * dz <= 9f
+                    && ((int) Math.floor(at.x()) != (int) Math.floor(x)
+                    || (int) Math.floor(at.z()) != (int) Math.floor(z)))
+                com.mineclone.sim.ecology.Trample.step(world, at.x(), at.y(), at.z(), day);
+            set(at);
+        }
+        private void set(org.joml.Vector3fc at) { x = at.x(); y = at.y(); z = at.z(); }
     }
 
     /**
@@ -468,6 +510,7 @@ public final class WorldSession {
      * @return ticks run
      */
     public int tickScheduled() {
+        world.setTrampleDay(com.mineclone.sim.ecology.Trample.day(clock.gameTime()));
         return world.runScheduledTicks(clock.worldTicks(), TICK_BUDGET, MAX_TICK_LATENESS);
     }
 

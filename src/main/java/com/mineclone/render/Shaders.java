@@ -394,6 +394,93 @@ public final class Shaders {
         }
         """;
 
+    /** A pixel-edged soil stain on grass. Pressure is an instance attribute, not a block id. */
+    public static final String FOOTPATH_VERTEX = VER + """
+        layout(location = 0) in vec2 aCorner;
+        layout(location = 1) in vec4 aCenterStage;
+        layout(location = 2) in vec4 aNeighbours;
+        layout(location = 3) in vec2 aLight;
+        uniform mat4 uProjection;
+        uniform mat4 uView;
+        out vec2 vLocal;
+        out vec3 vWorld;
+        out float vStage;
+        out vec4 vNeighbours;
+        out vec2 vLight;
+        out float vFogDist;
+        void main() {
+            vLocal = aCorner + vec2(0.5);
+            vWorld = aCenterStage.xyz + vec3(aCorner.x, 0.0, aCorner.y);
+            vStage = aCenterStage.w;
+            vNeighbours = aNeighbours;
+            vLight = aLight;
+            vec4 viewPos = uView * vec4(vWorld, 1.0);
+            vFogDist = length(viewPos.xyz);
+            gl_Position = uProjection * viewPos;
+        }
+        """;
+
+    public static final String FOOTPATH_FRAGMENT = VER + LIB_COLOR + LIB_SHADOW + LIB_LIGHT + """
+        in vec2 vLocal;
+        in vec3 vWorld;
+        in float vStage;
+        in vec4 vNeighbours; // west, east, north, south
+        in vec2 vLight;
+        in float vFogDist;
+        uniform sampler2D uAtlas;
+        uniform vec2 uDirtUv0;
+        uniform vec2 uDirtUv1;
+        out vec4 FragColor;
+
+        float widthFor(float stage) { return mix(0.10, 0.39, clamp(stage / 5.0, 0.0, 1.0)); }
+        float branch(vec2 p, vec2 end, float width) {
+            float t = clamp(dot(p, end) / dot(end, end), 0.0, 1.0);
+            return length(p - end * t) - width;
+        }
+        float bayer4(ivec2 p) {
+            int x = p.x & 3, y = p.y & 3;
+            int row0[4] = int[4](0, 8, 2, 10);
+            int row1[4] = int[4](12, 4, 14, 6);
+            int row2[4] = int[4](3, 11, 1, 9);
+            int row3[4] = int[4](15, 7, 13, 5);
+            int value = y == 0 ? row0[x] : y == 1 ? row1[x] : y == 2 ? row2[x] : row3[x];
+            return (float(value) + 0.5) / 16.0;
+        }
+        void main() {
+            vec2 p = vLocal - vec2(0.5);
+            float width = widthFor(vStage);
+            float d = length(p) - width;
+            if (vStage >= 2.0) {
+                if (vNeighbours.x >= 2.0) d = min(d, branch(p, vec2(-0.51, 0.0), min(width, widthFor(vNeighbours.x))));
+                if (vNeighbours.y >= 2.0) d = min(d, branch(p, vec2( 0.51, 0.0), min(width, widthFor(vNeighbours.y))));
+                if (vNeighbours.z >= 2.0) d = min(d, branch(p, vec2(0.0, -0.51), min(width, widthFor(vNeighbours.z))));
+                if (vNeighbours.w >= 2.0) d = min(d, branch(p, vec2(0.0,  0.51), min(width, widthFor(vNeighbours.w))));
+            }
+            float wave = sin(vWorld.x * 13.0 + vWorld.z * 7.0) * 0.024
+                       + sin(vWorld.x * 29.0 - vWorld.z * 19.0) * 0.013;
+            float coverage = 1.0 - smoothstep(-0.055, 0.075, d + wave);
+            float sight = 1.0 - smoothstep(22.0, 28.0, distance(uCamPos.xz, vWorld.xz));
+            float fill = coverage * sight * mix(0.42, 1.0, clamp(vStage / 5.0, 0.0, 1.0));
+            if (fill <= bayer4(ivec2(floor(vWorld.xz * 16.0)))) discard;
+
+            vec3 N = vec3(0.0, 1.0, 0.0);
+            vec3 V = normalize(uCamPos - vWorld);
+            vec2 uv = mix(uDirtUv0, uDirtUv1, vLocal);
+            vec3 albedo = toLinear(texture(uAtlas, uv).rgb);
+            float skyVis = clamp(vLight.x, 0.0, 1.0);
+            float blockVis = clamp(vLight.y, 0.0, 1.0);
+            float ndl = max(dot(N, uLightDir), 0.0);
+            float shade = shadowFactor(vWorld, N, vFogDist, ndl);
+            vec3 hemi = mix(uGroundLight, uSkyLight, 1.0) * skyVis;
+            vec3 torch = uTorchColor * pow(blockVis, 1.4) * torchFlicker(vWorld);
+            vec3 lit = albedo * (uLightColor * ndl * shade * skyVis + hemi + torch
+                                 + uAmbientColor + pointLight(vWorld, N) + voxelBounce(vWorld, N));
+            lit *= uBrightness;
+            lit = applyHeightFog(lit, vWorld, vFogDist);
+            FragColor = vec4(finishColor(applyFog(lit, vWorld, vFogDist), uLinearOut), 1.0);
+        }
+        """;
+
     // ------------------------------------------------------------------
     //  Вода — отдельная программа: рябь в нормалях, френель, солнечная дорожка
     // ------------------------------------------------------------------
