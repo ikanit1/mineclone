@@ -11,15 +11,18 @@
 #        .\run-server-test.ps1 -Farm
 #        .\run-server-test.ps1 -Farm -LivingWorld
 #        .\run-server-test.ps1 -Lairs
+#        .\run-server-test.ps1 -Stories
 #        .\run-server-test.ps1 -BurnScars
 # Exits non-zero if the server or either client failed.
 
-param([switch]$LivingWorld, [switch]$Farm, [switch]$Lairs, [switch]$BurnScars)
+param([switch]$LivingWorld, [switch]$Farm, [switch]$Lairs, [switch]$BurnScars, [switch]$Stories)
 
 if ($Farm -and $Lairs) { throw 'Farm and Lairs are separate acceptance scenarios' }
 if ($Lairs) { $LivingWorld = $true }
 if ($BurnScars -and ($Farm -or $Lairs)) { throw 'BurnScars is a separate acceptance scenario' }
 if ($BurnScars) { $LivingWorld = $true }
+if ($Stories -and ($Farm -or $Lairs -or $BurnScars)) { throw 'Stories is a separate consolidated acceptance scenario' }
+if ($Stories) { $LivingWorld = $true }
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -35,13 +38,19 @@ $probe.Start()
 $port = $probe.LocalEndpoint.Port
 $probe.Stop()
 
-$work = Join-Path $root $(if ($BurnScars) { 'out-test\burn-server' } else { 'out-test\server' })
+$work = Join-Path $root $(if ($Stories) { 'out-test\stories-server' } elseif ($BurnScars) { 'out-test\burn-server' } else { 'out-test\server' })
 $work = [IO.Path]::GetFullPath($work)
 $testRoot = [IO.Path]::GetFullPath((Join-Path $root 'out-test')) + [IO.Path]::DirectorySeparatorChar
 if (-not $work.StartsWith($testRoot, [StringComparison]::OrdinalIgnoreCase)) {
     throw "Refusing to clean server test directory outside out-test: $work"
 }
-if (Test-Path $work) { Remove-Item -Recurse -Force -LiteralPath $work }
+if (Test-Path $work) {
+    if ($Stories) {
+        $archive = [IO.Path]::GetFullPath($work + '-' + [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmssfff'))
+        if ([IO.Path]::GetDirectoryName($archive) -ne [IO.Path]::GetFullPath((Join-Path $root 'out-test'))) { throw 'Unexpected story archive path' }
+        Move-Item -LiteralPath $work -Destination $archive
+    } else { Remove-Item -Recurse -Force -LiteralPath $work }
+}
 New-Item -ItemType Directory -Force -Path $work | Out-Null
 $cp = "$out;$libs\*"
 Write-Host "server test: port $port"
@@ -61,7 +70,7 @@ photon=false
 saves-dir=$savesDir/saves
 world=test
 world-name=TestServer
-seed=$(if ($BurnScars) { 20261006 } else { 20260922 })
+seed=$(if ($BurnScars -or $Stories) { 20261006 } else { 20260922 })
 mode=creative
 difficulty=normal
 autosave-seconds=15
@@ -85,6 +94,16 @@ if ($BurnScars) {
     $burnTool = Join-Path $root 'tools\BurnScarsSaveAcceptance.java'
     & java -cp $cp $burnTool prepare $conf
     if ($LASTEXITCODE -ne 0) { throw 'server test: could not prepare the production-fire burned grove fixture' }
+}
+
+if ($Stories) {
+    $storyTools = Join-Path $root 'out-test\story-tools'
+    New-Item -ItemType Directory -Force -Path $storyTools | Out-Null
+    & javac -cp $cp -d $storyTools (Join-Path $root 'tools\LivingWorldSaveAcceptance.java')
+    if ($LASTEXITCODE -ne 0) { throw 'server test: consolidated fixture tools did not compile' }
+    $storyCp = "$storyTools;$cp"
+    & java -cp $storyCp LivingWorldSaveAcceptance prepare $conf
+    if ($LASTEXITCODE -ne 0) { throw 'server test: combined valley preparation failed' }
 }
 
 # The server is started through .NET rather than Start-Process because we need
@@ -114,7 +133,7 @@ function Start-Guest {
         "-Dmineclone.autopilot=$dir\shots",
         "-Dmineclone.savesDir=$dir\saves",
         '-Dmineclone.autopilot.net=server',
-        "-Dmineclone.autopilot.netScenario=$(if ($BurnScars) { 'burn' } elseif ($Lairs) { 'lair' } elseif ($Farm) { 'farm' } else { '' })",
+        "-Dmineclone.autopilot.netScenario=$(if ($Stories) { 'stories' } elseif ($BurnScars) { 'burn' } elseif ($Lairs) { 'lair' } elseif ($Farm) { 'farm' } else { '' })",
         "-Dmineclone.autopilot.netPort=$port",
         "-Dmineclone.autopilot.netSlot=$slot"
     )
@@ -151,6 +170,25 @@ if ($Farm) {
             $server.StandardInput.WriteLine('/time add 48')
             $server.StandardInput.Flush()
             $farmAdvanced = $true
+            break
+        }
+        if ($guests[0].HasExited -or $guests[1].HasExited) { break }
+        Start-Sleep -Milliseconds 250
+    }
+}
+
+$storiesAdvanced = $false
+if ($Stories) {
+    $deadline = [DateTime]::UtcNow.AddMinutes(5)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $a = Get-Content (Join-Path $work 'guest0\out.log') -Raw -ErrorAction SilentlyContinue
+        $b = Get-Content (Join-Path $work 'guest1\out.log') -Raw -ErrorAction SilentlyContinue
+        if ($a -match 'stories READY seven days' -and $b -match 'stories READY seven days') {
+            $server.StandardInput.WriteLine('/ecology advance 7')
+            $server.StandardInput.WriteLine('/time noon')
+            $server.StandardInput.WriteLine('/ecology info')
+            $server.StandardInput.Flush()
+            $storiesAdvanced = $true
             break
         }
         if ($guests[0].HasExited -or $guests[1].HasExited) { break }
@@ -203,7 +241,7 @@ if ($Lairs) {
 }
 
 foreach ($proc in $guests) {
-    if (-not $proc.WaitForExit(180000)) {
+    if (-not $proc.WaitForExit($(if ($Stories) { 480000 } else { 180000 }))) {
         Write-Host 'server test: killing a client that would not stop'
         try { $proc.Kill() } catch { }
         $null = $proc.WaitForExit(10000)
@@ -277,12 +315,34 @@ if ($Lairs -and -not $server.HasExited) {
     }
 }
 
+$storiesSaved = $false
+$storiesReturnedIds = ''
+if ($Stories -and -not $server.HasExited) {
+    $storiesReturnedIds = [regex]::Match((Get-Content (Join-Path $work 'guest0\out.log') -Raw), 'stories finite returned IDs=([0-9,]+)').Groups[1].Value
+    $server.StandardInput.WriteLine('/save')
+    $server.StandardInput.Flush()
+    $deadline = [DateTime]::UtcNow.AddSeconds(20)
+    if ($storiesReturnedIds) {
+        do {
+            $verificationErrorPolicy = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                $storyLiveProof = & java -cp $storyCp LivingWorldSaveAcceptance verify $conf $storiesReturnedIds 2>&1
+                $storyLiveExit = $LASTEXITCODE
+            } finally { $ErrorActionPreference = $verificationErrorPolicy }
+            $storyLiveProof | Set-Content -LiteralPath (Join-Path $work 'stories-save-live.log') -Encoding utf8
+            if ($storyLiveExit -eq 0) { $storiesSaved = $true; Write-Host $storyLiveProof; break }
+            Start-Sleep -Milliseconds 300
+        } while ([DateTime]::UtcNow -lt $deadline -and -not $server.HasExited)
+    }
+}
+
 # Clients are done: ask the server to save and stop the way a person would.
 Write-Host 'server test: asking the server to stop'
 $stoppedCleanly = $true
 try {
     if ($LivingWorld) {
-        if (-not $Lairs -and -not $BurnScars) { $server.StandardInput.WriteLine('/ecology advance 10') }
+        if (-not $Lairs -and -not $BurnScars -and -not $Stories) { $server.StandardInput.WriteLine('/ecology advance 10') }
         $server.StandardInput.WriteLine('/ecology info')
         $server.StandardInput.WriteLine('/save')
     }
@@ -332,12 +392,28 @@ if ($Lairs -and $stoppedCleanly -and $server.HasExited -and $initialLairIds) {
     if ($lairSavedAfterStop) { Write-Host $lairFinalProof }
 }
 
+$storiesSavedAfterStop = $false
+if ($Stories -and $stoppedCleanly -and $server.HasExited) {
+    $storyIds = [regex]::Match((Get-Content (Join-Path $work 'guest0\out.log') -Raw), 'stories finite returned IDs=([0-9,]+)').Groups[1].Value
+    if ($storyIds) {
+        $verificationErrorPolicy = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = 'Continue'
+            $storyProof = & java -cp $storyCp LivingWorldSaveAcceptance verify $conf $storyIds 2>&1
+            $storiesSavedAfterStop = $LASTEXITCODE -eq 0
+        } finally { $ErrorActionPreference = $verificationErrorPolicy }
+        $storyProof | Set-Content -LiteralPath (Join-Path $work 'stories-save-after-stop.log') -Encoding utf8
+        Write-Host $storyProof
+    }
+}
+
 Write-Host ''
 Write-Host '---- server ----'
 if ($serverOut) { Write-Host $serverOut.TrimEnd() }
 if ($serverErr) { Write-Host ($serverErr -split "`n" | Select-Object -First 10) }
 
 $code = 0
+if ($Stories -and (-not $storiesAdvanced -or -not $storiesSaved -or -not $storiesSavedAfterStop)) { Write-Host 'server test: consolidated live advance, live save or post-stop world proof missing'; $code = 1 }
 if ($BurnScars -and (-not $burnAdvanced -or -not $burnSaved -or -not $burnSavedAfterStop)) {
     Write-Host 'server test: missing actual day7 recovery or intact live/post-stop scar, tree and finite body proof'
     $code = 1
@@ -361,11 +437,11 @@ if ($serverOut -notmatch 'stopped') {
     $code = 1
 }
 if ($LivingWorld) {
-    $expectedDay = if ($BurnScars) { 7 } elseif ($Lairs) { 11 } elseif ($farmAdvanced) { 12 } else { 10 }
-    $advancedDays = if ($BurnScars) { 7 } else { 10 }
+    $expectedDay = if ($Stories) { 7 } elseif ($BurnScars) { 7 } elseif ($Lairs) { 11 } elseif ($farmAdvanced) { 12 } else { 10 }
+    $advancedDays = if ($BurnScars -or $Stories) { 7 } else { 10 }
     foreach ($pattern in @('\[server\] ecology on', "\[server\] ecology advanced $advancedDays day\(s\)",
-            "\[server\] Ecology ON \| region .+ \| day $expectedDay\b",
-            '\[server\] Species: total / capacity \| bodies \| change over 3 days',
+            "\[server\] Ecology ON \| region .+ \| snapshot day $expectedDay\b",
+            '\[server\] Species: total / capacity \| bodies \| model 3d sum \[oldest->latest\]',
             '\[server\] saved [1-9][0-9]* chunks')) {
         if ($serverOut -notmatch $pattern) {
             Write-Host "server test: missing authoritative ecology proof: $pattern"
@@ -393,6 +469,15 @@ foreach ($slot in 0, 1) {
     if ($LivingWorld) {
         $guestLog = if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Raw } else { '' }
         $markers = @('living world guest command refused', 'all checks passed')
+        if ($Stories) {
+            $markers += @('stories actual trail stage5', 'stories same valley scorched and fields protected',
+                    'stories real scheduled silk replicated', 'stories ordinary raid mirrored protected crop7',
+                    'stories day7 natural trees and faded trail', 'stories gate opened through actual replicated right input',
+                    'stories finite returned IDs=', 'stories combined network PASS')
+            $referenceIds = [regex]::Match((Get-Content (Join-Path $work 'guest0\out.log') -Raw), 'stories finite returned IDs=([0-9,]+)').Groups[1].Value
+            $peerIds = [regex]::Match($guestLog, 'stories finite returned IDs=([0-9,]+)').Groups[1].Value
+            if (-not $referenceIds -or $referenceIds -ne $peerIds) { Write-Host "server test: guest $slot observed a different combined finite body"; $code = 1 }
+        }
         if ($BurnScars) {
             $markers += @('burn guest saw actual scorched ground and original S_MOBS animal with ecology absent',
                     'burn guest day7 grass and scheduled young trees mirrored',

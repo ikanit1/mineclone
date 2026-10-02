@@ -125,6 +125,11 @@ final class Autopilot {
         int[] lairAnchor();
         /** Disposable story C preparation and read-only observations; guests only observe. */
         void prepareBurnArena();
+        void prepareStoriesArena();
+        int[] storiesAnchor();
+        int[] storiesStats();
+        void storiesCropControl(boolean frozen);
+        void storiesClearPresentation();
         void holdBurnMaterialization(boolean hold);
         int[] burnAnchor();
         /** DIRT grounds, GRASS grounds and new WOOD roots outside the six authored old roots. */
@@ -276,6 +281,7 @@ final class Autopilot {
     private static final boolean TRAIL_MODE = Boolean.getBoolean("mineclone.autopilot.trail");
     private static final boolean ECOLOGY_MODE = Boolean.getBoolean("mineclone.autopilot.ecology");
     private static final boolean LAIR_MODE = "lair".equals(System.getProperty("mineclone.autopilot.netScenario", ""));
+    private static final boolean STORIES_MODE = "stories".equals(System.getProperty("mineclone.autopilot.netScenario", ""));
     private static final boolean BURN_MODE = "burn".equals(System.getProperty("mineclone.autopilot.netScenario", ""));
     private static final int NET_PORT =
             Integer.getInteger("mineclone.autopilot.netPort", com.mineclone.net.LanTransport.DEFAULT_PORT);
@@ -314,7 +320,7 @@ final class Autopilot {
      * <p>Через Photon запас больше: путь до комнаты идёт через три сервера,
      * и каждый шаг — это круг до облака и обратно.
      */
-    static final float TIMEOUT = "photon".equals(NET_VIA) ? 240f : 150f;
+    static final float TIMEOUT = STORIES_MODE ? 420f : "photon".equals(NET_VIA) ? 240f : 150f;
 
     /**
      * Шаг: дождаться условия и паузы после предыдущего шага, сделать дело.
@@ -869,6 +875,104 @@ final class Autopilot {
         return List.copyOf(route);
     }
 
+    private long[] storiesInitialIds;
+    private long storiesInitialDay,storiesReturnedId;
+    private int storiesDirt,storiesTrail;
+    private static int storiesSlot(){return "host".equals(NET_MODE)?0:"server".equals(NET_MODE)?NET_SLOT:1;}
+    private static void storiesFieldView(Driver d) {
+        int[] p=d.storiesAnchor();int slot=storiesSlot();d.flyInCreative();d.teleport(p[0]+22.5f+slot*5,115,p[2]+159+slot*2);d.lookAt(p[0]+22.5f,101.15f,p[2]+152);
+    }
+    private static void storiesTrailView(Driver d) {
+        int[] p=d.storiesAnchor();int slot=storiesSlot();d.flyInCreative();d.teleport(p[0]+13.5f+slot*4,103+slot,p[2]+174.5f);d.lookAt(p[0]+13.5f,100.1f,p[2]+168.5f);
+    }
+    private static void storiesNestView(Driver d) {
+        int[] p=d.storiesAnchor();int slot=storiesSlot();d.flyInCreative();d.teleport(p[0]+16.5f-slot*4,101.001f,p[2]+21.5f-slot);d.lookAt(p[0]+16.5f,101.5f,p[2]+16.5f);
+    }
+    private static void storiesGroveView(Driver d,boolean away) {
+        int[] p=d.burnAnchor();int slot=storiesSlot(),side="server".equals(NET_MODE)?-1:1;d.flyInCreative();
+        d.teleport(p[0]+(away?slot*8:19+slot*6),p[1]+(away?1.01f:24f),p[2]+(away?side*44:19+slot*3));
+        d.lookAt(p[0],p[1]+(away?2f:.5f),p[2]+(away?side*90:0));
+    }
+    /** One shared valley: actual walking and raids, scheduled silk and production-fire recovery. */
+    private List<Step> storiesSteps(String role) {
+        boolean owner=role.equals("host"),server=role.equals("server");int slot=owner?0:server?NET_SLOT:1;boolean walker=owner||server&&slot==0;
+        var route=new java.util.ArrayList<Step>();
+        if(owner){
+            route.add(step("create combined living-world valley",1f,d->d.act(MenuAction.create(new WorldSettings("Living world stories valley",20261006L,GameMode.CREATIVE)))));
+            route.add(when("combined owner world loaded",.5f,d->in(d,"PLAYING"),d->{d.storiesClearPresentation();d.prepareStoriesArena();enableEcologyIfRequested(d);storiesFieldView(d);}));
+            route.add(step("open combined valley room",.3f,d->{var worlds=d.save().listWorlds(false);if(worlds.isEmpty())throw new IllegalStateException("Story valley save absent");d.act(MenuAction.netHost(worlds.get(0).id,netSettings("")));}));
+            route.add(when("combined owner room opened",.5f,d->in(d,"PLAYING")&&d.netIsHost(),d->{if(!d.ecologyEnabled())throw new IllegalStateException("Story room lost Living World");d.holdBurnMaterialization(true);ok("living world rule survived room opening");System.out.println("autopilot: room="+d.netRoomName());storiesFieldView(d);}));
+            route.add(when("combined actual guest joined",.3f,d->d.netPlayers()>=1,d->{}));
+        }else{
+            route.add(step("join combined actual authority",1.5f,d->d.act(MenuAction.netJoin(netSettings("127.0.0.1:"+NET_PORT)))));
+            route.add(when("combined guest world loaded",.5f,d->in(d,"PLAYING"),d->{if(d.netIsHost()||d.ecologyEnabled())throw new IllegalStateException("Story guest owns Ecology");d.storiesClearPresentation();rejectGuestEcologyIfRequested(d);storiesFieldView(d);}));
+        }
+        route.add(when("equivalent mature fields reached both peers",.5f,d->d.storiesStats()[0]==0&&d.storiesStats()[1]==0,d->{
+            storiesInitialDay=com.mineclone.sim.ecology.Ecology.day(d.gameTime());int[] p=d.burnAnchor();storiesInitialIds=d.animalIdsNear(p[0],p[2],Float.MAX_VALUE);
+            d.executeCommand("[stories-fields-"+slot+"]");d.storiesClearPresentation();
+        }));
+        route.add(step("settled initial field capture",2.5f,d->d.shot("stories-fields-before-"+role+"-"+slot)));
+        route.add(when("both peers acknowledged mature fields",.3f,d->d.sawChat("[stories-fields-0]")&&d.sawChat("[stories-fields-1]"),d->{
+            int[] p=d.storiesAnchor();if(walker){d.walkInSurvival();d.teleport(p[0]+8.5f,101.001f,p[2]+168.5f);d.lookAt(p[0]+20.5f,102.62f,p[2]+168.5f);}else{d.flyInCreative();d.teleport(p[0]+22.5f,110,p[2]+172);d.lookAt(p[0]+13.5f,100.1f,p[2]+168.5f);}
+        }));
+        if(walker)for(int pass=0;pass<10;pass++){
+            route.add(step("shared actual trail outward "+pass,.1f,d->d.holdKey(GLFW_KEY_W,true)));
+            route.add(step("shared actual trail turn home "+pass,2.3f,d->{d.holdKey(GLFW_KEY_W,false);int[] p=d.storiesAnchor();d.lookAt(p[0]+5.5f,102.62f,p[2]+168.5f);}));
+            route.add(step("shared actual trail home "+pass,.1f,d->d.holdKey(GLFW_KEY_W,true)));
+            route.add(step("shared actual trail turn outward "+pass,2.3f,d->{d.holdKey(GLFW_KEY_W,false);int[] p=d.storiesAnchor();d.lookAt(p[0]+20.5f,102.62f,p[2]+168.5f);}));
+        }
+        route.add(when("actual stage-five trail reached both peers",.5f,d->{int[] p=d.storiesAnchor();return "GRASS".equals(d.blockAt(p[0]+13,100,p[2]+168))&&d.storiesStats()[3]==5;},d->{
+            storiesTrail=d.storiesStats()[3];ok("stories actual trail stage5");storiesTrailView(d);d.storiesClearPresentation();d.executeCommand("[stories-trail-"+slot+"]");
+        }));
+        route.add(step("settled actual trail capture",2.5f,d->d.shot("stories-trail-used-"+role+"-"+slot)));
+        route.add(when("both peers witnessed the shared walking trail",.3f,d->d.sawChat("[stories-trail-0]")&&d.sawChat("[stories-trail-1]"),d->storiesGroveView(d,false)));
+        route.add(when("same actual scorched valley reached both peers",.5f,d->d.burnTerrainStats()[0]>=192,d->{
+            storiesDirt=d.burnTerrainStats()[0];if(d.burnTerrainStats()[2]!=0)throw new IllegalStateException("Story grove already recovered before seven-day command");ok("stories same valley scorched and fields protected");d.storiesClearPresentation();d.executeCommand("[stories-scorched-"+slot+"]");
+        }));
+        route.add(step("settled scorched grove capture",2.5f,d->d.shot("stories-scorched-"+role+"-"+slot)));
+        route.add(when("both peers acknowledged scorched story terrain",.3f,d->d.sawChat("[stories-scorched-0]")&&d.sawChat("[stories-scorched-1]"),d->{
+            int[] p=d.burnAnchor();storiesInitialIds=java.util.stream.LongStream.concat(java.util.Arrays.stream(storiesInitialIds),java.util.Arrays.stream(d.animalIdsNear(p[0],p[2],Float.MAX_VALUE))).distinct().sorted().toArray();
+            if(owner){d.executeCommand("/ecology advance 7");d.executeCommand("/time set noon");d.executeCommand("/ecology info");}ok("stories READY seven days");
+        }));
+        route.add(when("joint seven-day forest recovery reached both peers",.5f,d->com.mineclone.sim.ecology.Ecology.day(d.gameTime())>=storiesInitialDay+7&&d.burnTerrainStats()[0]<storiesDirt/2&&d.burnTerrainStats()[2]>0,d->{
+            int[] state=d.burnTerrainStats();System.out.println("autopilot: stories recovered dirt="+state[0]+" grass="+state[1]+" youngRoots="+state[2]);d.storiesClearPresentation();
+        }));
+        route.add(step("settled recovered grove capture",2.5f,d->d.shot("stories-day-seven-"+role+"-"+slot)));
+        route.add(step("return to the actual seven-day fields",.3f,Autopilot::storiesFieldView));
+        route.add(when("seven-day field and faded trail reached both peers",.5f,d->d.storiesStats()[0]==0&&d.storiesStats()[1]==0&&d.storiesStats()[3]<storiesTrail,d->{
+            ok("stories day7 natural trees and faded trail");d.executeCommand("[stories-grown-"+slot+"]");
+        }));
+        route.add(when("both peers witnessed all day-seven results",.3f,d->d.sawChat("[stories-grown-0]")&&d.sawChat("[stories-grown-1]"),d->{
+            d.storiesCropControl(true);if(walker){int[] p=d.storiesAnchor();d.flyInCreative();d.teleport(p[0]+9.5f,101.001f,p[2]+150.5f);d.lookAt(p[0]+9.5f,101.5f,p[2]+148.5f);}else storiesFieldView(d);
+        }));
+        if(walker){
+            route.add(step("actual approach-gate right input",2.5f,d->d.mouseButton(1,true)));
+            route.add(step("release actual approach-gate right input",.1f,d->d.mouseButton(1,false)));
+        }
+        route.add(when("authoritative approach gate reached both peers",.5f,d->{int[] p=d.storiesAnchor();return "FENCE_GATE".equals(d.blockAt(p[0]+9,101,p[2]+148))&&(d.blockMetaAt(p[0]+9,101,p[2]+148)&4)!=0;},d->{storiesFieldView(d);d.executeCommand("[stories-gate-"+slot+"]");}));
+        route.add(when("both peers acknowledged authoritative gate use",.3f,d->d.sawChat("[stories-gate-0]")&&d.sawChat("[stories-gate-1]"),d->ok("stories gate opened through actual replicated right input")));
+        route.add(when("ordinary rabbit raid and protected field mirrored",12f,d->d.storiesStats()[0]>0&&d.storiesStats()[1]==0,d->{
+            ok("stories ordinary raid mirrored protected crop7");d.storiesClearPresentation();d.executeCommand("[stories-raid-"+slot+"]");
+        }));
+        route.add(step("settled ordinary raid capture",2.5f,d->d.shot("stories-ordinary-rabbit-raid-"+role+"-"+slot)));
+        route.add(when("both peers observed actual raid",.3f,d->d.sawChat("[stories-raid-0]")&&d.sawChat("[stories-raid-1]"),Autopilot::storiesNestView));
+        route.add(when("real scheduled nest silk reached both peers",.5f,d->{int[] p=d.storiesAnchor();return "SPIDER_NEST".equals(d.blockAt(p[0]+16,101,p[2]+16))&&d.storiesStats()[2]>0&&d.storiesStats()[2]<=32;},d->{
+            System.out.println("autopilot: stories scheduled webs="+d.storiesStats()[2]);ok("stories real scheduled silk replicated");d.storiesClearPresentation();d.executeCommand("[stories-silk-"+slot+"]");
+        }));
+        route.add(step("settled real nest and silk capture",2.5f,d->d.shot("stories-nest-silk-"+role+"-"+slot)));
+        route.add(when("both peers saw live heart and real silk",.3f,d->d.sawChat("[stories-silk-0]")&&d.sawChat("[stories-silk-1]"),d->{storiesGroveView(d,true);d.executeCommand("[stories-away-"+slot+"]");}));
+        route.add(when("both actual peers look away for ordinary materialization",.3f,d->d.sawChat("[stories-away-0]")&&d.sawChat("[stories-away-1]"),d->{storiesGroveView(d,true);d.holdBurnMaterialization(false);}));
+        route.add(when("same fresh finite animal reached both peers",.5f,d->{for(long id:d.burnAnimalIds())if(java.util.Arrays.binarySearch(storiesInitialIds,id)<0&&(walker||d.sawChat("[stories-return-"+id+"]")))return true;return false;},d->{
+            for(long id:d.burnAnimalIds())if(java.util.Arrays.binarySearch(storiesInitialIds,id)<0&&(walker||d.sawChat("[stories-return-"+id+"]"))){storiesReturnedId=id;break;}
+            if(walker)d.executeCommand("[stories-return-"+storiesReturnedId+"]");float[] pose=d.mobPose(storiesReturnedId);if(pose==null||pose[3]<=0||pose[4]!=0)throw new IllegalStateException("Fresh finite body lacks healthy S_MOBS pose");
+            System.out.println("autopilot: stories finite returned IDs="+storiesReturnedId);d.executeCommand("[stories-return-seen-"+slot+"]");
+        }));
+        route.add(when("both peers witnessed identical returned finite identity",.5f,d->d.sawChat("[stories-return-seen-0]")&&d.sawChat("[stories-return-seen-1]"),d->{storiesGroveView(d,false);d.storiesClearPresentation();}));
+        route.add(step("settled returned animal capture",2.5f,d->d.shot("stories-returned-animal-"+role+"-"+slot)));
+        route.add(step("hold combined story world for peer and save",owner?8f:3f,d->{if(d.burnTerrainStats()[2]<=0)throw new IllegalStateException("Combined recovered trees vanished");d.storiesCropControl(false);ok("stories combined network PASS");}));
+        return List.copyOf(route);
+    }
+
     private static final String[] FORMS={"PLANK_SLAB","COBBLE_SLAB","STONE_SLAB","FENCE","FENCE_GATE","LADDER","TRAPDOOR"};
     private static void placeForms(Driver d){
         for(int i=0;i<FORMS.length;i++){
@@ -1283,7 +1387,7 @@ final class Autopilot {
         this.d = driver;
         boolean farm="farm".equals(System.getProperty("mineclone.autopilot.netScenario",""))||NET_MODE.equals("farm");
         String role=NET_MODE.equals("farm")?System.getProperty("mineclone.autopilot.farmRole","host"):NET_MODE;
-        this.steps = TRAIL_MODE ? trailSteps() : LAIR_MODE ? lairSteps(role) : BURN_MODE ? burnSteps(role) : switch (role) {
+        this.steps = STORIES_MODE ? storiesSteps(role) : TRAIL_MODE ? trailSteps() : LAIR_MODE ? lairSteps(role) : BURN_MODE ? burnSteps(role) : switch (role) {
             case "host" -> farm?concat(hostSteps,concat(hostFormsSteps,concat(farmHostSteps,ECOLOGY_MODE?raidHostSteps():List.of()))):hostSteps;
             case "join" -> farm?concat(guestSteps,concat(guestFormsSteps,concat(farmGuestSteps,ECOLOGY_MODE?raidGuestSteps(false):List.of()))):guestSteps;
             case "server" -> farm?concat(serverGuestSteps,NET_SLOT==0?concat(hostFormsSteps,concat(farmServerTillerSteps,ECOLOGY_MODE?raidGuestSteps(true):List.of())):concat(guestFormsSteps,concat(farmGuestSteps,ECOLOGY_MODE?raidGuestSteps(false):List.of()))):serverGuestSteps;

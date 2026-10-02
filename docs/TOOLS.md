@@ -185,6 +185,40 @@ building the newer source; it never edits an existing fixture or user save.
 `tools/DrawSpiderNestTexture.java` is the offline original texture authoring source;
 provenance is in `assets/textures/source/spider-nest.md`.
 
+## Ecology diagnostics layout
+
+`java -cp 'out;libs/*' tools/EcologyHudPreview.java [out-test/output]` renders
+six actual HUD/GL frames: known and unobserved regions at 1280×720, 640×360 and
+320×180. It restores a typed diagnostic fixture, checks that info reads preserve
+saved bytes, and retains PNGs plus report text. Default output is
+`out-test/ecology-hud`. This checks clipping and hidden-row disclosure, not
+Game input or simulated story outcomes. Run against freshly compiled classes.
+
+## Combined Living World acceptance
+
+`tools/LivingWorldGameSmoke.java` drives one disposable Game journey through
+predator loss, ordinary rabbit meals, finite nest bodies, actual fire input,
+walking, forest recovery, menu/save/reopening and thirty days away. Compile
+the shared fixture helper and the native driver together after `run.ps1 -CompileOnly`:
+
+```powershell
+javac -cp 'out;libs/*' -d out-test/story-tools tools/LivingWorldSaveAcceptance.java tools/LivingWorldGameSmoke.java
+java -cp 'out-test/story-tools;out;libs/*' LivingWorldGameSmoke out-test/stories-game
+.\run-net-test.ps1 -Stories
+.\run-server-test.ps1 -Stories
+```
+
+`-Stories` selects a combined valley in the existing optional autopilot mechanism.
+Both real peers observe nest/scheduled silk, walking pressure, open/closed fields
+and recovered forest/finite animal IDs through ordinary snapshots. The NORMAL
+dedicated wrapper invokes `LivingWorldSaveAcceptance.java prepare|verify` on a
+fresh fixture and checks its disk state before and after `/stop`. Full nest
+destruction/recolonization and thirty-day absence are covered by the native and
+deterministic journeys; the network scenario checks the shared live nest/silk.
+The owner uses temporary crop-growth observation controls while proving meals,
+restoring ordinary growth before the scenario finishes. Fixtures stay under `out-test`.
+See [validation and boundaries](changes/living-world-stories/validation.md).
+
 ## Historical generators
 
 

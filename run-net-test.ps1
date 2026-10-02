@@ -11,18 +11,21 @@
 #        .\run-net-test.ps1 -Farm       - farm actions and growth through the host
 #        .\run-net-test.ps1 -Farm -LivingWorld - both scenarios together
 #        .\run-net-test.ps1 -Lairs     - finite nests, normal combat and recolonization
+#        .\run-net-test.ps1 -Stories   - one shared valley, trail/fields/silk/fire/recovery
 #        .\run-net-test.ps1 -BurnScars - burned grove, seven days, finite animal return
 #
 # Photon costs two of the free concurrent slots and needs the internet, so it
 # is opt-in; the socket run is the one that gates every change.
 # Exits non-zero if either side failed.
 
-param([switch]$Photon, [switch]$LivingWorld, [switch]$Farm, [switch]$Lairs, [switch]$BurnScars)
+param([switch]$Photon, [switch]$LivingWorld, [switch]$Farm, [switch]$Lairs, [switch]$BurnScars, [switch]$Stories)
 
 if ($Farm -and $Lairs) { throw 'Farm and Lairs are separate acceptance scenarios' }
 if ($Lairs) { $LivingWorld = $true }
 if ($BurnScars -and ($Farm -or $Lairs)) { throw 'BurnScars is a separate acceptance scenario' }
 if ($BurnScars) { $LivingWorld = $true }
+if ($Stories -and ($Farm -or $Lairs -or $BurnScars)) { throw 'Stories is a separate consolidated acceptance scenario' }
+if ($Stories) { $LivingWorld = $true }
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -38,12 +41,18 @@ $probe.Start()
 $port = $probe.LocalEndpoint.Port
 $probe.Stop()
 
-$scenarioOutput = if ($BurnScars) { 'burn-net' } else { 'net' }
+$scenarioOutput = if ($Stories) { 'stories-net' } elseif ($BurnScars) { 'burn-net' } else { 'net' }
 $work = Join-Path (Join-Path $root 'out-test') $scenarioOutput
 if ([IO.Path]::GetFullPath($work) -ne [IO.Path]::Combine([IO.Path]::GetFullPath($root), 'out-test', $scenarioOutput)) {
     throw "Unexpected test output path: $work"
 }
-if (Test-Path $work) { Remove-Item -Recurse -Force $work }
+if (Test-Path $work) {
+    if ($Stories) {
+        $archive = [IO.Path]::GetFullPath($work + '-' + [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmssfff'))
+        if ([IO.Path]::GetDirectoryName($archive) -ne [IO.Path]::GetFullPath((Join-Path $root 'out-test'))) { throw 'Unexpected story archive path' }
+        Move-Item -LiteralPath $work -Destination $archive
+    } else { Remove-Item -Recurse -Force -LiteralPath $work }
+}
 New-Item -ItemType Directory -Force -Path $work | Out-Null
 
 $cp = "$out;$libs\*"
@@ -59,7 +68,7 @@ function Start-Side {
         "-Dmineclone.autopilot=$dir\shots",
         "-Dmineclone.savesDir=$dir\saves",
         "-Dmineclone.autopilot.net=$mode",
-        "-Dmineclone.autopilot.netScenario=$(if ($BurnScars) { 'burn' } elseif ($Lairs) { 'lair' } elseif ($Farm) { 'farm' } else { '' })",
+        "-Dmineclone.autopilot.netScenario=$(if ($Stories) { 'stories' } elseif ($BurnScars) { 'burn' } elseif ($Lairs) { 'lair' } elseif ($Farm) { 'farm' } else { '' })",
         "-Dmineclone.autopilot.netPort=$port",
         "-Dmineclone.autopilot.netVia=$via",
         "-Dmineclone.autopilot.netRoom=$room"
@@ -78,7 +87,7 @@ $host_ = Start-Side 'host' 'host'
 # The host has to create a world and open the room before anyone can knock.
 # Photon needs longer: the room only exists after a round trip through the
 # name server, the master and a game server.
-if ($Photon) {
+if ($Photon -or $Stories) {
     # Hosting generates a fresh room code. Join the code the game actually
     # published, not the old autopilot-<port> placeholder.
     $deadline = [DateTime]::UtcNow.AddSeconds(90)
@@ -92,7 +101,7 @@ if ($Photon) {
     }
     if (-not $room) {
         if (-not $host_.HasExited) { $host_.Kill(); $host_.WaitForExit() }
-        throw 'Photon host did not publish its room code within 90 seconds'
+        throw 'Host did not publish its room code within 90 seconds'
     }
 } else {
     Start-Sleep -Seconds 15
@@ -100,7 +109,7 @@ if ($Photon) {
 $guest = Start-Side 'join' 'guest'
 
 foreach ($proc in @($host_, $guest)) {
-    if (-not $proc.WaitForExit(180000)) {
+    if (-not $proc.WaitForExit($(if ($Stories) { 480000 } else { 180000 }))) {
         Write-Host "net test: killing a side that would not stop"
         try { $proc.Kill() } catch { }
     }
@@ -134,7 +143,19 @@ if ($LivingWorld) {
         }
     }
     $guestMarkers = @('living world guest command refused', 'all checks passed')
-    if (-not $Farm -and -not $Lairs -and -not $BurnScars) { $guestMarkers += 'all mob species replicated with valid poses' }
+    if (-not $Farm -and -not $Lairs -and -not $BurnScars -and -not $Stories) { $guestMarkers += 'all mob species replicated with valid poses' }
+    if ($Stories) {
+        foreach ($marker in @('stories actual trail stage5', 'stories same valley scorched and fields protected',
+                'stories real scheduled silk replicated', 'stories ordinary raid mirrored protected crop7',
+                'stories day7 natural trees and faded trail', 'stories gate opened through actual replicated right input',
+                'stories finite returned IDs=', 'stories combined network PASS')) {
+            if ($hostLog -notmatch [regex]::Escape($marker)) { Write-Host "net test: missing story owner proof: $marker"; $code = 1 }
+            $guestMarkers += $marker
+        }
+        $hostIds = [regex]::Match($hostLog, 'stories finite returned IDs=([0-9,]+)').Groups[1].Value
+        $guestIds = [regex]::Match($guestLog, 'stories finite returned IDs=([0-9,]+)').Groups[1].Value
+        if (-not $hostIds -or $hostIds -ne $guestIds) { Write-Host 'net test: consolidated returned finite identity differs'; $code = 1 }
+    }
     if ($BurnScars) {
         foreach ($marker in @('burn owner prepared actual fuel consumption callbacks=',
                 'burn host saw actual scorched ground and finite original animal', 'burn owner actual seven-day command',

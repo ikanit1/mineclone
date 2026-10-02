@@ -395,19 +395,28 @@ public final class Ecology implements Materializer.Populations {
 
     public String[] info(float x, float z) {
         if (!supported) return new String[] { "Ecology unavailable", recovery };
-        if (enabled()) refreshFields();
-        EcologyRegion region = regionAt(x, z);
-        if (region == null) return new String[] { "Ecology: region limit reached" };
+        if (!Float.isFinite(x) || !Float.isFinite(z)) return new String[] { "Ecology: invalid diagnostic position" };
+        int rx = regionCoordinate(x), rz = regionCoordinate(z);
+        EcologyRegion region = regions.get(EcologyRegion.key(rx, rz));
         var lines = new ArrayList<String>();
-        lines.add("Ecology " + (enabled() ? "ON" : "OFF") + " | region " + region.x() + ", " + region.z() + " | day " + region.lastDay());
-        lines.add("Species: total / capacity | bodies | change over 3 days");
+        lines.add("Ecology " + (enabled() ? "ON" : "OFF") + " | region " + rx + ", " + rz
+                + (region == null ? " | not observed" : " | snapshot day " + region.lastDay()));
+        lines.add("Known locations: current + 8 adjacent regions; horizontal distance");
+        nearbyInfo(lines, x, z, rx, rz);
+        if (region == null) {
+            lines.add("Population, capacity and model trend unavailable until region is observed");
+            return lines.toArray(String[]::new);
+        }
+        lines.add("Species: total / capacity | bodies | model 3d sum [oldest->latest]");
         for (var definition : table().definitions()) {
             int[] trend = region.trend(definition.id()); int delta = trend[0] + trend[1] + trend[2];
             lines.add(definition.type().name() + ": " + region.population(definition.id()) + " / " + EcologyModel.effectiveCapacity(region, definition.id())
-                    + " | " + represented(region.x(), region.z(), definition.id()) + " | " + (delta >= 0 ? "+" : "") + delta);
+                    + " | " + represented(region.x(), region.z(), definition.id()) + " | " + signed(delta)
+                    + " [" + signed(trend[0]) + "," + signed(trend[1]) + "," + signed(trend[2]) + "]");
         }
+        lines.add("Model trend starts with zero slots; direct births/deaths are excluded");
         lines.add("Fields: " + fields.crops(region.key()) + " crop estimate | rabbit food +" + region.foodBonus(RABBIT));
-        lines.add("Lairs: " + region.lairs().size() + " | burn scars: " + scars.scars(region.key()).size());
+        lines.add("Lairs in region: " + lairs.lairs(region.key()).size());
         for (Lair lair : lairs.lairs(region.key())) lines.add("Spider nest " + lair.x() + "," + lair.y() + "," + lair.z()
                 + (lair.alive() ? " alive" : " destroyed") + " | spiders " + lair.population() + "/" + lair.capacity()
                 + " | outside " + lair.bodyIds().size());
@@ -419,15 +428,79 @@ public final class Ecology implements Materializer.Populations {
 
     public String[] lairInfo(float x, float z) {
         if (!supported) return new String[] { "Ecology unavailable", recovery };
-        EcologyRegion region = regionAt(x, z);
-        if (region == null) return new String[] { "Ecology: region limit reached" };
+        if (!Float.isFinite(x) || !Float.isFinite(z)) return new String[] { "Ecology: invalid diagnostic position" };
+        int rx = regionCoordinate(x), rz = regionCoordinate(z);
+        long key = EcologyRegion.key(rx, rz);
         var lines = new ArrayList<String>();
-        lines.add("Spider lairs | region " + region.x() + "," + region.z());
-        for (Lair lair : lairs.lairs(region.key())) lines.add("Nest " + lair.x() + "," + lair.y() + "," + lair.z()
+        lines.add("Spider lairs | region " + rx + "," + rz);
+        List<Lair> local = lairs.lairs(key);
+        for (Lair lair : local) lines.add("Nest " + lair.x() + "," + lair.y() + "," + lair.z()
                 + (lair.alive() ? " alive" : " destroyed day " + lair.destroyedDay())
                 + " | spiders " + lair.population() + "/" + lair.capacity() + " | outside " + lair.bodyIds().size());
-        if (lines.size() == 1) lines.add("No known spider nest in this region");
+        if (local.isEmpty()) lines.add("No known spider nest in this region");
+        lines.add("Known locations: current + 8 adjacent regions; horizontal distance");
+        nearestLairInfo(lines, nearestLair(x, z, rx, rz), x, z);
         return lines.toArray(String[]::new);
+    }
+
+    private static String signed(int value) { return (value >= 0 ? "+" : "") + value; }
+
+    private record BurnSite(int x, int y, int z, long burnDay, boolean plantedOnce) {}
+
+    /** Bounded lookup of already known records; diagnostics never discover or refresh terrain. */
+    private void nearbyInfo(List<String> lines, float x, float z, int rx, int rz) {
+        nearestLairInfo(lines, nearestLair(x, z, rx, rz), x, z);
+        int sites = 0, fresh = 0, planted = 0;
+        long today = day(clock.gameTime());
+        List<BurnScars.Scar> local = scars.scars(EcologyRegion.key(rx, rz));
+        for (var scar : local) for (var site : scar.sites()) {
+            sites++;
+            if (site.burnDay() <= today && today - site.burnDay() < BurnScars.SAPLING_DAY) fresh++;
+            if (site.plantedOnce()) planted++;
+        }
+        lines.add("Burn history: " + local.size() + " records | " + sites + " sites | " + fresh + " fresh | " + planted + " planted once");
+        BurnSite nearest = null;
+        double distance = Double.POSITIVE_INFINITY;
+        for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++)
+            for (var scar : dx == 0 && dz == 0 ? local : scars.scars(EcologyRegion.key(rx + dx, rz + dz)))
+                for (var site : scar.sites()) {
+                    int sx = scar.cx() * 16 + site.localX(), sy = site.groundY(), sz = scar.cz() * 16 + site.localZ();
+                    double candidate = Math.hypot(sx + .5 - x, sz + .5 - z);
+                    if (candidate < distance || candidate == distance && nearest != null
+                            && locationBefore(sx, sy, sz, nearest.x, nearest.y, nearest.z)) {
+                        distance = candidate; nearest = new BurnSite(sx, sy, sz, site.burnDay(), site.plantedOnce());
+                    }
+                }
+        if (nearest == null) lines.add("Nearest scar: none known in nearby regions");
+        else lines.add("Nearest scar: " + nearest.x + "," + nearest.y + "," + nearest.z + " | " + Math.round(distance) + "m"
+                + " | " + (nearest.burnDay <= today ? "age " + (today - nearest.burnDay) + "d" : "future day " + nearest.burnDay)
+                + " | " + (nearest.plantedOnce ? "planted once" : "not planted"));
+    }
+
+    private Lair nearestLair(float x, float z, int rx, int rz) {
+        Lair nearest = null;
+        double distance = Double.POSITIVE_INFINITY;
+        for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++)
+            for (Lair lair : lairs.lairs(EcologyRegion.key(rx + dx, rz + dz))) {
+                double candidate = Math.hypot(lair.x() + .5 - x, lair.z() + .5 - z);
+                if (candidate < distance || candidate == distance && nearest != null
+                        && locationBefore(lair.x(), lair.y(), lair.z(), nearest.x(), nearest.y(), nearest.z())) {
+                    distance = candidate; nearest = lair;
+                }
+            }
+        return nearest;
+    }
+
+    private static boolean locationBefore(int x, int y, int z, int otherX, int otherY, int otherZ) {
+        return x < otherX || x == otherX && (y < otherY || y == otherY && z < otherZ);
+    }
+
+    private static void nearestLairInfo(List<String> lines, Lair lair, float x, float z) {
+        if (lair == null) { lines.add("Nearest nest: none known in nearby regions"); return; }
+        lines.add("Nearest nest: " + lair.x() + "," + lair.y() + "," + lair.z() + " | "
+                + Math.round(Math.hypot(lair.x() + .5 - x, lair.z() + .5 - z)) + "m | "
+                + (lair.alive() ? "alive" : "destroyed day " + lair.destroyedDay()));
+        lines.add("Nest population: " + lair.population() + "/" + lair.capacity() + " | outside " + lair.bodyIds().size());
     }
 
     private void requireSupported() { if (!supported) throw new IllegalStateException(recovery); }
