@@ -183,6 +183,8 @@ public class Mob implements Hittable, com.mineclone.world.effect.StatusEffects.T
     public org.joml.Vector3f foodTarget;
     /** Host-only lair return/territory route; reconstructed from the lair's saved body IDs. */
     public org.joml.Vector3f lairDestination;
+    /** Transient host escape route from a damaged forest floor. */
+    public org.joml.Vector3f burnDestination;
     /** Host-only Living World switch. Appetite and raid navigation are transient. */
     public boolean cropRaidsEnabled;
     CropRaids cropRaid;
@@ -503,7 +505,12 @@ public class Mob implements Hittable, com.mineclone.world.effect.StatusEffects.T
                 && (morale == MobTactics.Morale.RETREAT || morale == MobTactics.Morale.PANIC);
         boolean sleeping = routine == MobTactics.Routine.SLEEP && !burning
                 && playerDist > 8f && threatDist > 8f;
-        if (type == MobType.SPIDER && lairDestination != null && !burning) {
+        if (!type.hostile && burnDestination != null) {
+            if (cropRaid != null) cropRaid.cancel(this);
+            state = State.FLEE;
+            stateTimer = .6f;
+            navigateTo(world, dt, burnDestination);
+        } else if (type == MobType.SPIDER && lairDestination != null && !burning) {
             state = State.WANDER;
             navigateTo(world, dt, lairDestination);
         } else if (retreating) {

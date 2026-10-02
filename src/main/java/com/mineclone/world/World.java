@@ -15,6 +15,45 @@ public class World {
     public boolean livingWorldEnabled() { return livingWorldEnabled; }
     public void setLivingWorldEnabled(boolean value) { livingWorldEnabled = value; }
 
+    /** The authoritative simulation observes fuel actually consumed by fire. */
+    @FunctionalInterface
+    public interface FuelBurnedHandler {
+        void consumed(int x, int y, int z, BlockType fuel);
+    }
+    private FuelBurnedHandler fuelBurned = (x, y, z, fuel) -> {};
+    public void setFuelBurnedHandler(FuelBurnedHandler handler) {
+        fuelBurned = java.util.Objects.requireNonNull(handler);
+    }
+    public void fuelConsumedByFire(int x, int y, int z, BlockType fuel) {
+        fuelBurned.consumed(x, y, z, fuel);
+    }
+
+    /** Exact damaged ground, supplied only by the host's enabled ecology. */
+    @FunctionalInterface
+    public interface BurnedHabitat {
+        boolean damaged(int x, int groundY, int z);
+    }
+    private BurnedHabitat burnedHabitat = (x, y, z) -> false;
+    public void setBurnedHabitat(BurnedHabitat habitat) {
+        burnedHabitat = java.util.Objects.requireNonNull(habitat);
+    }
+    public boolean burnDamaged(int x, int groundY, int z) {
+        return livingWorldEnabled && burnedHabitat.damaged(x, groundY, z);
+    }
+
+    /** Host occupancy check before a natural tree writes its entire crown. */
+    @FunctionalInterface
+    public interface NaturalGrowthSpace {
+        boolean clear(int x, int y, int z);
+    }
+    private NaturalGrowthSpace naturalGrowthSpace = (x, y, z) -> true;
+    public void setNaturalGrowthSpace(NaturalGrowthSpace space) {
+        naturalGrowthSpace = java.util.Objects.requireNonNull(space);
+    }
+    public boolean canGrowNaturalTreeAt(int x, int y, int z) {
+        return naturalGrowthSpace.clear(x, y, z);
+    }
+
     public static final int SEA_LEVEL = 50;
 
     private final Map<Long, Chunk> chunks = new ConcurrentHashMap<>();

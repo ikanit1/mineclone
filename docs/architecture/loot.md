@@ -39,6 +39,14 @@ a block property: `BlockProps.requiredToolLevel` and `preferredTool` gate the
 harvest (`LootRegistry.canHarvest`) before any table is rolled, and creative
 mode drops nothing. The table only decides what comes out.
 
+Natural scar saplings store their host lifecycle flag in world meta bit 2.
+SAPLING loot contexts use species bits 0..1, so natural and player seedlings
+yield the same ordinary species item through hand breaking, support collapse
+and explosions. Player placement also masks carried BLOCK_STATE to those two
+species bits: creative picking or an older carried item cannot turn a player
+plant into a seedling that pauses when Living World is disabled. Saved item
+components keep their established opaque-preservation policy.
+
 **Randomness.** Block and mob drops roll on the session's item RNG. A constant
 drop draws no value from it, so porting a fixed drop into data does not shift
 anything downstream. Chest loot passes no session RNG: its generator is seeded

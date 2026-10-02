@@ -152,7 +152,8 @@ public final class Materializer {
             for (int bz = (int) Math.floor(z - half); bz <= (int) Math.floor(z + half); bz++) {
                 Chunk chunk = world.getChunkIfExists(Math.floorDiv(bx, Chunk.SIZE_X), Math.floorDiv(bz, Chunk.SIZE_Z));
                 if (chunk == null || chunk.isReadOnly()
-                        || !world.getBlock(bx, (int) Math.floor(y - .01f), bz).solid)
+                        || !world.getBlock(bx, (int) Math.floor(y - .01f), bz).solid
+                        || world.burnDamaged(bx, (int) Math.floor(y - .01f), bz))
                     return false;
                 for (int by = (int) Math.floor(y); by <= (int) Math.floor(y + type.height); by++) {
                     BlockType block = world.getBlock(bx, by, bz);

@@ -81,6 +81,11 @@ After publication, container mutation belongs to the main simulation thread;
   случайных тиков, сохраняет секция чанка `ticks` (BLK-04,
   [blocks](blocks.md#scheduled-ticks-blk-04)). Восстановленный чанк отдаёт свои
   тики симуляции при публикации (`World.tickArrivals`), не патчем после неё.
+- World's fire-consumption, burned-ground and natural-growth-space callbacks are
+  transient host observations. Ecology installs them after restore; guests and
+  disabled worlds do not mutate scar state. Natural saplings require the whole
+  loaded writable crown to remain clear of blocks and living bodies before any
+  tree write; protected borders cannot receive partial natural trees.
 - `Chunk.cropCellCount` / `cropCellAt` give O(1) sparse iteration over wheat,
   carrots and potatoes at all stages; `cropIndices` returns a defensive copy.
   Planting, crop type changes, removal and restored block data maintain the index.

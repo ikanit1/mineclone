@@ -11,12 +11,15 @@
 #        .\run-server-test.ps1 -Farm
 #        .\run-server-test.ps1 -Farm -LivingWorld
 #        .\run-server-test.ps1 -Lairs
+#        .\run-server-test.ps1 -BurnScars
 # Exits non-zero if the server or either client failed.
 
-param([switch]$LivingWorld, [switch]$Farm, [switch]$Lairs)
+param([switch]$LivingWorld, [switch]$Farm, [switch]$Lairs, [switch]$BurnScars)
 
 if ($Farm -and $Lairs) { throw 'Farm and Lairs are separate acceptance scenarios' }
 if ($Lairs) { $LivingWorld = $true }
+if ($BurnScars -and ($Farm -or $Lairs)) { throw 'BurnScars is a separate acceptance scenario' }
+if ($BurnScars) { $LivingWorld = $true }
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -32,7 +35,7 @@ $probe.Start()
 $port = $probe.LocalEndpoint.Port
 $probe.Stop()
 
-$work = Join-Path $root 'out-test\server'
+$work = Join-Path $root $(if ($BurnScars) { 'out-test\burn-server' } else { 'out-test\server' })
 $work = [IO.Path]::GetFullPath($work)
 $testRoot = [IO.Path]::GetFullPath((Join-Path $root 'out-test')) + [IO.Path]::DirectorySeparatorChar
 if (-not $work.StartsWith($testRoot, [StringComparison]::OrdinalIgnoreCase)) {
@@ -58,7 +61,7 @@ photon=false
 saves-dir=$savesDir/saves
 world=test
 world-name=TestServer
-seed=20260922
+seed=$(if ($BurnScars) { 20261006 } else { 20260922 })
 mode=creative
 difficulty=normal
 autosave-seconds=15
@@ -77,6 +80,11 @@ if ($Lairs) {
     $lairTool = Join-Path $root 'tools\LairSaveAcceptance.java'
     & java -cp $cp $lairTool prepare $conf
     if ($LASTEXITCODE -ne 0) { throw 'server test: could not prepare the finite two-cave lair fixture' }
+}
+if ($BurnScars) {
+    $burnTool = Join-Path $root 'tools\BurnScarsSaveAcceptance.java'
+    & java -cp $cp $burnTool prepare $conf
+    if ($LASTEXITCODE -ne 0) { throw 'server test: could not prepare the production-fire burned grove fixture' }
 }
 
 # The server is started through .NET rather than Start-Process because we need
@@ -106,7 +114,7 @@ function Start-Guest {
         "-Dmineclone.autopilot=$dir\shots",
         "-Dmineclone.savesDir=$dir\saves",
         '-Dmineclone.autopilot.net=server',
-        "-Dmineclone.autopilot.netScenario=$(if ($Lairs) { 'lair' } elseif ($Farm) { 'farm' } else { '' })",
+        "-Dmineclone.autopilot.netScenario=$(if ($BurnScars) { 'burn' } elseif ($Lairs) { 'lair' } elseif ($Farm) { 'farm' } else { '' })",
         "-Dmineclone.autopilot.netPort=$port",
         "-Dmineclone.autopilot.netSlot=$slot"
     )
@@ -152,6 +160,25 @@ if ($Farm) {
 
 $lairNightAdvanced = $false
 $lairColonizationAdvanced = $false
+$burnAdvanced = $false
+if ($BurnScars) {
+    $deadline = [DateTime]::UtcNow.AddMinutes(3)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $a = Get-Content (Join-Path $work 'guest0\out.log') -Raw -ErrorAction SilentlyContinue
+        $b = Get-Content (Join-Path $work 'guest1\out.log') -Raw -ErrorAction SilentlyContinue
+        if ($a -match 'burn READY seven days' -and $b -match 'burn READY seven days') {
+            $server.StandardInput.WriteLine('/ecology advance 7')
+            $server.StandardInput.WriteLine('/time noon')
+            $server.StandardInput.WriteLine('/ecology info')
+            $server.StandardInput.WriteLine('/save')
+            $server.StandardInput.Flush()
+            $burnAdvanced = $true
+            break
+        }
+        if ($guests[0].HasExited -or $guests[1].HasExited) { break }
+        Start-Sleep -Milliseconds 250
+    }
+}
 if ($Lairs) {
     $deadline = [DateTime]::UtcNow.AddMinutes(3)
     while ([DateTime]::UtcNow -lt $deadline) {
@@ -209,6 +236,27 @@ if ($Farm -and $LivingWorld -and -not $server.HasExited) {
 }
 
 $lairSaved = $false
+$burnSaved = $false
+$returnedBurnIds = ''
+if ($BurnScars -and -not $server.HasExited) {
+    $returnedBurnIds = [regex]::Match((Get-Content (Join-Path $work 'guest0\out.log') -Raw), 'burn returned IDs=([0-9,]+)').Groups[1].Value
+    $server.StandardInput.WriteLine('/save')
+    $server.StandardInput.Flush()
+    $deadline = [DateTime]::UtcNow.AddSeconds(20)
+    if ($returnedBurnIds) {
+        do {
+            $verificationErrorPolicy = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                $burnProof = & java -cp $cp $burnTool verify $conf $returnedBurnIds 2>&1
+                $burnExit = $LASTEXITCODE
+            } finally { $ErrorActionPreference = $verificationErrorPolicy }
+            $burnProof | Set-Content -LiteralPath (Join-Path $work 'burn-save.log') -Encoding utf8
+            if ($burnExit -eq 0) { $burnSaved = $true; Write-Host $burnProof; break }
+            Start-Sleep -Milliseconds 300
+        } while ([DateTime]::UtcNow -lt $deadline -and -not $server.HasExited)
+    }
+}
 if ($Lairs -and -not $server.HasExited) {
     $initialLairIds = [regex]::Match((Get-Content (Join-Path $work 'guest0\out.log') -Raw), 'lair initial IDs=([0-9,]+)').Groups[1].Value
     $server.StandardInput.WriteLine('/save')
@@ -234,7 +282,7 @@ Write-Host 'server test: asking the server to stop'
 $stoppedCleanly = $true
 try {
     if ($LivingWorld) {
-        if (-not $Lairs) { $server.StandardInput.WriteLine('/ecology advance 10') }
+        if (-not $Lairs -and -not $BurnScars) { $server.StandardInput.WriteLine('/ecology advance 10') }
         $server.StandardInput.WriteLine('/ecology info')
         $server.StandardInput.WriteLine('/save')
     }
@@ -262,6 +310,17 @@ $serverErr = if ($serverErrTask.IsCompleted) { $serverErrTask.Result } else { ''
 # Verify the final published shutdown files as well as the live /save result.
 # An earlier successful snapshot must not hide a later destructive save.
 $lairSavedAfterStop = $false
+$burnSavedAfterStop = $false
+if ($BurnScars -and $stoppedCleanly -and $server.HasExited -and $returnedBurnIds) {
+    $verificationErrorPolicy = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $burnFinalProof = & java -cp $cp $burnTool verify $conf $returnedBurnIds 2>&1
+        $burnSavedAfterStop = $LASTEXITCODE -eq 0
+    } finally { $ErrorActionPreference = $verificationErrorPolicy }
+    $burnFinalProof | Set-Content -LiteralPath (Join-Path $work 'burn-save-after-stop.log') -Encoding utf8
+    if ($burnSavedAfterStop) { Write-Host $burnFinalProof }
+}
 if ($Lairs -and $stoppedCleanly -and $server.HasExited -and $initialLairIds) {
     $verificationErrorPolicy = $ErrorActionPreference
     try {
@@ -279,6 +338,10 @@ if ($serverOut) { Write-Host $serverOut.TrimEnd() }
 if ($serverErr) { Write-Host ($serverErr -split "`n" | Select-Object -First 10) }
 
 $code = 0
+if ($BurnScars -and (-not $burnAdvanced -or -not $burnSaved -or -not $burnSavedAfterStop)) {
+    Write-Host 'server test: missing actual day7 recovery or intact live/post-stop scar, tree and finite body proof'
+    $code = 1
+}
 if ($Lairs -and (-not $lairNightAdvanced -or -not $lairColonizationAdvanced -or -not $lairSaved -or -not $lairSavedAfterStop)) {
     Write-Host 'server test: missing actual lair night/colonization or intact saved death/IDs proof (see lair-save.log)'
     $code = 1
@@ -298,8 +361,9 @@ if ($serverOut -notmatch 'stopped') {
     $code = 1
 }
 if ($LivingWorld) {
-    $expectedDay = if ($Lairs) { 11 } elseif ($farmAdvanced) { 12 } else { 10 }
-    foreach ($pattern in @('\[server\] ecology on', '\[server\] ecology advanced 10 day\(s\)',
+    $expectedDay = if ($BurnScars) { 7 } elseif ($Lairs) { 11 } elseif ($farmAdvanced) { 12 } else { 10 }
+    $advancedDays = if ($BurnScars) { 7 } else { 10 }
+    foreach ($pattern in @('\[server\] ecology on', "\[server\] ecology advanced $advancedDays day\(s\)",
             "\[server\] Ecology ON \| region .+ \| day $expectedDay\b",
             '\[server\] Species: total / capacity \| bodies \| change over 3 days',
             '\[server\] saved [1-9][0-9]* chunks')) {
@@ -329,6 +393,14 @@ foreach ($slot in 0, 1) {
     if ($LivingWorld) {
         $guestLog = if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Raw } else { '' }
         $markers = @('living world guest command refused', 'all checks passed')
+        if ($BurnScars) {
+            $markers += @('burn guest saw actual scorched ground and original S_MOBS animal with ecology absent',
+                    'burn guest day7 grass and scheduled young trees mirrored',
+                    'burn guest same returned finite animal mirrored with ecology absent', 'burn finite return proof complete')
+            $referenceIds = [regex]::Match((Get-Content (Join-Path $work 'guest0\out.log') -Raw), 'burn returned IDs=([0-9,]+)').Groups[1].Value
+            $peerIds = [regex]::Match($guestLog, 'burn returned IDs=([0-9,]+)').Groups[1].Value
+            if (-not $referenceIds -or $referenceIds -ne $peerIds) { Write-Host "server test: guest $slot saw a different returned animal ID"; $code = 1 }
+        }
         if ($Farm) {
             $markers += @('raid guest acknowledged mature crop stage7 with ecology absent',
                     'raid guest received crop stage0 and protected stage7', 'raid protected crop stayed stage7')
@@ -368,9 +440,10 @@ if (-not (Test-Path $chunks) -or ((Get-ChildItem $chunks -File).Count -eq 0)) {
 }
 
 if ($code -eq 0) {
-    if ($LivingWorld) { Write-Host 'server test: Living World commands, ten-day advance and guest authority passed' }
+    if ($LivingWorld) { Write-Host "server test: Living World commands, $advancedDays-day advance and guest authority passed" }
     if ($Farm -and $LivingWorld) { Write-Host 'server test: natural server raid, both guest mirrors, protected crop and saved meal passed' }
     if ($Lairs) { Write-Host 'server test: NORMAL lair bodies, guest input/combat, later night, colony and intact saved identities passed' }
+    if ($BurnScars) { Write-Host 'server test: NORMAL burned grove, both day7 mirrors, finite animal return and intact shutdown save passed' }
     Write-Host ''; Write-Host 'server test: the server and both clients passed'
 }
 exit $code

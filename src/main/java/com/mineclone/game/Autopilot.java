@@ -123,6 +123,13 @@ final class Autopilot {
         /** Build a new disposable two-cave fixture; never alters a verification result. */
         void prepareLairArena();
         int[] lairAnchor();
+        /** Disposable story C preparation and read-only observations; guests only observe. */
+        void prepareBurnArena();
+        void holdBurnMaterialization(boolean hold);
+        int[] burnAnchor();
+        /** DIRT grounds, GRASS grounds and new WOOD roots outside the six authored old roots. */
+        int[] burnTerrainStats();
+        long[] burnAnimalIds();
         long[] spiderIdsNear(float x, float y, float z, float radius);
         /** Current authoritative or S_MOBS pose: x/y/z/health/dead, or null. */
         float[] mobPose(long id);
@@ -269,6 +276,7 @@ final class Autopilot {
     private static final boolean TRAIL_MODE = Boolean.getBoolean("mineclone.autopilot.trail");
     private static final boolean ECOLOGY_MODE = Boolean.getBoolean("mineclone.autopilot.ecology");
     private static final boolean LAIR_MODE = "lair".equals(System.getProperty("mineclone.autopilot.netScenario", ""));
+    private static final boolean BURN_MODE = "burn".equals(System.getProperty("mineclone.autopilot.netScenario", ""));
     private static final int NET_PORT =
             Integer.getInteger("mineclone.autopilot.netPort", com.mineclone.net.LanTransport.DEFAULT_PORT);
     /**
@@ -781,6 +789,86 @@ final class Autopilot {
         return List.copyOf(route);
     }
 
+    private long[] burnInitialIds;
+    private long burnInitialDay, burnReturnedId;
+    private int burnInitialDirt;
+    private static void burnView(Driver d, boolean away) {
+        int[] p = d.burnAnchor(); d.flyInCreative();
+        // NORMAL server startup can fill the southern local animal cap before both guests finish loading.
+        // Northern observation leaves ordinary cap room without changing populations or removing bodies.
+        int side = "server".equals(NET_MODE) ? -1 : 1;
+        d.teleport(p[0] + (away ? 0 : 29), p[1] + (away ? 1.01f : 2f), p[2] + (away ? side * 44 : 29));
+        d.lookAt(p[0], p[1] + 2, p[2] + (away ? side * 90 : 0));
+    }
+    private List<Step> burnSteps(String role) {
+        boolean owner = role.equals("host"), server = role.equals("server");
+        int slot = owner ? 0 : server ? NET_SLOT : 1;
+        boolean choosesReturned = owner || server && slot == 0;
+        var route = new java.util.ArrayList<Step>();
+        if (owner) {
+            route.add(step("create disposable burned grove room", 1f, d -> d.act(MenuAction.create(
+                    new WorldSettings("Burn scars net room", 20261006L, GameMode.CREATIVE)))));
+            route.add(when("burn owner world loaded", .5f, d -> in(d,"PLAYING"), d -> {
+                d.prepareBurnArena(); enableEcologyIfRequested(d); burnView(d,false);
+            }));
+            route.add(step("open actual burned grove room", .3f, d -> {
+                var worlds = d.save().listWorlds(false); if (worlds.isEmpty()) throw new IllegalStateException("Burn owner world absent");
+                d.act(MenuAction.netHost(worlds.get(0).id,netSettings("")));
+            }));
+            route.add(when("burn owner room opened", .5f, d -> in(d,"PLAYING")&&d.netIsHost(), d -> {
+                if (!d.ecologyEnabled()) throw new IllegalStateException("Burn room opening lost Living World");
+                d.holdBurnMaterialization(true);
+                ok("living world rule survived room opening");System.out.println("autopilot: room="+d.netRoomName());burnView(d,false);
+            }));
+            route.add(when("burn real guest joined", .3f, d -> d.netPlayers()>=1,d -> {}));
+        } else {
+            route.add(step("join actual burned grove authority",1.5f,d -> d.act(MenuAction.netJoin(netSettings("127.0.0.1:"+NET_PORT)))));
+            route.add(when("burn guest loaded",.5f,d -> in(d,"PLAYING"),d -> {
+                if (d.netIsHost()||d.ecologyEnabled()) throw new IllegalStateException("Burn guest owns Ecology");
+                rejectGuestEcologyIfRequested(d);burnView(d,false);
+            }));
+        }
+        route.add(when("actual scorched grove and original finite animal reached peer",.5f,d ->
+                d.burnTerrainStats()[0]>=192&&d.burnAnimalIds().length>0,d -> {
+            burnInitialDirt=d.burnTerrainStats()[0];burnInitialDay=com.mineclone.sim.ecology.Ecology.day(d.gameTime());
+            int[] p=d.burnAnchor();burnInitialIds=d.animalIdsNear(p[0],p[2],Float.MAX_VALUE);
+            if (d.burnTerrainStats()[2]!=0) throw new IllegalStateException("Young trees existed before recovery command");
+            System.out.println("autopilot: burn initial IDs="+java.util.Arrays.stream(burnInitialIds).mapToObj(Long::toString).collect(java.util.stream.Collectors.joining(",")));
+            ok(owner?"burn host saw actual scorched ground and finite original animal":"burn guest saw actual scorched ground and original S_MOBS animal with ecology absent");
+            d.executeCommand("[burn-ready-"+slot+"]");ok("burn READY seven days");d.shot("burn-scorched-"+role+"-"+slot);
+        }));
+        route.add(when("both peers acknowledged actual scorched grove",.3f,d -> d.sawChat("[burn-ready-0]")&&d.sawChat("[burn-ready-1]"),d -> {
+            if(owner){d.executeCommand("/ecology advance 7");d.executeCommand("/time set noon");d.executeCommand("/ecology info");ok("burn owner actual seven-day command");}
+        }));
+        route.add(when("day seven grass and grown natural trees replicated",.5f,d ->
+                com.mineclone.sim.ecology.Ecology.day(d.gameTime())>=burnInitialDay+7&&d.burnTerrainStats()[2]>0
+                        &&d.burnTerrainStats()[0]<burnInitialDirt/2,d -> {
+            int[] terrain=d.burnTerrainStats();System.out.println("autopilot: burn recovered terrain dirt="+terrain[0]+" grass="+terrain[1]+" youngTreeRoots="+terrain[2]);
+            ok(owner?"burn host day7 grass and scheduled young trees":"burn guest day7 grass and scheduled young trees mirrored");
+            d.shot("burn-day-seven-"+role+"-"+slot);burnView(d,true);d.executeCommand("[burn-grown-"+slot+"]");
+        }));
+        route.add(when("both actual peers look away for finite materialization",.3f,d -> d.sawChat("[burn-grown-0]")&&d.sawChat("[burn-grown-1]"),d -> {burnView(d,true);d.holdBurnMaterialization(false);}));
+        route.add(when("ordinary returned animal available on authority and peer",.5f,d -> {
+            for(long id:d.burnAnimalIds())if(java.util.Arrays.binarySearch(burnInitialIds,id)<0&&
+                    (choosesReturned||d.sawChat("[burn-return-"+id+"]")))return true;return false;
+        },d -> {
+            for(long id:d.burnAnimalIds())if(java.util.Arrays.binarySearch(burnInitialIds,id)<0&&
+                    (choosesReturned||d.sawChat("[burn-return-"+id+"]"))){burnReturnedId=id;break;}
+            if(choosesReturned)d.executeCommand("[burn-return-"+burnReturnedId+"]");
+            float[] pose=d.mobPose(burnReturnedId);if(pose==null||pose[3]<=0||pose[4]!=0)throw new IllegalStateException("Returned animal has no healthy ordinary S_MOBS pose");
+            System.out.println("autopilot: burn returned IDs="+burnReturnedId);
+            ok(owner?"burn host ordinary finite animal returned to recovered grove":"burn guest same returned finite animal mirrored with ecology absent");
+            d.executeCommand("[burn-return-seen-"+slot+"]");
+        }));
+        route.add(when("both peers witnessed same returned identity",.5f,d -> d.sawChat("[burn-return-seen-0]")&&d.sawChat("[burn-return-seen-1]"),d -> {
+            burnView(d,false);float[] pose=d.mobPose(burnReturnedId);if(pose!=null)d.lookAt(pose[0],pose[1]+.5f,pose[2]);d.shot("burn-animal-return-"+role+"-"+slot);
+        }));
+        route.add(step("hold recovered grove for other real peer",owner?8f:3f,d -> {
+            if(d.burnTerrainStats()[2]<=0)throw new IllegalStateException("Recovered trees vanished");ok("burn finite return proof complete");
+        }));
+        return List.copyOf(route);
+    }
+
     private static final String[] FORMS={"PLANK_SLAB","COBBLE_SLAB","STONE_SLAB","FENCE","FENCE_GATE","LADDER","TRAPDOOR"};
     private static void placeForms(Driver d){
         for(int i=0;i<FORMS.length;i++){
@@ -1195,7 +1283,7 @@ final class Autopilot {
         this.d = driver;
         boolean farm="farm".equals(System.getProperty("mineclone.autopilot.netScenario",""))||NET_MODE.equals("farm");
         String role=NET_MODE.equals("farm")?System.getProperty("mineclone.autopilot.farmRole","host"):NET_MODE;
-        this.steps = TRAIL_MODE ? trailSteps() : LAIR_MODE ? lairSteps(role) : switch (role) {
+        this.steps = TRAIL_MODE ? trailSteps() : LAIR_MODE ? lairSteps(role) : BURN_MODE ? burnSteps(role) : switch (role) {
             case "host" -> farm?concat(hostSteps,concat(hostFormsSteps,concat(farmHostSteps,ECOLOGY_MODE?raidHostSteps():List.of()))):hostSteps;
             case "join" -> farm?concat(guestSteps,concat(guestFormsSteps,concat(farmGuestSteps,ECOLOGY_MODE?raidGuestSteps(false):List.of()))):guestSteps;
             case "server" -> farm?concat(serverGuestSteps,NET_SLOT==0?concat(hostFormsSteps,concat(farmServerTillerSteps,ECOLOGY_MODE?raidGuestSteps(true):List.of())):concat(guestFormsSteps,concat(farmGuestSteps,ECOLOGY_MODE?raidGuestSteps(false):List.of()))):serverGuestSteps;

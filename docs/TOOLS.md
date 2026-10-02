@@ -154,6 +154,20 @@ behind gates; verification reads the actual saved crop stages before the later
 ten-day command can regrow them. It refuses paths outside this checkout's
 `out-test` directory. Linux scripts retain their earlier farm scenario scope.
 
+## Burn-scar acceptance
+
+Burn-scar acceptance is documented in [its test plan](changes/burn-scars/test-plan.md).
+`BurnScarsGameSmoke.java` exercises actual RMB ignition, production fire/ash
+callbacks, seven owner-advanced days, ordinary natural growth/materialization
+and menu/save/reopening. `run-net-test.ps1 -BurnScars` and
+`run-server-test.ps1 -BurnScars` verify the same recovered terrain and positive
+fresh animal ID on both real peers; dedicated mode reads the save before and
+after stopping with `BurnScarsSaveAcceptance.java`.
+`BurnScarsReaderCompatibility.java write|rewrite|verify` uses a preserved actual
+pre-scar reader-9 classpath to prove opaque burn records, natural sapling meta,
+animal identity and unknown suffixes survive real disk rewriting. Every tool
+owns disposable fixtures under this checkout's ignored `out-test/` tree.
+
 ## Spider-lair acceptance and authoring
 
 `tools/LairGameSmoke.java` runs the disposable native nest lifecycle with six actual

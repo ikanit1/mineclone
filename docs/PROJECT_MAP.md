@@ -308,6 +308,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 
 | Type | Purpose |
 |---|---|
+| [BurnScars](../src/main/java/com/mineclone/sim/ecology/BurnScars.java) | Bounded host fire history, daily ground recovery and natural trees on recorded burned ground. |
 | [Colonizer](../src/main/java/com/mineclone/sim/ecology/Colonizer.java) | Daily, deterministic founding decisions over saved candidates in already loaded terrain. |
 | [Ecology](../src/main/java/com/mineclone/sim/ecology/Ecology.java) | Host-owned finite populations. |
 | [EcologyCodec](../src/main/java/com/mineclone/sim/ecology/EcologyCodec.java) | Bounded level ecology snapshots preserving unknown species and future lair/scar payloads. |
@@ -453,7 +454,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [FurnaceBehavior](../src/main/java/com/mineclone/world/behavior/FurnaceBehavior.java) | A furnace opens its window and spills its three slots whatever removes it. |
 | [PlaceContext](../src/main/java/com/mineclone/world/behavior/PlaceContext.java) | How a block is being placed. |
 | [PlantBehavior](../src/main/java/com/mineclone/world/behavior/PlantBehavior.java) | Ground vegetation collapses when its soil is removed. |
-| [SaplingBehavior](../src/main/java/com/mineclone/world/behavior/SaplingBehavior.java) | Replenishable trees; all crown chunks must be loaded and clear before any block changes. |
+| [SaplingBehavior](../src/main/java/com/mineclone/world/behavior/SaplingBehavior.java) | Replenishable trees; a whole loaded, writable crown is validated before growth. |
 | [SnowLayerBehavior](../src/main/java/com/mineclone/world/behavior/SnowLayerBehavior.java) | A snow layer lies on something solid and goes when that is dug out. |
 | [SpiderNestBehavior](../src/main/java/com/mineclone/world/behavior/SpiderNestBehavior.java) | A living nest slowly spins silk through its connected, loaded cave (LW-04/05). |
 | [StairsBehavior](../src/main/java/com/mineclone/world/behavior/StairsBehavior.java) | A stair's step faces away from the placer: it is climbed from where they stand. |
@@ -542,4 +543,4 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [StructureTypes](../src/main/java/com/mineclone/world/structure/StructureTypes.java) | The structure types of the 1.1 generator (GEN-03). |
 | [StructureWriter](../src/main/java/com/mineclone/world/structure/StructureWriter.java) | Where a structure piece puts its blocks, in world coordinates: the chunk being generated (ChunkWriter) or, in tests, one large buffer. |
 
-Top-level declarations: 401.
+Top-level declarations: 402.

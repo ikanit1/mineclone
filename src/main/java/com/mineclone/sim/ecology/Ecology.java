@@ -6,9 +6,12 @@ import com.mineclone.sim.EntityStore;
 import com.mineclone.sim.Participants;
 import com.mineclone.sim.WorldClock;
 import com.mineclone.world.Chunk;
+import com.mineclone.world.BlockType;
 import com.mineclone.world.World;
 import com.mineclone.world.entity.Mob;
 import com.mineclone.world.entity.MobType;
+import com.mineclone.world.shape.BodyCollision;
+import org.joml.Vector3f;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -31,6 +34,8 @@ public final class Ecology implements Materializer.Populations {
     private final Map<Long, EcologyCodec.Reservation> reservations = new LinkedHashMap<>();
     private final Materializer materializer;
     private final LairRuntime lairs;
+    private final BurnScars scars;
+    private float scarTimer;
     private static final ResourceId RABBIT = ResourceId.of("rabbit");
     private FieldHabitat fields = new FieldHabitat();
     private byte[] opaqueFields;
@@ -45,11 +50,16 @@ public final class Ecology implements Materializer.Populations {
         entities.bindClock(clock);
         materializer = new Materializer(world.seed ^ 0x4C5745434FL);
         lairs = new LairRuntime(world, clock, entities, participants);
+        scars = new BurnScars(world, clock);
+        world.setFuelBurnedHandler(this::fuelBurned);
+        world.setBurnedHabitat((x, y, z) -> enabled() && scars.damagedAt(x, y, z, day(clock.gameTime())));
+        world.setNaturalGrowthSpace(this::growthSpaceClear);
     }
 
     public boolean enabled() { return enabled && supported; }
     public boolean supported() { return supported; }
     public LairRuntime lairs() { return lairs; }
+    public BurnScars scars() { return scars; }
     public void retired(Mob mob) { if (supported) lairs.fold(mob); }
     public void tickLairs(float dt, boolean spawnAllowed) {
         if (enabled()) lairs.tick(regions.values(), dt, spawnAllowed);
@@ -62,6 +72,7 @@ public final class Ecology implements Materializer.Populations {
     /** Restore before any chunk adoption. Newer layouts stay opaque; bad bytes need durable evidence first. */
     public void restore(Map<String, byte[]> sections, Consumer<byte[]> preserveEvidence) {
         lairs.clear(); world.setLivingWorldEnabled(false);
+        scars.clear(); scarTimer = 0;
         regions.clear(); reservations.clear(); sectionTail = new byte[0]; opaqueSection = null;
         fields = new FieldHabitat(); opaqueFields = null;
         enabled = false; supported = true; ruleWritten = false; recovery = ""; lastTickDay = Long.MIN_VALUE;
@@ -85,6 +96,7 @@ public final class Ecology implements Materializer.Populations {
             for (long id : reservations.keySet()) entities.reserveId(id);
             sectionTail = saved.tail();
             lairs.restore(regions.values(), reservations.keySet());
+            scars.restore(regions.values());
             var allSpecies = new java.util.HashSet<ResourceId>();
             for (var definition : table().definitions()) allSpecies.add(definition.id());
             for (var region : regions.values()) allSpecies.addAll(region.populations().keySet());
@@ -95,13 +107,14 @@ public final class Ecology implements Materializer.Populations {
                 return;
             }
             refreshProtection();
-        } catch (EcologyCodec.NewerVersionException | Lair.NewerVersionException | Lair.UnsupportedDefinitionException newer) {
+        } catch (EcologyCodec.NewerVersionException | Lair.NewerVersionException | Lair.UnsupportedDefinitionException
+                 | BurnScars.NewerVersionException newer) {
             opaqueSection = bytes.clone(); supported = false;
             recovery = "Living World data are newer; preserved unchanged";
         } catch (IOException | IllegalArgumentException corrupt) {
             try {
                 preserveEvidence.accept(bytes.clone());
-                regions.clear(); reservations.clear(); lairs.clear(); sectionTail = new byte[0];
+                regions.clear(); reservations.clear(); lairs.clear(); scars.clear(); sectionTail = new byte[0];
                 recovery = "Damaged ecology preserved separately; populations rebuilt";
             } catch (RuntimeException failed) {
                 opaqueSection = bytes.clone(); supported = false;
@@ -138,6 +151,8 @@ public final class Ecology implements Materializer.Populations {
         requireSupported();
         enabled = value; ruleWritten = true;
         world.setLivingWorldEnabled(enabled());
+        scarTimer = 0;
+        if (!value) for (Mob mob : entities.mobs) mob.burnDestination = null;
         if (value) {
             seedAroundParticipants(); registerLivingBodies(); registerPendingBodies();
             catchUp(day(clock.gameTime()));
@@ -222,7 +237,11 @@ public final class Ecology implements Materializer.Populations {
         first = Math.max(first, target - 60);
         for (long next = first; next < target; ) {
             ++next;
-            if (enabled()) lairs.stepDay(regions.values(), next);
+            if (enabled()) {
+                scars.stepDay(regions.values(), next);
+                refreshHabitat(next);
+                lairs.stepDay(regions.values(), next);
+            }
             List<EcologyRegion> result = EcologyModel.step(regions.values(), table(), next, world.seed);
             regions.clear(); for (var region : result) regions.put(region.key(), region);
         }
@@ -344,7 +363,15 @@ public final class Ecology implements Materializer.Populations {
         // normally at deathEffectsDone and the later died call is idempotent.
         for (Mob mob : entities.mobs) if (mob.dead) died(mob);
         if (enabled()) { registerLivingBodies(); refreshFields(); }
-        if (supported) { lairs.refreshHearts(); lairs.flush(regions.values()); }
+        if (supported) {
+            lairs.refreshHearts(); lairs.flush(regions.values());
+            if (enabled()) {
+                long before = scars.revision();
+                scars.tickLoaded(regions.values(), day(clock.gameTime()));
+                if (before != scars.revision()) refreshHabitat();
+            }
+            scars.flush(regions.values());
+        }
         if (opaqueFields != null) into.put(FieldHabitat.SECTION, opaqueFields.clone());
         else if (!fields.empty()) {
             try { into.put(FieldHabitat.SECTION, fields.encode()); }
@@ -380,7 +407,7 @@ public final class Ecology implements Materializer.Populations {
                     + " | " + represented(region.x(), region.z(), definition.id()) + " | " + (delta >= 0 ? "+" : "") + delta);
         }
         lines.add("Fields: " + fields.crops(region.key()) + " crop estimate | rabbit food +" + region.foodBonus(RABBIT));
-        lines.add("Lairs: " + region.lairs().size() + " | burn scars: " + region.scars().size());
+        lines.add("Lairs: " + region.lairs().size() + " | burn scars: " + scars.scars(region.key()).size());
         for (Lair lair : lairs.lairs(region.key())) lines.add("Spider nest " + lair.x() + "," + lair.y() + "," + lair.z()
                 + (lair.alive() ? " alive" : " destroyed") + " | spiders " + lair.population() + "/" + lair.capacity()
                 + " | outside " + lair.bodyIds().size());
@@ -407,40 +434,160 @@ public final class Ecology implements Materializer.Populations {
 
     /** Loaded land updates the per-chunk greenery sample; unseen terrain keeps its last known habitat. */
     private void refreshHabitat() {
+        refreshHabitat(day(clock.gameTime()));
+    }
+
+    private void refreshHabitat(long logicalDay) {
         var changed = new java.util.HashSet<Long>();
         for (Chunk chunk : world.getLoadedChunks()) {
+            if (chunk.isReadOnly()) continue;
             EcologyRegion region = regions.get(EcologyRegion.key(Math.floorDiv(chunk.cx, 16), Math.floorDiv(chunk.cz, 16)));
             if (region == null) continue;
-            int value = 0;
-            for (int x : new int[] { 4, 12 }) for (int z : new int[] { 4, 12 }) {
-                com.mineclone.world.BlockType surface = com.mineclone.world.BlockType.AIR;
-                for (int y = Chunk.SIZE_Y - 1; y > 0; y--) {
-                    var block = chunk.get(x, y, z);
-                    if (block.solid || block == com.mineclone.world.BlockType.WATER) { surface = block; break; }
+            observeHabitat(chunk, region, logicalDay);
+            changed.add(region.key());
+        }
+        for (long key : changed) updateCapacity(regions.get(key));
+    }
+
+    private void observeHabitat(Chunk chunk, EcologyRegion region, long logicalDay) {
+        int value = 0;
+        for (int x : new int[] { 4, 12 }) for (int z : new int[] { 4, 12 }) {
+            BlockType surface = BlockType.AIR;
+            for (int y = Chunk.SIZE_Y - 1; y > 0; y--) {
+                var block = chunk.get(x, y, z);
+                if (block.solid || block == BlockType.WATER) { surface = block; break; }
+            }
+            value += switch (surface) {
+                case GRASS, LEAVES, PODZOL -> 255;
+                case DRY_GRASS -> 220;
+                case SNOWY_GRASS, SNOW_LAYER, SAND, RED_SAND -> 180;
+                case DIRT, GRAVEL -> 96;
+                case ASH -> 16;
+                case WATER -> 0;
+                default -> 32;
+            };
+        }
+        byte[] cells = region.greenery();
+        cells[Math.floorMod(chunk.cx, 16) * 16 + Math.floorMod(chunk.cz, 16)] =
+                (byte) Math.min(value / 4, scars.greeneryCeiling(chunk.cx, chunk.cz, logicalDay));
+        region.greenery(cells);
+    }
+
+    private void updateCapacity(EcologyRegion region) {
+        for (var definition : table().definitions()) {
+            int sum = 0;
+            for (int x = 0; x < 4; x++) for (int z = 0; z < 4; z++)
+                sum += definition.capacity(world.biomes.biomeAt(region.x() * 256 + x * 64 + 32, region.z() * 256 + z * 64 + 32));
+            region.capacity(definition.id(), (int) Math.round(sum / 16.0 * region.averageGreenery()));
+        }
+    }
+
+    private void fuelBurned(int x, int y, int z, BlockType fuel) {
+        if (!enabled()) return;
+        Chunk chunk = world.getChunkIfExists(Math.floorDiv(x, 16), Math.floorDiv(z, 16));
+        if (chunk == null || chunk.isReadOnly()) return;
+        for (int ground = y - 1; ground >= Math.max(0, y - 16); ground--) {
+            BlockType block = world.getBlock(x, ground, z);
+            boolean soil = block == BlockType.GRASS || block == BlockType.SNOWY_GRASS
+                    || block == BlockType.DRY_GRASS || block == BlockType.PODZOL
+                    || block == BlockType.DIRT && scars.knownAt(x, ground, z);
+            if (soil) {
+                EcologyRegion region = regionAt(x, z);
+                long today = day(clock.gameTime());
+                if (region != null && scars.burned(region, x, ground, z, today)) {
+                    world.setBlock(x, ground, z, BlockType.DIRT);
+                    observeHabitat(chunk, region, today);
+                    updateCapacity(region);
+                    scarTimer = 0;
                 }
-                value += switch (surface) {
-                    case GRASS, LEAVES, PODZOL -> 255;
-                    case DRY_GRASS -> 220;
-                    case SNOWY_GRASS, SNOW_LAYER, SAND, RED_SAND -> 180;
-                    case DIRT, GRAVEL -> 96;
-                    case ASH -> 16;
-                    case WATER -> 0;
-                    default -> 32;
-                };
+                return;
             }
-            byte[] cells = region.greenery();
-            cells[Math.floorMod(chunk.cx, 16) * 16 + Math.floorMod(chunk.cz, 16)] = (byte) (value / 4);
-            region.greenery(cells); changed.add(region.key());
+            if (block != BlockType.AIR && block != BlockType.FIRE && block != BlockType.ASH
+                    && block != BlockType.WOOD && block != BlockType.LEAVES && block != BlockType.SAPLING
+                    && block != BlockType.TALL_GRASS && block != BlockType.FLOWER_RED
+                    && block != BlockType.FLOWER_YELLOW && block != BlockType.SNOW_LAYER) return;
         }
-        for (long key : changed) {
-            EcologyRegion region = regions.get(key);
-            for (var definition : table().definitions()) {
-                int sum = 0;
-                for (int x = 0; x < 4; x++) for (int z = 0; z < 4; z++)
-                    sum += definition.capacity(world.biomes.biomeAt(region.x() * 256 + x * 64 + 32, region.z() * 256 + z * 64 + 32));
-                region.capacity(definition.id(), (int) Math.round(sum / 16.0 * region.averageGreenery()));
+    }
+
+    /** Apply arriving saved scars and route living bodies through ordinary navigation. */
+    public void tickBurnScars(float dt) {
+        if (!enabled()) {
+            for (Mob mob : entities.mobs) mob.burnDestination = null;
+            return;
+        }
+        scarTimer -= dt;
+        if (scarTimer > 0) return;
+        scarTimer = .5f;
+        long today = day(clock.gameTime()), before = scars.revision();
+        scars.tickLoaded(regions.values(), today);
+        if (before != scars.revision()) refreshHabitat(today);
+        for (Mob mob : entities.mobs)
+            mob.burnDestination = !mob.dead && !mob.type.hostile && mob.persistent() ? retreat(mob, today) : null;
+    }
+
+    private Vector3f retreat(Mob mob, long today) {
+        float nearest = 36f, awayX = 0, awayZ = 0;
+        boolean found = false, fresh = false;
+        int rx = regionCoordinate(mob.position.x), rz = regionCoordinate(mob.position.z);
+        for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++)
+            for (BurnScars.Scar scar : scars.scars(EcologyRegion.key(rx + dx, rz + dz)))
+                for (BurnScars.Site site : scar.sites()) {
+                    if (site.burnDay() > today || today - site.burnDay() >= 3) continue;
+                    int cell = site.index(), ground = cell / 256;
+                    if (Math.abs(mob.position.y - (ground + 1)) > 3) continue;
+                    fresh = true;
+                    float ax = mob.position.x - (scar.cx() * 16 + cell % 16 + .5f);
+                    float az = mob.position.z - (scar.cz() * 16 + cell / 16 % 16 + .5f);
+                    float distance = ax * ax + az * az;
+                    if (distance < nearest) { nearest = distance; awayX = ax; awayZ = az; found = true; }
+                }
+        // Keep a clear refuge while crossing the grove. Choosing a new direction
+        // from each newly nearest scar can turn a fleeing body back into the fire.
+        Vector3f held = mob.burnDestination;
+        if (fresh && held != null && Math.hypot(held.x - mob.position.x, held.z - mob.position.z) > 1.5) {
+            int x = (int) Math.floor(held.x), y = (int) Math.floor(held.y), z = (int) Math.floor(held.z);
+            Chunk chunk = world.getChunkIfExists(Math.floorDiv(x, 16), Math.floorDiv(z, 16));
+            if (chunk != null && !chunk.isReadOnly() && world.getBlock(x, y - 1, z).solid
+                    && !world.burnDamaged(x, y - 1, z)
+                    && !BodyCollision.overlaps(world, held.x, held.y, held.z, mob.type.width, mob.type.height))
+                return held;
+        }
+        if (!found) return null;
+        double angle = Math.atan2(awayZ, awayX);
+        for (int radius : new int[] { 12, 24, 48 })
+        for (int turn : new int[] { 0, 1, -1, 2, -2, 3, -3, 4 }) {
+            double direction = angle + turn * Math.PI / 4;
+            int x = (int) Math.floor(mob.position.x + Math.cos(direction) * radius);
+            int z = (int) Math.floor(mob.position.z + Math.sin(direction) * radius);
+            Chunk chunk = world.getChunkIfExists(Math.floorDiv(x, 16), Math.floorDiv(z, 16));
+            if (chunk == null || chunk.isReadOnly()) continue;
+            for (int y = Math.min(126, (int) Math.floor(mob.position.y) + 2);
+                 y >= Math.max(1, (int) Math.floor(mob.position.y) - 4); y--) {
+                if (!world.getBlock(x, y - 1, z).solid || world.burnDamaged(x, y - 1, z)) continue;
+                if (!BodyCollision.overlaps(world, x + .5f, y + .001f, z + .5f, mob.type.width, mob.type.height))
+                    return new Vector3f(x + .5f, y + .001f, z + .5f);
             }
         }
+        return null;
+    }
+
+    private boolean growthSpaceClear(int x, int y, int z) {
+        for (int i = 0; i < participants.size(); i++) {
+            var participant = participants.get(i);
+            var p = participant.position();
+            if (participant.alive() && overlapsCell(p.x(), p.y(), p.z(), .6f, 1.8f, x, y, z)) return false;
+        }
+        for (Mob mob : entities.mobs)
+            if (!mob.dead && overlapsCell(mob.position.x, mob.position.y, mob.position.z,
+                    mob.type.width, mob.type.height, x, y, z)) return false;
+        return true;
+    }
+
+    private static boolean overlapsCell(float px, float py, float pz, float width, float height,
+                                        int x, int y, int z) {
+        float half = width * .5f;
+        return px + half > x && px - half < x + 1 && pz + half > z && pz - half < z + 1
+                && py + height > y && py < y + 1;
     }
 
     /** Loaded fields update an estimate; unloaded chunks retain their last observed count. */
