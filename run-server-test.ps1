@@ -10,9 +10,13 @@
 #        .\run-server-test.ps1 -LivingWorld
 #        .\run-server-test.ps1 -Farm
 #        .\run-server-test.ps1 -Farm -LivingWorld
+#        .\run-server-test.ps1 -Lairs
 # Exits non-zero if the server or either client failed.
 
-param([switch]$LivingWorld, [switch]$Farm)
+param([switch]$LivingWorld, [switch]$Farm, [switch]$Lairs)
+
+if ($Farm -and $Lairs) { throw 'Farm and Lairs are separate acceptance scenarios' }
+if ($Lairs) { $LivingWorld = $true }
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -69,6 +73,11 @@ if ($Farm -and $LivingWorld) {
     & java -cp $cp $fixtureTool prepare $conf
     if ($LASTEXITCODE -ne 0) { throw 'server test: could not prepare finite natural raid fixture' }
 }
+if ($Lairs) {
+    $lairTool = Join-Path $root 'tools\LairSaveAcceptance.java'
+    & java -cp $cp $lairTool prepare $conf
+    if ($LASTEXITCODE -ne 0) { throw 'server test: could not prepare the finite two-cave lair fixture' }
+}
 
 # The server is started through .NET rather than Start-Process because we need
 # its stdin: stopping it with /stop is the path a person uses, and it is the
@@ -97,7 +106,7 @@ function Start-Guest {
         "-Dmineclone.autopilot=$dir\shots",
         "-Dmineclone.savesDir=$dir\saves",
         '-Dmineclone.autopilot.net=server',
-        "-Dmineclone.autopilot.netScenario=$(if ($Farm) { 'farm' } else { '' })",
+        "-Dmineclone.autopilot.netScenario=$(if ($Lairs) { 'lair' } elseif ($Farm) { 'farm' } else { '' })",
         "-Dmineclone.autopilot.netPort=$port",
         "-Dmineclone.autopilot.netSlot=$slot"
     )
@@ -118,6 +127,10 @@ if ($LivingWorld) {
     $server.StandardInput.WriteLine('/ecology info')
     $server.StandardInput.Flush()
 }
+if ($Lairs) {
+    $server.StandardInput.WriteLine('/time night')
+    $server.StandardInput.Flush()
+}
 $guests = @((Start-Guest 0), (Start-Guest 1))
 
 $farmAdvanced = $false
@@ -130,6 +143,31 @@ if ($Farm) {
             $server.StandardInput.WriteLine('/time add 48')
             $server.StandardInput.Flush()
             $farmAdvanced = $true
+            break
+        }
+        if ($guests[0].HasExited -or $guests[1].HasExited) { break }
+        Start-Sleep -Milliseconds 250
+    }
+}
+
+$lairNightAdvanced = $false
+$lairColonizationAdvanced = $false
+if ($Lairs) {
+    $deadline = [DateTime]::UtcNow.AddMinutes(3)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $a = Get-Content (Join-Path $work 'guest0\out.log') -Raw -ErrorAction SilentlyContinue
+        $b = Get-Content (Join-Path $work 'guest1\out.log') -Raw -ErrorAction SilentlyContinue
+        if (-not $lairNightAdvanced -and $a -match 'lair READY next night' -and $b -match 'lair READY next night') {
+            $server.StandardInput.WriteLine('/time add 24')
+            $server.StandardInput.Flush()
+            $lairNightAdvanced = $true
+        }
+        if ($lairNightAdvanced -and $a -match 'lair READY colonization' -and $b -match 'lair READY colonization') {
+            $server.StandardInput.WriteLine('/ecology advance 10')
+            $server.StandardInput.WriteLine('/ecology info')
+            $server.StandardInput.WriteLine('/save')
+            $server.StandardInput.Flush()
+            $lairColonizationAdvanced = $true
             break
         }
         if ($guests[0].HasExited -or $guests[1].HasExited) { break }
@@ -170,12 +208,33 @@ if ($Farm -and $LivingWorld -and -not $server.HasExited) {
     } while ([DateTime]::UtcNow -lt $deadline -and -not $server.HasExited)
 }
 
+$lairSaved = $false
+if ($Lairs -and -not $server.HasExited) {
+    $initialLairIds = [regex]::Match((Get-Content (Join-Path $work 'guest0\out.log') -Raw), 'lair initial IDs=([0-9,]+)').Groups[1].Value
+    $server.StandardInput.WriteLine('/save')
+    $server.StandardInput.Flush()
+    $deadline = [DateTime]::UtcNow.AddSeconds(20)
+    if ($initialLairIds) {
+        do {
+            $verificationErrorPolicy = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = 'Continue'
+                $lairProof = & java -cp $cp $lairTool verify $conf $initialLairIds 2>&1
+                $lairExit = $LASTEXITCODE
+            } finally { $ErrorActionPreference = $verificationErrorPolicy }
+            $lairProof | Set-Content -LiteralPath (Join-Path $work 'lair-save.log') -Encoding utf8
+            if ($lairExit -eq 0) { $lairSaved = $true; Write-Host $lairProof; break }
+            Start-Sleep -Milliseconds 300
+        } while ([DateTime]::UtcNow -lt $deadline -and -not $server.HasExited)
+    }
+}
+
 # Clients are done: ask the server to save and stop the way a person would.
 Write-Host 'server test: asking the server to stop'
 $stoppedCleanly = $true
 try {
     if ($LivingWorld) {
-        $server.StandardInput.WriteLine('/ecology advance 10')
+        if (-not $Lairs) { $server.StandardInput.WriteLine('/ecology advance 10') }
         $server.StandardInput.WriteLine('/ecology info')
         $server.StandardInput.WriteLine('/save')
     }
@@ -200,12 +259,30 @@ if (-not $serverErrTask.Wait(5000)) { Write-Host 'server test: stderr never clos
 $serverOut = if ($serverOutTask.IsCompleted) { $serverOutTask.Result } else { '' }
 $serverErr = if ($serverErrTask.IsCompleted) { $serverErrTask.Result } else { '' }
 
+# Verify the final published shutdown files as well as the live /save result.
+# An earlier successful snapshot must not hide a later destructive save.
+$lairSavedAfterStop = $false
+if ($Lairs -and $stoppedCleanly -and $server.HasExited -and $initialLairIds) {
+    $verificationErrorPolicy = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $lairFinalProof = & java -cp $cp $lairTool verify $conf $initialLairIds 2>&1
+        $lairSavedAfterStop = $LASTEXITCODE -eq 0
+    } finally { $ErrorActionPreference = $verificationErrorPolicy }
+    $lairFinalProof | Set-Content -LiteralPath (Join-Path $work 'lair-save-after-stop.log') -Encoding utf8
+    if ($lairSavedAfterStop) { Write-Host $lairFinalProof }
+}
+
 Write-Host ''
 Write-Host '---- server ----'
 if ($serverOut) { Write-Host $serverOut.TrimEnd() }
 if ($serverErr) { Write-Host ($serverErr -split "`n" | Select-Object -First 10) }
 
 $code = 0
+if ($Lairs -and (-not $lairNightAdvanced -or -not $lairColonizationAdvanced -or -not $lairSaved -or -not $lairSavedAfterStop)) {
+    Write-Host 'server test: missing actual lair night/colonization or intact saved death/IDs proof (see lair-save.log)'
+    $code = 1
+}
 if ($Farm -and $LivingWorld -and -not $raidSaved) {
     Write-Host 'server test: the actual rabbit meal was not saved as crop0 with protected crop7 (see raid-save.log)'
     $code = 1
@@ -221,7 +298,7 @@ if ($serverOut -notmatch 'stopped') {
     $code = 1
 }
 if ($LivingWorld) {
-    $expectedDay = if ($farmAdvanced) { 12 } else { 10 }
+    $expectedDay = if ($Lairs) { 11 } elseif ($farmAdvanced) { 12 } else { 10 }
     foreach ($pattern in @('\[server\] ecology on', '\[server\] ecology advanced 10 day\(s\)',
             "\[server\] Ecology ON \| region .+ \| day $expectedDay\b",
             '\[server\] Species: total / capacity \| bodies \| change over 3 days',
@@ -257,6 +334,19 @@ foreach ($slot in 0, 1) {
                     'raid guest received crop stage0 and protected stage7', 'raid protected crop stayed stage7')
             if ($slot -eq 0) { $markers += 'raid release gate opened' }
         }
+        if ($Lairs) {
+            $markers += @('lair guest saw nest64 and four emitted S_MOBS IDs with ecology absent',
+                    'lair dead pose observed id=',
+                    'lair original wanderer died through ordinary combat and mirrored',
+                    'lair old territory stayed closed next night',
+                    'lair other cave colonized after actual ten-day command and heart mirrored')
+            if ($slot -eq 0) { $markers += 'lair heart broken through ordinary input' }
+            else { $markers += @('lair heart AIR propagated and original wanderers survived', 'lair non-attacker witnessed authoritative dead pose') }
+            $otherLog = Get-Content -LiteralPath (Join-Path $work 'guest0\out.log') -Raw
+            $referenceIds = [regex]::Match($otherLog, 'lair initial IDs=([0-9,]+)').Groups[1].Value
+            $peerIds = [regex]::Match($guestLog, 'lair initial IDs=([0-9,]+)').Groups[1].Value
+            if (-not $referenceIds -or $referenceIds -ne $peerIds) { Write-Host "server test: guest $slot received different emitted spider IDs"; $code = 1 }
+        }
         foreach ($marker in $markers) {
             if ($guestLog -notmatch [regex]::Escape($marker)) {
                 Write-Host "server test: guest $slot lacks ecology proof: $marker"
@@ -280,6 +370,7 @@ if (-not (Test-Path $chunks) -or ((Get-ChildItem $chunks -File).Count -eq 0)) {
 if ($code -eq 0) {
     if ($LivingWorld) { Write-Host 'server test: Living World commands, ten-day advance and guest authority passed' }
     if ($Farm -and $LivingWorld) { Write-Host 'server test: natural server raid, both guest mirrors, protected crop and saved meal passed' }
+    if ($Lairs) { Write-Host 'server test: NORMAL lair bodies, guest input/combat, later night, colony and intact saved identities passed' }
     Write-Host ''; Write-Host 'server test: the server and both clients passed'
 }
 exit $code

@@ -289,8 +289,23 @@ public final class CommandProcessorTests {
         check(f.clock.gameTime() == before && f.saves == 5 && f.timeChanges == 2,
                 "an invalid ecology command changed the world");
         c.execute("/ecology lair");
-        check(f.lastToast().contains("not implemented"), "lair command claimed a feature that has no simulation yet");
-        check(f.saves == 5, "read-only lair query saved");
+        check(f.ecologyLines != null && f.ecologyLines[0].startsWith("Spider lairs")
+                && java.util.Arrays.stream(f.ecologyLines).anyMatch(line -> line.equals("No known spider nest in this region")),
+                "empty lair query did not report the current region");
+        var region = new com.mineclone.sim.ecology.EcologyRegion(0, -1, Ecology.day(f.clock.gameTime()));
+        var lair = new com.mineclone.sim.ecology.Lair(8, 60, -8, region.lastDay(),
+                com.mineclone.sim.ecology.LairTable.get().byType(com.mineclone.world.entity.MobType.SPIDER));
+        lair.claim(701);
+        try {
+            region.lairs(java.util.List.of(lair.encode()));
+            f.ecology.restore(java.util.Map.of("ecology", com.mineclone.sim.ecology.EcologyCodec.encode(
+                    new com.mineclone.sim.ecology.EcologyCodec.Snapshot(java.util.List.of(region), java.util.Map.of(), new byte[0]))),
+                    bytes -> { throw new AssertionError("valid diagnostic fixture requested recovery"); });
+        } catch (java.io.IOException invalid) { throw new AssertionError(invalid); }
+        c.execute("/ecology lair");
+        check(java.util.Arrays.stream(f.ecologyLines).anyMatch(line -> line.equals("Nest 8,60,-8 alive | spiders 6/8 | outside 1")),
+                "lair query lost heart position, finite population or emitted-body count");
+        check(f.saves == 5 && f.timeChanges == 2 && f.clock.gameTime() == before, "read-only lair query changed or saved the world");
 
         f.ecology = null;
         c.execute("/ecology on");

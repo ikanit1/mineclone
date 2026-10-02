@@ -192,6 +192,7 @@ public final class WorldSession {
     public void tickMobs(float dt) {
         ecology.tick();
         updateAnimalResidency(dt);
+        ecology.tickLairs(dt, host.spawnMobs());
         List<Mob> mobs = entities.mobs;
         // Whoever added a mob (spawner, command, autopilot) left its id to us (MOB-02).
         entities.assignIds();
@@ -213,7 +214,13 @@ public final class WorldSession {
         while (it.hasNext()) {
             Mob m = it.next();
             m.cropRaidsEnabled = ecology.enabled();
-            if(world.rules.difficulty()==com.mineclone.world.Difficulty.PEACEFUL&&m.type.hostile){it.remove();continue;}
+            if (world.rules.difficulty() == com.mineclone.world.Difficulty.PEACEFUL && m.type.hostile) {
+                // A kill before changing difficulty still consumes its member.
+                if (m.dead) ecology.died(m);
+                else ecology.retired(m);
+                it.remove();
+                continue;
+            }
             if(m.id==0)m.id=clock.nextEntityId();
             m.setPlayerTorch(torch);
             m.shotSink = shots;

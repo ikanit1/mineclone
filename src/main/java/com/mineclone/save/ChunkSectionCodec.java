@@ -23,6 +23,8 @@ public final class ChunkSectionCodec {
         Map<String, byte[]> sections = new LinkedHashMap<>(snapshot.extra);
         byte[] trample = sections.get(com.mineclone.sim.ecology.Trample.SECTION);
         if (trample != null) com.mineclone.sim.ecology.Trample.decode(trample);
+        byte[] lairSpots = sections.get(com.mineclone.sim.ecology.LairSpots.SECTION);
+        if (lairSpots != null) com.mineclone.sim.ecology.LairSpots.decode(lairSpots);
         sections.put("chests", bytes(data -> {
             data.writeInt(count(snapshot.chests.size()));
             for (var entry : snapshot.chests.entrySet()) {
@@ -128,6 +130,8 @@ public final class ChunkSectionCodec {
         Map<String, byte[]> sections = SectionCodec.read(in);
         byte[] trample = sections.get(com.mineclone.sim.ecology.Trample.SECTION);
         if (trample != null) com.mineclone.sim.ecology.Trample.decode(trample);
+        byte[] lairSpots = sections.get(com.mineclone.sim.ecology.LairSpots.SECTION);
+        if (lairSpots != null) com.mineclone.sim.ecology.LairSpots.decode(lairSpots);
         Map<Integer, ItemStack[]> chests = new LinkedHashMap<>();
         try (DataInputStream data = section(sections, "chests")) {
             int count = count(data.readInt());

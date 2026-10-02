@@ -225,6 +225,9 @@ Moved from the pre-foundation CLAUDE.md on 2026-09-24; structure placement corre
 | `SurvivalProgress` | `SAVE_SECTION` | Своя секция сейва: формат уровня из-за целей не поднимается |
 | `StressFlight` | `-Dmineclone.stress` | Сколько секунд бежать в замере рывков |
 | `ecology/species/*.json` | capacities, birthRate, predationRate, migrationRate, minimum, groupMin/Max | Семь видов; строгие границы параметров. Регион 256×256, начальная численность 70% ёмкости |
+| `ecology/lairs/spider_nest.json` | initial / capacity / growth / emit / radius | Начально 6 пауков, ёмкость 8, прирост 1 за сутки, снаружи не более 4, территория 24 блока; общий предел враждебных сохраняется |
+| `LairSpots` / `Colonizer` | MAX_SPOTS / MAX_TRAILS / TRAIL_DAYS | До 16 тёмных полостей на чанк; 256 образцов пути на 3 суток. Базы и участники защищают 32 блока; новое место минимум в 48 блоках от разрушенного сердца, задержка 3–10 суток |
+| `SpiderNestBehavior` | INTERVAL / RADIUS / WEBS_PER_DAY / MAX_WEBS | Раз в игровые сутки до 2 новых WEB, радиус 8, до 32 связанных паутин; только доступная полость, без прохода через стены |
 | `Materializer` | MIN_DISTANCE / VIEW_HALF_ANGLE / ATTEMPTS | Не ближе 32 блоков к каждому живому участнику, вне его взгляда, ограниченный поиск только загруженных чанков |
 | `WorldSession` | living residency interval / distance | Раз в 2 секунды сохраняет далёкие тела (>128 блоков) в загруженные чанки; лимиты и закрытые чанки не теряют животных |
 | `Game` | `LOADING_TAIL_ALLOWANCE / loadingRadius()` | Сколько чанков достраивается уже в игре и какой радиус загрузка закрывает |

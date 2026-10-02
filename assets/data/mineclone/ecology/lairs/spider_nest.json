@@ -1,0 +1,9 @@
+{
+  "id": "mineclone:spider_nest",
+  "type": "SPIDER",
+  "initial": 6,
+  "capacity": 8,
+  "growth": 1,
+  "emit": 4,
+  "radius": 24
+}

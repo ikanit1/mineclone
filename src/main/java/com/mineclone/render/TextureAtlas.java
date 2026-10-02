@@ -137,7 +137,8 @@ public class TextureAtlas {
             "wheat", "wheat_seeds", "bread", "carrot", "potato", "baked_potato", // 182..187
             "apple", "golden_apple", "rotten_flesh", "bone", "gunpowder", "string", // 188..193
             "slimeball", "leather", "feather", "egg", // 194..197
-            "tall_grass", "flower_yellow", "flower_red", "copper_helmet", "copper_chestplate", "copper_leggings", "copper_boots", // 198..200
+            "tall_grass", "flower_yellow", "flower_red", "copper_helmet", "copper_chestplate", "copper_leggings", "copper_boots", // 198..204
+            "spider_nest", // 205 — original dark wood, silk and egg cluster (LW-04)
     };
 
     /** First tile index of the water_flow animation strip (16 frames). */

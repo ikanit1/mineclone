@@ -94,3 +94,9 @@ adult status; cow leather and rotten flesh are reachable, and the bow accepts
 block loot at 30%; container removal spills contents independently of that roll.
 TCP scenarios verify all stacks arrive at the guest even when an explosion removes
 the chest, and griefing-disabled blasts leave its contents intact.
+
+The spider-nest block table drops three string through the ordinary host loot
+path; breaking its heart changes the colony lifecycle independently of loot.
+Creative/explosion rules remain the existing LootContext policy. The full-cube
+block, loot registration and repeat-removal conservation are covered by
+NestBlockTests; the runtime never grants a separate duplicate nest reward.

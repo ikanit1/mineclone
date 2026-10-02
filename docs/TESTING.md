@@ -118,7 +118,23 @@ Headless checks do not establish native, LAN, dedicated-server or hardware
 performance acceptance. [The field-raids test plan](changes/field-raids/test-plan.md)
 defines those gates; [validation](changes/field-raids/validation.md) records results.
 
+## Spider-lair checks
+
+`LairTests`, `NestBlockTests`, `ColonizerTests` and `LairRuntimeTests` are registered
+in the `ecology` category. The runtime checks use the actual shared WorldSession,
+SaveManager and ChunkLoader, including deaths before saving, physical dawn returns,
+parked identities, first-observation daily/advance parity and protected newer data.
+`java -cp 'out;libs/*' tools/LairGameSmoke.java out-test/lair-game` exercises real
+Game/input/render, three separate cleared nights, another dark cave and menu/reopen.
+Windows `run-net-test.ps1 -Lairs` and `run-server-test.ps1 -Lairs` require matching
+protocol-13 peers and check authoritative nest blocks, finite identities and combat.
+The server scenario uses only a disposable `out-test` save. The optional lair scenario
+is separate from `-Farm`; it does not replace that scenario's farming coverage.
+[Spider-lairs validation](changes/spider-lairs/validation.md) records actual results
+and separates functional acceptance from the open performance/Photon gates.
+
 ## Continuous integration
+
 
 [CI](https://github.com/ikanit1/mineclone/actions/workflows/ci.yml) builds and runs
 headless tests plus runner CLI checks for pushes/PRs targeting master/develop-1.1.

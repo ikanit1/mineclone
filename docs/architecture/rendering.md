@@ -303,3 +303,9 @@ status icons/timers, damage direction and flames. Air lingers two seconds on
 surfacing; effect icons blink in their last five seconds. Hunger subtly flickers
 at zero saturation. Nested UI scopes batch into one draw. `RenderHudPreview` and
 `BenchUi` use the same game paths, not a substitute mock renderer.
+
+The spider-nest tile is an original opaque 32×32 PNG in atlas slot 205 and uses
+ordinary full-cube meshing/light/shadows. `DrawSpiderNestTexture` preserves its
+authoring source and provenance; no Minecraft assets were imported. Native front,
+oblique and actual recolonized-cave views are recorded in
+[spider-lairs validation](../changes/spider-lairs/validation.md).

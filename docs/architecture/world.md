@@ -55,6 +55,16 @@ After publication, container mutation belongs to the main simulation thread;
 - Biomes: `BiomeProvider` (3 climate noises → Whittaker table, 4×4-block quantisation, 5×5 height-param smoothing). Biomes are never persisted — recomputed from the seed.
 - `ChunkLoader` streams chunk generation onto a background thread pool; results drip back as `Ready` records which `Game` uploads to GPU.
 - `Chunk.computeSkyLight()` runs a column-flood BFS then one self-weighted blur pass to soften gradients.
+- `Chunk.getSkyRaw` exposes the unblurred cave-light sample. Derived sparse nest
+  and base indices track SPIDER_NEST and CHEST/FURNACE/BEDROLL through mutation
+  and restore; neither is a second saved source of block state. Optional-section
+  getters/setters copy bytes, enforce owner/read-only policy and mark changes dirty.
+  Living World observes bounded cave candidates only in published writable chunks.
+- SPIDER_NEST appends block ID 64 and uses the full-cube shape with an axe policy,
+  original atlas tile 205 and a string loot table. Its scheduled behavior grows
+  bounded webs through connected loaded cave air. `World.livingWorldEnabled` is a
+  transient host flag set by Ecology after restore/toggle, so guests and disabled
+  rules do not grow webs. New chunk writes require reader 9 to protect the new ID.
 - `World.setBlock()` сначала зовёт `onRemoved` уходящего блока — сундук и печь
   высыпаются там, кто бы их ни убрал, — а после правки ставит соседей, которым
   нужна опора, в очередь `NeighbourUpdates` (BLK-03, [blocks](blocks.md#behaviours-blk-03)).

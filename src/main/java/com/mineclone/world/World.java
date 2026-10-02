@@ -10,6 +10,10 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class World {
     public WorldRules rules=WorldRules.LEGACY;
+    /** Host simulation only; a guest mirror never grows nest webs. */
+    private boolean livingWorldEnabled;
+    public boolean livingWorldEnabled() { return livingWorldEnabled; }
+    public void setLivingWorldEnabled(boolean value) { livingWorldEnabled = value; }
 
     public static final int SEA_LEVEL = 50;
 
@@ -887,6 +891,21 @@ public class World {
             return false;
         return scheduled.schedule(c, Chunk.idx(Math.floorMod(x, Chunk.SIZE_X), y, Math.floorMod(z, Chunk.SIZE_Z)),
                 kind, delay);
+    }
+
+    /**
+     * Asks at an absolute simulation tick, independent of the scheduler's last
+     * run. Daily replay uses this for a block born while the clock has advanced
+     * ahead of the dispatcher. A past due tick uses the normal bounded catch-up.
+     */
+    public boolean scheduleTickAt(int x, int y, int z, BlockType kind, long due) {
+        if (scheduled == null || y < 0 || y >= Chunk.SIZE_Y)
+            return false;
+        Chunk c = getChunkIfExists(Math.floorDiv(x, Chunk.SIZE_X), Math.floorDiv(z, Chunk.SIZE_Z));
+        if (c == null || c.isReadOnly())
+            return false;
+        return scheduled.scheduleAt(c, Chunk.idx(Math.floorMod(x, Chunk.SIZE_X), y, Math.floorMod(z, Chunk.SIZE_Z)),
+                kind, due);
     }
 
     /**

@@ -308,11 +308,16 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 
 | Type | Purpose |
 |---|---|
+| [Colonizer](../src/main/java/com/mineclone/sim/ecology/Colonizer.java) | Daily, deterministic founding decisions over saved candidates in already loaded terrain. |
 | [Ecology](../src/main/java/com/mineclone/sim/ecology/Ecology.java) | Host-owned finite populations. |
 | [EcologyCodec](../src/main/java/com/mineclone/sim/ecology/EcologyCodec.java) | Bounded level ecology snapshots preserving unknown species and future lair/scar payloads. |
 | [EcologyModel](../src/main/java/com/mineclone/sim/ecology/EcologyModel.java) | Pure deterministic daily births, predation and simultaneous cardinal-neighbour migration. |
 | [EcologyRegion](../src/main/java/com/mineclone/sim/ecology/EcologyRegion.java) | One 256-block region's population snapshot, including bodies reserved in saved chunks. |
 | [FieldHabitat](../src/main/java/com/mineclone/sim/ecology/FieldHabitat.java) | Last observed field size per chunk, keeping rabbit food estimates when land is unloaded. |
+| [Lair](../src/main/java/com/mineclone/sim/ecology/Lair.java) | One finite hostile lair, persisted inside a region's existing opaque lair-record slot. |
+| [LairRuntime](../src/main/java/com/mineclone/sim/ecology/LairRuntime.java) | Host lair lifecycle: finite persistent bodies, physical returns and loaded cave founding. |
+| [LairSpots](../src/main/java/com/mineclone/sim/ecology/LairSpots.java) | Bounded saved cave candidates, discovered only in loaded terrain and rechecked before founding. |
+| [LairTable](../src/main/java/com/mineclone/sim/ecology/LairTable.java) | Strict data-driven population and territory bounds for finite hostile lairs. |
 | [Materializer](../src/main/java/com/mineclone/sim/ecology/Materializer.java) | Places finite regional animals on loaded terrain outside every living participant's view. |
 | [SpeciesTable](../src/main/java/com/mineclone/sim/ecology/SpeciesTable.java) | Strict data-driven capacities, reproduction and food chains for finite wildlife. |
 | [Trample](../src/main/java/com/mineclone/sim/ecology/Trample.java) | Bounded, saved pressure on ground cells; an absent section means untouched land. |
@@ -450,6 +455,7 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [PlantBehavior](../src/main/java/com/mineclone/world/behavior/PlantBehavior.java) | Ground vegetation collapses when its soil is removed. |
 | [SaplingBehavior](../src/main/java/com/mineclone/world/behavior/SaplingBehavior.java) | Replenishable trees; all crown chunks must be loaded and clear before any block changes. |
 | [SnowLayerBehavior](../src/main/java/com/mineclone/world/behavior/SnowLayerBehavior.java) | A snow layer lies on something solid and goes when that is dug out. |
+| [SpiderNestBehavior](../src/main/java/com/mineclone/world/behavior/SpiderNestBehavior.java) | A living nest slowly spins silk through its connected, loaded cave (LW-04/05). |
 | [StairsBehavior](../src/main/java/com/mineclone/world/behavior/StairsBehavior.java) | A stair's step faces away from the placer: it is climbed from where they stand. |
 | [TorchBehavior](../src/main/java/com/mineclone/world/behavior/TorchBehavior.java) | A torch stands on a block or leans from a wall (meta 1..4, the mount the mesher tilts it by) and falls, as an item, when that block goes. |
 | [UseContext](../src/main/java/com/mineclone/world/behavior/UseContext.java) | Who uses a block. |
@@ -536,4 +542,4 @@ Start with [CLAUDE.md](../CLAUDE.md) for build commands and subsystem invariants
 | [StructureTypes](../src/main/java/com/mineclone/world/structure/StructureTypes.java) | The structure types of the 1.1 generator (GEN-03). |
 | [StructureWriter](../src/main/java/com/mineclone/world/structure/StructureWriter.java) | Where a structure piece puts its blocks, in world coordinates: the chunk being generated (ChunkWriter) or, in tests, one large buffer. |
 
-Top-level declarations: 395.
+Top-level declarations: 401.

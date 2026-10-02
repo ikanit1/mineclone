@@ -158,7 +158,7 @@ public final class ServerConsole {
 
     /** The console belongs to the host; ecology changes run on its simulation thread. */
     private void ecology(String rest) {
-        String usage = "usage: /ecology [info|on|off|advance <1-60>]";
+        String usage = "usage: /ecology [info|lair|on|off|advance <1-60>]";
         String[] args = rest.isEmpty() ? new String[0] : rest.split("\\s+");
         String operation = args.length == 0 ? "info" : args[0].toLowerCase(java.util.Locale.ROOT);
         int days = 0;
@@ -187,7 +187,10 @@ public final class ServerConsole {
                 for (String line : model.info(spawn.x, spawn.z))
                     DedicatedServer.log(line);
             }
-            case "lair" -> DedicatedServer.log("lairs are not implemented yet (LW-04)");
+            case "lair" -> {
+                var spawn = server.spawn();
+                for (String line : model.lairInfo(spawn.x, spawn.z)) DedicatedServer.log(line);
+            }
             case "on", "off" -> {
                 model.setEnabled(operation.equals("on"));
                 server.saveWorld();
@@ -217,7 +220,7 @@ public final class ServerConsole {
         System.out.println("  /save            write the world to disk");
         System.out.println("  /backup          save and create a manual world backup");
         System.out.println("  /time [day|noon|night|<radians>]");
-        System.out.println("  /ecology [info|on|off|advance <1-60>]");
+        System.out.println("  /ecology [info|lair|on|off|advance <1-60>]");
         System.out.println("  /difficulty <peaceful|easy|normal|hard>");
         System.out.println("  /gamerule <name> true|false");
         System.out.println("  /gamemode <name> <survival|creative>");

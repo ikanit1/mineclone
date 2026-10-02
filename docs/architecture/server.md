@@ -1,6 +1,6 @@
 # Dedicated server
 
-Updated: 2026-10-01. Paths in backticks are relative to the repository root.
+Updated: 2026-10-02. Paths in backticks are relative to the repository root.
 
 `server/ServerMain` starts without GLFW, rendering or audio. `/stop` saves and
 exits cleanly. An existing unreadable level refuses startup with exit code 2;
@@ -8,9 +8,9 @@ see [saves.md](saves.md). `gradlew.bat serverZip` bundles the jar, dependencies,
 item data, launcher and a LAN-only example configuration. Test the extracted
 archive with `tools/TestServerPackage.ps1`.
 
-Current simulation limitation: chunks load around all connected players, but
-world ticks, furnaces and mob simulation use the first player's center. Do not
-claim per-player simulation coverage until the server roadmap task fixes it.
+Chunks load and simulate around all registered participants through
+`WorldSession.centres()`. With no participants, the shared host focus is the
+world spawn; lair emission still requires a nearby participant.
 
 ## Выделенный сервер (`com.mineclone.server`)
 
@@ -23,9 +23,9 @@ java -cp "out;libs/*" com.mineclone.server.ServerMain [server.properties]
 
 - Мир тикает `WorldSimulation` — **тем же классом, которым тикает игра**: два
   разных кода для одного и того же разошлись бы на первой же луже. Мир
-  загружается вокруг всех участников, но `DedicatedServer.centre()` пока выбирает
-  первого участника для радиуса тиков, печей и мобов. Это текущее ограничение,
-  а не завершённая симуляция вокруг каждого игрока.
+  загружается вокруг всех участников; `WorldSession.centres()` передаёт их
+  позиции в общий цикл тиков и печей, а мобы и их капы учитывают участников
+  через ту же сессию. В пустом мире центром остаётся точка появления.
 - **Ни одного импорта из `render`, `audio`, `lwjgl` и `game`** — это
   проверяется тестом, читающим исходники пакета. Одна строчка, списанная из
   `Game`, притащила бы окно.
@@ -46,6 +46,23 @@ java -cp "out;libs/*" com.mineclone.server.ServerMain [server.properties]
   применяет его своим путём урона и отлетает от удара и взрыва, как игрок хозяина.
 
 ## Checks and tuning
+
+The server's `WorldSession.ecology()` runs the same opt-in `LairRuntime` as the
+graphical host: finite night emission, physical dawn returns, shared hostile
+caps, deaths, broken hearts and loaded-cave founding. It restores protected
+ecology and reserves lair body IDs before `ChunkLoader` adopts saved entities;
+the ordinary world save captures the lair ledger and persistent spiders.
+No rendering or client-only simulation is involved. Matching protocol 13 peers
+are required for the appended nest block ID; packet shapes are unchanged.
+
+The owner console accepts `/ecology [info|lair|on|off|advance <1-60>]` on the
+simulation thread. `lair` prints nests in the world-spawn region: coordinates,
+alive/destroyed state, destruction day, finite population/capacity and reserved
+outside bodies. `on`, `off` and `advance` save the updated world; an unsupported
+protected ecology section refuses these operations. The graphical owner's
+diagnostic uses the player's region, and guests cannot invoke it. Behaviour and
+acceptance evidence are tracked in
+[spider-lairs validation](../changes/spider-lairs/validation.md).
 
 `run-tests.ps1 -Only net,save` checks dedicated logic. `run-server-test.ps1` is the end-to-end LAN gate; `tools/TestServerPackage.ps1` checks extracted distribution boot and /stop.
 

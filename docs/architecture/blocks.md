@@ -147,7 +147,15 @@ time — a crop's stage, a sapling — asks instead:
 `BlockBehavior.scheduledTick(world, x, y, z, meta, lateBy)`. Asking again for
 the same block in the same cell moves its time rather than adding a tick. The
 tick comes only if that block still stands there: a crop dug up and replaced by
-dirt does not wake the dirt. No block asks yet; crops and saplings will.
+dirt does not wake the dirt. Crops, saplings and spider nests use this path.
+
+`World.scheduleTickAt(x, y, z, kind, due)` schedules an absolute simulation tick
+in the same queue. Lair founding during daily replay uses it to put the first
+silk callback one `SpiderNestBehavior.INTERVAL` after the logical birth tick,
+even when the dispatcher has not yet caught up with the clock. Earlier replay
+births use the usual bounded catch-up when their callback is already due.
+Relative `scheduleTick` timing, replacement of an existing ask and the saved
+`ticks` layout keep their existing behavior.
 
 - **Storage.** Each chunk has a `ScheduledTicks`, created on the first ask: a
   binary heap of `long`s — due world tick (40 bits), kind (8 bits, the block's

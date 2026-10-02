@@ -51,6 +51,12 @@ Knobs: [TUNING.md](../TUNING.md). Entry points: [PROJECT_MAP.md](../PROJECT_MAP.
 Strict `armor` parsing validates slot/defense/toughness/knockback resistance; armor
 stack size is one. `food` supports saturation, eat_seconds and bounded effects
 (duration ≤86400 s, amplifier ≤255, chance 0..1). HOE appends to tool classes.
-The runtime atlas now has 205 native tiles; new item/crop/vegetation sprites and
+The earlier batch added 205 native tiles; new item/crop/vegetation sprites and
 four armor model sheets retain their source hashes and offline importer receipts.
 See [source provenance](../../assets/textures/source/roadmap-1-1.md).
+
+SPIDER_NEST adds a block item and original tile 205, bringing the atlas to 206
+native tiles. Its strict `ecology/lairs/spider_nest.json` definition supplies initial
+population, capacity, daily growth, emission and territory; LairTable loads it
+through DataPack. The nest has no survival crafting recipe; it is encountered
+through eligible cave founding while Living World is enabled.

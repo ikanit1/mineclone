@@ -43,7 +43,8 @@ public final class NetProto {
      * it to this file.
      */
     // v9: C_USE_BLOCK bit 7 distinguishes host-owned farming actions; reject v8 peers that cannot acknowledge them.
-    public static final int VERSION = 12;
+    // v13: SPIDER_NEST is an appended block ID; earlier guests would interpret it as air.
+    public static final int VERSION = 13;
 
     /** Сколько раз в секунду уходит кадр сети. */
     public static final float TICK_RATE = 12f;

@@ -40,6 +40,7 @@ public final class Behaviors {
             case SNOW_LAYER -> SNOW;
             case TALL_GRASS,FLOWER_RED,FLOWER_YELLOW -> new PlantBehavior();
             case SAPLING -> new SaplingBehavior();
+            case SPIDER_NEST -> new SpiderNestBehavior();
             case FARMLAND -> new FarmlandBehavior();
             case WHEAT, CARROTS, POTATOES -> new CropBehavior(type);
             case PLANK_SLAB, COBBLE_SLAB, STONE_SLAB, FENCE, FENCE_GATE, LADDER, TRAPDOOR -> new BuildingBehavior(type);

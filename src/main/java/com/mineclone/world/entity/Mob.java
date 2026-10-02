@@ -181,6 +181,8 @@ public class Mob implements Hittable, com.mineclone.world.effect.StatusEffects.T
     public int breedingOwner=-1;
     public float age,love,loveCooldown;
     public org.joml.Vector3f foodTarget;
+    /** Host-only lair return/territory route; reconstructed from the lair's saved body IDs. */
+    public org.joml.Vector3f lairDestination;
     /** Host-only Living World switch. Appetite and raid navigation are transient. */
     public boolean cropRaidsEnabled;
     CropRaids cropRaid;
@@ -501,7 +503,10 @@ public class Mob implements Hittable, com.mineclone.world.effect.StatusEffects.T
                 && (morale == MobTactics.Morale.RETREAT || morale == MobTactics.Morale.PANIC);
         boolean sleeping = routine == MobTactics.Routine.SLEEP && !burning
                 && playerDist > 8f && threatDist > 8f;
-        if (retreating) {
+        if (type == MobType.SPIDER && lairDestination != null && !burning) {
+            state = State.WANDER;
+            navigateTo(world, dt, lairDestination);
+        } else if (retreating) {
             state = State.FLEE;
             setMoveDirection(-pdx, -pdz);
         } else if (sleeping) {

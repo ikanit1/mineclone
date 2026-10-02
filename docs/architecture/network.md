@@ -1,6 +1,6 @@
 # Multiplayer and transports
 
-Updated: 2026-09-24. Paths in backticks are relative to the repository root.
+Updated: 2026-10-02. Paths in backticks are relative to the repository root.
 
 `net/Multiplayer` owns session logic; `NetProto.VERSION` gates compatibility.
 `C_` messages are guest commands, `S_` messages are authoritative host snapshots,
@@ -14,7 +14,7 @@ external service and is excluded from CI.
 Мир живёт **у хозяина комнаты**, участники — зеркала. Транспорт за интерфейсом
 `NetTransport`: облако Photon, прямое соединение в своей сети и петля внутри
 процесса, на которой стоят тесты. ADR:
-`knowledge/decisions/multiplayer-photon.md`. Протокол — v8, все коды и тела
+`knowledge/decisions/multiplayer-photon.md`. Протокол — v13, все коды и тела
 пакетов: [NETWORK_PROTOCOL.md](../NETWORK_PROTOCOL.md).
 
 - **Java-SDK у Photon нет** — официальные клиенты Unity/.NET/C++/JS. `PhotonPeer`
@@ -34,6 +34,15 @@ external service and is excluded from CI.
   видимая стадия 0–5 зеркалится в meta блока травы. Обычный `S_BLOCK_SET`
   доставляет смену стадии подключённому гостю, `S_CHUNK_DELTA` — вошедшему
   позже; обе стороны рисуют одинаковый узор без нового типа пакета.
+- **Гнёзда LW-04/05**: версия 13 защищает добавленный в конец `BlockType`
+  ID 64 (`SPIDER_NEST`); более старый гость прочитал бы его как воздух.
+  Формы пакетов не меняются: сердце и паутина едут обычными `S_BLOCK_SET`
+  и `S_CHUNK_DELTA`, пауки — `S_MOBS` с прежними `VarLong` ID версии 12.
+  Популяция, зарезервированные тела, заселение и запланированный рост паутины
+  принадлежат хозяину; гость получает результат и не создаёт логова сам.
+  Совместимость требует одинаковой версии у игры и сервера. Игровая и сетевая
+  приёмка фиксируются отдельно в
+  [spider-lairs validation](../changes/spider-lairs/validation.md).
 - **Наблюдатель правок** — `World.setBlockObserver`: одна воронка на все
   `setBlock`, откуда бы правка ни пришла. Применение чужой правки помечено
   флагом, иначе она ходила бы по кругу.
